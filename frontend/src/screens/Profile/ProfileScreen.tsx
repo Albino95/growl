@@ -322,7 +322,30 @@ export default function ProfileScreen() {
         {activeTab === 'posts' && (
           <View style={tw`p-4`}>
             {posts.map((post) => (
-              <View key={post.id} style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}>
+              <TouchableOpacity
+                key={post.id}
+                style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
+                onPress={() => {
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('PostDetail' as never, {
+                    post: {
+                      id: post.id,
+                      userId: user?.id || 'me',
+                      username: user?.email?.split('@')[0] || 'User',
+                      avatar: '👤',
+                      image: post.image,
+                      caption: post.caption,
+                      category: post.category,
+                      likes: post.likes,
+                      comments: post.comments,
+                      createdAt: post.createdAt,
+                      daysUntilDecay: post.daysUntilDecay,
+                      hasLiked: false,
+                      reaction: null,
+                    },
+                  } as never);
+                }}
+              >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View style={tw`flex-row items-center`}>
                     <View style={tw`w-16 h-16 bg-gray-100 rounded-xl items-center justify-center mr-3`}>
@@ -358,7 +381,7 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}

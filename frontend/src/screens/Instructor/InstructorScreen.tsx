@@ -171,8 +171,9 @@ export default function InstructorScreen({ navigation }: any) {
               <TouchableOpacity
                 style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
                 onPress={() => {
-                  // Navigate to student detail
-                  alert(`View ${item.name}'s profile`);
+                  // Navigate to student profile
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('PublicProfile' as never, { userId: item.id } as never);
                 }}
               >
                 <View style={tw`flex-row items-center mb-3`}>
