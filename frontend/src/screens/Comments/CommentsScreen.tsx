@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../state/useAuthStore';
 import tw from '../../lib/tw';
 
@@ -61,6 +62,7 @@ export default function CommentsScreen({ postId, postUsername, postCaption, onCl
   const [comments, setComments] = useState<Comment[]>(MOCK_COMMENTS);
   const [commentText, setCommentText] = useState('');
   const { user } = useAuthStore();
+  const navigation = useNavigation();
 
   const handleSendComment = () => {
     if (!commentText.trim()) return;
@@ -130,12 +132,30 @@ export default function CommentsScreen({ postId, postUsername, postCaption, onCl
           contentContainerStyle={tw`px-4 py-3`}
           renderItem={({ item }) => (
             <View style={tw`flex-row items-start mb-4`}>
-              <View style={tw`w-8 h-8 rounded-full bg-gray-200 items-center justify-center mr-3`}>
-                <Text style={tw`text-lg`}>{item.avatar}</Text>
-              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  if (item.userId !== user?.id && item.userId !== 'me') {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
+                  }
+                }}
+              >
+                <View style={tw`w-8 h-8 rounded-full bg-gray-200 items-center justify-center mr-3`}>
+                  <Text style={tw`text-lg`}>{item.avatar}</Text>
+                </View>
+              </TouchableOpacity>
               <View style={tw`flex-1`}>
                 <View style={tw`bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2 mb-1`}>
-                  <Text style={tw`text-sm font-semibold text-gray-900 mb-0.5`}>{item.username}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (item.userId !== user?.id && item.userId !== 'me') {
+                        const rootNavigation = navigation.getParent() || navigation;
+                        rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
+                      }
+                    }}
+                  >
+                    <Text style={tw`text-sm font-semibold text-gray-900 mb-0.5`}>{item.username}</Text>
+                  </TouchableOpacity>
                   <Text style={tw`text-sm text-gray-800`}>{item.comment}</Text>
                 </View>
                 <View style={tw`flex-row items-center ml-2`}>

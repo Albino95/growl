@@ -7,10 +7,30 @@ import CategoryPickScreen from '../../screens/Onboarding/CategoryPickScreen';
 import IndividualTabs from './tabs/IndividualTabs';
 import BusinessTabs from './tabs/BusinessTabs';
 import PostScreen from '../../screens/Post/PostScreen';
+import PostDetailScreen from '../../screens/Post/PostDetailScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
 import ReelsScreen from '../../screens/Reels/ReelsScreen';
+import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import { useAuthStore } from '../../state/useAuthStore';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
+
+type PostDetailParam = {
+  id: string;
+  userId: string;
+  username: string;
+  avatar: string;
+  image: string;
+  caption: string;
+  category: string;
+  subcategory?: string;
+  likes: number;
+  comments: number;
+  timestamp?: string;
+  createdAt?: string;
+  hasLiked?: boolean;
+  reaction?: 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
+  daysUntilDecay?: number;
+};
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -21,6 +41,8 @@ export type RootStackParamList = {
   Post: undefined;
   Messages: undefined;
   Reels: undefined;
+  PublicProfile: { userId: string };
+  PostDetail: { post: PostDetailParam };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -59,8 +81,10 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name="Individual" component={IndividualTabs} />
           <Stack.Screen name="Post" component={PostScreen} />
+          <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           <Stack.Screen name="Messages" component={MessagesScreen} />
           <Stack.Screen name="Reels" component={ReelsScreen} />
+          <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
         </>
       )}
       <Stack.Screen name="Business" component={BusinessTabs} />

@@ -213,8 +213,9 @@ export default function FeedScreen({ navigation, route }: any) {
                 key={story.id}
                 style={tw`items-center mr-4`}
                 onPress={() => {
-                  // Navigate to story view
-                  console.log('Open story:', story.username);
+                  // Navigate to user profile when clicking on story
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('PublicProfile' as never, { userId: story.userId } as never);
                 }}
               >
                 <View
@@ -320,7 +321,13 @@ export default function FeedScreen({ navigation, route }: any) {
             <View style={tw`bg-white mb-3 overflow-hidden`}>
               {/* Post Header - Modern Style */}
               <View style={tw`flex-row items-center justify-between px-4 py-3`}>
-                <View style={tw`flex-row items-center flex-1`}>
+                <TouchableOpacity
+                  style={tw`flex-row items-center flex-1`}
+                  onPress={() => {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
+                  }}
+                >
                   <View style={tw`w-11 h-11 rounded-full bg-green-500 items-center justify-center mr-3 shadow-sm`}>
                     <Text style={tw`text-xl`}>{item.avatar}</Text>
                   </View>
@@ -328,7 +335,7 @@ export default function FeedScreen({ navigation, route }: any) {
                     <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
                     <Text style={tw`text-xs text-gray-500`}>{item.timestamp}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
                 <TouchableOpacity style={tw`p-1`}>
                   <Ionicons name="ellipsis-horizontal" size={22} color="#6B7280" />
                 </TouchableOpacity>
@@ -408,11 +415,16 @@ export default function FeedScreen({ navigation, route }: any) {
                 </Text>
 
                 {/* Caption */}
-                <View style={tw`mb-2`}>
-                  <Text style={tw`text-gray-900 text-base`}>
-                    <Text style={tw`font-bold`}>{item.username}</Text>
-                    <Text> {item.caption}</Text>
-                  </Text>
+                <View style={tw`mb-2 flex-row flex-wrap`}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const rootNavigation = navigation.getParent() || navigation;
+                      rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
+                    }}
+                  >
+                    <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
+                  </TouchableOpacity>
+                  <Text style={tw`text-gray-900 text-base`}> {item.caption}</Text>
                 </View>
 
                 {/* CO2 Calculator */}
