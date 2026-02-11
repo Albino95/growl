@@ -1,0 +1,104 @@
+// Environment bindings for Cloudflare Workers
+export interface Env {
+  DB?: D1Database; // Optional until database is created
+  KV?: KVNamespace; // Optional until KV namespace is created
+  R2?: R2Bucket; // Optional until R2 bucket is created
+  ENVIRONMENT: string;
+  JWT_SECRET: string;
+  API_VERSION: string;
+}
+
+// User types
+export interface User {
+  id: string;
+  email: string;
+  password_hash: string;
+  points: number;
+  is_instructor: boolean;
+  is_business: boolean;
+  metadata: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserMetadata {
+  username?: string;
+  avatar?: string;
+  categories?: string[];
+  engagementHistory?: any[];
+  instructorVotes?: any[];
+  purchaseHistory?: any[];
+  timePreferences?: any[];
+  blockedUsers?: string[];
+  mutedUsers?: string[];
+}
+
+export interface Post {
+  id: string;
+  user_id: string;
+  image_url?: string;
+  caption?: string;
+  category: string;
+  subcategory?: string;
+  engagement_score: number;
+  metadata: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PostMetadata {
+  likes?: number;
+  comments?: number;
+  isInstructor?: boolean;
+  username?: string;
+  avatar?: string;
+}
+
+export interface Product {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  category: string;
+  subcategory?: string;
+  price: number;
+  stock: number;
+  image_url?: string;
+  images?: string; // JSON string array
+  metadata: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Order {
+  id: string;
+  user_id: string;
+  status: string;
+  total: number;
+  shipping_address: string; // JSON string
+  metadata: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RequestContext {
+  isAuthenticated: boolean;
+  userId?: string;
+  user?: User;
+}
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  meta?: {
+    timestamp: string;
+    request_id?: string;
+  };
+}
+
+

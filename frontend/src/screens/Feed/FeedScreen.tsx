@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, ScrollView, RefreshControl, Modal } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../state/useAuthStore';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
+import { getAvatarUrl, getCategoryImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
 type Story = {
@@ -36,11 +38,11 @@ type Post = {
 
 // Mock data - in real app, this would come from API
 const MOCK_STORIES: Story[] = [
-  { id: '1', userId: 'u1', username: 'John', avatar: '👤', hasViewed: false },
-  { id: '2', userId: 'u2', username: 'Sarah', avatar: '👩', hasViewed: true },
-  { id: '3', userId: 'u3', username: 'Mike', avatar: '👨', hasViewed: false },
-  { id: '4', userId: 'u4', username: 'Emma', avatar: '👧', hasViewed: true },
-  { id: '5', userId: 'u5', username: 'Alex', avatar: '🧑', hasViewed: false },
+  { id: '1', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
+  { id: '2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
+  { id: '3', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
+  { id: '4', userId: 'u4', username: 'Emma', avatar: getAvatarUrl('u4', 'Emma'), hasViewed: true },
+  { id: '5', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
 ];
 
 const MOCK_POSTS: Post[] = [
@@ -48,8 +50,8 @@ const MOCK_POSTS: Post[] = [
     id: '1',
     userId: 'u1',
     username: 'John',
-    avatar: '👤',
-    image: '🏋️',
+    avatar: getAvatarUrl('u1', 'John'),
+    image: getCategoryImageUrl('fitness', 'losing-weight'),
     caption: 'Day 15 of my fitness journey! Feeling stronger every day 💪',
     category: 'fitness',
     subcategory: 'losing-weight',
@@ -63,8 +65,8 @@ const MOCK_POSTS: Post[] = [
     id: '2',
     userId: 'u2',
     username: 'Sarah',
-    avatar: '👩',
-    image: '🎹',
+    avatar: getAvatarUrl('u2', 'Sarah'),
+    image: getCategoryImageUrl('art', 'piano'),
     caption: 'Practiced piano for 2 hours today. Progress is slow but steady 🎵',
     category: 'art',
     subcategory: 'piano',
@@ -78,8 +80,8 @@ const MOCK_POSTS: Post[] = [
     id: '3',
     userId: 'u3',
     username: 'Mike',
-    avatar: '👨',
-    image: '🧘',
+    avatar: getAvatarUrl('u3', 'Mike'),
+    image: getCategoryImageUrl('mindset', 'meditation'),
     caption: 'Morning meditation session complete. Starting the day with clarity ✨',
     category: 'mindset',
     subcategory: 'meditation',
@@ -223,9 +225,11 @@ export default function FeedScreen({ navigation, route }: any) {
                     story.hasViewed ? 'border-gray-300' : 'border-purple-500'
                   } items-center justify-center bg-purple-100 p-0.5`}
                 >
-                  <View style={tw`w-full h-full rounded-full bg-white items-center justify-center`}>
-                    <Text style={tw`text-3xl`}>{story.avatar}</Text>
-                  </View>
+                  <Image
+                    source={{ uri: story.avatar }}
+                    style={tw`w-full h-full rounded-full`}
+                    contentFit="cover"
+                  />
                 </View>
                 <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
                   {story.username}
@@ -328,9 +332,11 @@ export default function FeedScreen({ navigation, route }: any) {
                     rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
                   }}
                 >
-                  <View style={tw`w-11 h-11 rounded-full bg-green-500 items-center justify-center mr-3 shadow-sm`}>
-                    <Text style={tw`text-xl`}>{item.avatar}</Text>
-                  </View>
+                  <Image
+                    source={{ uri: item.avatar }}
+                    style={tw`w-11 h-11 rounded-full mr-3 shadow-sm`}
+                    contentFit="cover"
+                  />
                   <View style={tw`flex-1`}>
                     <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
                     <Text style={tw`text-xs text-gray-500`}>{item.timestamp}</Text>
@@ -343,9 +349,11 @@ export default function FeedScreen({ navigation, route }: any) {
 
               {/* Post Image - Modern Style */}
               <View style={tw`w-full bg-gray-50`}>
-                <View style={tw`w-full h-96 bg-gray-100 items-center justify-center`}>
-                  <Text style={tw`text-7xl`}>{item.image}</Text>
-                </View>
+                <Image
+                  source={{ uri: item.image }}
+                  style={tw`w-full h-96`}
+                  contentFit="cover"
+                />
               </View>
 
               {/* Post Actions - Modern Style */}
