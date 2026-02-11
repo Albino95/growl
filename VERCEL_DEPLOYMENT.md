@@ -99,11 +99,16 @@ Add build script to `frontend/package.json`:
 ```json
 {
   "scripts": {
-    "build": "expo export:web",
-    "vercel-build": "expo export:web"
+    "build": "expo export --platform web --output-dir web-build",
+    "vercel-build": "expo export --platform web --output-dir web-build"
   }
 }
 ```
+
+**Note:** 
+- If your app uses Metro bundler (default in app.json), use `expo export --platform web --output-dir web-build`
+- If you're using Webpack, use `expo export:web`
+- The `--output-dir web-build` ensures the output matches Vercel's expected directory
 
 ### Step 4: Push to Git Repository
 
