@@ -1,0 +1,15 @@
+# Ignore files with actual secrets
+# Keep documentation files, but don't commit actual secret values
+
+# Production secrets (if any are stored here)
+*.secret
+*.key
+*.pem
+
+# Local environment overrides
+.env.local
+.env.production.local
+
+# Note: ENVIRONMENT_VARIABLES.md and DEPLOYMENT_INFO.json contain
+# development values that are already in wrangler.toml, so they're safe to commit.
+# For production, use wrangler secrets instead of storing in files.
