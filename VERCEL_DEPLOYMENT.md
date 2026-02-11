@@ -42,17 +42,35 @@ Create a `vercel.json` file in the `frontend` directory:
       }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
-  "env": {
-    "EXPO_PUBLIC_API_BASE_URL": "https://growl-backend.albino-ndreu.workers.dev/api/v1"
-  }
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ]
 }
 ```
+
+**Note:** Environment variables should be set in Vercel Dashboard, not in vercel.json.
 
 ### Step 3: Update package.json Scripts
 
