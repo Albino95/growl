@@ -106,8 +106,9 @@ Add build script to `frontend/package.json`:
 ```
 
 **Note:** 
-- If your app uses Metro bundler (default in app.json), use `expo export --platform web --output-dir web-build`
-- If you're using Webpack, use `expo export:web`
+- Webpack bundler is recommended for web deployments (set in app.json: `"bundler": "webpack"`)
+- Use `expo export:web --output-dir web-build` with Webpack bundler
+- Webpack properly handles ES modules and `import.meta` syntax
 - The `--output-dir web-build` ensures the output matches Vercel's expected directory
 
 ### Step 4: Push to Git Repository
