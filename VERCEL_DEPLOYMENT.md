@@ -72,7 +72,27 @@ Create a `vercel.json` file in the `frontend` directory:
 
 **Note:** Environment variables should be set in Vercel Dashboard, not in vercel.json.
 
-### Step 3: Update package.json Scripts
+### Step 3: Install Web Dependencies
+
+Install required web dependencies:
+
+```bash
+cd frontend
+npx expo install react-dom react-native-web
+```
+
+Or add them manually to `package.json`:
+
+```json
+{
+  "dependencies": {
+    "react-dom": "19.1.0",
+    "react-native-web": "^0.21.0"
+  }
+}
+```
+
+### Step 4: Update package.json Scripts
 
 Add build script to `frontend/package.json`:
 
@@ -94,7 +114,7 @@ git commit -m "Prepare for Vercel deployment"
 git push origin main
 ```
 
-### Step 5: Deploy via Vercel Dashboard
+### Step 6: Deploy via Vercel Dashboard
 
 1. **Go to [vercel.com](https://vercel.com)**
 2. **Click "New Project"**
@@ -109,7 +129,7 @@ git push origin main
    - `NODE_ENV`: `production`
 6. **Click "Deploy"**
 
-### Step 6: Deploy via Vercel CLI (Alternative)
+### Step 7: Deploy via Vercel CLI (Alternative)
 
 ```bash
 # Navigate to frontend directory
