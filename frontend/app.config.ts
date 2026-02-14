@@ -4,7 +4,7 @@ const defineConfig = (): ExpoConfig => ({
   slug: 'growl',
   version: '0.4.0',
   extra: {
-    API_BASE_URL: process.env.API_BASE_URL ?? 'https://api.example.com',
+    API_BASE_URL: process.env.API_BASE_URL ?? 'https://growl-backend.albino-ndreu.workers.dev/api/v1',
     ENV: process.env.NODE_ENV ?? 'development',
   },
 });

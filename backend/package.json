@@ -1,0 +1,33 @@
+{
+  "name": "growl-backend",
+  "version": "1.0.0",
+  "description": "Growl App Backend - Cloudflare Workers API",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply growl-db",
+    "migrate:local": "wrangler d1 migrations apply growl-db --local",
+    "db:create": "wrangler d1 create growl-db",
+    "login": "wrangler login",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "api",
+    "growl"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240208.0",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.114.16"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  }
+}

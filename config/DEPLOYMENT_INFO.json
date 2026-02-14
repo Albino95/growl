@@ -1,0 +1,33 @@
+{
+  "deployment": {
+    "worker_url": "https://growl-backend.albino-ndreu.workers.dev",
+    "version_id": "1d4a5fa9-4018-4b48-a03d-0b5f0d30b0ba",
+    "deployment_date": "2026-02-11",
+    "api_base_url": "https://growl-backend.albino-ndreu.workers.dev/api/v1"
+  },
+  "bindings": {
+    "d1_database": {
+      "binding_name": "DB",
+      "database_name": "growl-db",
+      "database_id": "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+    },
+    "kv_namespace": {
+      "binding_name": "KV",
+      "namespace_id": "acb4474069c041bd838e3c2f6de54257",
+      "preview_id": "536de44686804dfaa0f27e5a523b596e"
+    }
+  },
+  "environment_variables": {
+    "development": {
+      "ENVIRONMENT": "development",
+      "JWT_SECRET": "dev-secret-key-change-in-production",
+      "API_VERSION": "v1"
+    }
+  },
+  "wrangler_config": {
+    "name": "growl-backend",
+    "main": "src/index.ts",
+    "compatibility_date": "2024-01-15",
+    "compatibility_flags": ["nodejs_compat"]
+  }
+}

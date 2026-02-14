@@ -1,0 +1,32 @@
+name = "growl-backend"
+main = "src/index.ts"
+compatibility_date = "2024-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "growl-db"
+database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+
+# KV Namespace for caching
+[[kv_namespaces]]
+binding = "KV"
+id = "acb4474069c041bd838e3c2f6de54257"
+preview_id = "536de44686804dfaa0f27e5a523b596e"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "development"
+JWT_SECRET = "dev-secret-key-change-in-production"
+API_VERSION = "v1"
+
+# Production environment
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+# Staging environment
+[env.staging]
+vars = { ENVIRONMENT = "staging" }
+
+

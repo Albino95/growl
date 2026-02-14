@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../state/useAuthStore';
+import { getAvatarUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
 type MessageType = 'Individual' | 'Store' | 'Instructor';
@@ -41,11 +43,11 @@ type Conversation = {
 
 // Mock Stories
 const MOCK_STORIES: Story[] = [
-  { id: '1', userId: 'u1', username: 'John', avatar: '👤', hasViewed: false },
-  { id: '2', userId: 'u2', username: 'Sarah', avatar: '👩', hasViewed: true },
-  { id: '3', userId: 'u3', username: 'Mike', avatar: '👨', hasViewed: false },
-  { id: '4', userId: 'u4', username: 'Emma', avatar: '👧', hasViewed: true },
-  { id: '5', userId: 'u5', username: 'Alex', avatar: '🧑', hasViewed: false },
+  { id: '1', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
+  { id: '2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
+  { id: '3', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
+  { id: '4', userId: 'u4', username: 'Emma', avatar: getAvatarUrl('u4', 'Emma'), hasViewed: true },
+  { id: '5', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
 ];
 
 // Mock Conversations
@@ -54,55 +56,55 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     id: '1',
     userId: 'u1',
     username: 'John',
-    avatar: '👤',
+    avatar: getAvatarUrl('u1', 'John'),
     lastMessage: 'Great progress on your workout!',
     timestamp: '2h',
     hasUnread: true,
     type: 'Individual',
     messages: [
-      { id: 'm1', userId: 'u1', username: 'John', avatar: '👤', message: 'Hey! How are you doing?', timestamp: '10:30 AM', isOwn: false, status: 'seen' },
-      { id: 'm2', userId: 'me', username: 'You', avatar: '👋', message: 'Great! Thanks for asking', timestamp: '10:32 AM', isOwn: true, status: 'seen' },
-      { id: 'm3', userId: 'u1', username: 'John', avatar: '👤', message: 'Great progress on your workout!', timestamp: '10:35 AM', isOwn: false, status: 'seen' },
+      { id: 'm1', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), message: 'Hey! How are you doing?', timestamp: '10:30 AM', isOwn: false, status: 'seen' },
+      { id: 'm2', userId: 'me', username: 'You', avatar: getAvatarUrl('me', 'You'), message: 'Great! Thanks for asking', timestamp: '10:32 AM', isOwn: true, status: 'seen' },
+      { id: 'm3', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), message: 'Great progress on your workout!', timestamp: '10:35 AM', isOwn: false, status: 'seen' },
     ],
   },
   {
     id: '2',
     userId: 's1',
     username: 'Fitness Store',
-    avatar: '🏪',
+    avatar: getAvatarUrl('s1', 'Fitness Store'),
     lastMessage: 'Your order has been shipped!',
     timestamp: '5h',
     hasUnread: false,
     type: 'Store',
     messages: [
-      { id: 'm4', userId: 's1', username: 'Fitness Store', avatar: '🏪', message: 'Your order has been shipped!', timestamp: '9:00 AM', isOwn: false, status: 'seen' },
-      { id: 'm5', userId: 'me', username: 'You', avatar: '👋', message: 'Great, thanks!', timestamp: '9:15 AM', isOwn: true, status: 'delivered' },
+      { id: 'm4', userId: 's1', username: 'Fitness Store', avatar: getAvatarUrl('s1', 'Fitness Store'), message: 'Your order has been shipped!', timestamp: '9:00 AM', isOwn: false, status: 'seen' },
+      { id: 'm5', userId: 'me', username: 'You', avatar: getAvatarUrl('me', 'You'), message: 'Great, thanks!', timestamp: '9:15 AM', isOwn: true, status: 'delivered' },
     ],
   },
   {
     id: '3',
     userId: 'i1',
     username: 'Coach Sarah',
-    avatar: '👩‍🏫',
+    avatar: getAvatarUrl('i1', 'Coach Sarah'),
     lastMessage: 'Keep up the great work!',
     timestamp: '1d',
     hasUnread: true,
     type: 'Instructor',
     messages: [
-      { id: 'm6', userId: 'i1', username: 'Coach Sarah', avatar: '👩‍🏫', message: 'Keep up the great work!', timestamp: 'Yesterday', isOwn: false, status: 'seen' },
+      { id: 'm6', userId: 'i1', username: 'Coach Sarah', avatar: getAvatarUrl('i1', 'Coach Sarah'), message: 'Keep up the great work!', timestamp: 'Yesterday', isOwn: false, status: 'seen' },
     ],
   },
   {
     id: '4',
     userId: 'u2',
     username: 'Sarah',
-    avatar: '👩',
+    avatar: getAvatarUrl('u2', 'Sarah'),
     lastMessage: 'See you tomorrow!',
     timestamp: '2d',
     hasUnread: false,
     type: 'Individual',
     messages: [
-      { id: 'm7', userId: 'u2', username: 'Sarah', avatar: '👩', message: 'See you tomorrow!', timestamp: '2 days ago', isOwn: false, status: 'seen' },
+      { id: 'm7', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), message: 'See you tomorrow!', timestamp: '2 days ago', isOwn: false, status: 'seen' },
     ],
   },
 ];
@@ -197,7 +199,11 @@ export default function MessagesScreen() {
           </TouchableOpacity>
           <View style={tw`flex-row items-center flex-1`}>
             <View style={tw`w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3`}>
-              <Text style={tw`text-xl`}>{selectedConversation.avatar}</Text>
+              <Image
+                source={{ uri: selectedConversation.avatar }}
+                style={tw`w-full h-full rounded-full`}
+                contentFit="cover"
+              />
             </View>
             <View style={tw`flex-1`}>
               <Text style={tw`font-semibold text-gray-900`}>{selectedConversation.username}</Text>
@@ -361,7 +367,11 @@ export default function MessagesScreen() {
                   } items-center justify-center bg-purple-100 p-0.5`}
                 >
                   <View style={tw`w-full h-full rounded-full bg-white items-center justify-center`}>
-                    <Text style={tw`text-3xl`}>{story.avatar}</Text>
+                    <Image
+                      source={{ uri: story.avatar }}
+                      style={tw`w-full h-full rounded-full`}
+                      contentFit="cover"
+                    />
                   </View>
                 </View>
                 <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
@@ -410,7 +420,11 @@ export default function MessagesScreen() {
             >
               <View style={tw`relative`}>
                 <View style={tw`w-14 h-14 rounded-full bg-gray-100 items-center justify-center`}>
-                  <Text style={tw`text-2xl`}>{item.avatar}</Text>
+                  <Image
+                    source={{ uri: item.avatar }}
+                    style={tw`w-full h-full rounded-full`}
+                    contentFit="cover"
+                  />
                 </View>
                 {item.hasUnread && (
                   <View style={tw`absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white`} />
