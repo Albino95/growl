@@ -1,8 +1,24 @@
+# Dependencies
 node_modules/
-.wrangler/
+
+# Build outputs
 dist/
+.wrangler/
+
+# Test outputs
+coverage/
 *.log
+
+# Environment files
 .env
 .env.local
 
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
+# OS
+.DS_Store
+Thumbs.db

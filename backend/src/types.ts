@@ -1,8 +1,8 @@
 // Environment bindings for Cloudflare Workers
 export interface Env {
-  DB?: D1Database; // Optional until database is created
-  KV?: KVNamespace; // Optional until KV namespace is created
-  R2?: R2Bucket; // Optional until R2 bucket is created
+  DB: D1Database; // Required - configured in wrangler.toml
+  KV: KVNamespace; // Required - configured in wrangler.toml
+  R2?: R2Bucket; // Optional - not used yet
   ENVIRONMENT: string;
   JWT_SECRET: string;
   API_VERSION: string;

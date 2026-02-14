@@ -59,9 +59,14 @@ export async function getInstructors(request: Request, env: Env): Promise<Respon
       limit,
       offset,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[getInstructors] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to fetch instructors', 500);
+    const errorMessage = err?.message || 'Failed to fetch instructors';
+    // Provide more helpful error message if tables don't exist
+    if (errorMessage.includes('no such table')) {
+      return error('DATABASE_ERROR', 'Database tables not initialized. Please run migrations.', 500);
+    }
+    return error('DATABASE_ERROR', errorMessage, 500);
   }
 }
 

@@ -68,9 +68,14 @@ export async function getProducts(request: Request, env: Env): Promise<Response>
       limit,
       offset,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[getProducts] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to fetch products', 500);
+    const errorMessage = err?.message || 'Failed to fetch products';
+    // Provide more helpful error message if tables don't exist
+    if (errorMessage.includes('no such table')) {
+      return error('DATABASE_ERROR', 'Database tables not initialized. Please run migrations.', 500);
+    }
+    return error('DATABASE_ERROR', errorMessage, 500);
   }
 }
 
