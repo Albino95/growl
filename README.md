@@ -20,11 +20,19 @@ For local development, see `backend/README.md` or `GETTING_STARTED.md`.
 
 ## 📚 Documentation
 
+### Essential Guides
 - **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Complete setup and development guide
-- **[VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)** - Deploy to Vercel guide
-- **[config/](./config/)** - Environment variables and deployment configuration
+- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Quick deployment reference
+- **[VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)** - Deploy frontend to Vercel
+
+### Backend
+- **[backend/README.md](./backend/README.md)** - Backend overview and setup
 - **[backend/ERD.md](./backend/ERD.md)** - Database Entity Relationship Diagram
 - **[backend/BACKEND_ARCHITECTURE.md](./backend/BACKEND_ARCHITECTURE.md)** - Backend architecture details
+- **[backend/SEED_PRODUCTS_SIMPLE.md](./backend/SEED_PRODUCTS_SIMPLE.md)** - Seed marketplace products
+
+### Configuration
+- **[config/ENVIRONMENT_VARIABLES.md](./config/ENVIRONMENT_VARIABLES.md)** - Environment variables reference
 
 ## Project Structure
 

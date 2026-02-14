@@ -11,6 +11,8 @@ import PostDetailScreen from '../../screens/Post/PostDetailScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
 import ReelsScreen from '../../screens/Reels/ReelsScreen';
 import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
+import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
+import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import { useAuthStore } from '../../state/useAuthStore';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
 
@@ -43,6 +45,8 @@ export type RootStackParamList = {
   Reels: undefined;
   PublicProfile: { userId: string };
   PostDetail: { post: PostDetailParam };
+  ProductDetail: { productId: string };
+  Checkout: { items: Array<{ product_id: string; quantity: number }> };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -85,6 +89,16 @@ export default function RootNavigator() {
           <Stack.Screen name="Messages" component={MessagesScreen} />
           <Stack.Screen name="Reels" component={ReelsScreen} />
           <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+          <Stack.Screen
+            name="ProductDetail"
+            component={ProductDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Checkout"
+            component={CheckoutScreen}
+            options={{ headerShown: false }}
+          />
         </>
       )}
       <Stack.Screen name="Business" component={BusinessTabs} />

@@ -44,10 +44,28 @@ export function getStoryThumbnailUrl(userId: string): string {
 }
 
 /**
- * Get product image URL
+ * Get product image URL based on category or product ID
  */
-export function getProductImageUrl(category: string): string {
+export function getProductImageUrl(category: string, productId?: string): string {
+  // If productId provided, use it for consistent image per product
+  if (productId) {
+    const index = productId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return `https://picsum.photos/seed/${index}/800/600`;
+  }
   return getCategoryImageUrl(category);
+}
+
+/**
+ * Get product images array (for products with multiple images)
+ */
+export function getProductImages(category: string, productId: string, count: number = 3): string[] {
+  const images: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const seed = `${productId}-${i}`;
+    const index = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    images.push(`https://picsum.photos/seed/${index}/800/600`);
+  }
+  return images;
 }
 
 /**
