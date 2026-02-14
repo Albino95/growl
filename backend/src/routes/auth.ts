@@ -44,7 +44,7 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
 
     await env.DB.prepare(
       `INSERT INTO users (id, email, password_hash, points, is_instructor, is_business, metadata, created_at, updated_at)
-       VALUES (?, ?, ?, 0, FALSE, FALSE, ?, datetime('now'), datetime('now'))`
+       VALUES (?, ?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))`
     )
       .bind(userId, email, passwordHash, JSON.stringify(metadata))
       .run();
@@ -66,9 +66,14 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
       },
       201
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error('[signUp] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to create user', 500, env.ENVIRONMENT === 'development' ? String(err) : undefined);
+    const errorMessage = err?.message || 'Failed to create user';
+    // Provide more helpful error message if tables don't exist
+    if (errorMessage.includes('no such table')) {
+      return error('DATABASE_ERROR', 'Database tables not initialized. Please run migrations.', 500);
+    }
+    return error('DATABASE_ERROR', errorMessage, 500, env.ENVIRONMENT === 'development' ? String(err) : undefined);
   }
 }
 

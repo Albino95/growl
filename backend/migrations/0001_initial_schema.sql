@@ -1,5 +1,8 @@
 -- Initial database schema for Growl app
 
+-- Enable foreign keys
+PRAGMA foreign_keys = ON;
+
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
