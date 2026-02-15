@@ -282,8 +282,8 @@ npm run typecheck
 - **Backend Architecture**: `backend/BACKEND_ARCHITECTURE.md`
 - **Database ERD**: `backend/ERD.md`
 - **Environment Variables**: `config/ENVIRONMENT_VARIABLES.md`
-- **Deployment Info**: `config/DEPLOYMENT_INFO.json`
-- **Backend Completion**: `BACKEND_COMPLETION_SUMMARY.md`
+- **Deployment Guide**: `DEPLOYMENT_GUIDE.md`
+- **Seed Products**: `backend/SEED_PRODUCTS_SIMPLE.md`
 
 ## 🆘 Need Help?
 

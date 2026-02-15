@@ -20,7 +20,7 @@ export async function getProducts(request: Request, env: Env): Promise<Response>
     SELECT p.*, u.metadata as user_metadata
     FROM products p
     JOIN users u ON p.user_id = u.id
-    WHERE p.stock > 0
+    WHERE 1=1
   `;
   const bindings: any[] = [];
 

@@ -1,6 +1,6 @@
-# Complete Deployment Guide
+# Deployment Guide
 
-This is a quick reference guide for deploying the Growl app. For detailed instructions, see the specific guides.
+Quick reference for deploying the Growl app. For detailed instructions, see the specific guides.
 
 ## 📋 Quick Reference
 
@@ -64,4 +64,4 @@ vercel --prod
 
 - **Getting Started**: [GETTING_STARTED.md](./GETTING_STARTED.md)
 - **Vercel Deployment**: [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)
-- **Backend Setup**: [backend/QUICK_START.md](./backend/QUICK_START.md)
+- **Backend Setup**: [backend/README.md](./backend/README.md)
