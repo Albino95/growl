@@ -44,6 +44,16 @@ export function getStoryThumbnailUrl(userId: string): string {
 }
 
 /**
+ * Get story image URL based on user ID or story ID
+ */
+export function getStoryImageUrl(userId: string, storyId?: string): string {
+  // Use a seed based on userId and storyId for consistent images
+  const seed = storyId ? `${userId}-${storyId}` : userId;
+  // Use picsum.photos for variety with consistent seeding
+  return `https://picsum.photos/seed/${seed}/800/1200`;
+}
+
+/**
  * Get product image URL based on category or product ID
  */
 export function getProductImageUrl(category: string, productId?: string): string {
