@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Image, ScrollView, ActivityIndicator, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import tw from '../../lib/tw';
 import { getProducts } from '../../services/api/marketplace';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
 import { getProductImageUrl } from '../../utils/images';
+import Constants from 'expo-constants';
 
 // Marketplace recommendation algorithm
 // This algorithm considers:
@@ -74,6 +75,10 @@ export default function MarketplaceScreen() {
     try {
       setLoading(true);
       setError(null);
+      const BASE_URL = (Constants?.expoConfig?.extra?.API_BASE_URL as string) || 'https://growl-backend.albino-ndreu.workers.dev/api/v1';
+      console.log('[Marketplace] ====== Loading Products ======');
+      console.log('[Marketplace] Selected Category:', selectedCategory);
+      console.log('[Marketplace] API Base URL:', BASE_URL);
       console.log('[Marketplace] Loading products...');
       
       const response = await getProducts({
@@ -91,6 +96,8 @@ export default function MarketplaceScreen() {
         // If no products, show helpful message
         if (loadedProducts.length === 0) {
           setError('No products available yet. Products will appear here once businesses add them to the marketplace.');
+        } else {
+          setError(null); // Clear error if we have products
         }
       } else {
         console.error('[Marketplace] API returned unsuccessful response:', response);
@@ -109,8 +116,23 @@ export default function MarketplaceScreen() {
   };
 
   const onRefresh = () => {
+    console.log('[Marketplace] Pull to refresh triggered');
     setRefreshing(true);
     loadProducts();
+  };
+
+  const showDebugInfo = () => {
+    const debugMessage = `Products: ${products.length}\nLoading: ${loading}\nRefreshing: ${refreshing}\nError: ${error || 'None'}\nSelected Category: ${selectedCategory || 'All'}\n\nCheck console for API response.`;
+    
+    console.log('[Marketplace] Debug Info:', debugMessage);
+    
+    if (Platform.OS === 'web') {
+      // Use window.alert for web
+      window.alert(debugMessage);
+    } else {
+      // Use Alert.alert for native
+      Alert.alert('Debug Info', debugMessage, [{ text: 'OK' }]);
+    }
   };
 
   const recommendedProducts = useMemo(() => {
@@ -268,21 +290,23 @@ export default function MarketplaceScreen() {
                 </Text>
                 {error && (
                   <TouchableOpacity
-                    onPress={loadProducts}
+                    onPress={() => {
+                      console.log('[Marketplace] Try Again button pressed');
+                      loadProducts();
+                    }}
                     style={tw`px-6 py-3 bg-green-600 rounded-lg mb-2`}
+                    activeOpacity={0.7}
                   >
                     <Text style={tw`text-white font-semibold`}>Try Again</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
                   onPress={() => {
-                    Alert.alert(
-                      'Debug Info',
-                      `Products: ${products.length}\nLoading: ${loading}\nError: ${error || 'None'}\n\nCheck console for API response.`,
-                      [{ text: 'OK' }]
-                    );
+                    console.log('[Marketplace] Show Debug Info button pressed');
+                    showDebugInfo();
                   }}
                   style={tw`px-4 py-2 bg-gray-200 rounded-lg mt-2`}
+                  activeOpacity={0.7}
                 >
                   <Text style={tw`text-gray-700 text-sm`}>Show Debug Info</Text>
                 </TouchableOpacity>

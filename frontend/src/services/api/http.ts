@@ -18,11 +18,23 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  const res = await fetch(url, { ...options, headers });
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`HTTP ${res.status}: ${errorText}`);
+  try {
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json();
+    
+    // Check if backend returned an error in the response body
+    if (!res.ok || (data && data.success === false)) {
+      const errorMessage = data?.error?.message || data?.error?.code || `HTTP ${res.status}`;
+      throw new Error(errorMessage);
+    }
+    
+    if (res.status === 204) return undefined as unknown as T;
+    return data as T;
+  } catch (error: any) {
+    // Re-throw with better error message
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(error?.message || 'Network request failed');
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
 }
