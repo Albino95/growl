@@ -3,7 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Mod
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
@@ -101,7 +101,7 @@ const MOCK_POSTS: Post[] = [
 ];
 
 export default function FeedScreen({ navigation, route }: any) {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);

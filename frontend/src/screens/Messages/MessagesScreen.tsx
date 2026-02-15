@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import { getAvatarUrl, getStoryImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
@@ -119,7 +119,7 @@ export default function MessagesScreen() {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const messageInputRef = useRef<TextInput>(null);
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const [stories, setStories] = useState<Story[]>(MOCK_STORIES);
 
   // Group stories by user - show each person only once

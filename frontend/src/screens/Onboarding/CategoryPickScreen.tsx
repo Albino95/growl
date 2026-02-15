@@ -6,7 +6,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import CATEGORIES, { Category, Subcategory } from '../../data/categories';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import tw from '../../lib/tw';
 
@@ -19,7 +19,7 @@ interface CategoryPickScreenProps {
 export default function CategoryPickScreen({ navigation }: CategoryPickScreenProps) {
   const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] = React.useState<string | null>(null);
-  const { setOnboardingComplete } = useAuthStore();
+  const { setOnboardingComplete } = useAuth();
 
   const toggleCategory = (categoryKey: string) => {
     setSelectedCategories((prev) => {
