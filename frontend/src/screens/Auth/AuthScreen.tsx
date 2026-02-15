@@ -3,22 +3,23 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PrimaryButton from '../../components/ui/PrimaryButton';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 
 export default function AuthScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const { signIn, signInWithSSO } = useAuthStore();
+  const { signIn, signInWithSSO, isLoading: authLoading } = useAuth();
+  const isLoading = localLoading || authLoading;
 
   const handleEmailAuth = async () => {
     if (!email || !password) {
       alert('Please enter email and password');
       return;
     }
-    setIsLoading(true);
+    setLocalLoading(true);
     try {
       await signIn(email, password);
       // Navigation will be handled by RootNavigator based on auth state
@@ -27,12 +28,12 @@ export default function AuthScreen({ navigation }: any) {
       console.error('Sign in error:', error);
       alert('Authentication failed. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLocalLoading(false);
     }
   };
 
   const handleSSO = async (provider: 'google' | 'facebook') => {
-    setIsLoading(true);
+    setLocalLoading(true);
     try {
       // In a real app, you'd use expo-auth-session here
       // For now, using a mock token
@@ -41,7 +42,7 @@ export default function AuthScreen({ navigation }: any) {
     } catch (error) {
       alert(`${provider} authentication failed. Please try again.`);
     } finally {
-      setIsLoading(false);
+      setLocalLoading(false);
     }
   };
 

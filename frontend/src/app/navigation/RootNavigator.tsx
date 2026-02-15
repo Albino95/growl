@@ -14,7 +14,7 @@ import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAppSelector } from '../../store/store';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
 
 type PostDetailParam = {
@@ -76,13 +76,7 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { token, user, hydrated, hydrate } = useAuthStore();
-
-  useEffect(() => { 
-    if (!hydrated) hydrate(); 
-  }, [hydrated, hydrate]);
-
-  if (!hydrated) return <FullScreenLoader />;
+  const { token, user, hydrated } = useAppSelector((state) => state.auth);
 
   // Check if user needs onboarding
   const needsOnboarding = token && user && !user.hasCompletedOnboarding;
