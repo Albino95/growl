@@ -1,0 +1,334 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Dimensions,
+  StatusBar,
+  Image,
+  Animated,
+  PanResponder,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
+import tw from '../../lib/tw';
+import { getAvatarUrl, getStoryImageUrl } from '../../utils/images';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+type Story = {
+  id: string;
+  userId: string;
+  username: string;
+  avatar: string;
+  image: string;
+  createdAt: string;
+  views?: number;
+  hasViewed?: boolean;
+};
+
+type StoryViewerRouteParams = {
+  StoryViewer: {
+    stories: Story[];
+    initialIndex: number;
+    onStoriesUpdate?: (stories: Story[]) => void;
+  };
+};
+
+type StoryViewerRouteProp = RouteProp<StoryViewerRouteParams, 'StoryViewer'>;
+
+export default function StoryViewerScreen() {
+  const navigation = useNavigation();
+  const route = useRoute<StoryViewerRouteProp>();
+  const { stories: initialStories, initialIndex, onStoriesUpdate } = route.params;
+
+  const [stories, setStories] = useState(initialStories);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
+  const [progress, setProgress] = useState(0);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [previousUserId, setPreviousUserId] = useState<string | null>(null);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderRelease: (evt, gestureState) => {
+        const { dx, dy } = gestureState;
+        const swipeThreshold = 50;
+
+        // Swipe left (next story)
+        if (dx < -swipeThreshold && Math.abs(dy) < Math.abs(dx)) {
+          goToNextStory();
+        }
+        // Swipe right (previous story)
+        else if (dx > swipeThreshold && Math.abs(dy) < Math.abs(dx)) {
+          goToPreviousStory();
+        }
+        // Swipe down (close)
+        else if (dy > swipeThreshold && Math.abs(dx) < Math.abs(dy)) {
+          navigation.goBack();
+        }
+      },
+    })
+  ).current;
+
+  const currentStory = stories[currentIndex];
+
+  useEffect(() => {
+    // Check if we're switching to a different user (for transition animation)
+    if (currentStory && previousUserId && currentStory.userId !== previousUserId) {
+      // More noticeable transition: fade + slide when changing users
+      slideAnim.setValue(50); // Start from right
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    } else {
+      fadeAnim.setValue(1);
+      slideAnim.setValue(0);
+    }
+    setPreviousUserId(currentStory?.userId || null);
+
+    // Mark current story as viewed
+    if (stories[currentIndex] && !stories[currentIndex].hasViewed) {
+      setStories((prev) =>
+        prev.map((story, index) =>
+          index === currentIndex ? { ...story, hasViewed: true } : story
+        )
+      );
+    }
+
+    // Auto-advance story after 5 seconds
+    const timer = setTimeout(() => {
+      if (currentIndex < stories.length - 1) {
+        goToNextStory();
+      } else {
+        // Mark all stories as viewed before closing
+        const updatedStories = stories.map((story) => ({ ...story, hasViewed: true }));
+        setStories(updatedStories);
+        // Pass updated stories back to parent
+        if (onStoriesUpdate) {
+          onStoriesUpdate(updatedStories);
+        }
+        navigation.goBack();
+      }
+    }, 5000);
+
+    // Progress animation
+    Animated.timing(progressAnim, {
+      toValue: 1,
+      duration: 5000,
+      useNativeDriver: false,
+    }).start();
+
+    return () => {
+      clearTimeout(timer);
+      progressAnim.setValue(0);
+    };
+  }, [currentIndex]);
+
+  const goToNextStory = () => {
+    // Mark current story as viewed
+    if (stories[currentIndex] && !stories[currentIndex].hasViewed) {
+      setStories((prev) =>
+        prev.map((story, index) =>
+          index === currentIndex ? { ...story, hasViewed: true } : story
+        )
+      );
+    }
+
+    if (currentIndex < stories.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+      progressAnim.setValue(0);
+    } else {
+      // Mark all stories as viewed before closing
+      const updatedStories = stories.map((story) => ({ ...story, hasViewed: true }));
+      setStories(updatedStories);
+      if (onStoriesUpdate) {
+        onStoriesUpdate(updatedStories);
+      }
+      navigation.goBack();
+    }
+  };
+
+  const goToPreviousStory = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+      progressAnim.setValue(0);
+    }
+  };
+
+  const navigateToProfile = () => {
+    // Mark all stories as viewed before navigating
+    const updatedStories = stories.map((story) => ({ ...story, hasViewed: true }));
+    setStories(updatedStories);
+    if (onStoriesUpdate) {
+      onStoriesUpdate(updatedStories);
+    }
+    navigation.goBack();
+    const rootNavigation = navigation.getParent() || navigation;
+    rootNavigation.navigate('PublicProfile' as never, { userId: currentStory.userId } as never);
+  };
+
+  if (!currentStory) {
+    return (
+      <SafeAreaView style={tw`flex-1 bg-black`}>
+        <View style={tw`flex-1 items-center justify-center`}>
+          <Text style={tw`text-white`}>Story not found</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Get story image - use actual image URL or generate one
+  const storyImageUrl = currentStory.image?.startsWith('http')
+    ? currentStory.image
+    : getStoryImageUrl(currentStory.userId, currentStory.id);
+
+  return (
+    <SafeAreaView style={tw`flex-1 bg-black`} edges={[]}>
+      <StatusBar barStyle="light-content" />
+      <View style={tw`flex-1`} {...panResponder.panHandlers}>
+        {/* Story Image */}
+        <Animated.View
+          style={[
+            tw`flex-1`,
+            {
+              opacity: fadeAnim,
+              transform: [
+                {
+                  translateX: slideAnim.interpolate({
+                    inputRange: [0, 50],
+                    outputRange: [0, SCREEN_WIDTH],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <ExpoImage
+            source={{ uri: storyImageUrl }}
+            style={tw`w-full h-full`}
+            contentFit="cover"
+            transition={200}
+          />
+        </Animated.View>
+
+        {/* Progress Bar */}
+        <View style={tw`absolute top-0 left-0 right-0 flex-row px-2 pt-2`}>
+          {stories.map((_, index) => (
+            <View
+              key={index}
+              style={tw`flex-1 h-1 bg-white/30 mx-1 rounded-full overflow-hidden`}
+            >
+              {index === currentIndex && (
+                <Animated.View
+                  style={[
+                    tw`h-full bg-white`,
+                    {
+                      width: progressAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    },
+                  ]}
+                />
+              )}
+              {index < currentIndex && (
+                <View style={tw`h-full bg-white w-full`} />
+              )}
+            </View>
+          ))}
+        </View>
+
+        {/* Header */}
+        <View style={tw`absolute top-12 left-0 right-0 flex-row items-center justify-between px-4`}>
+          <TouchableOpacity
+            onPress={navigateToProfile}
+            style={tw`flex-row items-center flex-1`}
+          >
+            <Image
+              source={{ uri: currentStory.avatar }}
+              style={tw`w-10 h-10 rounded-full border-2 border-white mr-3`}
+            />
+            <View>
+              <Text style={tw`text-white font-semibold text-base`}>
+                {currentStory.username}
+              </Text>
+              <Text style={tw`text-white/70 text-xs`}>
+                {new Date(currentStory.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={tw`w-10 h-10 items-center justify-center`}
+          >
+            <Ionicons name="close" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Navigation Areas */}
+        <View style={tw`absolute inset-0 flex-row`}>
+          <TouchableOpacity
+            style={tw`flex-1`}
+            onPress={goToPreviousStory}
+            activeOpacity={1}
+          />
+          <TouchableOpacity
+            style={tw`flex-1`}
+            onPress={goToNextStory}
+            activeOpacity={1}
+          />
+        </View>
+
+        {/* Bottom Actions */}
+        <View style={tw`absolute bottom-8 left-0 right-0 flex-row items-center justify-center px-4`}>
+          <TouchableOpacity
+            style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center`}
+            onPress={() => {
+              // Like story
+              console.log('Like story:', currentStory.id);
+            }}
+          >
+            <Ionicons name="heart-outline" size={24} color="#FFFFFF" />
+            <Text style={tw`text-white ml-2 font-semibold`}>Like</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center ml-4`}
+            onPress={() => {
+              // Send message
+              console.log('Send message to:', currentStory.userId);
+            }}
+          >
+            <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" />
+            <Text style={tw`text-white ml-2 font-semibold`}>Message</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}

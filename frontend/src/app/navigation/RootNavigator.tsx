@@ -13,6 +13,7 @@ import ReelsScreen from '../../screens/Reels/ReelsScreen';
 import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
+import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import { useAuthStore } from '../../state/useAuthStore';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
 
@@ -47,6 +48,29 @@ export type RootStackParamList = {
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
+  StoryViewer: {
+    stories: Array<{
+      id: string;
+      userId: string;
+      username: string;
+      avatar: string;
+      image: string;
+      createdAt: string;
+      views?: number;
+      hasViewed?: boolean;
+    }>;
+    initialIndex: number;
+    onStoriesUpdate?: (stories: Array<{
+      id: string;
+      userId: string;
+      username: string;
+      avatar: string;
+      image: string;
+      createdAt: string;
+      views?: number;
+      hasViewed?: boolean;
+    }>) => void;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -98,6 +122,11 @@ export default function RootNavigator() {
             name="Checkout"
             component={CheckoutScreen}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="StoryViewer"
+            component={StoryViewerScreen}
+            options={{ headerShown: false, presentation: 'fullScreenModal' }}
           />
         </>
       )}

@@ -7,7 +7,7 @@ import { useAuthStore } from '../../state/useAuthStore';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import { getAvatarUrl, getCategoryImageUrl } from '../../utils/images';
+import { getAvatarUrl, getStoryImageUrl, getCategoryImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
 type Story = {
@@ -37,12 +37,19 @@ type Post = {
 };
 
 // Mock data - in real app, this would come from API
+// Each user has multiple stories
 const MOCK_STORIES: Story[] = [
   { id: '1', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
+  { id: '1-2', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
+  { id: '1-3', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
   { id: '2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
+  { id: '2-2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
   { id: '3', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
+  { id: '3-2', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
   { id: '4', userId: 'u4', username: 'Emma', avatar: getAvatarUrl('u4', 'Emma'), hasViewed: true },
   { id: '5', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
+  { id: '5-2', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
+  { id: '5-3', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
 ];
 
 const MOCK_POSTS: Post[] = [
@@ -100,6 +107,24 @@ export default function FeedScreen({ navigation, route }: any) {
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [stories, setStories] = useState<Story[]>(MOCK_STORIES);
+
+  // Group stories by user - show each person only once
+  const groupedStories = useMemo(() => {
+    const grouped = new Map<string, { user: Story; stories: Story[] }>();
+    
+    stories.forEach((story) => {
+      if (!grouped.has(story.userId)) {
+        grouped.set(story.userId, {
+          user: story,
+          stories: [],
+        });
+      }
+      grouped.get(story.userId)!.stories.push(story);
+    });
+    
+    return Array.from(grouped.values());
+  }, [stories]);
 
   // Check if user posted today
   const hasPostedToday = useMemo(() => {
@@ -210,32 +235,70 @@ export default function FeedScreen({ navigation, route }: any) {
             >
               <Ionicons name="videocam" size={24} color="#A855F7" />
             </TouchableOpacity>
-            {MOCK_STORIES.map((story) => (
-              <TouchableOpacity
-                key={story.id}
-                style={tw`items-center mr-4`}
-                onPress={() => {
-                  // Navigate to user profile when clicking on story
-                  const rootNavigation = navigation.getParent() || navigation;
-                  rootNavigation.navigate('PublicProfile' as never, { userId: story.userId } as never);
-                }}
-              >
-                <View
-                  style={tw`w-16 h-16 rounded-full border-2 ${
-                    story.hasViewed ? 'border-gray-300' : 'border-purple-500'
-                  } items-center justify-center bg-purple-100 p-0.5`}
+            {groupedStories.map((group) => {
+              const { user, stories: userStories } = group;
+              // Check if all stories from this user have been viewed
+              const allViewed = userStories.every((s) => s.hasViewed);
+              const storyCount = userStories.length;
+              
+              return (
+                <TouchableOpacity
+                  key={user.userId}
+                  style={tw`items-center mr-4`}
+                  onPress={() => {
+                    // Navigate to story viewer when clicking on story
+                    const rootNavigation = navigation.getParent() || navigation;
+                    
+                    // Create full story objects with images for the viewer
+                    const fullStories = userStories.map((s, idx) => ({
+                      ...s,
+                      image: getStoryImageUrl(s.userId, s.id), // Generate story image based on user and story ID
+                      createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(), // Stagger times
+                      views: Math.floor(Math.random() * 100),
+                    }));
+                    
+                    rootNavigation.navigate('StoryViewer' as never, {
+                      stories: fullStories,
+                      initialIndex: 0, // Always start from first story
+                      onStoriesUpdate: (updatedStories: typeof fullStories) => {
+                        // Update the main stories array with viewed status
+                        setStories((prev) =>
+                          prev.map((s) => {
+                            const updated = updatedStories.find((us) => us.id === s.id);
+                            return updated ? { ...s, hasViewed: updated.hasViewed } : s;
+                          })
+                        );
+                      },
+                    } as never);
+                  }}
                 >
-                  <Image
-                    source={{ uri: story.avatar }}
-                    style={tw`w-full h-full rounded-full`}
-                    contentFit="cover"
-                  />
-                </View>
-                <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
-                  {story.username}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <View style={tw`relative`}>
+                    <View
+                      style={tw`w-16 h-16 rounded-full border-2 ${
+                        allViewed ? 'border-gray-300' : 'border-purple-500'
+                      } items-center justify-center bg-purple-100 p-0.5`}
+                    >
+                      <Image
+                        source={{ uri: user.avatar }}
+                        style={tw`w-full h-full rounded-full`}
+                        contentFit="cover"
+                      />
+                    </View>
+                    {/* Story count badge */}
+                    {storyCount > 1 && (
+                      <View
+                        style={tw`absolute -top-1 -right-1 bg-purple-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
+                      >
+                        <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
+                    {user.username}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
             <TouchableOpacity
               style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
               onPress={() => {

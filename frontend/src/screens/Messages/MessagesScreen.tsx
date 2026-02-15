@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../state/useAuthStore';
-import { getAvatarUrl } from '../../utils/images';
+import { getAvatarUrl, getStoryImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
 type MessageType = 'Individual' | 'Store' | 'Instructor';
@@ -41,13 +42,16 @@ type Conversation = {
   type: MessageType;
 };
 
-// Mock Stories
+// Mock Stories - each user has multiple stories
 const MOCK_STORIES: Story[] = [
   { id: '1', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
+  { id: '1-2', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
   { id: '2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
+  { id: '2-2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
   { id: '3', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
   { id: '4', userId: 'u4', username: 'Emma', avatar: getAvatarUrl('u4', 'Emma'), hasViewed: true },
   { id: '5', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
+  { id: '5-2', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
 ];
 
 // Mock Conversations
@@ -110,11 +114,30 @@ const MOCK_CONVERSATIONS: Conversation[] = [
 ];
 
 export default function MessagesScreen() {
+  const navigation = useNavigation();
   const [activeSection, setActiveSection] = useState<MessageType>('Individual');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const messageInputRef = useRef<TextInput>(null);
   const { user } = useAuthStore();
+  const [stories, setStories] = useState<Story[]>(MOCK_STORIES);
+
+  // Group stories by user - show each person only once
+  const groupedStories = useMemo(() => {
+    const grouped = new Map<string, { user: Story; stories: Story[] }>();
+    
+    stories.forEach((story) => {
+      if (!grouped.has(story.userId)) {
+        grouped.set(story.userId, {
+          user: story,
+          stories: [],
+        });
+      }
+      grouped.get(story.userId)!.stories.push(story);
+    });
+    
+    return Array.from(grouped.values());
+  }, [stories]);
 
   const sections: MessageType[] = ['Individual', 'Store', 'Instructor'];
 
@@ -352,33 +375,70 @@ export default function MessagesScreen() {
             style={tw`mb-4`}
             contentContainerStyle={tw`px-2`}
           >
-            {MOCK_STORIES.map((story) => (
-              <TouchableOpacity
-                key={story.id}
-                style={tw`items-center mr-4`}
-                onPress={() => {
-                  // Navigate to story view
-                  console.log('Open story:', story.username);
-                }}
-              >
-                <View
-                  style={tw`w-16 h-16 rounded-full border-2 ${
-                    story.hasViewed ? 'border-gray-300' : 'border-purple-500'
-                  } items-center justify-center bg-purple-100 p-0.5`}
+            {groupedStories.map((group) => {
+              const { user, stories: userStories } = group;
+              // Check if all stories from this user have been viewed
+              const allViewed = userStories.every((s) => s.hasViewed);
+              const storyCount = userStories.length;
+              
+              return (
+                <TouchableOpacity
+                  key={user.userId}
+                  style={tw`items-center mr-4`}
+                  onPress={() => {
+                    // Navigate to story viewer
+                    const rootNavigation = navigation.getParent() || navigation;
+                    
+                    const fullStories = userStories.map((s, idx) => ({
+                      ...s,
+                      image: getStoryImageUrl(s.userId, s.id),
+                      createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(),
+                      views: Math.floor(Math.random() * 100),
+                    }));
+                    rootNavigation.navigate('StoryViewer' as never, {
+                      stories: fullStories,
+                      initialIndex: 0, // Always start from first story
+                      onStoriesUpdate: (updatedStories: typeof fullStories) => {
+                        // Update the main stories array with viewed status
+                        setStories((prev) =>
+                          prev.map((s) => {
+                            const updated = updatedStories.find((us) => us.id === s.id);
+                            return updated ? { ...s, hasViewed: updated.hasViewed } : s;
+                          })
+                        );
+                      },
+                    } as never);
+                  }}
                 >
-                  <View style={tw`w-full h-full rounded-full bg-white items-center justify-center`}>
-                    <Image
-                      source={{ uri: story.avatar }}
-                      style={tw`w-full h-full rounded-full`}
-                      contentFit="cover"
-                    />
+                  <View style={tw`relative`}>
+                    <View
+                      style={tw`w-16 h-16 rounded-full border-2 ${
+                        allViewed ? 'border-gray-300' : 'border-purple-500'
+                      } items-center justify-center bg-purple-100 p-0.5`}
+                    >
+                      <View style={tw`w-full h-full rounded-full bg-white items-center justify-center`}>
+                        <Image
+                          source={{ uri: user.avatar }}
+                          style={tw`w-full h-full rounded-full`}
+                          contentFit="cover"
+                        />
+                      </View>
+                    </View>
+                    {/* Story count badge */}
+                    {storyCount > 1 && (
+                      <View
+                        style={tw`absolute -top-1 -right-1 bg-purple-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
+                      >
+                        <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
+                      </View>
+                    )}
                   </View>
-                </View>
-                <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
-                  {story.username}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
+                    {user.username}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
             <TouchableOpacity
               style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
             >
