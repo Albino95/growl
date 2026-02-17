@@ -4,11 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 
 export default function BizSettings() {
-  const { user, signOut } = useAuthStore();
+  const { user, signOut } = useAuth();
   const navigation = useNavigation();
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [emailNotifications, setEmailNotifications] = React.useState(true);
@@ -25,12 +25,15 @@ export default function BizSettings() {
           style: 'destructive',
           onPress: async () => {
             await signOut();
-            navigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'Auth' as never }],
-              })
-            );
+            // Wait a bit for Redux state to update
+            setTimeout(() => {
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Auth' as never }],
+                })
+              );
+            }, 100);
           },
         },
       ]

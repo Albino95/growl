@@ -23,7 +23,10 @@ export const useAuth = () => {
     signIn: (email: string, password: string) => dispatch(signIn({ email, password })),
     signInWithSSO: (provider: 'google' | 'facebook', ssoToken: string) =>
       dispatch(signInWithSSO({ provider, token: ssoToken })),
-    signOut: () => dispatch(signOut()),
+    signOut: async () => {
+      const result = await dispatch(signOut());
+      return result;
+    },
     hydrate: () => dispatch(hydrateAuth()),
     updateUser: (updates: Partial<User>) => dispatch(updateUser(updates)),
     setOnboardingComplete: (categories: string[]) => dispatch(setOnboardingComplete(categories)),

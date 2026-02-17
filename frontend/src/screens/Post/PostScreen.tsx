@@ -111,10 +111,12 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       return;
     }
 
-    if (!selectedCategory) {
-      Alert.alert('Category required', 'Please select a category for your post.');
-      return;
-    }
+    // Category is optional for stories, required for posts
+    // For now, allow posting without category (treat as story)
+    // if (!selectedCategory) {
+    //   Alert.alert('Category required', 'Please select a category for your post.');
+    //   return;
+    // }
 
     if (isPosting) {
       return; // Prevent double posting
@@ -309,7 +311,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
               <PrimaryButton
                 label={isPosting ? 'Posting...' : 'Post'}
                 onPress={handlePost}
-                disabled={!image || !selectedCategory || isPosting}
+                disabled={!image || isPosting}
               />
             </View>
           </View>
