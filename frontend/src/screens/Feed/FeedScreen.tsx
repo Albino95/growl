@@ -3,7 +3,8 @@ import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Mod
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../store/hooks';
+import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
+import { setStories, markStoryAsViewed } from '../../store/slices/storiesSlice';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
