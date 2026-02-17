@@ -3,14 +3,23 @@ import { getProducts, getProduct } from '../../services/api/marketplace';
 
 export type Product = {
   id: string;
+  user_id: string;
   name: string;
-  description: string;
-  price: number;
+  description?: string;
   category: string;
-  image_url?: string;
+  subcategory?: string;
+  price: number;
   stock: number;
-  business_id: string;
+  image_url?: string;
+  images?: string[];
+  metadata?: any;
   created_at: string;
+  updated_at: string;
+  business?: {
+    id: string;
+    username?: string;
+    avatar?: string;
+  };
 };
 
 export type CartItem = {
@@ -41,16 +50,25 @@ const initialState: MarketplaceState = {
 export const fetchProducts = createAsyncThunk(
   'marketplace/fetchProducts',
   async (category?: string) => {
-    const products = await getProducts(category);
-    return products;
+    const response = await getProducts({
+      category: category || undefined,
+      limit: 50,
+    });
+    if (response.success && response.data) {
+      return response.data.products || [];
+    }
+    throw new Error(response.error?.message || 'Failed to fetch products');
   }
 );
 
 export const fetchProduct = createAsyncThunk(
   'marketplace/fetchProduct',
   async (productId: string) => {
-    const product = await getProduct(productId);
-    return product;
+    const response = await getProduct(productId);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error('Failed to fetch product');
   }
 );
 

@@ -7,7 +7,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import PhotoEditor from '../../components/ui/PhotoEditor';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
+import { setCurrentImage, setCurrentCaption, setSelectedCategory, setPosting, resetCurrentPost } from '../../store/slices/postSlice';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import CATEGORIES from '../../data/categories';
 import tw from '../../lib/tw';
@@ -19,13 +20,12 @@ interface PostScreenProps {
 }
 
 export default function PostScreen({ navigation }: PostScreenProps) {
-  const [image, setImage] = useState<string | null>(null);
-  const [caption, setCaption] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [isPosting, setIsPosting] = useState(false);
+  const dispatch = useAppDispatch();
+  const { image, caption, selectedCategory } = useAppSelector((state) => state.posts.currentPost);
+  const isPosting = useAppSelector((state) => state.posts.isPosting);
   const [showEditor, setShowEditor] = useState(false);
   const captionInputRef = useRef<TextInput>(null);
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser } = useAuth();
 
   const userCategories = user?.categories || [];
 
@@ -44,7 +44,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
+      dispatch(setCurrentImage(result.assets[0].uri));
       setShowEditor(true);
     }
   };
@@ -62,7 +62,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
+      dispatch(setCurrentImage(result.assets[0].uri));
       setShowEditor(true);
     }
   };
@@ -95,8 +95,8 @@ export default function PostScreen({ navigation }: PostScreenProps) {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            setImage(null);
-            setCaption('');
+            dispatch(setCurrentImage(null));
+            dispatch(setCurrentCaption(''));
           },
         },
       ]
@@ -120,7 +120,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       return; // Prevent double posting
     }
 
-    setIsPosting(true);
+    dispatch(setPosting(true));
     try {
       // In real app, upload image and create post via API
       // For now, just simulate success
@@ -134,10 +134,10 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         {
           text: 'OK',
           onPress: () => {
-            setImage(null);
-            setCaption('');
-            setSelectedCategory(null);
-            setIsPosting(false);
+            dispatch(setCurrentImage(null));
+            dispatch(setCurrentCaption(''));
+            dispatch(setSelectedCategory(null));
+            dispatch(setPosting(false));
             navigation?.goBack();
           },
         },
@@ -145,7 +145,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     } catch (error) {
       console.error('Post error:', error);
       Alert.alert('Error', 'Failed to post. Please try again.');
-      setIsPosting(false);
+      dispatch(setPosting(false));
     }
   };
 
@@ -154,7 +154,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       <PhotoEditor
         imageUri={image}
         onSave={(editedUri) => {
-          setImage(editedUri);
+          dispatch(setCurrentImage(editedUri));
           setShowEditor(false);
         }}
         onCancel={() => setShowEditor(false)}
@@ -246,7 +246,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
                 placeholder="Write a caption..."
                 multiline
                 value={caption}
-                onChangeText={setCaption}
+                onChangeText={(text) => dispatch(setCurrentCaption(text))}
                 style={tw`border border-gray-300 rounded-xl p-4 text-base min-h-24 bg-gray-50`}
                 placeholderTextColor="#9CA3AF"
                 maxLength={500}
@@ -285,7 +285,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
                     return (
                       <TouchableOpacity
                         key={cat}
-                        onPress={() => setSelectedCategory(cat)}
+                        onPress={() => dispatch(setSelectedCategory(cat))}
                         style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                           selectedCategory === cat ? 'bg-green-600' : 'bg-gray-100'
                         }`}

@@ -3,9 +3,10 @@ import { View, Text, FlatList, TouchableOpacity, Image, ScrollView, ActivityIndi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
 import tw from '../../lib/tw';
-import { getProducts } from '../../services/api/marketplace';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
 import { getProductImageUrl } from '../../utils/images';
 import Constants from 'expo-constants';
@@ -60,69 +61,28 @@ function calculateRelevanceScore(
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
-  const { user } = useAuthStore();
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [products, setProducts] = useState<ApiProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  const { user } = useAuth();
+  const { products, selectedCategory, isLoading, error } = useAppSelector((state) => state.marketplace);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProducts();
-  }, [selectedCategory]);
+    dispatch(fetchProducts(selectedCategory || undefined));
+  }, [dispatch, selectedCategory]);
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const BASE_URL = (Constants?.expoConfig?.extra?.API_BASE_URL as string) || 'https://growl-backend.albino-ndreu.workers.dev/api/v1';
-      console.log('[Marketplace] ====== Loading Products ======');
-      console.log('[Marketplace] Selected Category:', selectedCategory);
-      console.log('[Marketplace] API Base URL:', BASE_URL);
-      console.log('[Marketplace] Loading products...');
-      
-      const response = await getProducts({
-        category: selectedCategory || undefined,
-        limit: 50,
-      });
-      
-      console.log('[Marketplace] API Response:', JSON.stringify(response, null, 2));
-      
-      if (response.success && response.data) {
-        const loadedProducts = response.data.products || [];
-        console.log('[Marketplace] Loaded products count:', loadedProducts.length);
-        setProducts(loadedProducts);
-        
-        // If no products, show helpful message
-        if (loadedProducts.length === 0) {
-          setError('No products available yet. Products will appear here once businesses add them to the marketplace.');
-        } else {
-          setError(null); // Clear error if we have products
-        }
-      } else {
-        console.error('[Marketplace] API returned unsuccessful response:', response);
-        setError(response.error?.message || 'Failed to load products. Please try again.');
-        setProducts([]);
-      }
-    } catch (error: any) {
-      console.error('[Marketplace] Failed to load products:', error);
-      console.error('[Marketplace] Error details:', error.message, error.stack);
-      setError(error.message || 'Failed to load products. Please check your connection and try again.');
-      setProducts([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const onRefresh = () => {
+  const onRefresh = async () => {
     console.log('[Marketplace] Pull to refresh triggered');
     setRefreshing(true);
-    loadProducts();
+    await dispatch(fetchProducts(selectedCategory || undefined));
+    setRefreshing(false);
+  };
+
+  const handleCategoryChange = (category: string | null) => {
+    dispatch(setSelectedCategory(category));
   };
 
   const showDebugInfo = () => {
-    const debugMessage = `Products: ${products.length}\nLoading: ${loading}\nRefreshing: ${refreshing}\nError: ${error || 'None'}\nSelected Category: ${selectedCategory || 'All'}\n\nCheck console for API response.`;
+    const debugMessage = `Products: ${products.length}\nLoading: ${isLoading}\nRefreshing: ${refreshing}\nError: ${error || 'None'}\nSelected Category: ${selectedCategory || 'All'}\n\nCheck console for API response.`;
     
     console.log('[Marketplace] Debug Info:', debugMessage);
     
@@ -140,7 +100,7 @@ export default function MarketplaceScreen() {
     const userPoints = user?.points || 0;
 
     // Calculate relevance scores
-    const productsWithScores: ProductWithScore[] = products.map((product) => ({
+    const productsWithScores: ProductWithScore[] = products.map((product: ApiProduct) => ({
       ...product,
       relevanceScore: calculateRelevanceScore(product, userCategories, userPoints),
       rating: 4.5 + Math.random() * 0.5, // Mock rating for now
@@ -159,7 +119,7 @@ export default function MarketplaceScreen() {
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
-    user?.categories?.forEach((cat) => {
+    user?.categories?.forEach((cat: string) => {
       if (cat.includes(':')) {
         cats.add(cat.split(':')[0]);
       } else {
@@ -189,7 +149,7 @@ export default function MarketplaceScreen() {
             contentContainerStyle={tw`px-4 py-3`}
           >
             <TouchableOpacity
-              onPress={() => setSelectedCategory(null)}
+              onPress={() => handleCategoryChange(null)}
               style={tw`px-4 py-2 rounded-full mr-2 ${
                 selectedCategory === null ? 'bg-green-600' : 'bg-gray-100'
               }`}
@@ -205,7 +165,7 @@ export default function MarketplaceScreen() {
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat}
-                onPress={() => setSelectedCategory(cat)}
+                onPress={() => handleCategoryChange(cat)}
                 style={tw`px-4 py-2 rounded-full mr-2 ${
                   selectedCategory === cat ? 'bg-green-600' : 'bg-gray-100'
                 }`}
@@ -223,7 +183,7 @@ export default function MarketplaceScreen() {
         )}
 
         {/* Products List */}
-        {loading && products.length === 0 ? (
+        {isLoading && products.length === 0 ? (
           <View style={tw`flex-1 items-center justify-center py-12`}>
             <ActivityIndicator size="large" color="#10B981" />
             <Text style={tw`mt-4 text-gray-600`}>Loading products...</Text>
@@ -234,14 +194,17 @@ export default function MarketplaceScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={tw`p-4`}
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />
+              <RefreshControl refreshing={refreshing || isLoading} onRefresh={onRefresh} tintColor="#10B981" />
             }
             renderItem={({ item }) => {
               const productImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
               return (
                 <TouchableOpacity
                   style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm`}
-                  onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
+                  onPress={() => {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    rootNavigation.navigate('ProductDetail' as never, { productId: item.id } as never);
+                  }}
                 >
                   <View style={tw`flex-row`}>
                     <Image
@@ -292,7 +255,7 @@ export default function MarketplaceScreen() {
                   <TouchableOpacity
                     onPress={() => {
                       console.log('[Marketplace] Try Again button pressed');
-                      loadProducts();
+                      dispatch(fetchProducts(selectedCategory || undefined));
                     }}
                     style={tw`px-6 py-3 bg-green-600 rounded-lg mb-2`}
                     activeOpacity={0.7}
