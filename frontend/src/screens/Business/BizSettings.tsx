@@ -25,15 +25,13 @@ export default function BizSettings() {
           style: 'destructive',
           onPress: async () => {
             await signOut();
-            // Wait a bit for Redux state to update
-            setTimeout(() => {
-              navigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: 'Auth' as never }],
-                })
-              );
-            }, 100);
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Auth' as never }],
+              })
+            );
           },
         },
       ]
