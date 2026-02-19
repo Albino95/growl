@@ -187,6 +187,162 @@ export async function createProduct(request: Request, env: Env): Promise<Respons
 }
 
 /**
+ * PUT /api/v1/marketplace/products/:id
+ * Update a product (business only)
+ */
+export async function updateProduct(
+  request: Request,
+  env: Env,
+  productId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  if (!ctx.user?.is_business) {
+    return error('FORBIDDEN', 'Only businesses can update products', 403);
+  }
+
+  // Check if product exists and belongs to user
+  const product = await env.DB.prepare('SELECT user_id FROM products WHERE id = ?')
+    .bind(productId)
+    .first<{ user_id: string }>();
+
+  if (!product) {
+    return error('PRODUCT_NOT_FOUND', 'Product not found', 404);
+  }
+
+  if (product.user_id !== ctx.userId) {
+    return error('FORBIDDEN', 'You can only update your own products', 403);
+  }
+
+  // Validate request (all fields optional for update)
+  const updateSchema = createProductSchema.partial();
+  const validation = await validateRequest(request, updateSchema);
+  if (!validation.success) return validation.response;
+
+  const updates = validation.data;
+  const updateFields: string[] = [];
+  const updateValues: any[] = [];
+
+  if (updates.name !== undefined) {
+    updateFields.push('name = ?');
+    updateValues.push(updates.name);
+  }
+  if (updates.description !== undefined) {
+    updateFields.push('description = ?');
+    updateValues.push(updates.description || null);
+  }
+  if (updates.category !== undefined) {
+    updateFields.push('category = ?');
+    updateValues.push(updates.category);
+  }
+  if (updates.subcategory !== undefined) {
+    updateFields.push('subcategory = ?');
+    updateValues.push(updates.subcategory || null);
+  }
+  if (updates.price !== undefined) {
+    updateFields.push('price = ?');
+    updateValues.push(updates.price);
+  }
+  if (updates.stock !== undefined) {
+    updateFields.push('stock = ?');
+    updateValues.push(updates.stock);
+  }
+  if (updates.image_url !== undefined) {
+    updateFields.push('image_url = ?');
+    updateValues.push(updates.image_url || null);
+  }
+  if (updates.images !== undefined) {
+    updateFields.push('images = ?');
+    updateValues.push(JSON.stringify(updates.images || []));
+  }
+  if (updates.metadata !== undefined) {
+    updateFields.push('metadata = ?');
+    updateValues.push(JSON.stringify(updates.metadata || {}));
+  }
+
+  if (updateFields.length === 0) {
+    return error('VALIDATION_ERROR', 'No fields to update', 400);
+  }
+
+  updateFields.push('updated_at = datetime(\'now\')');
+  updateValues.push(productId);
+
+  try {
+    await env.DB.prepare(
+      `UPDATE products SET ${updateFields.join(', ')} WHERE id = ?`
+    )
+      .bind(...updateValues)
+      .run();
+
+    // Fetch updated product
+    const updatedProduct = await env.DB.prepare(
+      'SELECT * FROM products WHERE id = ?'
+    )
+      .bind(productId)
+      .first<Product>();
+
+    if (!updatedProduct) {
+      return error('PRODUCT_NOT_FOUND', 'Product not found after update', 404);
+    }
+
+    return json({
+      ...updatedProduct,
+      images: JSON.parse(updatedProduct.images || '[]'),
+      metadata: JSON.parse(updatedProduct.metadata || '{}'),
+    });
+  } catch (err) {
+    console.error('[updateProduct] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to update product', 500);
+  }
+}
+
+/**
+ * DELETE /api/v1/marketplace/products/:id
+ * Delete a product (business only)
+ */
+export async function deleteProduct(
+  request: Request,
+  env: Env,
+  productId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  if (!ctx.user?.is_business) {
+    return error('FORBIDDEN', 'Only businesses can delete products', 403);
+  }
+
+  // Check if product exists and belongs to user
+  const product = await env.DB.prepare('SELECT user_id FROM products WHERE id = ?')
+    .bind(productId)
+    .first<{ user_id: string }>();
+
+  if (!product) {
+    return error('PRODUCT_NOT_FOUND', 'Product not found', 404);
+  }
+
+  if (product.user_id !== ctx.userId) {
+    return error('FORBIDDEN', 'You can only delete your own products', 403);
+  }
+
+  try {
+    await env.DB.prepare('DELETE FROM products WHERE id = ?')
+      .bind(productId)
+      .run();
+
+    return json({ message: 'Product deleted successfully' });
+  } catch (err) {
+    console.error('[deleteProduct] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to delete product', 500);
+  }
+}
+
+/**
  * POST /api/v1/marketplace/orders
  * Create a new order
  */

@@ -108,6 +108,12 @@ export default {
         if (request.method === 'GET') {
           return marketplaceRoutes.getProduct(request, env, productId);
         }
+        if (request.method === 'PUT') {
+          return marketplaceRoutes.updateProduct(request, env, productId);
+        }
+        if (request.method === 'DELETE') {
+          return marketplaceRoutes.deleteProduct(request, env, productId);
+        }
       }
 
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'GET') {
