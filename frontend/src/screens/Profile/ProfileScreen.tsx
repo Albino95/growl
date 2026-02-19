@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import { getAvatarUrl, getCategoryImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
@@ -110,7 +110,7 @@ const MOCK_STORIES: Story[] = [
 ];
 
 export default function ProfileScreen() {
-  const { user, signOut, updateUser } = useAuthStore();
+  const { user, signOut, updateUser } = useAuth();
   const navigation = useNavigation();
   const points = user?.points || 0;
   const isInstructor = user?.isInstructor || false;
@@ -139,7 +139,8 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             await signOut();
-            navigation.dispatch(
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.dispatch(
               CommonActions.reset({
                 index: 0,
                 routes: [{ name: 'Auth' as never }],

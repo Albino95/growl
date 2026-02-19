@@ -7,6 +7,7 @@ import * as marketplaceRoutes from './routes/marketplace';
 import * as instructorRoutes from './routes/instructor';
 import * as businessRoutes from './routes/business';
 import * as profileRoutes from './routes/profile';
+import * as storiesRoutes from './routes/stories';
 
 /**
  * Main request handler
@@ -35,6 +36,9 @@ export default {
       }
       if (path === `${apiPrefix}/auth/sign-out` && request.method === 'POST') {
         return authRoutes.signOut(request, env);
+      }
+      if (path === `${apiPrefix}/auth/sso` && request.method === 'POST') {
+        return authRoutes.signInWithSSO(request, env);
       }
       if (path === `${apiPrefix}/auth/refresh` && request.method === 'POST') {
         return authRoutes.refresh(request, env);
@@ -104,6 +108,12 @@ export default {
         if (request.method === 'GET') {
           return marketplaceRoutes.getProduct(request, env, productId);
         }
+        if (request.method === 'PUT') {
+          return marketplaceRoutes.updateProduct(request, env, productId);
+        }
+        if (request.method === 'DELETE') {
+          return marketplaceRoutes.deleteProduct(request, env, productId);
+        }
       }
 
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'GET') {
@@ -162,6 +172,38 @@ export default {
         return businessRoutes.getPartnerships(request, env);
       }
 
+      // Stories routes
+      const storyViewMatch = path.match(new RegExp(`^${apiPrefix}/stories/([^/]+)/view$`));
+      if (storyViewMatch) {
+        const storyId = storyViewMatch[1];
+        if (request.method === 'POST') {
+          return storiesRoutes.viewStory(request, env, storyId);
+        }
+      }
+
+      const userStoriesMatch = path.match(new RegExp(`^${apiPrefix}/stories/user/([^/]+)$`));
+      if (userStoriesMatch) {
+        const userId = userStoriesMatch[1];
+        if (request.method === 'GET') {
+          return storiesRoutes.getUserStories(request, env, userId);
+        }
+      }
+
+      const storyMatch = path.match(new RegExp(`^${apiPrefix}/stories/([^/]+)$`));
+      if (storyMatch) {
+        const storyId = storyMatch[1];
+        if (request.method === 'DELETE') {
+          return storiesRoutes.deleteStory(request, env, storyId);
+        }
+      }
+
+      if (path === `${apiPrefix}/stories` && request.method === 'GET') {
+        return storiesRoutes.getStories(request, env);
+      }
+      if (path === `${apiPrefix}/stories` && request.method === 'POST') {
+        return storiesRoutes.createStory(request, env);
+      }
+
       // Profile routes
       if (path === `${apiPrefix}/profile` && request.method === 'GET') {
         return profileRoutes.getProfile(request, env);
@@ -198,11 +240,14 @@ export default {
         }
 
         return json({
-          status: 'ok',
-          timestamp: new Date().toISOString(),
-          environment: env.ENVIRONMENT,
-          database: dbStatus,
-          kv: kvStatus,
+          success: true,
+          data: {
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            environment: env.ENVIRONMENT,
+            database: dbStatus,
+            kv: kvStatus,
+          },
         });
       }
 

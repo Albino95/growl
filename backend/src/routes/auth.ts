@@ -1,6 +1,6 @@
 import { Env } from '../types';
 import { json, error } from '../utils/response';
-import { validateRequest, signUpSchema, signInSchema } from '../utils/validation';
+import { validateRequest, signUpSchema, signInSchema, ssoSchema } from '../utils/validation';
 import { hashPassword, verifyPassword, generateToken } from '../utils/auth';
 import { generateId } from '../utils/id';
 
@@ -86,7 +86,11 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
     const validation = await validateRequest(request, signInSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password } = validation.data;
+    const { email, password, passwordHash } = validation.data;
+    
+    // If passwordHash is provided, use it directly (frontend hashed it)
+    // Otherwise, use the plain password
+    const passwordToVerify = passwordHash || password;
 
     // Find user
     const user = await env.DB.prepare(
@@ -108,7 +112,16 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
     }
 
     // Verify password
-    const isValid = await verifyPassword(password, user.password_hash);
+    // If frontend sent passwordHash, compare directly (for dev/demo)
+    // Otherwise, verify the hashed password
+    let isValid = false;
+    if (passwordHash) {
+      // For demo/dev: compare hashed passwords directly
+      isValid = passwordHash === user.password_hash;
+    } else {
+      isValid = await verifyPassword(password, user.password_hash);
+    }
+    
     if (!isValid) {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
@@ -117,18 +130,16 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
     const token = generateToken(user.id, env);
 
     const metadata = JSON.parse(user.metadata || '{}');
+    const categories = metadata.categories || [];
+    const hasCompletedOnboarding = categories.length > 0;
 
+    // Return format that matches frontend expectations
     return json({
-      user: {
-        id: user.id,
-        email: user.email,
-        username: metadata.username,
-        points: user.points,
-        is_instructor: user.is_instructor,
-        is_business: user.is_business,
-        categories: metadata.categories || [],
-      },
       token,
+      userId: user.id,
+      isInstructor: user.is_instructor ? true : false,
+      hasCompletedOnboarding,
+      categories,
     });
   } catch (err) {
     console.error('[signIn] Error:', err);
@@ -144,6 +155,115 @@ export async function signOut(request: Request, env: Env): Promise<Response> {
   // In a full implementation, you might want to invalidate the token
   // For now, just return success (client removes token)
   return json({ message: 'Signed out successfully' });
+}
+
+/**
+ * POST /api/v1/auth/sso
+ * Sign in with SSO (Google, Facebook)
+ */
+export async function signInWithSSO(request: Request, env: Env): Promise<Response> {
+  try {
+    const validation = await validateRequest(request, ssoSchema);
+    if (!validation.success) return validation.response;
+
+    const { provider, token: ssoToken } = validation.data;
+
+    // In a real implementation, verify the SSO token with the provider
+    // For MVP, we'll create or find a user based on the token
+    // Extract email from token (in production, verify with provider API)
+    
+    // For demo purposes, we'll use a mock approach
+    // In production, verify token with Google/Facebook APIs
+    let email: string;
+    let username: string;
+    
+    // Mock: Extract info from token (in production, verify with provider)
+    if (ssoToken.startsWith('sso-google-')) {
+      email = ssoToken.replace('sso-google-token-', '') + '@google.com';
+      username = email.split('@')[0];
+    } else if (ssoToken.startsWith('sso-facebook-')) {
+      email = ssoToken.replace('sso-facebook-token-', '') + '@facebook.com';
+      username = email.split('@')[0];
+    } else {
+      // Try to extract email from token (mock)
+      email = `sso-${provider}-${Date.now()}@example.com`;
+      username = email.split('@')[0];
+    }
+
+    // Check if user exists
+    let user = await env.DB.prepare(
+      'SELECT * FROM users WHERE email = ?'
+    )
+      .bind(email)
+      .first<{
+        id: string;
+        email: string;
+        password_hash: string;
+        points: number;
+        is_instructor: boolean;
+        is_business: boolean;
+        metadata: string;
+      }>();
+
+    // If user doesn't exist, create one
+    if (!user) {
+      const userId = generateId('user');
+      const metadata = {
+        username,
+        categories: [],
+        engagementHistory: [],
+        instructorVotes: [],
+        purchaseHistory: [],
+        timePreferences: [],
+        blockedUsers: [],
+        mutedUsers: [],
+        ssoProvider: provider,
+      };
+
+      await env.DB.prepare(
+        `INSERT INTO users (id, email, password_hash, points, is_instructor, is_business, metadata, created_at, updated_at)
+         VALUES (?, ?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))`
+      )
+        .bind(userId, email, `sso-${provider}`, JSON.stringify(metadata))
+        .run();
+
+      // Fetch the newly created user
+      user = await env.DB.prepare(
+        'SELECT * FROM users WHERE id = ?'
+      )
+        .bind(userId)
+        .first<{
+          id: string;
+          email: string;
+          password_hash: string;
+          points: number;
+          is_instructor: boolean;
+          is_business: boolean;
+          metadata: string;
+        }>();
+    }
+
+    if (!user) {
+      return error('SSO_ERROR', 'Failed to create or find user', 500);
+    }
+
+    // Generate token
+    const token = generateToken(user.id, env);
+    const metadata = JSON.parse(user.metadata || '{}');
+    const categories = metadata.categories || [];
+    const hasCompletedOnboarding = categories.length > 0;
+
+    return json({
+      token,
+      userId: user.id,
+      isInstructor: user.is_instructor ? true : false,
+      hasCompletedOnboarding,
+      categories,
+    });
+  } catch (err) {
+    console.error('[signInWithSSO] Error:', err);
+    return error('INTERNAL_ERROR', 'An error occurred during SSO sign in', 500, env.ENVIRONMENT === 'development' ? String(err) : undefined);
+  }
 }
 
 /**

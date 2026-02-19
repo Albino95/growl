@@ -11,6 +11,12 @@ export const signUpSchema = z.object({
 export const signInSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
+  passwordHash: z.string().optional(), // Frontend sends hashed password
+});
+
+export const ssoSchema = z.object({
+  provider: z.enum(['google', 'facebook']),
+  token: z.string().min(1, 'SSO token is required'),
 });
 
 export const createPostSchema = z.object({

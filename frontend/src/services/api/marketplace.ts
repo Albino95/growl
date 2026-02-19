@@ -126,3 +126,62 @@ export async function createOrder(orderData: CreateOrderRequest): Promise<OrderR
 export async function getOrders(): Promise<{ success: boolean; data: Order[] }> {
   return request<{ success: boolean; data: Order[] }>('/marketplace/orders');
 }
+
+/**
+ * Create a new product (business only)
+ */
+export async function createProduct(productData: {
+  name: string;
+  description?: string;
+  category: string;
+  subcategory?: string;
+  price: number;
+  stock: number;
+  image_url?: string;
+  images?: string[];
+  metadata?: any;
+}): Promise<ProductResponse> {
+  return request<ProductResponse>('/marketplace/products', {
+    method: 'POST',
+    body: JSON.stringify(productData),
+  });
+}
+
+/**
+ * Update a product (business only)
+ */
+export async function updateProduct(
+  productId: string,
+  productData: Partial<{
+    name: string;
+    description: string;
+    category: string;
+    subcategory: string;
+    price: number;
+    stock: number;
+    image_url: string;
+    images: string[];
+    metadata: any;
+  }>
+): Promise<ProductResponse> {
+  return request<ProductResponse>(`/marketplace/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(productData),
+  });
+}
+
+/**
+ * Delete a product (business only)
+ */
+export async function deleteProduct(productId: string): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>(`/marketplace/products/${productId}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Get business products
+ */
+export async function getBusinessProducts(): Promise<ProductsResponse> {
+  return request<ProductsResponse>('/business/products');
+}

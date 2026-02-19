@@ -303,8 +303,9 @@ export default function FeedScreen({ navigation, route }: any) {
             <TouchableOpacity
               style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
               onPress={() => {
-                // Navigate to add story
-                console.log('Add new story');
+                // Navigate to post screen to create story
+                const rootNavigation = navigation.getParent() || navigation;
+                rootNavigation.navigate('Post' as never);
               }}
             >
               <Ionicons name="add" size={24} color="#9CA3AF" />
