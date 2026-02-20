@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import { getDashboard, type DashboardKPIs } from '../../services/api/business';
+import type { Order } from '../../services/api/marketplace';
 
 type KpiCard = {
   label: string;
@@ -12,25 +14,94 @@ type KpiCard = {
   icon: string;
 };
 
-const MOCK_KPIS: KpiCard[] = [
-  { label: 'Revenue', value: '$12,450', change: '+12.5%', trend: 'up', icon: 'cash' },
-  { label: 'Orders', value: '234', change: '+8.2%', trend: 'up', icon: 'receipt' },
-  { label: 'Conversion', value: '3.2%', change: '-0.5%', trend: 'down', icon: 'trending-up' },
-  { label: 'Avg Order', value: '$53.20', change: '+5.1%', trend: 'up', icon: 'cart' },
-];
-
-const MOCK_RECENT_ORDERS = [
-  { id: '1', customer: 'John D.', product: 'Fitness Bundle', amount: '$89.99', status: 'completed', time: '2h ago' },
-  { id: '2', customer: 'Sarah M.', product: 'Yoga Mat', amount: '$34.99', status: 'pending', time: '4h ago' },
-  { id: '3', customer: 'Mike T.', product: 'Protein Powder', amount: '$45.50', status: 'shipped', time: '6h ago' },
-];
-
 export default function BizDashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
+  const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadDashboard = async () => {
+    try {
+      setLoading(true);
+      const response = await getDashboard();
+      if (response.success && response.data) {
+        setKpis(response.data.kpis);
+        setRecentOrders(response.data.kpis.recent_orders || []);
+      }
+    } catch (error: any) {
+      console.error('[BizDashboard] Error loading dashboard:', error);
+      if (Platform.OS === 'web') {
+        alert(error.message || 'Failed to load dashboard');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to load dashboard');
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadDashboard();
+  };
+
+  // Calculate KPI cards from dashboard data
+  const kpiCards: KpiCard[] = kpis ? [
+    {
+      label: 'Revenue',
+      value: `$${kpis.total_revenue.toFixed(2)}`,
+      change: '+0%', // Could calculate from previous period
+      trend: 'up',
+      icon: 'cash',
+    },
+    {
+      label: 'Orders',
+      value: kpis.total_orders.toString(),
+      change: '+0%',
+      trend: 'up',
+      icon: 'receipt',
+    },
+    {
+      label: 'Products',
+      value: kpis.total_products.toString(),
+      change: '+0%',
+      trend: 'neutral',
+      icon: 'cube',
+    },
+    {
+      label: 'Avg Order',
+      value: kpis.total_orders > 0 ? `$${(kpis.total_revenue / kpis.total_orders).toFixed(2)}` : '$0.00',
+      change: '+0%',
+      trend: 'up',
+      icon: 'cart',
+    },
+  ] : [];
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-gray-50`}>
-      <ScrollView style={tw`flex-1`}>
+      <ScrollView
+        style={tw`flex-1`}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
         {/* Header */}
         <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-gray-200`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
@@ -68,8 +139,14 @@ export default function BizDashboard() {
         {/* KPI Cards */}
         <View style={tw`px-4 pt-4`}>
           <Text style={tw`text-lg font-bold text-gray-900 mb-3`}>Key Metrics</Text>
-          <View style={tw`flex-row flex-wrap -mx-2`}>
-            {MOCK_KPIS.map((kpi, index) => (
+          {loading && !kpis ? (
+            <View style={tw`items-center justify-center py-8`}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={tw`text-gray-500 mt-2`}>Loading dashboard...</Text>
+            </View>
+          ) : (
+            <View style={tw`flex-row flex-wrap -mx-2`}>
+              {kpiCards.map((kpi, index) => (
               <View key={index} style={tw`w-1/2 px-2 mb-4`}>
                 <View style={tw`bg-white rounded-xl p-4 shadow-sm border border-gray-100`}>
                   <View style={tw`flex-row items-center justify-between mb-2`}>
@@ -105,7 +182,8 @@ export default function BizDashboard() {
                 </View>
               </View>
             ))}
-          </View>
+            </View>
+          )}
         </View>
 
         {/* Recent Orders */}
@@ -117,44 +195,70 @@ export default function BizDashboard() {
             </TouchableOpacity>
           </View>
           <View style={tw`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden`}>
-            {MOCK_RECENT_ORDERS.map((order) => (
-              <View
-                key={order.id}
-                style={tw`px-4 py-3 border-b border-gray-100 last:border-b-0`}
-              >
-                <View style={tw`flex-row items-center justify-between`}>
-                  <View style={tw`flex-1`}>
-                    <Text style={tw`font-semibold text-gray-900`}>{order.customer}</Text>
-                    <Text style={tw`text-sm text-gray-500`}>{order.product}</Text>
-                  </View>
-                  <View style={tw`items-end`}>
-                    <Text style={tw`font-bold text-gray-900`}>{order.amount}</Text>
-                    <View
-                      style={tw`mt-1 px-2 py-0.5 rounded-full ${
-                        order.status === 'completed'
-                          ? 'bg-green-100'
-                          : order.status === 'shipped'
-                          ? 'bg-blue-100'
-                          : 'bg-yellow-100'
-                      }`}
-                    >
-                      <Text
-                        style={tw`text-xs font-medium ${
-                          order.status === 'completed'
-                            ? 'text-green-700'
-                            : order.status === 'shipped'
-                            ? 'text-blue-700'
-                            : 'text-yellow-700'
-                        }`}
-                      >
-                        {order.status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <Text style={tw`text-xs text-gray-400 mt-1`}>{order.time}</Text>
+            {loading && recentOrders.length === 0 ? (
+              <View style={tw`items-center justify-center py-8`}>
+                <ActivityIndicator size="large" color="#3B82F6" />
               </View>
-            ))}
+            ) : recentOrders.length === 0 ? (
+              <View style={tw`p-6 items-center`}>
+                <Ionicons name="receipt-outline" size={48} color="#9CA3AF" />
+                <Text style={tw`text-gray-500 mt-4 text-center`}>No orders yet</Text>
+              </View>
+            ) : (
+              recentOrders.map((order) => {
+                const shippingAddress = typeof order.shipping_address === 'string'
+                  ? JSON.parse(order.shipping_address)
+                  : order.shipping_address;
+                const customerName = shippingAddress?.name || 'Unknown Customer';
+                const orderTotal = order.total || 0;
+                const orderStatus = order.status || 'pending';
+                const firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
+                const productName = firstItem?.product_name || 'Product';
+                
+                return (
+                  <View
+                    key={order.id}
+                    style={tw`px-4 py-3 border-b border-gray-100 last:border-b-0`}
+                  >
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <View style={tw`flex-1`}>
+                        <Text style={tw`font-semibold text-gray-900`}>{customerName}</Text>
+                        <Text style={tw`text-sm text-gray-500`}>{productName}</Text>
+                      </View>
+                      <View style={tw`items-end`}>
+                        <Text style={tw`font-bold text-gray-900`}>${orderTotal.toFixed(2)}</Text>
+                        <View
+                          style={tw`mt-1 px-2 py-0.5 rounded-full ${
+                            orderStatus === 'completed'
+                              ? 'bg-green-100'
+                              : orderStatus === 'shipped'
+                              ? 'bg-blue-100'
+                              : orderStatus === 'delivered'
+                              ? 'bg-green-100'
+                              : 'bg-yellow-100'
+                          }`}
+                        >
+                          <Text
+                            style={tw`text-xs font-medium ${
+                              orderStatus === 'completed'
+                                ? 'text-green-700'
+                                : orderStatus === 'shipped'
+                                ? 'text-blue-700'
+                                : orderStatus === 'delivered'
+                                ? 'text-green-700'
+                                : 'text-yellow-700'
+                            }`}
+                          >
+                            {orderStatus}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Text style={tw`text-xs text-gray-400 mt-1`}>{formatTimeAgo(order.created_at)}</Text>
+                  </View>
+                );
+              })
+            )}
           </View>
         </View>
 
