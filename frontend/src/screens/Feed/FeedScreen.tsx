@@ -1,14 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setStories, markStoryAsViewed } from '../../store/slices/storiesSlice';
+import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
 import { getAvatarUrl, getStoryImageUrl, getCategoryImageUrl, getPostImageUrl } from '../../utils/images';
+import { getFeedPosts, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import tw from '../../lib/tw';
 
 type Story = {
@@ -36,6 +37,18 @@ type Post = {
   hasLiked: boolean;
   reaction: ReactionType;
 };
+
+function formatTimeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffHours < 1) return 'Just now';
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
 
 // Mock data - in real app, this would come from API
 // Each user has multiple stories
@@ -178,10 +191,59 @@ export default function FeedScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [stories, setStories] = useState<Story[]>(MOCK_STORIES);
+  const [stories, setStories] = useState<Story[]>([]);
+
+  const toLocalPost = (post: FeedPost): Post => {
+    const username = post.metadata?.username || 'User';
+    const likes = Number(post.metadata?.likes || 0);
+    const comments = Number(post.metadata?.comments || 0);
+    return {
+      id: post.id,
+      userId: post.user_id,
+      username,
+      avatar: post.metadata?.avatar || getAvatarUrl(post.user_id, username),
+      image: post.image_url || getPostImageUrl(post.category || 'default', post.id),
+      caption: post.caption || '',
+      category: post.category || 'general',
+      subcategory: post.subcategory || undefined,
+      likes,
+      comments,
+      timestamp: formatTimeAgo(post.created_at),
+      hasLiked: false,
+      reaction: null,
+    };
+  };
+
+  const loadFeedAndStories = async () => {
+    try {
+      const [feedRes, storiesRes] = await Promise.all([getFeedPosts(), getStories()]);
+      if (feedRes.success) {
+        setPosts(feedRes.data.length ? feedRes.data.map(toLocalPost) : MOCK_POSTS);
+      }
+      if (storiesRes.success) {
+        setStories(
+          (storiesRes.data.stories || []).map((s: StoryItem) => ({
+            id: s.id,
+            userId: s.userId,
+            username: s.username,
+            avatar: s.avatar || getAvatarUrl(s.userId, s.username),
+            hasViewed: !!s.hasViewed,
+          }))
+        );
+      }
+    } catch (error) {
+      // Keep UI functional by falling back to local demo content
+      setPosts(MOCK_POSTS);
+      setStories(MOCK_STORIES);
+    }
+  };
+
+  useEffect(() => {
+    loadFeedAndStories();
+  }, []);
 
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
@@ -223,11 +285,30 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // In real app, fetch new posts from API
-    setTimeout(() => setRefreshing(false), 1000);
+    await loadFeedAndStories();
+    setRefreshing(false);
   };
 
-  const toggleLike = (postId: string) => {
+  const toggleLike = async (postId: string) => {
+    try {
+      const res = await toggleFeedPostLike(postId);
+      const liked = !!res.data?.liked;
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                hasLiked: liked,
+                likes: liked ? post.likes + (post.hasLiked ? 0 : 1) : post.likes - (post.hasLiked ? 1 : 0),
+                reaction: liked ? post.reaction || 'like' : null,
+              }
+            : post
+        )
+      );
+      return;
+    } catch (error) {
+      // Fallback to local optimistic toggle if API call fails.
+    }
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -336,6 +417,10 @@ export default function FeedScreen({ navigation, route }: any) {
                       initialIndex: 0, // Always start from first story
                       onStoriesUpdate: (updatedStories: typeof fullStories) => {
                         // Update the main stories array with viewed status
+                        const viewedIds = updatedStories.filter((us) => us.hasViewed).map((us) => us.id);
+                        if (viewedIds.length > 0) {
+                          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+                        }
                         setStories((prev) =>
                           prev.map((s) => {
                             const updated = updatedStories.find((us) => us.id === s.id);

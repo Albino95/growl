@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { getDashboard, type DashboardKPIs } from '../../services/api/business';
 import type { Order } from '../../services/api/marketplace';
@@ -15,6 +16,7 @@ type KpiCard = {
 };
 
 export default function BizDashboard() {
+  const navigation = useNavigation<any>();
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -190,7 +192,7 @@ export default function BizDashboard() {
         <View style={tw`px-4 mt-2 mb-4`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
             <Text style={tw`text-lg font-bold text-gray-900`}>Recent Orders</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate('Orders')}>
               <Text style={tw`text-sm text-blue-600 font-semibold`}>View All</Text>
             </TouchableOpacity>
           </View>
@@ -216,9 +218,10 @@ export default function BizDashboard() {
                 const productName = firstItem?.product_name || 'Product';
                 
                 return (
-                  <View
+                  <TouchableOpacity
                     key={order.id}
                     style={tw`px-4 py-3 border-b border-gray-100 last:border-b-0`}
+                    onPress={() => navigation.navigate('Orders')}
                   >
                     <View style={tw`flex-row items-center justify-between`}>
                       <View style={tw`flex-1`}>
@@ -255,7 +258,7 @@ export default function BizDashboard() {
                       </View>
                     </View>
                     <Text style={tw`text-xs text-gray-400 mt-1`}>{formatTimeAgo(order.created_at)}</Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}
@@ -268,9 +271,7 @@ export default function BizDashboard() {
           <View style={tw`flex-row flex-wrap -mx-2`}>
             <TouchableOpacity
               style={tw`w-1/2 px-2 mb-3`}
-              onPress={() => {
-                // Navigate to add product
-              }}
+              onPress={() => navigation.navigate('Inventory')}
             >
               <View style={tw`bg-white rounded-xl p-4 border border-gray-200 items-center`}>
                 <View style={tw`w-12 h-12 bg-blue-100 rounded-full items-center justify-center mb-2`}>
@@ -281,9 +282,7 @@ export default function BizDashboard() {
             </TouchableOpacity>
             <TouchableOpacity
               style={tw`w-1/2 px-2 mb-3`}
-              onPress={() => {
-                // Navigate to create promotion
-              }}
+              onPress={() => navigation.navigate('Marketing')}
             >
               <View style={tw`bg-white rounded-xl p-4 border border-gray-200 items-center`}>
                 <View style={tw`w-12 h-12 bg-purple-100 rounded-full items-center justify-center mb-2`}>
@@ -294,9 +293,7 @@ export default function BizDashboard() {
             </TouchableOpacity>
             <TouchableOpacity
               style={tw`w-1/2 px-2 mb-3`}
-              onPress={() => {
-                // Navigate to analytics
-              }}
+              onPress={() => navigation.navigate('Marketing')}
             >
               <View style={tw`bg-white rounded-xl p-4 border border-gray-200 items-center`}>
                 <View style={tw`w-12 h-12 bg-green-100 rounded-full items-center justify-center mb-2`}>
@@ -307,9 +304,7 @@ export default function BizDashboard() {
             </TouchableOpacity>
             <TouchableOpacity
               style={tw`w-1/2 px-2 mb-3`}
-              onPress={() => {
-                // Navigate to partnerships
-              }}
+              onPress={() => navigation.navigate('Partnerships')}
             >
               <View style={tw`bg-white rounded-xl p-4 border border-gray-200 items-center`}>
                 <View style={tw`w-12 h-12 bg-orange-100 rounded-full items-center justify-center mb-2`}>
