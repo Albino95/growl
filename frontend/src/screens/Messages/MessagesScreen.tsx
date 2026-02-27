@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getAvatarUrl, getStoryImageUrl } from '../../utils/images';
+import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import tw from '../../lib/tw';
 
 type MessageType = 'Individual' | 'Store' | 'Instructor';
@@ -121,6 +122,29 @@ export default function MessagesScreen() {
   const messageInputRef = useRef<TextInput>(null);
   const { user } = useAuth();
   const [stories, setStories] = useState<Story[]>(MOCK_STORIES);
+
+  useEffect(() => {
+    const loadStories = async () => {
+      try {
+        const response = await getStories();
+        if (response.success) {
+          setStories(
+            (response.data.stories || []).map((s: StoryItem) => ({
+              id: s.id,
+              userId: s.userId,
+              username: s.username,
+              avatar: s.avatar || getAvatarUrl(s.userId, s.username),
+              hasViewed: !!s.hasViewed,
+            }))
+          );
+        }
+      } catch (error) {
+        // Keep existing mock stories as fallback for UX continuity.
+      }
+    };
+
+    loadStories();
+  }, []);
 
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
@@ -400,6 +424,10 @@ export default function MessagesScreen() {
                       initialIndex: 0, // Always start from first story
                       onStoriesUpdate: (updatedStories: typeof fullStories) => {
                         // Update the main stories array with viewed status
+                        const viewedIds = updatedStories.filter((us) => us.hasViewed).map((us) => us.id);
+                        if (viewedIds.length > 0) {
+                          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+                        }
                         setStories((prev) =>
                           prev.map((s) => {
                             const updated = updatedStories.find((us) => us.id === s.id);

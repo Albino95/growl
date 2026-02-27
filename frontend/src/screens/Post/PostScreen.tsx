@@ -11,6 +11,8 @@ import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { setCurrentImage, setCurrentCaption, setSelectedCategory, setPosting, resetCurrentPost } from '../../store/slices/postSlice';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import CATEGORIES from '../../data/categories';
+import { createFeedPost } from '../../services/api/feed';
+import { getPostImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
 type PostScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Post'>;
@@ -124,9 +126,17 @@ export default function PostScreen({ navigation }: PostScreenProps) {
 
     dispatch(setPosting(true));
     try {
-      // In real app, upload image and create post via API
-      // For now, just simulate success
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const category = selectedCategory?.split(':')[0] || userCategories[0]?.split(':')[0] || 'mindset';
+      const subcategory = selectedCategory?.includes(':') ? selectedCategory.split(':')[1] : undefined;
+      const isRemoteImage = image.startsWith('http://') || image.startsWith('https://');
+      const imageUrl = isRemoteImage ? image : getPostImageUrl(category, `${Date.now()}`);
+
+      await createFeedPost({
+        image_url: imageUrl,
+        caption: caption || '',
+        category,
+        subcategory,
+      });
 
       // Award points for posting
       const currentPoints = user?.points || 0;

@@ -45,9 +45,20 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
         total_revenue: number;
       }>();
 
-    // Get recent orders
+    // Get recent orders with items
     const recentOrders = await env.DB.prepare(
-      `SELECT o.*
+      `SELECT DISTINCT o.*,
+       (SELECT json_group_array(json_object(
+         'id', oi.id,
+         'product_id', oi.product_id,
+         'quantity', oi.quantity,
+         'price', oi.price,
+         'product_name', p.name,
+         'product_image', p.image_url
+       ))
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = o.id AND p.user_id = ?) as items
        FROM orders o
        JOIN order_items oi ON o.id = oi.order_id
        JOIN products p ON oi.product_id = p.id
@@ -55,8 +66,8 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
        ORDER BY o.created_at DESC
        LIMIT 10`
     )
-      .bind(ctx.userId)
-      .all<Order>();
+      .bind(ctx.userId, ctx.userId)
+      .all<Order & { items: string }>();
 
     return json({
       kpis: {
@@ -66,12 +77,13 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
         pending_orders: ordersResult?.pending_orders || 0,
         completed_orders: ordersResult?.completed_orders || 0,
         total_revenue: ordersResult?.total_revenue || 0,
+        recent_orders: recentOrders.results.map((order) => ({
+          ...order,
+          shipping_address: JSON.parse(order.shipping_address || '{}'),
+          metadata: JSON.parse(order.metadata || '{}'),
+          items: JSON.parse(order.items || '[]'),
+        })),
       },
-      recent_orders: recentOrders.results.map((order) => ({
-        ...order,
-        shipping_address: JSON.parse(order.shipping_address || '{}'),
-        metadata: JSON.parse(order.metadata || '{}'),
-      })),
     });
   } catch (err) {
     console.error('[getDashboard] Error:', err);
@@ -129,7 +141,18 @@ export async function getBusinessOrders(request: Request, env: Env): Promise<Res
 
   try {
     const orders = await env.DB.prepare(
-      `SELECT DISTINCT o.*
+      `SELECT DISTINCT o.*,
+       (SELECT json_group_array(json_object(
+         'id', oi.id,
+         'product_id', oi.product_id,
+         'quantity', oi.quantity,
+         'price', oi.price,
+         'product_name', p.name,
+         'product_image', p.image_url
+       ))
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = o.id AND p.user_id = ?) as items
        FROM orders o
        JOIN order_items oi ON o.id = oi.order_id
        JOIN products p ON oi.product_id = p.id
@@ -137,13 +160,14 @@ export async function getBusinessOrders(request: Request, env: Env): Promise<Res
        ORDER BY o.created_at DESC
        LIMIT 100`
     )
-      .bind(ctx.userId)
-      .all<Order>();
+      .bind(ctx.userId, ctx.userId)
+      .all<Order & { items: string }>();
 
     const formattedOrders = orders.results.map((order) => ({
       ...order,
       shipping_address: JSON.parse(order.shipping_address || '{}'),
       metadata: JSON.parse(order.metadata || '{}'),
+      items: JSON.parse(order.items || '[]'),
     }));
 
     return json(formattedOrders);

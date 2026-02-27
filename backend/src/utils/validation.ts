@@ -8,11 +8,20 @@ export const signUpSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').optional(),
 });
 
-export const signInSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
-  passwordHash: z.string().optional(), // Frontend sends hashed password
-});
+export const signInSchema = z
+  .object({
+    email: z.string().email('Invalid email address'),
+    // For dev/tests we allow either plain password or pre-hashed password
+    password: z.string().min(1, 'Password is required').optional(),
+    passwordHash: z.string().optional(), // Frontend sends hashed password
+  })
+  .refine(
+    (data) => !!data.password || !!data.passwordHash,
+    {
+      message: 'Either password or passwordHash must be provided',
+      path: ['password'],
+    }
+  );
 
 export const ssoSchema = z.object({
   provider: z.enum(['google', 'facebook']),

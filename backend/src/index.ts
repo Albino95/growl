@@ -240,14 +240,11 @@ export default {
         }
 
         return json({
-          success: true,
-          data: {
-            status: 'ok',
-            timestamp: new Date().toISOString(),
-            environment: env.ENVIRONMENT,
-            database: dbStatus,
-            kv: kvStatus,
-          },
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          environment: env.ENVIRONMENT,
+          database: dbStatus,
+          kv: kvStatus,
         });
       }
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, ScrollView, ActivityIndicator, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
@@ -210,7 +211,7 @@ export default function MarketplaceScreen() {
                     <Image
                       source={{ uri: productImage }}
                       style={tw`w-20 h-20 rounded-lg mr-4`}
-                      resizeMode="cover"
+                      contentFit="cover"
                     />
                     <View style={tw`flex-1`}>
                       <Text style={tw`text-lg font-semibold text-gray-900 mb-1`}>{item.name}</Text>

@@ -3,16 +3,15 @@ import {
   View,
   Text,
   ScrollView,
-  Image,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
 import tw from '../../lib/tw';
 import { getProduct, Product } from '../../services/api/marketplace';
 import { getProductImageUrl, getProductImages } from '../../utils/images';
@@ -25,11 +24,10 @@ type ProductDetailRouteParams = {
   };
 };
 
-type ProductDetailNavigationProp = StackNavigationProp<any>;
 type ProductDetailRouteProp = RouteProp<ProductDetailRouteParams, 'ProductDetail'>;
 
 export default function ProductDetailScreen() {
-  const navigation = useNavigation<ProductDetailNavigationProp>();
+  const navigation = useNavigation();
   const route = useRoute<ProductDetailRouteProp>();
   const { productId } = route.params;
 
@@ -115,7 +113,7 @@ export default function ProductDetailScreen() {
     ? product.images
     : product.image_url
     ? [product.image_url]
-    : getProductImages(product.category, product.id);
+    : getProductImages(product.category, product.id, 3);
 
   const mainImage = productImages[selectedImageIndex] || getProductImageUrl(product.category, product.id);
 
@@ -145,12 +143,12 @@ export default function ProductDetailScreen() {
             }}
             style={tw`h-96`}
           >
-            {productImages.map((image, index) => (
+            {productImages.map((image: string, index: number) => (
               <Image
                 key={index}
                 source={{ uri: image }}
                 style={tw`w-full h-full`}
-                resizeMode="cover"
+                contentFit="cover"
               />
             ))}
           </ScrollView>
@@ -158,7 +156,7 @@ export default function ProductDetailScreen() {
           {/* Image Indicators */}
           {productImages.length > 1 && (
             <View style={tw`flex-row justify-center py-2`}>
-              {productImages.map((_, index) => (
+              {productImages.map((_: string, index: number) => (
                 <View
                   key={index}
                   style={tw`w-2 h-2 rounded-full mx-1 ${

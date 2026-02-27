@@ -12,7 +12,7 @@ export interface DashboardKPIs {
   pending_orders: number;
   completed_orders: number;
   total_revenue: number;
-  recent_orders: Order[];
+  recent_orders?: Order[];
 }
 
 export interface DashboardResponse {
