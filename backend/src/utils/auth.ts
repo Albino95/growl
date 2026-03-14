@@ -23,9 +23,24 @@ export async function getUserIdFromRequest(request: Request, env: any): Promise<
   // For now, we'll use a simple approach (not secure for production)
   try {
     // Decode JWT (without verification for MVP)
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.userId || null;
-  } catch {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      // Not a valid JWT format
+      console.warn('[Auth] Invalid token format:', token.substring(0, 20) + '...');
+      return null;
+    }
+    const payload = JSON.parse(atob(parts[1]));
+    const userId = payload.userId || null;
+    
+    // In development, if token has "demo-signature", allow it even if user doesn't exist in DB
+    if (userId && parts[2] === 'demo-signature' && env?.ENVIRONMENT === 'development') {
+      console.log('[Auth] Demo token detected for user:', userId);
+      return userId;
+    }
+    
+    return userId;
+  } catch (error) {
+    console.warn('[Auth] Token decode error:', error);
     return null;
   }
 }
@@ -49,6 +64,27 @@ export async function getRequestContext(
   )
     .bind(userId)
     .first() as User | null;
+
+  // In development, if user doesn't exist but we have a valid userId, create a minimal user object
+  // This allows demo accounts to work without being in the database
+  if (!user && env?.ENVIRONMENT === 'development' && userId) {
+    console.log('[Auth] Demo user not in DB, creating minimal user object for:', userId);
+    return {
+      userId,
+      user: {
+        id: userId,
+        email: `${userId}@demo.growl.app`,
+        password_hash: '',
+        points: 0,
+        is_instructor: userId.includes('instructor') || userId.includes('business') ? 1 : 0,
+        is_business: userId.includes('business') ? 1 : 0,
+        metadata: JSON.stringify({ username: userId, categories: [] }),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as User,
+      isAuthenticated: true,
+    };
+  }
 
   return {
     userId,

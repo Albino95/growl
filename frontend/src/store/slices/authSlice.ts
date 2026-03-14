@@ -76,17 +76,33 @@ export const signIn = createAsyncThunk(
       await setSecureItem(USER_KEY, JSON.stringify(user));
       setToken(res.token); // Cache in memory
       return { token: res.token, user };
-    } catch {
+    } catch (error) {
+      console.error('[Auth] Sign in error, using demo fallback:', error);
       // Dev fallback - Demo accounts
-      const devToken = `dev-token-${Date.now()}`;
+      // Generate a proper JWT-like token for demo accounts
+      const generateDemoToken = (userId: string) => {
+        try {
+          // Use global btoa or polyfill
+          const btoaFn = typeof btoa !== 'undefined' ? btoa : (str: string) => Buffer.from(str).toString('base64');
+          const header = btoaFn(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+          const payload = btoaFn(JSON.stringify({ userId, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 }));
+          return `${header}.${payload}.demo-signature`;
+        } catch (e) {
+          console.error('[Auth] Error generating demo token:', e);
+          // Fallback to simple token if btoa fails
+          return `demo.${btoa ? btoa(JSON.stringify({ userId })) : userId}.token`;
+        }
+      };
 
       // Demo accounts configuration
       let user: User;
+      let userId: string;
 
       if (email === 'demo@growl.app' && password === 'demo123') {
         // Regular user
+        userId = 'demo-user';
         user = {
-          id: 'demo-user',
+          id: userId,
           email,
           isInstructor: false,
           hasCompletedOnboarding: true,
@@ -95,8 +111,9 @@ export const signIn = createAsyncThunk(
         };
       } else if (email === 'instructor@growl.app' && password === 'instructor123') {
         // Instructor account
+        userId = 'demo-instructor';
         user = {
-          id: 'demo-instructor',
+          id: userId,
           email,
           isInstructor: true,
           hasCompletedOnboarding: true,
@@ -105,8 +122,9 @@ export const signIn = createAsyncThunk(
         };
       } else if (email === 'business@growl.app' && password === 'business123') {
         // Business account (also has instructor access)
+        userId = 'demo-business';
         user = {
-          id: 'demo-business',
+          id: userId,
           email,
           isInstructor: true, // Business users also have instructor access
           hasCompletedOnboarding: true,
@@ -115,8 +133,9 @@ export const signIn = createAsyncThunk(
         };
       } else {
         // Default fallback for any other email/password
+        userId = 'dev';
         user = {
-          id: 'dev',
+          id: userId,
           email,
           isInstructor: false,
           hasCompletedOnboarding: false,
@@ -125,9 +144,11 @@ export const signIn = createAsyncThunk(
         };
       }
 
+      const devToken = generateDemoToken(userId);
       await setSecureItem(TOKEN_KEY, devToken);
       await setSecureItem(USER_KEY, JSON.stringify(user));
       setToken(devToken); // Cache in memory
+      console.log('[Auth] Demo account signed in:', email, 'Token generated');
       return { token: devToken, user };
     }
   }
@@ -167,6 +188,19 @@ export const signInWithSSO = createAsyncThunk(
         categories: [],
         points: 0,
       };
+      // Generate proper JWT-like token for SSO demo
+      const generateDemoToken = (userId: string) => {
+        try {
+          const btoaFn = typeof btoa !== 'undefined' ? btoa : (str: string) => Buffer.from(str).toString('base64');
+          const header = btoaFn(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+          const payload = btoaFn(JSON.stringify({ userId, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 }));
+          return `${header}.${payload}.demo-signature`;
+        } catch (e) {
+          console.error('[Auth] Error generating SSO demo token:', e);
+          return `demo.${btoa ? btoa(JSON.stringify({ userId })) : userId}.token`;
+        }
+      };
+      const devToken = generateDemoToken(user.id);
       await setSecureItem(TOKEN_KEY, devToken);
       await setSecureItem(USER_KEY, JSON.stringify(user));
       setToken(devToken); // Cache in memory

@@ -24,8 +24,15 @@ export const useAuth = () => {
     signInWithSSO: (provider: 'google' | 'facebook', ssoToken: string) =>
       dispatch(signInWithSSO({ provider, token: ssoToken })),
     signOut: async () => {
-      const result = await dispatch(signOut());
-      return result;
+      console.log('[useAuth] signOut called');
+      try {
+        const result = await dispatch(signOut());
+        console.log('[useAuth] signOut dispatch result:', result);
+        return result;
+      } catch (error) {
+        console.error('[useAuth] signOut error:', error);
+        throw error;
+      }
     },
     hydrate: () => dispatch(hydrateAuth()),
     updateUser: (updates: Partial<User>) => dispatch(updateUser(updates)),
