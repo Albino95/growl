@@ -1,19 +1,30 @@
 import Constants from 'expo-constants';
 import { getSecureItem } from '../storage/secureStore';
+import { getToken } from '../storage/tokenManager';
 
 const BASE_URL: string = (Constants?.expoConfig?.extra?.API_BASE_URL as string) || 'https://growl-backend.albino-ndreu.workers.dev/api/v1';
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path}`;
   
-  // Get auth token if available - use wrapper that handles web gracefully
-  let token: string | null = null;
-  try {
-    token = await getSecureItem('auth_token');
-  } catch (error) {
-    // SecureStore might not be available on web, that's okay
-    console.warn('[HTTP] Could not get auth token from SecureStore:', error);
+  // Get auth token - try memory cache first, then SecureStore
+  let token: string | null = getToken();
+  
+  if (!token) {
+    try {
+      token = await getSecureItem('auth_token');
+      // Cache it in memory for next time
+      if (token) {
+        const { setToken } = await import('../storage/tokenManager');
+        setToken(token);
+      }
+    } catch (error) {
+      // SecureStore might not be available on web, that's okay
+      console.warn('[HTTP] Could not get auth token from SecureStore:', error);
+    }
   }
+  
+  console.log('[HTTP] Request to:', path, 'Token available:', !!token);
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

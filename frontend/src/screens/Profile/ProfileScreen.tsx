@@ -138,14 +138,26 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            await signOut();
-            const rootNavigation = navigation.getParent() || navigation;
-            rootNavigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'Auth' as never }],
-              })
-            );
+            try {
+              console.log('[ProfileScreen] Starting sign out...');
+              const result = await signOut();
+              console.log('[ProfileScreen] Sign out result:', result);
+              
+              // Wait a bit to ensure state is cleared
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              const rootNavigation = navigation.getParent() || navigation;
+              rootNavigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Auth' as never }],
+                })
+              );
+              console.log('[ProfileScreen] Navigation reset complete');
+            } catch (error) {
+              console.error('[ProfileScreen] Sign out error:', error);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
           },
         },
       ]

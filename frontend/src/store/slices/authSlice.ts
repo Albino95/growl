@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import { getSecureItem, setSecureItem, deleteSecureItem } from '../../services/storage/secureStore';
+import { setToken, clearToken } from '../../services/storage/tokenManager';
 import { request } from '../../services/api/http';
 import * as Crypto from 'expo-crypto';
 
@@ -36,11 +37,14 @@ export const hydrateAuth = createAsyncThunk('auth/hydrate', async () => {
     const userData = await getSecureItem(USER_KEY);
     if (token) {
       const user = userData ? JSON.parse(userData) : { id: 'me' };
+      setToken(token); // Cache in memory
       return { token, user };
     }
+    clearToken(); // Clear cache if no token
     return { token: null, user: null };
   } catch (error) {
     console.error('Hydration error:', error);
+    clearToken();
     return { token: null, user: null };
   }
 });
@@ -70,6 +74,7 @@ export const signIn = createAsyncThunk(
       };
       await setSecureItem(TOKEN_KEY, res.token);
       await setSecureItem(USER_KEY, JSON.stringify(user));
+      setToken(res.token); // Cache in memory
       return { token: res.token, user };
     } catch {
       // Dev fallback - Demo accounts
@@ -122,6 +127,7 @@ export const signIn = createAsyncThunk(
 
       await setSecureItem(TOKEN_KEY, devToken);
       await setSecureItem(USER_KEY, JSON.stringify(user));
+      setToken(devToken); // Cache in memory
       return { token: devToken, user };
     }
   }
@@ -149,6 +155,7 @@ export const signInWithSSO = createAsyncThunk(
       };
       await setSecureItem(TOKEN_KEY, res.token);
       await setSecureItem(USER_KEY, JSON.stringify(user));
+      setToken(res.token); // Cache in memory
       return { token: res.token, user };
     } catch {
       // Dev fallback
@@ -162,14 +169,18 @@ export const signInWithSSO = createAsyncThunk(
       };
       await setSecureItem(TOKEN_KEY, devToken);
       await setSecureItem(USER_KEY, JSON.stringify(user));
+      setToken(devToken); // Cache in memory
       return { token: devToken, user };
     }
   }
 );
 
 export const signOut = createAsyncThunk('auth/signOut', async () => {
+  console.log('[Auth] Signing out...');
   await deleteSecureItem(TOKEN_KEY);
   await deleteSecureItem(USER_KEY);
+  clearToken(); // Clear memory cache
+  console.log('[Auth] Sign out complete');
 });
 
 const initialState: AuthState = {
