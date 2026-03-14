@@ -129,14 +129,21 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       const category = selectedCategory?.split(':')[0] || userCategories[0]?.split(':')[0] || 'mindset';
       const subcategory = selectedCategory?.includes(':') ? selectedCategory.split(':')[1] : undefined;
       const isRemoteImage = image.startsWith('http://') || image.startsWith('https://');
+      
+      // For local images, use placeholder URL (actual image upload would be implemented later)
+      // The placeholder ensures the post is created even if image upload isn't implemented yet
       const imageUrl = isRemoteImage ? image : getPostImageUrl(category, `${Date.now()}`);
 
-      await createFeedPost({
+      console.log('[PostScreen] Creating post with:', { category, subcategory, imageUrl: imageUrl.substring(0, 50) + '...' });
+
+      const response = await createFeedPost({
         image_url: imageUrl,
         caption: caption || '',
         category,
         subcategory,
       });
+
+      console.log('[PostScreen] Post created successfully:', response);
 
       // Award points for posting
       const currentPoints = user?.points || 0;
@@ -154,9 +161,20 @@ export default function PostScreen({ navigation }: PostScreenProps) {
           },
         },
       ]);
-    } catch (error) {
-      console.error('Post error:', error);
-      Alert.alert('Error', 'Failed to post. Please try again.');
+    } catch (error: any) {
+      console.error('[PostScreen] Post error:', error);
+      const errorMessage = error?.message || error?.toString() || 'Failed to post. Please try again.';
+      console.error('[PostScreen] Error details:', {
+        message: errorMessage,
+        stack: error?.stack,
+        response: error?.response,
+      });
+      
+      if (Platform.OS === 'web') {
+        alert(`Error: ${errorMessage}`);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
       dispatch(setPosting(false));
     }
   };

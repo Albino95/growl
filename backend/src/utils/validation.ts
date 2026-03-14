@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { error } from './response';
 
+// Order status enum
+export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'completed' | 'cancelled';
+
 // Validation schemas
 export const signUpSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -70,6 +73,12 @@ export const updateUserSchema = z.object({
   avatar: z.string().url().optional(),
   categories: z.array(z.string()).optional(),
   metadata: z.record(z.any()).optional(),
+});
+
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'], {
+    errorMap: () => ({ message: 'Invalid order status' }),
+  }),
 });
 
 /**

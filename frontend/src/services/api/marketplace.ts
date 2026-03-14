@@ -128,6 +128,16 @@ export async function getOrders(): Promise<{ success: boolean; data: Order[] }> 
 }
 
 /**
+ * Update order status (business only)
+ */
+export async function updateOrderStatus(orderId: string, status: string): Promise<OrderResponse> {
+  return request<OrderResponse>(`/marketplace/orders/${orderId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/**
  * Create a new product (business only)
  */
 export async function createProduct(productData: {

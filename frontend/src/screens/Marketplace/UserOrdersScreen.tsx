@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { getBusinessOrders, type Order } from '../../services/api/business';
-import { updateOrderStatus } from '../../services/api/marketplace';
+import { getOrders, type Order } from '../../services/api/marketplace';
 
 type OrderItem = {
   id: string;
@@ -13,12 +13,6 @@ type OrderItem = {
   price: number;
   product_name?: string;
   product_image?: string;
-};
-
-type BusinessOrder = Order & {
-  orderNumber: string;
-  customer: string;
-  paymentMethod: string;
 };
 
 const STATUS_COLORS = {
@@ -30,8 +24,9 @@ const STATUS_COLORS = {
   cancelled: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' },
 };
 
-export default function OrdersScreen() {
-  const [orders, setOrders] = useState<BusinessOrder[]>([]);
+export default function UserOrdersScreen() {
+  const navigation = useNavigation();
+  const [orders, setOrders] = useState<Order[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,25 +34,12 @@ export default function OrdersScreen() {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const response = await getBusinessOrders();
+      const response = await getOrders();
       if (response.success && response.data) {
-        const businessOrders: BusinessOrder[] = response.data.map((order) => {
-          const shippingAddress = typeof order.shipping_address === 'string' 
-            ? JSON.parse(order.shipping_address) 
-            : order.shipping_address;
-          
-          return {
-            ...order,
-            orderNumber: `ORD-${order.id.slice(-8).toUpperCase()}`,
-            customer: shippingAddress?.name || 'Unknown Customer',
-            paymentMethod: 'Credit Card', // Default, could be from metadata
-            items: order.items || [],
-          };
-        });
-        setOrders(businessOrders);
+        setOrders(response.data);
       }
     } catch (error: any) {
-      console.error('[OrdersScreen] Error loading orders:', error);
+      console.error('[UserOrdersScreen] Error loading orders:', error);
       if (Platform.OS === 'web') {
         alert(error.message || 'Failed to load orders');
       } else {
@@ -78,88 +60,33 @@ export default function OrdersScreen() {
     loadOrders();
   };
 
-  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-    try {
-      const response = await updateOrderStatus(orderId, newStatus);
-      if (response.success && response.data) {
-        // Update the order in local state
-        setOrders(prevOrders =>
-          prevOrders.map(order =>
-            order.id === orderId
-              ? { ...order, status: response.data.status }
-              : order
-          )
-        );
-        if (Platform.OS === 'web') {
-          alert(`Order status updated to ${newStatus}`);
-        } else {
-          Alert.alert('Success', `Order status updated to ${newStatus}`);
-        }
-      }
-    } catch (error: any) {
-      console.error('[OrdersScreen] Error updating order status:', error);
-      if (Platform.OS === 'web') {
-        alert(error.message || 'Failed to update order status');
-      } else {
-        Alert.alert('Error', error.message || 'Failed to update order status');
-      }
-    }
-  };
-
-  const showStatusMenu = (order: BusinessOrder) => {
-    const statusOptions = ['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'];
-    const availableStatuses = statusOptions.filter(s => s !== order.status);
-
-    if (availableStatuses.length === 0) {
-      return;
-    }
-
-    if (Platform.OS === 'web') {
-      // For web, show a simple prompt
-      const status = prompt(`Update order status:\n${availableStatuses.join(', ')}`);
-      if (status && availableStatuses.includes(status)) {
-        handleStatusUpdate(order.id, status);
-      }
-    } else {
-      // For native, show action sheet
-      Alert.alert(
-        'Update Order Status',
-        `Current: ${order.status}\n\nSelect new status:`,
-        [
-          ...availableStatuses.map(status => ({
-            text: status.charAt(0).toUpperCase() + status.slice(1),
-            onPress: () => handleStatusUpdate(order.id, status),
-          })),
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    }
-  };
-
   const filteredOrders = statusFilter === 'all' 
     ? orders 
     : orders.filter(o => o.status === statusFilter);
 
-  const totalRevenue = orders
+  const totalSpent = orders
     .filter(o => o.status !== 'cancelled')
     .reduce((sum, o) => sum + o.total, 0);
-  const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-gray-50`}>
       {/* Header */}
       <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-gray-200`}>
-        <Text style={tw`text-2xl font-bold text-gray-900 mb-3`}>Orders Management</Text>
+        <View style={tw`flex-row items-center mb-3`}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={tw`mr-3`}
+          >
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={tw`text-2xl font-bold text-gray-900 flex-1`}>My Orders</Text>
+        </View>
         
         {/* Stats */}
         <View style={tw`flex-row gap-3 mb-3`}>
           <View style={tw`flex-1 bg-green-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-green-600 mb-1`}>Total Revenue</Text>
-            <Text style={tw`text-xl font-bold text-green-900`}>${totalRevenue.toFixed(2)}</Text>
-          </View>
-          <View style={tw`flex-1 bg-orange-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-orange-600 mb-1`}>Pending</Text>
-            <Text style={tw`text-xl font-bold text-orange-900`}>{pendingOrders}</Text>
+            <Text style={tw`text-xs text-green-600 mb-1`}>Total Spent</Text>
+            <Text style={tw`text-xl font-bold text-green-900`}>${totalSpent.toFixed(2)}</Text>
           </View>
           <View style={tw`flex-1 bg-blue-50 rounded-lg p-3`}>
             <Text style={tw`text-xs text-blue-600 mb-1`}>Total Orders</Text>
@@ -170,7 +97,7 @@ export default function OrdersScreen() {
         {/* Status Filters */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`-mx-4 px-4`}>
           <View style={tw`flex-row gap-2`}>
-            {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
+            {['all', 'pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'].map((status) => (
               <TouchableOpacity
                 key={status}
                 onPress={() => setStatusFilter(status)}
@@ -204,11 +131,20 @@ export default function OrdersScreen() {
             <Text style={tw`text-gray-500 mt-4 text-center`}>
               {statusFilter === 'all' ? 'No orders yet' : `No ${statusFilter} orders`}
             </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Marketplace' as never)}
+              style={tw`mt-4 px-6 py-3 bg-blue-600 rounded-full`}
+            >
+              <Text style={tw`text-white font-semibold`}>Browse Marketplace</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           filteredOrders.map((order) => {
             const statusStyle = STATUS_COLORS[order.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
             const orderDate = new Date(order.created_at).toLocaleDateString();
+            const shippingAddress = typeof order.shipping_address === 'string' 
+              ? JSON.parse(order.shipping_address) 
+              : order.shipping_address;
             
             return (
               <View
@@ -217,24 +153,21 @@ export default function OrdersScreen() {
               >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View>
-                    <Text style={tw`text-sm font-semibold text-gray-500`}>{order.orderNumber}</Text>
-                    <Text style={tw`text-lg font-bold text-gray-900 mt-1`}>{order.customer}</Text>
+                    <Text style={tw`text-sm font-semibold text-gray-500`}>
+                      Order #{order.id.slice(-8).toUpperCase()}
+                    </Text>
+                    <Text style={tw`text-lg font-bold text-gray-900 mt-1`}>
+                      ${order.total.toFixed(2)}
+                    </Text>
                   </View>
-                  <View style={tw`items-end`}>
-                    <TouchableOpacity
-                      onPress={() => showStatusMenu(order)}
-                      style={tw`px-3 py-1.5 rounded-full ${statusStyle.bg} border ${statusStyle.border} mb-2 flex-row items-center`}
-                    >
-                      <Text style={tw`text-xs font-semibold ${statusStyle.text}`}>
-                        {order.status.toUpperCase()}
-                      </Text>
-                      <Ionicons name="chevron-down" size={12} style={tw`ml-1 ${statusStyle.text}`} />
-                    </TouchableOpacity>
-                    <Text style={tw`text-xl font-bold text-gray-900`}>${order.total.toFixed(2)}</Text>
+                  <View style={tw`px-3 py-1.5 rounded-full ${statusStyle.bg} border ${statusStyle.border}`}>
+                    <Text style={tw`text-xs font-semibold ${statusStyle.text}`}>
+                      {order.status.toUpperCase()}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={tw`border-t border-gray-100 pt-3`}>
+                <View style={tw`border-t border-gray-100 pt-3 mb-3`}>
                   {order.items && order.items.length > 0 ? (
                     order.items.map((item: OrderItem, idx: number) => (
                       <View key={item.id || idx} style={tw`flex-row items-center justify-between mb-2`}>
@@ -251,15 +184,32 @@ export default function OrdersScreen() {
                   )}
                 </View>
 
-                <View style={tw`flex-row items-center justify-between mt-3 pt-3 border-t border-gray-100`}>
+                {shippingAddress && (
+                  <View style={tw`border-t border-gray-100 pt-3 mb-3`}>
+                    <Text style={tw`text-xs font-semibold text-gray-500 mb-1`}>Shipping Address</Text>
+                    <Text style={tw`text-sm text-gray-700`}>
+                      {shippingAddress.name}
+                    </Text>
+                    <Text style={tw`text-sm text-gray-700`}>
+                      {shippingAddress.street}
+                    </Text>
+                    <Text style={tw`text-sm text-gray-700`}>
+                      {shippingAddress.city}, {shippingAddress.state} {shippingAddress.zip}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={tw`flex-row items-center justify-between pt-3 border-t border-gray-100`}>
                   <View style={tw`flex-row items-center`}>
                     <Ionicons name="calendar-outline" size={16} color="#6B7280" />
                     <Text style={tw`text-xs text-gray-500 ml-1`}>{orderDate}</Text>
                   </View>
-                  <View style={tw`flex-row items-center`}>
-                    <Ionicons name="card-outline" size={16} color="#6B7280" />
-                    <Text style={tw`text-xs text-gray-500 ml-1`}>{order.paymentMethod}</Text>
-                  </View>
+                  {order.status === 'shipped' && (
+                    <TouchableOpacity style={tw`flex-row items-center`}>
+                      <Ionicons name="car-outline" size={16} color="#6B7280" />
+                      <Text style={tw`text-xs text-gray-500 ml-1`}>Track Order</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             );

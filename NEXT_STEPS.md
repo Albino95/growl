@@ -64,7 +64,7 @@ npm run migrate  # Apply to remote database
 ## 📋 Optional Enhancements
 
 ### Backend
-- [ ] Add order status update endpoint
+- [x] Add order status update endpoint ✅
 - [ ] Add product image upload to R2 storage
 - [ ] Add analytics endpoints
 - [ ] Add rate limiting
@@ -73,7 +73,7 @@ npm run migrate  # Apply to remote database
 
 ### Frontend
 - [ ] Connect MarketingScreen to backend
-- [ ] Add order status update UI
+- [x] Add order status update UI ✅
 - [ ] Add product image upload functionality
 - [ ] Add analytics charts to dashboard
 - [ ] Improve error handling and retry logic
@@ -85,6 +85,7 @@ npm run migrate  # Apply to remote database
 - **Frontend Business Screens:** ✅ Connected to backend
 - **Image Display:** ✅ Fixed and enhanced
 - **Seed Data:** ✅ Ready to deploy
+- **Order Status Updates:** ✅ Backend endpoint and frontend UI implemented
 
 ## 📝 Notes
 

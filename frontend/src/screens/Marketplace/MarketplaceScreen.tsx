@@ -135,7 +135,18 @@ export default function MarketplaceScreen() {
       <View style={tw`flex-1`}>
         {/* Header */}
         <View style={tw`px-6 pt-4 pb-3 border-b border-gray-200`}>
-          <Text style={tw`text-3xl font-bold text-green-600 mb-2`}>Marketplace</Text>
+          <View style={tw`flex-row items-center justify-between mb-2`}>
+            <Text style={tw`text-3xl font-bold text-green-600`}>Marketplace</Text>
+            <TouchableOpacity
+              onPress={() => {
+                const rootNavigation = navigation.getParent() || navigation;
+                rootNavigation.navigate('UserOrders' as never);
+              }}
+              style={tw`p-2`}
+            >
+              <Ionicons name="receipt-outline" size={24} color="#10B981" />
+            </TouchableOpacity>
+          </View>
           <Text style={tw`text-gray-600`}>
             Personalized products based on your growth journey
           </Text>
@@ -204,7 +215,7 @@ export default function MarketplaceScreen() {
                   style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm`}
                   onPress={() => {
                     const rootNavigation = navigation.getParent() || navigation;
-                    rootNavigation.navigate('ProductDetail' as never, { productId: item.id } as never);
+                    (rootNavigation as any).navigate('ProductDetail', { productId: item.id });
                   }}
                 >
                   <View style={tw`flex-row`}>

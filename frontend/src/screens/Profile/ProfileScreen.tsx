@@ -484,6 +484,19 @@ export default function ProfileScreen() {
         <View style={tw`px-4 py-4`}>
           <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Settings</Text>
           <TouchableOpacity
+            onPress={() => {
+              const rootNavigation = navigation.getParent() || navigation;
+              rootNavigation.navigate('UserOrders' as never);
+            }}
+            style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="receipt-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-gray-900 ml-3`}>My Orders</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>

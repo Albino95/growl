@@ -13,6 +13,7 @@ import ReelsScreen from '../../screens/Reels/ReelsScreen';
 import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
+import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import { useAppSelector } from '../../store/store';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
@@ -48,6 +49,7 @@ export type RootStackParamList = {
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
+  UserOrders: undefined;
   StoryViewer: {
     stories: Array<{
       id: string;
@@ -115,6 +117,11 @@ export default function RootNavigator() {
           <Stack.Screen
             name="Checkout"
             component={CheckoutScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="UserOrders"
+            component={UserOrdersScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

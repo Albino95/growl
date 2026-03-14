@@ -122,6 +122,15 @@ export default {
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'POST') {
         return marketplaceRoutes.createProduct(request, env);
       }
+      // Order status update (check before generic orders route)
+      const orderStatusMatch = path.match(new RegExp(`^${apiPrefix}/marketplace/orders/([^/]+)/status$`));
+      if (orderStatusMatch) {
+        const orderId = orderStatusMatch[1];
+        if (request.method === 'PATCH') {
+          return marketplaceRoutes.updateOrderStatus(request, env, orderId);
+        }
+      }
+
       if (path === `${apiPrefix}/marketplace/orders` && request.method === 'GET') {
         return marketplaceRoutes.getOrders(request, env);
       }
