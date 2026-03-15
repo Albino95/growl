@@ -17,7 +17,7 @@ export function getAvatarUrl(userId: string, username?: string): string {
 export function getCategoryImageUrl(category: string, subcategory?: string): string {
   const categoryMap: Record<string, string> = {
     // Fitness & Health
-    fitness: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b84d4?w=800&h=600&fit=crop&q=80',
+    fitness: 'https://picsum.photos/seed/fitness/800/600',
     'losing-weight': 'https://images.unsplash.com/photo-1517836357483-507a3093906b?w=800&h=600&fit=crop&q=80',
     'gaining-weight': 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&h=600&fit=crop&q=80',
     running: 'https://images.unsplash.com/photo-1544966503-7cc5ac882d5f?w=800&h=600&fit=crop&q=80',
@@ -64,7 +64,7 @@ export function getCategoryImageUrl(category: string, subcategory?: string): str
     gardening: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800&h=600&fit=crop&q=80',
     'home-improvement': 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&h=600&fit=crop&q=80',
     
-    default: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&h=600&fit=crop&q=80',
+    default: 'https://picsum.photos/seed/default/800/600',
   };
 
   const key = subcategory || category;

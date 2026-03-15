@@ -145,22 +145,34 @@ export default function PostScreen({ navigation }: PostScreenProps) {
 
       console.log('[PostScreen] Post created successfully:', response);
 
+      // Reset posting state immediately (don't wait for alert callback)
+      dispatch(setPosting(false));
+
       // Award points for posting
       const currentPoints = user?.points || 0;
       updateUser({ points: currentPoints + 10 });
 
-      Alert.alert('Success', 'Your post has been shared!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            dispatch(setCurrentImage(null));
-            dispatch(setCurrentCaption(''));
-            dispatch(setSelectedCategory(null));
-            dispatch(setPosting(false));
-            navigation?.goBack();
+      // Clear form data
+      dispatch(setCurrentImage(null));
+      dispatch(setCurrentCaption(''));
+      dispatch(setSelectedCategory(null));
+
+      // Show success message and navigate back
+      if (Platform.OS === 'web') {
+        // On web, use a simple alert and navigate immediately
+        alert('Success! Your post has been shared!');
+        navigation?.goBack();
+      } else {
+        // On native, use Alert.alert with callback
+        Alert.alert('Success', 'Your post has been shared!', [
+          {
+            text: 'OK',
+            onPress: () => {
+              navigation?.goBack();
+            },
           },
-        },
-      ]);
+        ]);
+      }
     } catch (error: any) {
       console.error('[PostScreen] Post error:', error);
       const errorMessage = error?.message || error?.toString() || 'Failed to post. Please try again.';
