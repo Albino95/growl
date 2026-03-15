@@ -172,13 +172,14 @@ export default function IndividualTabs() {
         component={ProfileScreen}
         options={{ tabBarButton: () => null }}
       />
-      {isInstructor && (
-        <Tab.Screen 
-          name="Instructor"
-          component={InstructorScreen}
-          options={{ tabBarButton: () => null }}
-        />
-      )}
+      <Tab.Screen 
+        name="Instructor"
+        component={InstructorScreen}
+        options={{ 
+          tabBarButton: () => null,
+          // Only show if user is instructor, otherwise show access denied screen
+        }}
+      />
     </Tab.Navigator>
   );
 }

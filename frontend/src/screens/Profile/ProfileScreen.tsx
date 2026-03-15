@@ -109,9 +109,9 @@ const MOCK_STORIES: Story[] = [
   { id: '3', image: '📚', createdAt: '2024-01-13', views: 156 },
 ];
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation: navProp }: any) {
   const { user, signOut, updateUser } = useAuth();
-  const navigation = useNavigation();
+  const navigation = navProp || useNavigation();
   const points = user?.points || 0;
   const isInstructor = user?.isInstructor || false;
   const isBusinessAccount = user?.email === 'business@growl.app';
@@ -176,24 +176,59 @@ export default function ProfileScreen() {
   const navigateToInstructor = () => {
     try {
       console.log('[ProfileScreen] Navigating to Instructor hub...');
-      // Try to navigate within the same tab navigator
-      const tabNavigation = navigation.getParent();
-      if (tabNavigation) {
-        console.log('[ProfileScreen] Using tab navigation');
-        tabNavigation.navigate('Instructor' as never);
+      
+      // Get the tab navigator (navigation prop should be the Tab navigator)
+      const tabNavigator = navigation;
+      
+      if (!tabNavigator) {
+        console.error('[ProfileScreen] No navigation object available');
+        return;
+      }
+      
+      // Check available routes
+      const state = tabNavigator.getState?.();
+      const routes = state?.routes || [];
+      const routeNames = routes.map((r: any) => r.name);
+      console.log('[ProfileScreen] Available routes:', routeNames);
+      
+      // Check if Instructor route exists
+      const hasInstructorRoute = routeNames.includes('Instructor');
+      console.log('[ProfileScreen] Instructor route exists:', hasInstructorRoute);
+      
+      if (hasInstructorRoute) {
+        // Use CommonActions to navigate (already imported)
+        tabNavigator.dispatch(
+          CommonActions.navigate({
+            name: 'Instructor',
+          })
+        );
+        console.log('[ProfileScreen] Navigation dispatched successfully');
       } else {
-        console.log('[ProfileScreen] Using direct navigation');
-        navigation.navigate('Instructor' as never);
+        console.error('[ProfileScreen] Instructor route not found in available routes');
+        console.log('[ProfileScreen] User isInstructor:', user?.isInstructor);
+        // Try fallback: navigate via root navigator with nested route
+        const rootNavigation = tabNavigator.getParent?.();
+        if (rootNavigation) {
+          console.log('[ProfileScreen] Attempting root navigation to Individual/Instructor...');
+          try {
+            (rootNavigation as any).navigate('Individual', { screen: 'Instructor' });
+          } catch (navError) {
+            console.error('[ProfileScreen] Root navigation failed:', navError);
+            // Last resort: try direct navigate
+            (tabNavigator as any).navigate('Instructor');
+          }
+        } else {
+          // Last resort: try direct navigate
+          console.log('[ProfileScreen] Attempting direct navigate as last resort...');
+          (tabNavigator as any).navigate('Instructor');
+        }
       }
     } catch (error) {
       console.error('[ProfileScreen] Error navigating to Instructor:', error);
-      // Fallback: try navigating via root navigator
-      try {
-        const rootNavigation = navigation.getParent()?.getParent() || navigation.getParent() || navigation;
-        (rootNavigation as any).navigate('Individual', { screen: 'Instructor' });
-      } catch (fallbackError) {
-        console.error('[ProfileScreen] Fallback navigation also failed:', fallbackError);
-      }
+      console.error('[ProfileScreen] Error details:', {
+        message: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
     }
   };
 
