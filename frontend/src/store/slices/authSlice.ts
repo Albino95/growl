@@ -180,14 +180,6 @@ export const signInWithSSO = createAsyncThunk(
       return { token: res.token, user };
     } catch {
       // Dev fallback
-      const devToken = 'dev-token';
-      const user: User = {
-        id: 'dev',
-        isInstructor: false,
-        hasCompletedOnboarding: false,
-        categories: [],
-        points: 0,
-      };
       // Generate proper JWT-like token for SSO demo
       const generateDemoToken = (userId: string) => {
         try {
@@ -199,6 +191,13 @@ export const signInWithSSO = createAsyncThunk(
           console.error('[Auth] Error generating SSO demo token:', e);
           return `demo.${btoa ? btoa(JSON.stringify({ userId })) : userId}.token`;
         }
+      };
+      const user: User = {
+        id: 'dev',
+        isInstructor: false,
+        hasCompletedOnboarding: false,
+        categories: [],
+        points: 0,
       };
       const devToken = generateDemoToken(user.id);
       await setSecureItem(TOKEN_KEY, devToken);
