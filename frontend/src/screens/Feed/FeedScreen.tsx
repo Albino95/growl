@@ -191,10 +191,10 @@ export default function FeedScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS); // Initialize with mock posts as fallback
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [stories, setStories] = useState<Story[]>([]);
+  const [stories, setStories] = useState<Story[]>(MOCK_STORIES); // Initialize with mock stories
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -219,13 +219,28 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const loadFeedAndStories = async () => {
     try {
+      console.log('[FeedScreen] Loading feed and stories...');
       const [feedRes, storiesRes] = await Promise.all([getFeedPosts(), getStories()]);
-      if (feedRes.success) {
-        setPosts(feedRes.data.length ? feedRes.data.map(toLocalPost) : MOCK_POSTS);
+      
+      console.log('[FeedScreen] Feed response:', {
+        success: feedRes.success,
+        dataLength: feedRes.data?.length,
+        hasData: !!feedRes.data,
+      });
+      
+      if (feedRes.success && feedRes.data) {
+        const postsArray = Array.isArray(feedRes.data) ? feedRes.data : [];
+        console.log('[FeedScreen] Setting posts:', postsArray.length);
+        setPosts(postsArray.length > 0 ? postsArray.map(toLocalPost) : MOCK_POSTS);
+      } else {
+        console.warn('[FeedScreen] Feed response not successful, using mock posts');
+        setPosts(MOCK_POSTS);
       }
-      if (storiesRes.success) {
+      
+      if (storiesRes.success && storiesRes.data) {
+        const storiesArray = storiesRes.data.stories || [];
         setStories(
-          (storiesRes.data.stories || []).map((s: StoryItem) => ({
+          storiesArray.map((s: StoryItem) => ({
             id: s.id,
             userId: s.userId,
             username: s.username,
@@ -233,8 +248,15 @@ export default function FeedScreen({ navigation, route }: any) {
             hasViewed: !!s.hasViewed,
           }))
         );
+      } else {
+        setStories(MOCK_STORIES);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[FeedScreen] Error loading feed:', error);
+      console.error('[FeedScreen] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+      });
       // Keep UI functional by falling back to local demo content
       setPosts(MOCK_POSTS);
       setStories(MOCK_STORIES);
@@ -681,11 +703,22 @@ export default function FeedScreen({ navigation, route }: any) {
             </View>
           )}
           ListEmptyComponent={
-            <View style={tw`items-center justify-center py-12`}>
+            <View style={tw`items-center justify-center py-12 px-4`}>
               <Ionicons name="images-outline" size={64} color="#D1D5DB" />
-              <Text style={tw`text-gray-500 mt-4 text-center`}>
-                No posts yet. Be the first to post in this category!
+              <Text style={tw`text-gray-500 mt-4 text-center text-base font-medium`}>
+                {selectedCategory 
+                  ? 'No posts in this category yet. Be the first to post!'
+                  : 'No posts yet. Be the first to share your journey!'}
               </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Post' as never);
+                }}
+                style={tw`mt-6 bg-green-600 px-6 py-3 rounded-full`}
+              >
+                <Text style={tw`text-white font-semibold`}>Create Your First Post</Text>
+              </TouchableOpacity>
             </View>
           }
         />
