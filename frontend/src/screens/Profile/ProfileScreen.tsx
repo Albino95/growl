@@ -174,7 +174,27 @@ export default function ProfileScreen() {
   };
 
   const navigateToInstructor = () => {
-    navigation.navigate('Instructor' as never);
+    try {
+      console.log('[ProfileScreen] Navigating to Instructor hub...');
+      // Try to navigate within the same tab navigator
+      const tabNavigation = navigation.getParent();
+      if (tabNavigation) {
+        console.log('[ProfileScreen] Using tab navigation');
+        tabNavigation.navigate('Instructor' as never);
+      } else {
+        console.log('[ProfileScreen] Using direct navigation');
+        navigation.navigate('Instructor' as never);
+      }
+    } catch (error) {
+      console.error('[ProfileScreen] Error navigating to Instructor:', error);
+      // Fallback: try navigating via root navigator
+      try {
+        const rootNavigation = navigation.getParent()?.getParent() || navigation.getParent() || navigation;
+        (rootNavigation as any).navigate('Individual', { screen: 'Instructor' });
+      } catch (fallbackError) {
+        console.error('[ProfileScreen] Fallback navigation also failed:', fallbackError);
+      }
+    }
   };
 
   const handleSaveDecayTimer = () => {
