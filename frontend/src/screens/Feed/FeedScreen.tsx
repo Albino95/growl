@@ -200,12 +200,20 @@ export default function FeedScreen({ navigation, route }: any) {
     const username = post.metadata?.username || 'User';
     const likes = Number(post.metadata?.likes || 0);
     const comments = Number(post.metadata?.comments || 0);
+    
+    // Ensure we always have a valid image URL
+    let imageUrl = post.image_url;
+    if (!imageUrl || imageUrl.trim() === '') {
+      // Use category-based placeholder image if no image_url provided
+      imageUrl = getPostImageUrl(post.category || 'default', post.id);
+    }
+    
     return {
       id: post.id,
       userId: post.user_id,
       username,
       avatar: post.metadata?.avatar || getAvatarUrl(post.user_id, username),
-      image: post.image_url || getPostImageUrl(post.category || 'default', post.id),
+      image: imageUrl,
       caption: post.caption || '',
       category: post.category || 'general',
       subcategory: post.subcategory || undefined,
@@ -231,7 +239,32 @@ export default function FeedScreen({ navigation, route }: any) {
       if (feedRes.success && feedRes.data) {
         const postsArray = Array.isArray(feedRes.data) ? feedRes.data : [];
         console.log('[FeedScreen] Setting posts:', postsArray.length);
-        setPosts(postsArray.length > 0 ? postsArray.map(toLocalPost) : MOCK_POSTS);
+        console.log('[FeedScreen] First post sample:', postsArray[0] ? {
+          id: postsArray[0].id,
+          image_url: postsArray[0].image_url,
+          category: postsArray[0].category,
+        } : 'none');
+        
+        // Always show mock posts if API returns empty, or merge with API posts
+        if (postsArray.length > 0) {
+          const apiPosts = postsArray.map(toLocalPost);
+          console.log('[FeedScreen] API posts mapped:', apiPosts.length);
+          console.log('[FeedScreen] Sample API post:', apiPosts[0] ? {
+            id: apiPosts[0].id,
+            image: apiPosts[0].image?.substring(0, 50),
+            hasImage: !!apiPosts[0].image,
+          } : 'none');
+          // Merge API posts with mock posts (API posts first, then mock posts)
+          // Remove duplicates by ID
+          const allPosts = [...apiPosts];
+          const apiPostIds = new Set(apiPosts.map(p => p.id));
+          const uniqueMockPosts = MOCK_POSTS.filter(p => !apiPostIds.has(p.id));
+          setPosts([...allPosts, ...uniqueMockPosts]);
+          console.log('[FeedScreen] Total posts after merge:', allPosts.length + uniqueMockPosts.length);
+        } else {
+          console.log('[FeedScreen] No API posts, showing mock posts only');
+          setPosts(MOCK_POSTS);
+        }
       } else {
         console.warn('[FeedScreen] Feed response not successful, using mock posts');
         setPosts(MOCK_POSTS);
@@ -594,11 +627,23 @@ export default function FeedScreen({ navigation, route }: any) {
 
               {/* Post Image - Modern Style */}
               <View style={tw`w-full bg-gray-50`}>
-                <Image
-                  source={{ uri: item.image }}
-                  style={tw`w-full h-96`}
-                  contentFit="cover"
-                />
+                {item.image && item.image.trim() !== '' ? (
+                  <Image
+                    source={{ uri: item.image }}
+                    style={tw`w-full h-96`}
+                    contentFit="cover"
+                    onError={(error) => {
+                      console.error('[FeedScreen] Image load error for post:', item.id, 'URL:', item.image, error);
+                    }}
+                    placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+                    transition={200}
+                  />
+                ) : (
+                  <View style={tw`w-full h-96 bg-gradient-to-br from-gray-100 to-gray-200 items-center justify-center`}>
+                    <Ionicons name="image-outline" size={64} color="#9CA3AF" />
+                    <Text style={tw`text-gray-400 mt-2 text-sm`}>No image available</Text>
+                  </View>
+                )}
               </View>
 
               {/* Post Actions - Modern Style */}
