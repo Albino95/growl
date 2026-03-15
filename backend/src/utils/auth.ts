@@ -124,6 +124,30 @@ export async function getRequestContext(
       updated_at: new Date().toISOString(),
     };
     console.log('[Auth] Created demo user object:', JSON.stringify(demoUser, null, 2));
+
+    // Persist demo user in DB so foreign-key constraints (e.g., posts.user_id) pass
+    try {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO users (id, email, password_hash, points, is_instructor, is_business, metadata, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          demoUser.id,
+          demoUser.email,
+          demoUser.password_hash,
+          demoUser.points,
+          demoUser.is_instructor ? 1 : 0,
+          demoUser.is_business ? 1 : 0,
+          demoUser.metadata,
+          demoUser.created_at,
+          demoUser.updated_at,
+        )
+        .run();
+      console.log('[Auth] Demo user inserted into DB (or already existed).');
+    } catch (dbErr) {
+      console.error('[Auth] Failed to insert demo user into DB:', dbErr);
+    }
+
     return {
       userId,
       user: demoUser,

@@ -119,6 +119,7 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'shared'>('posts');
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts] = useState<Post[]>(MOCK_POSTS);
   const [stories] = useState<Story[]>(MOCK_STORIES);
@@ -128,7 +129,7 @@ export default function ProfileScreen() {
     return null;
   }
 
-  const handleSignOut = async () => {
+  const handleSignOutConfirm = async () => {
     const performSignOut = async () => {
       try {
         console.log('[ProfileScreen] ===== SIGN OUT STARTED =====');
@@ -167,26 +168,9 @@ export default function ProfileScreen() {
       }
     };
 
-    if (Platform.OS === 'web') {
-      // Use window.confirm for web (works better than Alert.alert on Safari)
-      const confirmed = window.confirm('Are you sure you want to sign out?');
-      if (confirmed) {
-        performSignOut();
-      }
-    } else {
-      Alert.alert(
-        'Sign Out',
-        'Are you sure you want to sign out?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Sign Out',
-            style: 'destructive',
-            onPress: performSignOut,
-          },
-        ]
-      );
-    }
+    // Close modal and perform sign-out
+    setShowSignOutModal(false);
+    await performSignOut();
   };
 
   const navigateToInstructor = () => {
@@ -561,7 +545,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleSignOut}
+            onPress={() => setShowSignOutModal(true)}
             style={tw`flex-row items-center justify-between py-3 mt-2`}
           >
             <View style={tw`flex-row items-center`}>
@@ -571,6 +555,37 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Sign Out Confirmation Modal */}
+      <Modal
+        visible={showSignOutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSignOutModal(false)}
+      >
+        <View style={tw`flex-1 bg-black/40 justify-center items-center`}>
+          <View style={tw`w-11/12 max-w-sm bg-white rounded-2xl p-6`}>
+            <Text style={tw`text-xl font-semibold text-gray-900 mb-2`}>Sign Out</Text>
+            <Text style={tw`text-sm text-gray-600 mb-6`}>
+              Are you sure you want to sign out? You will need to log in again to access your account.
+            </Text>
+            <View style={tw`flex-row justify-end`}>
+              <TouchableOpacity
+                onPress={() => setShowSignOutModal(false)}
+                style={tw`px-4 py-2 rounded-full mr-2`}
+              >
+                <Text style={tw`text-sm text-gray-600`}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSignOutConfirm}
+                style={tw`px-4 py-2 rounded-full bg-red-500`}
+              >
+                <Text style={tw`text-sm text-white font-semibold`}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Decay Timer Settings Modal */}
       <Modal
