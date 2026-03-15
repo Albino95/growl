@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, FlatList, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, FlatList, Modal, TextInput, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -129,50 +129,64 @@ export default function ProfileScreen() {
   }
 
   const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('[ProfileScreen] ===== SIGN OUT STARTED =====');
-              console.log('[ProfileScreen] Calling signOut()...');
-              
-              const result = await signOut();
-              console.log('[ProfileScreen] Sign out result:', result);
-              console.log('[ProfileScreen] Result type:', result.type);
-              console.log('[ProfileScreen] Result payload:', result.payload);
-              
-              // Wait a bit to ensure state is cleared
-              console.log('[ProfileScreen] Waiting 200ms for state to clear...');
-              await new Promise(resolve => setTimeout(resolve, 200));
-              
-              console.log('[ProfileScreen] Getting navigation...');
-              const rootNavigation = navigation.getParent() || navigation;
-              console.log('[ProfileScreen] Navigation object:', rootNavigation ? 'found' : 'not found');
-              
-              console.log('[ProfileScreen] Dispatching navigation reset...');
-              rootNavigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: 'Auth' as never }],
-                })
-              );
-              console.log('[ProfileScreen] ===== NAVIGATION RESET COMPLETE =====');
-            } catch (error) {
-              console.error('[ProfileScreen] ===== SIGN OUT ERROR =====');
-              console.error('[ProfileScreen] Error:', error);
-              console.error('[ProfileScreen] Error stack:', (error as Error)?.stack);
-              Alert.alert('Error', `Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
-            }
+    const performSignOut = async () => {
+      try {
+        console.log('[ProfileScreen] ===== SIGN OUT STARTED =====');
+        console.log('[ProfileScreen] Calling signOut()...');
+        
+        const result = await signOut();
+        console.log('[ProfileScreen] Sign out result:', result);
+        console.log('[ProfileScreen] Result type:', result.type);
+        console.log('[ProfileScreen] Result payload:', result.payload);
+        
+        // Wait a bit to ensure state is cleared
+        console.log('[ProfileScreen] Waiting 200ms for state to clear...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        console.log('[ProfileScreen] Getting navigation...');
+        const rootNavigation = navigation.getParent() || navigation;
+        console.log('[ProfileScreen] Navigation object:', rootNavigation ? 'found' : 'not found');
+        
+        console.log('[ProfileScreen] Dispatching navigation reset...');
+        rootNavigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'Auth' as never }],
+          })
+        );
+        console.log('[ProfileScreen] ===== NAVIGATION RESET COMPLETE =====');
+      } catch (error) {
+        console.error('[ProfileScreen] ===== SIGN OUT ERROR =====');
+        console.error('[ProfileScreen] Error:', error);
+        console.error('[ProfileScreen] Error stack:', (error as Error)?.stack);
+        if (Platform.OS === 'web') {
+          alert(`Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
+        } else {
+          Alert.alert('Error', `Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      // Use window.confirm for web (works better than Alert.alert on Safari)
+      const confirmed = window.confirm('Are you sure you want to sign out?');
+      if (confirmed) {
+        performSignOut();
+      }
+    } else {
+      Alert.alert(
+        'Sign Out',
+        'Are you sure you want to sign out?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: performSignOut,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const navigateToInstructor = () => {
@@ -355,7 +369,7 @@ export default function ProfileScreen() {
                 style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
-                  rootNavigation.navigate('PostDetail' as never, {
+                  (rootNavigation as any).navigate('PostDetail', {
                     post: {
                       id: post.id,
                       userId: user?.id || 'me',

@@ -32,8 +32,11 @@ export async function getUserIdFromRequest(request: Request, env: any): Promise<
     const payload = JSON.parse(atob(parts[1]));
     const userId = payload.userId || null;
     
-    // In development, if token has "demo-signature", allow it even if user doesn't exist in DB
-    if (userId && parts[2] === 'demo-signature' && env?.ENVIRONMENT === 'development') {
+    console.log('[Auth] Token decoded - userId:', userId, 'signature:', parts[2], 'env:', env?.ENVIRONMENT);
+    
+    // In development OR if token has "demo-signature", allow it even if user doesn't exist in DB
+    // This allows demo accounts to work in both development and production
+    if (userId && parts[2] === 'demo-signature') {
       console.log('[Auth] Demo token detected for user:', userId);
       return userId;
     }
@@ -65,9 +68,11 @@ export async function getRequestContext(
     .bind(userId)
     .first() as User | null;
 
-  // In development, if user doesn't exist but we have a valid userId, create a minimal user object
+  // If user doesn't exist but we have a valid userId (demo account), create a minimal user object
   // This allows demo accounts to work without being in the database
-  if (!user && env?.ENVIRONMENT === 'development' && userId) {
+  // Check if it's a demo account by checking if userId starts with 'demo-' or 'dev'
+  const isDemoAccount = userId && (userId.startsWith('demo-') || userId === 'dev');
+  if (!user && isDemoAccount) {
     console.log('[Auth] Demo user not in DB, creating minimal user object for:', userId);
     return {
       userId,
@@ -75,10 +80,15 @@ export async function getRequestContext(
         id: userId,
         email: `${userId}@demo.growl.app`,
         password_hash: '',
-        points: 0,
+        points: userId.includes('instructor') ? 750 : userId.includes('business') ? 1000 : 150,
         is_instructor: userId.includes('instructor') || userId.includes('business') ? 1 : 0,
         is_business: userId.includes('business') ? 1 : 0,
-        metadata: JSON.stringify({ username: userId, categories: [] }),
+        metadata: JSON.stringify({ 
+          username: userId,
+          categories: userId.includes('business') ? ['fitness', 'art', 'mindset'] : 
+                     userId.includes('instructor') ? ['fitness', 'mindset'] : 
+                     ['fitness', 'art']
+        }),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as User,
