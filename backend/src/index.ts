@@ -25,6 +25,37 @@ export default {
     // API version prefix
     const apiPrefix = `/api/${env.API_VERSION || 'v1'}`;
 
+    // Root route - API information
+    if (path === '/' || path === '') {
+      return json({
+        name: 'Growl API',
+        version: env.API_VERSION || 'v1',
+        environment: env.ENVIRONMENT || 'development',
+        status: 'running',
+        endpoints: {
+          health: `${apiPrefix}/health`,
+          auth: {
+            signUp: `${apiPrefix}/auth/sign-up`,
+            signIn: `${apiPrefix}/auth/sign-in`,
+            signOut: `${apiPrefix}/auth/sign-out`,
+            sso: `${apiPrefix}/auth/sso`,
+          },
+          feed: {
+            getFeed: `${apiPrefix}/feed/feed`,
+            createPost: `${apiPrefix}/feed/posts`,
+            getUserPosts: `${apiPrefix}/feed/posts/user/:userId`,
+          },
+          marketplace: {
+            products: `${apiPrefix}/marketplace/products`,
+            orders: `${apiPrefix}/marketplace/orders`,
+          },
+          profile: `${apiPrefix}/profile`,
+          stories: `${apiPrefix}/stories`,
+        },
+        documentation: 'See API documentation for full endpoint details',
+      });
+    }
+
     // Route handling
     try {
       // Auth routes

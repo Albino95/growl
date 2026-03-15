@@ -6,16 +6,21 @@ import { RequestContext, User } from '../types';
  */
 export async function getUserIdFromRequest(request: Request, env: any): Promise<string | null> {
   const authHeader = request.headers.get('Authorization');
+  console.log('[Auth] Authorization header present:', !!authHeader);
+  
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.warn('[Auth] No Authorization header or invalid format');
     return null;
   }
 
   const token = authHeader.substring(7);
+  console.log('[Auth] Token received, length:', token.length, 'preview:', token.substring(0, 30) + '...');
 
   // In test environment, accept any bearer token and use a fixed user id.
   // The tests mock DB responses for SELECT * FROM users, so the actual id
   // value is not important as long as it is non-null.
   if (env?.ENVIRONMENT === 'test') {
+    console.log('[Auth] Test environment, using test-user');
     return 'test-user';
   }
 
@@ -24,26 +29,43 @@ export async function getUserIdFromRequest(request: Request, env: any): Promise<
   try {
     // Decode JWT (without verification for MVP)
     const parts = token.split('.');
+    console.log('[Auth] Token parts count:', parts.length);
+    
     if (parts.length !== 3) {
       // Not a valid JWT format
-      console.warn('[Auth] Invalid token format:', token.substring(0, 20) + '...');
+      console.warn('[Auth] Invalid token format - expected 3 parts, got:', parts.length);
+      console.warn('[Auth] Token preview:', token.substring(0, 50) + '...');
       return null;
     }
+    
+    console.log('[Auth] Decoding payload...');
     const payload = JSON.parse(atob(parts[1]));
     const userId = payload.userId || null;
+    const signature = parts[2];
     
-    console.log('[Auth] Token decoded - userId:', userId, 'signature:', parts[2], 'env:', env?.ENVIRONMENT);
+    console.log('[Auth] Token decoded successfully');
+    console.log('[Auth] - userId:', userId);
+    console.log('[Auth] - signature:', signature);
+    console.log('[Auth] - env.ENVIRONMENT:', env?.ENVIRONMENT);
+    console.log('[Auth] - isDemoToken:', signature === 'demo-signature');
     
     // In development OR if token has "demo-signature", allow it even if user doesn't exist in DB
     // This allows demo accounts to work in both development and production
-    if (userId && parts[2] === 'demo-signature') {
-      console.log('[Auth] Demo token detected for user:', userId);
+    if (userId && signature === 'demo-signature') {
+      console.log('[Auth] ✅ Demo token detected for user:', userId);
       return userId;
     }
     
-    return userId;
+    if (userId) {
+      console.log('[Auth] ✅ Regular token for user:', userId);
+      return userId;
+    }
+    
+    console.warn('[Auth] ⚠️ No userId found in token payload');
+    return null;
   } catch (error) {
-    console.warn('[Auth] Token decode error:', error);
+    console.error('[Auth] ❌ Token decode error:', error);
+    console.error('[Auth] Error details:', error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -55,45 +77,62 @@ export async function getRequestContext(
   request: Request,
   env: any
 ): Promise<RequestContext> {
+  console.log('[Auth] getRequestContext called');
   const userId = await getUserIdFromRequest(request, env);
+  console.log('[Auth] getUserIdFromRequest returned:', userId);
   
   if (!userId) {
+    console.log('[Auth] No userId, returning unauthenticated');
     return { isAuthenticated: false };
   }
 
   // Fetch user from database
+  console.log('[Auth] Fetching user from database for userId:', userId);
   const user = await env.DB.prepare(
     'SELECT * FROM users WHERE id = ?'
   )
     .bind(userId)
     .first() as User | null;
 
+  console.log('[Auth] User found in DB:', !!user);
+  if (user) {
+    console.log('[Auth] User email:', user.email, 'is_business:', user.is_business, 'is_instructor:', user.is_instructor);
+  }
+
   // If user doesn't exist but we have a valid userId (demo account), create a minimal user object
   // This allows demo accounts to work without being in the database
   // Check if it's a demo account by checking if userId starts with 'demo-' or 'dev'
   const isDemoAccount = userId && (userId.startsWith('demo-') || userId === 'dev');
+  console.log('[Auth] Is demo account:', isDemoAccount);
+  
   if (!user && isDemoAccount) {
-    console.log('[Auth] Demo user not in DB, creating minimal user object for:', userId);
+    console.log('[Auth] ✅ Demo user not in DB, creating minimal user object for:', userId);
+    const demoUser: User = {
+      id: userId,
+      email: `${userId}@demo.growl.app`,
+      password_hash: '',
+      points: userId.includes('instructor') ? 750 : userId.includes('business') ? 1000 : 150,
+      is_instructor: (userId.includes('instructor') || userId.includes('business')) ? true : false,
+      is_business: userId.includes('business') ? true : false,
+      metadata: JSON.stringify({ 
+        username: userId,
+        categories: userId.includes('business') ? ['fitness', 'art', 'mindset'] : 
+                   userId.includes('instructor') ? ['fitness', 'mindset'] : 
+                   ['fitness', 'art']
+      }),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    console.log('[Auth] Created demo user object:', JSON.stringify(demoUser, null, 2));
     return {
       userId,
-      user: {
-        id: userId,
-        email: `${userId}@demo.growl.app`,
-        password_hash: '',
-        points: userId.includes('instructor') ? 750 : userId.includes('business') ? 1000 : 150,
-        is_instructor: userId.includes('instructor') || userId.includes('business') ? 1 : 0,
-        is_business: userId.includes('business') ? 1 : 0,
-        metadata: JSON.stringify({ 
-          username: userId,
-          categories: userId.includes('business') ? ['fitness', 'art', 'mindset'] : 
-                     userId.includes('instructor') ? ['fitness', 'mindset'] : 
-                     ['fitness', 'art']
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as User,
+      user: demoUser,
       isAuthenticated: true,
     };
+  }
+
+  if (!user) {
+    console.warn('[Auth] ⚠️ User not found in DB and not a demo account');
   }
 
   return {

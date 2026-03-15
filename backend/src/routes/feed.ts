@@ -142,19 +142,32 @@ function calculateRelevanceScore(
  * Create a new post
  */
 export async function createPost(request: Request, env: Env): Promise<Response> {
+  console.log('[createPost] ===== POST CREATION STARTED =====');
   const ctx = await getRequestContext(request, env);
+  console.log('[createPost] Context:', {
+    isAuthenticated: ctx.isAuthenticated,
+    userId: ctx.userId,
+    hasUser: !!ctx.user,
+  });
+  
   if (!ctx.isAuthenticated || !ctx.userId) {
+    console.error('[createPost] ❌ Unauthenticated request');
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
   console.log('[createPost] Creating post for user:', ctx.userId);
 
   const validation = await validateRequest(request, createPostSchema);
-  if (!validation.success) return validation.response;
+  if (!validation.success) {
+    console.error('[createPost] ❌ Validation failed:', validation.response);
+    return validation.response;
+  }
 
   const { image_url, caption, category, subcategory, metadata } = validation.data;
+  console.log('[createPost] Validated data:', { category, subcategory, hasImage: !!image_url, hasCaption: !!caption });
 
   const postId = generateId('post');
+  console.log('[createPost] Generated post ID:', postId);
 
   try {
     await env.DB.prepare(
@@ -190,9 +203,32 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       },
       201
     );
-  } catch (err) {
-    console.error('[createPost] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to create post', 500);
+  } catch (err: any) {
+    console.error('[createPost] ❌ Error creating post:', err);
+    console.error('[createPost] Error message:', err?.message);
+    console.error('[createPost] Error stack:', err?.stack);
+    console.error('[createPost] User ID:', ctx.userId);
+    console.error('[createPost] Post data:', { postId, category, subcategory, image_url, caption });
+    
+    const errorMessage = err?.message || 'Failed to create post';
+    
+    // Provide more helpful error messages
+    if (errorMessage.includes('no such table')) {
+      return error('DATABASE_ERROR', 'Posts table does not exist. Please run migrations.', 500);
+    }
+    if (errorMessage.includes('NOT NULL constraint')) {
+      return error('VALIDATION_ERROR', 'Required fields are missing', 400, err?.message);
+    }
+    if (errorMessage.includes('UNIQUE constraint')) {
+      return error('VALIDATION_ERROR', 'Post with this ID already exists', 409);
+    }
+    
+    return error(
+      'DATABASE_ERROR',
+      'Failed to create post',
+      500,
+      env.ENVIRONMENT === 'development' ? errorMessage : undefined
+    );
   }
 }
 
