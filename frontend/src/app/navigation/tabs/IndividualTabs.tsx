@@ -8,7 +8,7 @@ import JournalScreen from '../../../screens/Journal/JournalScreen';
 import ProfileScreen from '../../../screens/Profile/ProfileScreen';
 import InstructorScreen from '../../../screens/Instructor/InstructorScreen';
 import MarketplaceScreen from '../../../screens/Marketplace/MarketplaceScreen';
-import { useAuthStore } from '../../../state/useAuthStore';
+import { useAuth } from '../../../store/hooks';
 import tw from '../../../lib/tw';
 
 export type IndividualTabsParamList = {
@@ -35,7 +35,7 @@ function CreatePostButton({ onPress }: { onPress: () => void }) {
 }
 
 export default function IndividualTabs() {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const navigation = useNavigation();
   const isInstructor = user?.isInstructor || false;
 

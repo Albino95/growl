@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 
 type Student = {
@@ -93,7 +93,7 @@ const MOCK_HOMEWORK: Homework[] = [
 ];
 
 export default function InstructorScreen({ navigation }: any) {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'students' | 'homework' | 'income' | 'messages'>('students');
   const [students] = useState<Student[]>(MOCK_STUDENTS);
   const [homework] = useState<Homework[]>(MOCK_HOMEWORK);
@@ -101,6 +101,15 @@ export default function InstructorScreen({ navigation }: any) {
   const totalEarnings = 1250.50;
   const monthlyEarnings = 450.75;
   const pendingPayouts = 125.00;
+
+  // Debug logging
+  console.log('[InstructorScreen] User object:', {
+    id: user?.id,
+    email: user?.email,
+    isInstructor: user?.isInstructor,
+    points: user?.points,
+    hasUser: !!user,
+  });
 
   if (!user?.isInstructor) {
     return (
