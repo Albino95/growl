@@ -72,9 +72,12 @@ export const signIn = createAsyncThunk(
         hasCompletedOnboarding: res.hasCompletedOnboarding || false,
         categories: res.categories || [],
       };
+      console.log('[Auth] Sign in successful, storing token...');
       await setSecureItem(TOKEN_KEY, res.token);
       await setSecureItem(USER_KEY, JSON.stringify(user));
       setToken(res.token); // Cache in memory
+      console.log('[Auth] Token stored in SecureStore and tokenManager');
+      console.log('[Auth] Token preview:', res.token.substring(0, 20) + '...');
       return { token: res.token, user };
     } catch (error) {
       console.error('[Auth] Sign in error, using demo fallback:', error);
@@ -145,10 +148,13 @@ export const signIn = createAsyncThunk(
       }
 
       const devToken = generateDemoToken(userId);
+      console.log('[Auth] Demo account token generated:', devToken.substring(0, 30) + '...');
       await setSecureItem(TOKEN_KEY, devToken);
       await setSecureItem(USER_KEY, JSON.stringify(user));
       setToken(devToken); // Cache in memory
-      console.log('[Auth] Demo account signed in:', email, 'Token generated');
+      console.log('[Auth] Demo account signed in:', email);
+      console.log('[Auth] Token stored in SecureStore and tokenManager');
+      console.log('[Auth] User ID:', userId);
       return { token: devToken, user };
     }
   }
@@ -208,12 +214,22 @@ export const signInWithSSO = createAsyncThunk(
   }
 );
 
-export const signOut = createAsyncThunk('auth/signOut', async () => {
-  console.log('[Auth] Signing out...');
-  await deleteSecureItem(TOKEN_KEY);
-  await deleteSecureItem(USER_KEY);
-  clearToken(); // Clear memory cache
-  console.log('[Auth] Sign out complete');
+export const signOut = createAsyncThunk('auth/signOut', async (_, { rejectWithValue }) => {
+  try {
+    console.log('[Auth] Signing out...');
+    console.log('[Auth] Clearing SecureStore...');
+    await deleteSecureItem(TOKEN_KEY);
+    await deleteSecureItem(USER_KEY);
+    console.log('[Auth] Clearing memory token cache...');
+    clearToken(); // Clear memory cache
+    console.log('[Auth] Sign out complete - all storage cleared');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Auth] Sign out error:', error);
+    // Even if there's an error, clear the memory cache
+    clearToken();
+    return rejectWithValue(error?.message || 'Sign out failed');
+  }
 });
 
 const initialState: AuthState = {
@@ -307,12 +323,19 @@ const authSlice = createSlice({
         state.isLoading = true;
       })
       .addCase(signOut.fulfilled, (state) => {
+        console.log('[Auth] Sign out fulfilled - clearing Redux state');
         state.token = null;
         state.user = null;
         state.isLoading = false;
+        state.error = null;
       })
-      .addCase(signOut.rejected, (state) => {
+      .addCase(signOut.rejected, (state, action) => {
+        console.error('[Auth] Sign out rejected:', action.payload);
+        // Still clear state even if there was an error
+        state.token = null;
+        state.user = null;
         state.isLoading = false;
+        state.error = action.payload as string || 'Sign out failed';
       });
   },
 });

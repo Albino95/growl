@@ -139,24 +139,35 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('[ProfileScreen] Starting sign out...');
+              console.log('[ProfileScreen] ===== SIGN OUT STARTED =====');
+              console.log('[ProfileScreen] Calling signOut()...');
+              
               const result = await signOut();
               console.log('[ProfileScreen] Sign out result:', result);
+              console.log('[ProfileScreen] Result type:', result.type);
+              console.log('[ProfileScreen] Result payload:', result.payload);
               
               // Wait a bit to ensure state is cleared
-              await new Promise(resolve => setTimeout(resolve, 100));
+              console.log('[ProfileScreen] Waiting 200ms for state to clear...');
+              await new Promise(resolve => setTimeout(resolve, 200));
               
+              console.log('[ProfileScreen] Getting navigation...');
               const rootNavigation = navigation.getParent() || navigation;
+              console.log('[ProfileScreen] Navigation object:', rootNavigation ? 'found' : 'not found');
+              
+              console.log('[ProfileScreen] Dispatching navigation reset...');
               rootNavigation.dispatch(
                 CommonActions.reset({
                   index: 0,
                   routes: [{ name: 'Auth' as never }],
                 })
               );
-              console.log('[ProfileScreen] Navigation reset complete');
+              console.log('[ProfileScreen] ===== NAVIGATION RESET COMPLETE =====');
             } catch (error) {
-              console.error('[ProfileScreen] Sign out error:', error);
-              Alert.alert('Error', 'Failed to sign out. Please try again.');
+              console.error('[ProfileScreen] ===== SIGN OUT ERROR =====');
+              console.error('[ProfileScreen] Error:', error);
+              console.error('[ProfileScreen] Error stack:', (error as Error)?.stack);
+              Alert.alert('Error', `Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
             }
           },
         },
