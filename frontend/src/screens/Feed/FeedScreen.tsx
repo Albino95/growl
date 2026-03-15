@@ -272,16 +272,31 @@ export default function FeedScreen({ navigation, route }: any) {
       
       if (storiesRes.success && storiesRes.data) {
         const storiesArray = storiesRes.data.stories || [];
-        setStories(
-          storiesArray.map((s: StoryItem) => ({
-            id: s.id,
-            userId: s.userId,
-            username: s.username,
-            avatar: s.avatar || getAvatarUrl(s.userId, s.username),
-            hasViewed: !!s.hasViewed,
-          }))
-        );
+        console.log('[FeedScreen] Stories response:', {
+          success: storiesRes.success,
+          storiesCount: storiesArray.length,
+          firstStory: storiesArray[0] ? {
+            id: storiesArray[0].id,
+            userId: storiesArray[0].userId,
+            username: storiesArray[0].username,
+          } : 'none',
+        });
+        if (storiesArray.length > 0) {
+          setStories(
+            storiesArray.map((s: StoryItem) => ({
+              id: s.id,
+              userId: s.userId,
+              username: s.username,
+              avatar: s.avatar || getAvatarUrl(s.userId, s.username),
+              hasViewed: !!s.hasViewed,
+            }))
+          );
+        } else {
+          console.log('[FeedScreen] No API stories, using mock stories');
+          setStories(MOCK_STORIES);
+        }
       } else {
+        console.log('[FeedScreen] Stories response not successful, using mock stories');
         setStories(MOCK_STORIES);
       }
     } catch (error: any) {
@@ -314,7 +329,14 @@ export default function FeedScreen({ navigation, route }: any) {
       grouped.get(story.userId)!.stories.push(story);
     });
     
-    return Array.from(grouped.values());
+    const result = Array.from(grouped.values());
+    console.log('[FeedScreen] Grouped stories:', {
+      totalStories: stories.length,
+      groupedCount: result.length,
+      groupedUsers: result.map(g => ({ userId: g.user.userId, username: g.user.username, count: g.stories.length })),
+    });
+    
+    return result;
   }, [stories]);
 
   // Check if user posted today

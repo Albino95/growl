@@ -106,7 +106,14 @@ export default function RootNavigator() {
           <Stack.Screen name="Individual" component={IndividualTabs} />
           <Stack.Screen name="Post" component={PostScreen} />
           <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-          <Stack.Screen name="Messages" component={MessagesScreen} />
+          <Stack.Screen 
+            name="Messages" 
+            component={MessagesScreen}
+            options={{ 
+              headerShown: false,
+              presentation: 'card',
+            }}
+          />
           <Stack.Screen name="Reels" component={ReelsScreen} />
           <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
           <Stack.Screen
