@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import tw from '../../lib/tw';
 
@@ -220,7 +220,7 @@ async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]
 }
 
 export default function PublicProfileScreen() {
-  const { user: currentUser } = useAuthStore();
+  const { user: currentUser } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PublicProfile'>>();
   const { userId } = route.params;

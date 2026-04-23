@@ -3,8 +3,9 @@ import { View, Text, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
+import { verticalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 
 type Comment = {
   id: string;
@@ -61,7 +62,7 @@ const MOCK_COMMENTS: Comment[] = [
 export default function CommentsScreen({ postId, postUsername, postCaption, onClose }: CommentsScreenProps) {
   const [comments, setComments] = useState<Comment[]>(MOCK_COMMENTS);
   const [commentText, setCommentText] = useState('');
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const navigation = useNavigation();
 
   const handleSendComment = () => {
@@ -97,14 +98,14 @@ export default function CommentsScreen({ postId, postUsername, postCaption, onCl
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
       <KeyboardAvoidingView
         style={tw`flex-1`}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* Header */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-200 bg-white`}>
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100 bg-white`}>
           <TouchableOpacity onPress={onClose}>
             <Ionicons name="close" size={28} color="#374151" />
           </TouchableOpacity>
@@ -129,7 +130,9 @@ export default function CommentsScreen({ postId, postUsername, postCaption, onCl
         <FlatList
           data={comments}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`px-4 py-3`}
+          contentContainerStyle={tw`px-4 py-3 pb-6`}
+          {...verticalScrollProps}
+          {...feedListPerformanceProps}
           renderItem={({ item }) => (
             <View style={tw`flex-row items-start mb-4`}>
               <TouchableOpacity

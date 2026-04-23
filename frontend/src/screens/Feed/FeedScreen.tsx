@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../store/hooks';
+import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
+import { fetchFeedPosts } from '../../store/slices/feedSlice';
+import { horizontalScrollProps, verticalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import { getAvatarUrl, getStoryImageUrl, getCategoryImageUrl, getPostImageUrl } from '../../utils/images';
-import { getFeedPosts, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { getAvatarUrl, getStoryImageUrl, getPostImageUrl } from '../../utils/images';
+import { toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import tw from '../../lib/tw';
 
@@ -189,6 +191,9 @@ const MOCK_POSTS: Post[] = [
 
 export default function FeedScreen({ navigation, route }: any) {
   const { user } = useAuth();
+  const dispatch = useAppDispatch();
+  const feedItems = useAppSelector((s) => s.feed.items);
+  const feedStatus = useAppSelector((s) => s.feed.status);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<Post[]>(MOCK_POSTS); // Initialize with mock posts as fallback
@@ -225,51 +230,11 @@ export default function FeedScreen({ navigation, route }: any) {
     };
   };
 
-  const loadFeedAndStories = async () => {
+  const loadStoriesOnly = async () => {
     try {
-      console.log('[FeedScreen] Loading feed and stories...');
-      const [feedRes, storiesRes] = await Promise.all([getFeedPosts(), getStories()]);
-      
-      console.log('[FeedScreen] Feed response:', {
-        success: feedRes.success,
-        dataLength: feedRes.data?.length,
-        hasData: !!feedRes.data,
-      });
-      
-      if (feedRes.success && feedRes.data) {
-        const postsArray = Array.isArray(feedRes.data) ? feedRes.data : [];
-        console.log('[FeedScreen] Setting posts:', postsArray.length);
-        console.log('[FeedScreen] First post sample:', postsArray[0] ? {
-          id: postsArray[0].id,
-          image_url: postsArray[0].image_url,
-          category: postsArray[0].category,
-        } : 'none');
-        
-        // Always show mock posts if API returns empty, or merge with API posts
-        if (postsArray.length > 0) {
-          const apiPosts = postsArray.map(toLocalPost);
-          console.log('[FeedScreen] API posts mapped:', apiPosts.length);
-          console.log('[FeedScreen] Sample API post:', apiPosts[0] ? {
-            id: apiPosts[0].id,
-            image: apiPosts[0].image?.substring(0, 50),
-            hasImage: !!apiPosts[0].image,
-          } : 'none');
-          // Merge API posts with mock posts (API posts first, then mock posts)
-          // Remove duplicates by ID
-          const allPosts = [...apiPosts];
-          const apiPostIds = new Set(apiPosts.map(p => p.id));
-          const uniqueMockPosts = MOCK_POSTS.filter(p => !apiPostIds.has(p.id));
-          setPosts([...allPosts, ...uniqueMockPosts]);
-          console.log('[FeedScreen] Total posts after merge:', allPosts.length + uniqueMockPosts.length);
-        } else {
-          console.log('[FeedScreen] No API posts, showing mock posts only');
-          setPosts(MOCK_POSTS);
-        }
-      } else {
-        console.warn('[FeedScreen] Feed response not successful, using mock posts');
-        setPosts(MOCK_POSTS);
-      }
-      
+      console.log('[FeedScreen] Loading stories...');
+      const storiesRes = await getStories();
+
       if (storiesRes.success && storiesRes.data) {
         const storiesArray = storiesRes.data.stories || [];
         console.log('[FeedScreen] Stories response:', {
@@ -299,21 +264,29 @@ export default function FeedScreen({ navigation, route }: any) {
         console.log('[FeedScreen] Stories response not successful, using mock stories');
         setStories(MOCK_STORIES);
       }
-    } catch (error: any) {
-      console.error('[FeedScreen] Error loading feed:', error);
-      console.error('[FeedScreen] Error details:', {
-        message: error?.message,
-        stack: error?.stack,
-      });
-      // Keep UI functional by falling back to local demo content
-      setPosts(MOCK_POSTS);
+    } catch (error: unknown) {
+      console.error('[FeedScreen] Error loading stories:', error);
       setStories(MOCK_STORIES);
     }
   };
 
   useEffect(() => {
-    loadFeedAndStories();
-  }, []);
+    dispatch(fetchFeedPosts());
+    loadStoriesOnly();
+  }, [dispatch]);
+
+  /** Merge Redux feed with curated mock posts once the API request settles. */
+  useEffect(() => {
+    if (feedStatus !== 'succeeded') return;
+    if (feedItems.length > 0) {
+      const apiPosts = feedItems.map(toLocalPost);
+      const apiPostIds = new Set(apiPosts.map((p) => p.id));
+      const uniqueMockPosts = MOCK_POSTS.filter((p) => !apiPostIds.has(p.id));
+      setPosts([...apiPosts, ...uniqueMockPosts]);
+    } else {
+      setPosts(MOCK_POSTS);
+    }
+  }, [feedItems, feedStatus]);
 
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
@@ -362,7 +335,12 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadFeedAndStories();
+    try {
+      await dispatch(fetchFeedPosts()).unwrap();
+    } catch {
+      // Keep existing posts; Redux records error state.
+    }
+    await loadStoriesOnly();
     setRefreshing(false);
   };
 
@@ -432,10 +410,22 @@ export default function FeedScreen({ navigation, route }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
       <View style={tw`flex-1`}>
         {/* Header with Messages/Stories */}
-        <View style={tw`px-4 pt-2 pb-3 border-b border-gray-200 bg-white`}>
+        <View
+          style={[
+            tw`px-4 pt-2 pb-3 bg-white border-b border-stone-100`,
+            Platform.OS === 'ios'
+              ? {
+                  shadowColor: '#0f172a',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.07,
+                  shadowRadius: 10,
+                }
+              : { elevation: 3 },
+          ]}
+        >
           <View style={tw`flex-row items-center justify-between mb-3`}>
             <Text style={tw`text-2xl font-bold text-green-600`}>Grow!</Text>
           </View>
@@ -443,9 +433,9 @@ export default function FeedScreen({ navigation, route }: any) {
           {/* Messages/Stories Section (Instagram-style) */}
           <ScrollView
             horizontal
-            showsHorizontalScrollIndicator={false}
             style={tw`mb-3`}
             contentContainerStyle={tw`px-2`}
+            {...horizontalScrollProps}
           >
             <TouchableOpacity
               style={tw`items-center justify-center w-16 h-16 rounded-full bg-green-50 border-2 border-green-200 mr-4`}
@@ -549,11 +539,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
           {/* Category Selector */}
           {userCategories.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={tw`px-2`}
-            >
+            <ScrollView horizontal contentContainerStyle={tw`px-2`} {...horizontalScrollProps}>
               <TouchableOpacity
                 onPress={() => setSelectedCategory(null)}
                 style={tw`px-4 py-2 rounded-full mr-2 ${
@@ -619,10 +605,31 @@ export default function FeedScreen({ navigation, route }: any) {
         <FlatList
           data={filteredPosts}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`p-4`}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={tw`px-4 pt-2 pb-28`}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#059669"
+              colors={['#059669']}
+            />
+          }
+          {...feedListPerformanceProps}
+          {...verticalScrollProps}
           renderItem={({ item }) => (
-            <View style={tw`bg-white mb-3 overflow-hidden`}>
+            <View
+              style={[
+                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-100`,
+                Platform.OS === 'ios'
+                  ? {
+                      shadowColor: '#0f172a',
+                      shadowOffset: { width: 0, height: 8 },
+                      shadowOpacity: 0.08,
+                      shadowRadius: 16,
+                    }
+                  : { elevation: 2 },
+              ]}
+            >
               {/* Post Header - Modern Style */}
               <View style={tw`flex-row items-center justify-between px-4 py-3`}>
                 <TouchableOpacity

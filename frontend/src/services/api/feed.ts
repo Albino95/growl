@@ -13,6 +13,7 @@ export type FeedPost = {
     comments?: number;
     username?: string;
     avatar?: string;
+    isInstructor?: boolean;
   };
 };
 

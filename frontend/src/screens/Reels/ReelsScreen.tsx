@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -73,7 +73,7 @@ const MOCK_REELS: Reel[] = [
 ];
 
 export default function ReelsScreen() {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const [reels] = useState<Reel[]>(MOCK_REELS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
@@ -218,6 +218,7 @@ export default function ReelsScreen() {
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
         snapToInterval={SCREEN_HEIGHT}
         decelerationRate="fast"
         onViewableItemsChanged={onViewableItemsChanged}

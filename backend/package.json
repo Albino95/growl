@@ -8,6 +8,9 @@
     "deploy": "wrangler deploy",
     "migrate": "wrangler d1 migrations apply growl-db",
     "migrate:local": "wrangler d1 migrations apply growl-db --local",
+    "db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run migrate:local",
+    "seed:local": "wrangler d1 execute growl-db --local --file=scripts/seed-products-enhanced.sql",
+    "seed:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-products-enhanced.sql",
     "db:create": "wrangler d1 create growl-db",
     "login": "wrangler login",
     "type-check": "tsc --noEmit",
@@ -27,6 +30,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240208.0",
     "@types/node": "^20.11.0",

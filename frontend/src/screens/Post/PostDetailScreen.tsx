@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Image, KeyboardAvoidingView, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
 import tw from '../../lib/tw';
@@ -35,7 +35,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { post: initialPost } = route.params;
