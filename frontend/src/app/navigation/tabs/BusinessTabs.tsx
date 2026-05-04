@@ -44,7 +44,7 @@ export default function BusinessTabs() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#3B82F6',
+        tabBarActiveTintColor: '#059669',
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarStyle: {
           borderTopWidth: 1,

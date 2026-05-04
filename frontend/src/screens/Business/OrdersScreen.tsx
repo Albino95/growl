@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platfo
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import { horizontalScrollProps, verticalScrollProps } from '../../constants/scroll';
 import { getBusinessOrders, type Order } from '../../services/api/business';
 import { updateOrderStatus } from '../../services/api/marketplace';
 
@@ -146,10 +147,9 @@ export default function OrdersScreen() {
   const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-gray-50`}>
-      {/* Header */}
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-gray-200`}>
-        <Text style={tw`text-2xl font-bold text-gray-900 mb-3`}>Orders Management</Text>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+      <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
+        <Text style={tw`text-2xl font-bold text-stone-900 mb-3 tracking-tight`}>Orders</Text>
         
         {/* Stats */}
         <View style={tw`flex-row gap-3 mb-3`}>
@@ -168,18 +168,18 @@ export default function OrdersScreen() {
         </View>
 
         {/* Status Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`-mx-4 px-4`}>
+        <ScrollView horizontal style={tw`-mx-4 px-4`} {...horizontalScrollProps}>
           <View style={tw`flex-row gap-2`}>
             {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
               <TouchableOpacity
                 key={status}
                 onPress={() => setStatusFilter(status)}
                 style={tw`px-4 py-2 rounded-full ${
-                  statusFilter === status ? 'bg-blue-600' : 'bg-gray-200'
+                  statusFilter === status ? 'bg-emerald-600' : 'bg-stone-100'
                 }`}
               >
                 <Text style={tw`text-sm font-semibold ${
-                  statusFilter === status ? 'text-white' : 'text-gray-700'
+                  statusFilter === status ? 'text-white' : 'text-stone-600'
                 }`}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
@@ -192,7 +192,15 @@ export default function OrdersScreen() {
       {/* Orders List */}
       <ScrollView
         style={tw`flex-1 px-4 pt-4`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        {...verticalScrollProps}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#059669"
+            colors={['#059669']}
+          />
+        }
       >
         {loading && orders.length === 0 ? (
           <View style={tw`items-center justify-center py-12`}>

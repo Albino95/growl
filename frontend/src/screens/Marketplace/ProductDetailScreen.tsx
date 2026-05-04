@@ -15,6 +15,7 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { getProduct, Product } from '../../services/api/marketplace';
 import { getProductImageUrl, getProductImages } from '../../utils/images';
+import { verticalScrollProps } from '../../constants/scroll';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +36,7 @@ export default function ProductDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     loadProduct();
@@ -83,10 +85,10 @@ export default function ProductDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
         <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#10B981" />
-          <Text style={tw`mt-4 text-gray-600`}>Loading product...</Text>
+          <ActivityIndicator size="large" color="#059669" />
+          <Text style={tw`mt-4 text-stone-500`}>Loading product…</Text>
         </View>
       </SafeAreaView>
     );
@@ -118,25 +120,27 @@ export default function ProductDetailScreen() {
   const mainImage = productImages[selectedImageIndex] || getProductImageUrl(product.category, product.id);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-200`}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+      <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false} {...verticalScrollProps}>
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100 bg-white`}>
+          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="arrow-back" size={24} color="#1C1917" />
           </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-gray-900`}>Product Details</Text>
-          <TouchableOpacity>
-            <Ionicons name="heart-outline" size={24} color="#111827" />
+          <Text style={tw`text-lg font-semibold text-stone-900`}>Product</Text>
+          <TouchableOpacity
+            onPress={() => setSaved(!saved)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name={saved ? 'heart' : 'heart-outline'} size={24} color={saved ? '#DC2626' : '#1C1917'} />
           </TouchableOpacity>
         </View>
 
-        {/* Product Images */}
-        <View style={tw`bg-gray-50`}>
+        <View style={tw`bg-stone-100`}>
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
             onMomentumScrollEnd={(e) => {
               const index = Math.round(e.nativeEvent.contentOffset.x / width);
               setSelectedImageIndex(index);
@@ -147,7 +151,7 @@ export default function ProductDetailScreen() {
               <Image
                 key={index}
                 source={{ uri: image }}
-                style={tw`w-full h-full`}
+                style={{ width, height: 384 }}
                 contentFit="cover"
               />
             ))}
@@ -160,7 +164,7 @@ export default function ProductDetailScreen() {
                 <View
                   key={index}
                   style={tw`w-2 h-2 rounded-full mx-1 ${
-                    index === selectedImageIndex ? 'bg-green-600' : 'bg-gray-300'
+                    index === selectedImageIndex ? 'bg-emerald-600' : 'bg-stone-300'
                   }`}
                 />
               ))}
@@ -169,7 +173,7 @@ export default function ProductDetailScreen() {
         </View>
 
         {/* Product Info */}
-        <View style={tw`px-4 py-6`}>
+        <View style={tw`px-4 py-6 bg-white`}>
           {/* Business Info */}
           {product.business && (
             <View style={tw`flex-row items-center mb-4`}>
@@ -190,10 +194,10 @@ export default function ProductDetailScreen() {
 
           {/* Price */}
           <View style={tw`flex-row items-center mb-4`}>
-            <Text style={tw`text-3xl font-bold text-green-600`}>${product.price.toFixed(2)}</Text>
+            <Text style={tw`text-3xl font-bold text-emerald-700`}>${product.price.toFixed(2)}</Text>
             {product.stock > 0 && (
-              <View style={tw`ml-4 px-3 py-1 bg-green-100 rounded-full`}>
-                <Text style={tw`text-sm font-medium text-green-700`}>In Stock</Text>
+              <View style={tw`ml-4 px-3 py-1 bg-emerald-50 rounded-full`}>
+                <Text style={tw`text-sm font-medium text-emerald-800`}>In stock</Text>
               </View>
             )}
             {product.stock === 0 && (
@@ -258,7 +262,7 @@ export default function ProductDetailScreen() {
           {/* Shipping Info */}
           <View style={tw`bg-gray-50 rounded-lg p-4 mb-6`}>
             <View style={tw`flex-row items-center mb-2`}>
-              <Ionicons name="car-outline" size={20} color="#10B981" />
+              <Ionicons name="car-outline" size={20} color="#059669" />
               <Text style={tw`ml-2 font-semibold text-gray-900`}>Shipping</Text>
             </View>
             <Text style={tw`text-sm text-gray-600`}>
@@ -269,25 +273,25 @@ export default function ProductDetailScreen() {
       </ScrollView>
 
       {/* Bottom Action Bar */}
-      <View style={tw`border-t border-gray-200 bg-white px-4 py-3`}>
+      <View style={tw`border-t border-stone-200 bg-white px-4 py-3 pb-6`}>
         <View style={tw`flex-row`}>
           <TouchableOpacity
             onPress={handleAddToCart}
             disabled={product.stock === 0}
-            style={tw`flex-1 mr-2 px-4 py-3 bg-gray-100 rounded-lg items-center ${
+            style={tw`flex-1 mr-2 px-4 py-3.5 bg-stone-100 rounded-2xl items-center ${
               product.stock === 0 ? 'opacity-50' : ''
             }`}
           >
-            <Text style={tw`font-semibold text-gray-900`}>Add to Cart</Text>
+            <Text style={tw`font-semibold text-stone-900`}>Add to cart</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleBuyNow}
             disabled={product.stock === 0}
-            style={tw`flex-1 ml-2 px-4 py-3 bg-green-600 rounded-lg items-center ${
+            style={tw`flex-1 ml-2 px-4 py-3.5 bg-emerald-600 rounded-2xl items-center ${
               product.stock === 0 ? 'opacity-50' : ''
             }`}
           >
-            <Text style={tw`font-semibold text-white`}>Buy Now</Text>
+            <Text style={tw`font-semibold text-white`}>Buy now</Text>
           </TouchableOpacity>
         </View>
       </View>

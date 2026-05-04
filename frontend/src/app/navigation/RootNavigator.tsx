@@ -5,7 +5,7 @@ import AuthScreen from '../../screens/Auth/AuthScreen';
 import KYCScreen from '../../screens/KYC/KYCScreen';
 import CategoryPickScreen from '../../screens/Onboarding/CategoryPickScreen';
 import IndividualTabs from './tabs/IndividualTabs';
-import BusinessTabs from './tabs/BusinessTabs';
+import BusinessRootStack from './BusinessRootStack';
 import PostScreen from '../../screens/Post/PostScreen';
 import PostDetailScreen from '../../screens/Post/PostDetailScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
@@ -138,7 +138,7 @@ export default function RootNavigator() {
           />
         </>
       )}
-      <Stack.Screen name="Business" component={BusinessTabs} />
+      <Stack.Screen name="Business" component={BusinessRootStack} />
     </Stack.Navigator>
   );
 }

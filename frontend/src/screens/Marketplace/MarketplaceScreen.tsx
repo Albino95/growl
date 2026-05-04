@@ -1,16 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../../store/hooks';
-import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
 import tw from '../../lib/tw';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
 import { getProductImageUrl } from '../../utils/images';
-import Constants from 'expo-constants';
+import EmptyState from '../../components/ui/EmptyState';
+import SearchField from '../../components/ui/SearchField';
+import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 
 // Marketplace recommendation algorithm
 // This algorithm considers:
@@ -54,10 +55,22 @@ function calculateRelevanceScore(
     score += 10; // Active users get premium recommendations
   }
 
-  // Add some randomness for discovery (0-10 points)
-  score += Math.random() * 10;
+  // Deterministic “discovery” tilt so list order does not jump on re-render
+  let noise = 0;
+  for (let i = 0; i < product.id.length; i++) {
+    noise = (noise + product.id.charCodeAt(i) * (i + 3)) % 97;
+  }
+  score += (noise / 97) * 10;
 
   return score;
+}
+
+function stableRating(productId: string): number {
+  let h = 0;
+  for (let i = 0; i < productId.length; i++) {
+    h = (h * 31 + productId.charCodeAt(i)) % 1000;
+  }
+  return Math.round((4.2 + (h % 70) / 100) * 10) / 10;
 }
 
 export default function MarketplaceScreen() {
@@ -66,6 +79,7 @@ export default function MarketplaceScreen() {
   const { user } = useAuth();
   const { products, selectedCategory, isLoading, error } = useAppSelector((state) => state.marketplace);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     dispatch(fetchProducts(selectedCategory || undefined));
@@ -82,20 +96,6 @@ export default function MarketplaceScreen() {
     dispatch(setSelectedCategory(category));
   };
 
-  const showDebugInfo = () => {
-    const debugMessage = `Products: ${products.length}\nLoading: ${isLoading}\nRefreshing: ${refreshing}\nError: ${error || 'None'}\nSelected Category: ${selectedCategory || 'All'}\n\nCheck console for API response.`;
-    
-    console.log('[Marketplace] Debug Info:', debugMessage);
-    
-    if (Platform.OS === 'web') {
-      // Use window.alert for web
-      window.alert(debugMessage);
-    } else {
-      // Use Alert.alert for native
-      Alert.alert('Debug Info', debugMessage, [{ text: 'OK' }]);
-    }
-  };
-
   const recommendedProducts = useMemo(() => {
     const userCategories = user?.categories || [];
     const userPoints = user?.points || 0;
@@ -104,7 +104,7 @@ export default function MarketplaceScreen() {
     const productsWithScores: ProductWithScore[] = products.map((product: ApiProduct) => ({
       ...product,
       relevanceScore: calculateRelevanceScore(product, userCategories, userPoints),
-      rating: 4.5 + Math.random() * 0.5, // Mock rating for now
+      rating: stableRating(product.id),
     }));
 
     // Filter by selected category if any (already filtered by API, but double-check)
@@ -117,6 +117,17 @@ export default function MarketplaceScreen() {
     // Sort by relevance score
     return filtered.sort((a, b) => b.relevanceScore - a.relevanceScore);
   }, [products, user?.categories, user?.points, selectedCategory]);
+
+  const searchFiltered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return recommendedProducts;
+    return recommendedProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        p.category.toLowerCase().includes(q)
+    );
+  }, [recommendedProducts, searchQuery]);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -131,44 +142,42 @@ export default function MarketplaceScreen() {
   }, [user?.categories]);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
       <View style={tw`flex-1`}>
-        {/* Header */}
-        <View style={tw`px-6 pt-4 pb-3 border-b border-gray-200`}>
-          <View style={tw`flex-row items-center justify-between mb-2`}>
-            <Text style={tw`text-3xl font-bold text-green-600`}>Marketplace</Text>
+        <View style={tw`px-5 pt-3 pb-3 border-b border-stone-100 bg-white`}>
+          <View style={tw`flex-row items-center justify-between mb-1`}>
+            <Text style={tw`text-2xl font-bold tracking-tight text-emerald-700`}>Marketplace</Text>
             <TouchableOpacity
               onPress={() => {
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('UserOrders' as never);
               }}
-              style={tw`p-2`}
+              style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center`}
             >
-              <Ionicons name="receipt-outline" size={24} color="#10B981" />
+              <Ionicons name="receipt-outline" size={22} color="#059669" />
             </TouchableOpacity>
           </View>
-          <Text style={tw`text-gray-600`}>
-            Personalized products based on your growth journey
+          <Text style={tw`text-sm text-stone-500`}>
+            Personalized picks from your categories — search filters the list instantly.
           </Text>
         </View>
 
-        {/* Category Filter */}
-        {categories.length > 0 && (
+        {categories.length > 0 ? (
           <ScrollView
             horizontal
-            showsHorizontalScrollIndicator={false}
-            style={tw`border-b border-gray-200`}
+            style={tw`border-b border-stone-100 bg-white`}
             contentContainerStyle={tw`px-4 py-3`}
+            {...horizontalScrollProps}
           >
             <TouchableOpacity
               onPress={() => handleCategoryChange(null)}
               style={tw`px-4 py-2 rounded-full mr-2 ${
-                selectedCategory === null ? 'bg-green-600' : 'bg-gray-100'
+                selectedCategory === null ? 'bg-emerald-600' : 'bg-stone-100'
               }`}
             >
               <Text
-                style={tw`font-medium ${
-                  selectedCategory === null ? 'text-white' : 'text-gray-700'
+                style={tw`font-semibold text-sm ${
+                  selectedCategory === null ? 'text-white' : 'text-stone-600'
                 }`}
               >
                 All
@@ -179,12 +188,12 @@ export default function MarketplaceScreen() {
                 key={cat}
                 onPress={() => handleCategoryChange(cat)}
                 style={tw`px-4 py-2 rounded-full mr-2 ${
-                  selectedCategory === cat ? 'bg-green-600' : 'bg-gray-100'
+                  selectedCategory === cat ? 'bg-emerald-600' : 'bg-stone-100'
                 }`}
               >
                 <Text
-                  style={tw`font-medium ${
-                    selectedCategory === cat ? 'text-white' : 'text-gray-700'
+                  style={tw`font-semibold text-sm ${
+                    selectedCategory === cat ? 'text-white' : 'text-stone-600'
                   }`}
                 >
                   {cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -192,62 +201,76 @@ export default function MarketplaceScreen() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        )}
+        ) : null}
 
-        {/* Products List */}
         {isLoading && products.length === 0 ? (
-          <View style={tw`flex-1 items-center justify-center py-12`}>
-            <ActivityIndicator size="large" color="#10B981" />
-            <Text style={tw`mt-4 text-gray-600`}>Loading products...</Text>
+          <View style={tw`flex-1 items-center justify-center py-16`}>
+            <ActivityIndicator size="large" color="#059669" />
+            <Text style={tw`mt-4 text-stone-500`}>Loading products…</Text>
           </View>
         ) : (
           <FlatList
-            data={recommendedProducts}
+            data={searchFiltered}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={tw`p-4`}
+            contentContainerStyle={tw`px-4 pt-3 pb-24`}
+            {...feedListPerformanceProps}
             refreshControl={
-              <RefreshControl refreshing={refreshing || isLoading} onRefresh={onRefresh} tintColor="#10B981" />
+              <RefreshControl
+                refreshing={refreshing || isLoading}
+                onRefresh={onRefresh}
+                tintColor="#059669"
+                colors={['#059669']}
+              />
+            }
+            ListHeaderComponent={
+              <SearchField
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search name, description, category"
+              />
             }
             renderItem={({ item }) => {
               const productImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
               return (
                 <TouchableOpacity
-                  style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm`}
+                  style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
+                  activeOpacity={0.85}
                   onPress={() => {
                     const rootNavigation = navigation.getParent() || navigation;
-                    (rootNavigation as any).navigate('ProductDetail', { productId: item.id });
+                    (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
+                      productId: item.id,
+                    });
                   }}
                 >
                   <View style={tw`flex-row`}>
                     <Image
                       source={{ uri: productImage }}
-                      style={tw`w-20 h-20 rounded-lg mr-4`}
+                      style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 88, height: 88 }]}
                       contentFit="cover"
+                      transition={150}
                     />
                     <View style={tw`flex-1`}>
-                      <Text style={tw`text-lg font-semibold text-gray-900 mb-1`}>{item.name}</Text>
-                      <Text style={tw`text-sm text-gray-600 mb-2`} numberOfLines={2}>
-                        {item.description || 'No description available'}
+                      <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                      <Text style={tw`text-sm text-stone-500 mb-2`} numberOfLines={2}>
+                        {item.description || 'Tap for details'}
                       </Text>
                       <View style={tw`flex-row items-center justify-between`}>
-                        <View style={tw`flex-row items-center`}>
-                          <Ionicons name="star" size={16} color="#FBBF24" />
-                          <Text style={tw`text-sm text-gray-700 ml-1`}>
-                            {item.rating?.toFixed(1) || '4.5'}
-                          </Text>
+                        <View style={tw`flex-row items-center flex-wrap`}>
+                          <Ionicons name="star" size={15} color="#F59E0B" />
+                          <Text style={tw`text-sm text-stone-700 ml-1`}>{item.rating?.toFixed(1)}</Text>
                           {item.stock > 0 ? (
-                            <View style={tw`ml-2 px-2 py-0.5 bg-green-100 rounded`}>
-                              <Text style={tw`text-xs text-green-700`}>In Stock</Text>
+                            <View style={tw`ml-2 px-2 py-0.5 bg-emerald-50 rounded-full`}>
+                              <Text style={tw`text-xs font-medium text-emerald-800`}>In stock</Text>
                             </View>
                           ) : (
-                            <View style={tw`ml-2 px-2 py-0.5 bg-red-100 rounded`}>
-                              <Text style={tw`text-xs text-red-700`}>Out of Stock</Text>
+                            <View style={tw`ml-2 px-2 py-0.5 bg-red-50 rounded-full`}>
+                              <Text style={tw`text-xs font-medium text-red-700`}>Sold out</Text>
                             </View>
                           )}
                         </View>
-                        <Text style={tw`text-lg font-bold text-green-600`}>
-                          ${item.price.toFixed(2)}
-                        </Text>
+                        <Text style={tw`text-lg font-bold text-emerald-700`}>${item.price.toFixed(2)}</Text>
                       </View>
                     </View>
                   </View>
@@ -255,37 +278,29 @@ export default function MarketplaceScreen() {
               );
             }}
             ListEmptyComponent={
-              <View style={tw`items-center justify-center py-12 px-6`}>
-                <Ionicons name="storefront-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-900 font-semibold text-lg mt-4 text-center`}>
-                  {error ? 'Oops!' : 'No Products Yet'}
-                </Text>
-                <Text style={tw`text-gray-500 mt-2 text-center mb-4`}>
-                  {error || 'No products found. Products will appear here once businesses add them to the marketplace.'}
-                </Text>
-                {error && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      console.log('[Marketplace] Try Again button pressed');
-                      dispatch(fetchProducts(selectedCategory || undefined));
-                    }}
-                    style={tw`px-6 py-3 bg-green-600 rounded-lg mb-2`}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={tw`text-white font-semibold`}>Try Again</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={() => {
-                    console.log('[Marketplace] Show Debug Info button pressed');
-                    showDebugInfo();
-                  }}
-                  style={tw`px-4 py-2 bg-gray-200 rounded-lg mt-2`}
-                  activeOpacity={0.7}
-                >
-                  <Text style={tw`text-gray-700 text-sm`}>Show Debug Info</Text>
-                </TouchableOpacity>
-              </View>
+              error ? (
+                <EmptyState
+                  icon="cloud-offline-outline"
+                  title="Couldn’t load products"
+                  description={error}
+                  actionLabel="Try again"
+                  onAction={() => dispatch(fetchProducts(selectedCategory || undefined))}
+                />
+              ) : searchQuery.trim() ? (
+                <EmptyState
+                  icon="search-outline"
+                  title="No matches"
+                  description={`Nothing found for “${searchQuery.trim()}”. Try another word or clear filters.`}
+                  actionLabel="Clear search"
+                  onAction={() => setSearchQuery('')}
+                />
+              ) : (
+                <EmptyState
+                  icon="storefront-outline"
+                  title="No products yet"
+                  description="When sellers publish SKUs, they’ll appear here with smart ranking for your journey."
+                />
+              )
             }
           />
         )}

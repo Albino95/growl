@@ -26,7 +26,7 @@ function CreatePostButton({ onPress }: { onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={tw`absolute -top-7 w-14 h-14 bg-green-500 rounded-full items-center justify-center shadow-lg border-4 border-white`}
+      style={tw`absolute -top-7 w-14 h-14 bg-emerald-600 rounded-full items-center justify-center shadow-lg border-4 border-white`}
       activeOpacity={0.8}
     >
       <Ionicons name="add" size={28} color="#FFFFFF" />
@@ -65,7 +65,7 @@ export default function IndividualTabs() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#10B981',
+        tabBarActiveTintColor: '#059669',
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarStyle: {
           borderTopWidth: 1,
@@ -81,8 +81,8 @@ export default function IndividualTabs() {
         const currentIndex = props.state.index;
         
         return (
-          <View style={tw`bg-white border-t border-gray-200 relative`}>
-            <View style={tw`flex-row items-center justify-around px-2 py-2`}>
+          <View style={tw`bg-stone-50 border-t border-stone-200 relative`}>
+            <View style={tw`flex-row items-center justify-around px-2 py-2 pb-1`}>
               {/* Feed */}
               <TouchableOpacity
                 onPress={() => props.navigation.navigate('Feed')}
@@ -91,9 +91,9 @@ export default function IndividualTabs() {
                 <Ionicons
                   name={currentIndex === 0 ? 'home' : 'home-outline'}
                   size={24}
-                  color={currentIndex === 0 ? '#10B981' : '#9CA3AF'}
+                  color={currentIndex === 0 ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentIndex === 0 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Feed
                 </Text>
               </TouchableOpacity>
@@ -106,9 +106,9 @@ export default function IndividualTabs() {
                 <Ionicons
                   name={currentIndex === 1 ? 'book' : 'book-outline'}
                   size={24}
-                  color={currentIndex === 1 ? '#10B981' : '#9CA3AF'}
+                  color={currentIndex === 1 ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 1 ? 'text-green-600' : 'text-gray-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentIndex === 1 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Journal
                 </Text>
               </TouchableOpacity>
@@ -126,9 +126,9 @@ export default function IndividualTabs() {
                 <Ionicons
                   name={currentIndex === 2 ? 'storefront' : 'storefront-outline'}
                   size={24}
-                  color={currentIndex === 2 ? '#10B981' : '#9CA3AF'}
+                  color={currentIndex === 2 ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 2 ? 'text-green-600' : 'text-gray-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentIndex === 2 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Shop
                 </Text>
               </TouchableOpacity>
@@ -141,9 +141,9 @@ export default function IndividualTabs() {
                 <Ionicons
                   name={currentIndex === 3 ? 'person' : 'person-outline'}
                   size={24}
-                  color={currentIndex === 3 ? '#10B981' : '#9CA3AF'}
+                  color={currentIndex === 3 ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 3 ? 'text-green-600' : 'text-gray-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentIndex === 3 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Profile
                 </Text>
               </TouchableOpacity>

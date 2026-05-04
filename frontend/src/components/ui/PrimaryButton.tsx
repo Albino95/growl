@@ -10,7 +10,7 @@ export default function PrimaryButton({ label, onPress, style, disabled }: Props
       onPress={onPress} 
       disabled={disabled} 
       style={[
-        tw`bg-green-600 px-4 py-3 rounded-xl`,
+        tw`bg-emerald-600 px-4 py-3 rounded-2xl`,
         disabled && tw`bg-gray-300 opacity-50`,
         style
       ]}
