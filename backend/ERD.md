@@ -4,6 +4,29 @@
 
 This document describes the Entity Relationship Diagram for the Growl app database using Cloudflare D1 (SQLite).
 
+### Mermaid (conceptual)
+
+Physical DDL is applied via `backend/migrations/` (including **`0003_user_relationships_friend_types.sql`**, which rebuilds `user_relationships` so `type` can be `friend` or `friend_request`).
+
+```mermaid
+erDiagram
+  users ||--o{ posts : author
+  users ||--o{ products : seller
+  users ||--o{ orders : buyer
+  users ||--o{ stories : author
+  users ||--o{ journal_entries : owner
+  users ||--o{ instructor_votes : voter
+  users ||--o{ instructor_votes : candidate
+  orders ||--|{ order_items : lines
+  products ||--o{ order_items : sku
+  posts ||--o{ post_engagement : reactions
+  stories ||--o{ story_views : tracked
+  users ||--o{ user_relationships : from_user
+  users ||--o{ user_relationships : target_user
+```
+
+**Category cohort “friends by default”** is logical: there is no `cohorts` table. After onboarding picks are saved (`users.metadata.categories`), the API expands cohort keys (e.g. `art:violin` ⇒ `art:violin` + `art`) and creates reciprocal **`friend`** rows between users whose expanded sets intersect.
+
 ## Entities and Relationships
 
 ```
@@ -124,7 +147,7 @@ Core user entity storing authentication and profile information.
 - One-to-Many with `products` (business user creates products)
 - One-to-Many with `orders` (user places orders)
 - One-to-Many with `post_engagement` (user likes/comments)
-- Self-referential via `user_relationships` (follows, blocks, mutes)
+- Self-referential via `user_relationships` (follows, blocks, mutes, friends)
 - Self-referential via `instructor_votes` (users vote for instructors)
 - One-to-Many with `journal_entries` (user creates journal entries)
 
@@ -189,11 +212,13 @@ Individual items within an order.
 - `target_user_id` → `users.id`
 **Unique Constraint:** `(user_id, target_user_id, type)`
 
-Self-referential relationship for follows, blocks, and mutes.
+Directed edges between two user IDs. **`type`** values (after migration 0003): `follow`, `block`, `mute`, **`friend`**, **`friend_request`**.
 
 **Relationships:**
 - Many-to-One with `users` (relationship from user)
 - Many-to-One with `users` (relationship to target user)
+
+Friendships use **`type = 'friend'`** in **both directions** (`user_id` ⇄ `target_user_id`) for simple symmetry unless/until you normalize to a single canonical edge.
 
 ### 8. instructor_votes
 **Primary Key:** `id`  
@@ -226,6 +251,19 @@ Personal journal entries with mood tracking.
 **Relationships:**
 - Many-to-One with `users` (entry belongs to user)
 
+### 11. stories
+**Primary Key:** `id`  
+**Foreign Keys:** `user_id` → `users.id`  
+
+Ephemeral story posts (`migration 0002_add_stories.sql`): media URL, optional caption, optional expiry.
+
+### 12. story_views
+**Primary Key:** `id`  
+**Foreign Keys:** `story_id` → `stories.id`, `user_id` → `users.id`  
+**Unique:** `(story_id, user_id)`
+
+Tracks which viewer saw which story.
+
 ## Indexes
 
 For performance optimization, the following indexes are created:
@@ -239,6 +277,12 @@ For performance optimization, the following indexes are created:
 - `idx_orders_user_id` on `orders(user_id)`
 - `idx_order_items_order_id` on `order_items(order_id)`
 - `idx_user_relationships_user_id` on `user_relationships(user_id)`
+- `idx_user_relationships_target_user_id` on `user_relationships(target_user_id)` (migration 0003)
+- `idx_user_relationships_type` on `user_relationships(type)` (migration 0003)
+- `idx_stories_user_id` on `stories(user_id)`
+- `idx_stories_created_at` on `stories(created_at)`
+- `idx_story_views_story_id` on `story_views(story_id)`
+- `idx_story_views_user_id` on `story_views(user_id)`
 - `idx_journal_entries_user_id` on `journal_entries(user_id)`
 
 ## Data Types

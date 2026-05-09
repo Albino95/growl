@@ -3,6 +3,7 @@ import { json, error } from '../utils/response';
 import { validateRequest, signUpSchema, signInSchema, ssoSchema } from '../utils/validation';
 import { hashPassword, verifyPassword, generateToken } from '../utils/auth';
 import { generateId } from '../utils/id';
+import { shouldBootstrapBusinessPrivileges } from '../config/businessBootstrap';
 
 /**
  * POST /api/v1/auth/sign-up
@@ -126,18 +127,34 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
+    const metadata = JSON.parse(user.metadata || '{}');
+    const accountType = typeof metadata.account_type === 'string' ? metadata.account_type.toLowerCase() : '';
+    const treatAsBusiness =
+      shouldBootstrapBusinessPrivileges(email, env) || accountType === 'business';
+
+    if (treatAsBusiness) {
+      await env.DB.prepare(
+        'UPDATE users SET is_business = 1, is_instructor = 1 WHERE id = ?'
+      )
+        .bind(user.id)
+        .run();
+      user.is_business = true;
+      user.is_instructor = true;
+    }
+
     // Generate token
     const token = generateToken(user.id, env);
 
-    const metadata = JSON.parse(user.metadata || '{}');
     const categories = metadata.categories || [];
     const hasCompletedOnboarding = categories.length > 0;
+    const isBusiness = !!user.is_business;
 
     // Return format that matches frontend expectations
     return json({
       token,
       userId: user.id,
       isInstructor: user.is_instructor ? true : false,
+      isBusiness,
       hasCompletedOnboarding,
       categories,
     });
@@ -257,6 +274,7 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
       token,
       userId: user.id,
       isInstructor: user.is_instructor ? true : false,
+      isBusiness: !!user.is_business,
       hasCompletedOnboarding,
       categories,
     });

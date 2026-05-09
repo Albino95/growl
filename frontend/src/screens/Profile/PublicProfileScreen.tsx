@@ -1,11 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Modal, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
+  Modal,
+  Alert,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import tw from '../../lib/tw';
+import { addFriend, removeFriend, getFriendshipStatus } from '../../services/api/friends';
 
 type Post = {
   id: string;
@@ -86,6 +97,46 @@ async function fetchPublicProfile(userId: string): Promise<PublicUser> {
       categories: ['mindset', 'fitness'],
       postsCount: 9,
       storiesCount: 5,
+    },
+    '1': {
+      id: '1',
+      username: 'Sarah Johnson',
+      avatar: '👩',
+      points: 820,
+      isInstructor: true,
+      categories: ['fitness'],
+      postsCount: 48,
+      storiesCount: 14,
+    },
+    '2': {
+      id: '2',
+      username: 'Mike Chen',
+      avatar: '👨',
+      points: 640,
+      isInstructor: true,
+      categories: ['mindset'],
+      postsCount: 31,
+      storiesCount: 9,
+    },
+    '3': {
+      id: '3',
+      username: 'Emma Davis',
+      avatar: '👧',
+      points: 910,
+      isInstructor: true,
+      categories: ['mindset', 'fitness'],
+      postsCount: 55,
+      storiesCount: 18,
+    },
+    '4': {
+      id: '4',
+      username: 'Alex Thompson',
+      avatar: '🧑',
+      points: 1200,
+      isInstructor: true,
+      categories: ['fitness'],
+      postsCount: 72,
+      storiesCount: 22,
     },
   };
   
@@ -364,6 +415,23 @@ export default function PublicProfileScreen() {
               <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.points}</Text>
             </View>
           </View>
+
+          {!isOwnProfile && currentUser?.id ? (
+            <TouchableOpacity
+              onPress={() => void onToggleFriend()}
+              disabled={friendBusy}
+              style={tw`mb-4 py-3 rounded-xl items-center justify-center ${
+                friendConnected ? 'bg-stone-200' : 'bg-green-600'
+              } ${friendBusy ? 'opacity-60' : ''}`}
+            >
+              <Text style={tw`font-bold text-base ${friendConnected ? 'text-stone-800' : 'text-white'}`}>
+                {friendBusy ? 'Please wait…' : friendConnected ? 'Remove friend' : 'Add friend'}
+              </Text>
+              <Text style={tw`text-xs mt-1 ${friendConnected ? 'text-stone-600' : 'text-green-100'}`}>
+                Same growth-area cohorts are linked automatically when profiles sync to the server.
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Points Display */}
           <View style={tw`bg-green-500 rounded-xl p-4 shadow-lg`}>

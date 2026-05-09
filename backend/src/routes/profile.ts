@@ -2,6 +2,7 @@ import { Env } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
+import { syncCategoryCohortFriends } from './friends';
 
 /**
  * GET /api/v1/profile
@@ -65,6 +66,14 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
     await env.DB.prepare('UPDATE users SET metadata = ?, updated_at = datetime("now") WHERE id = ?')
       .bind(JSON.stringify(updatedMetadata), ctx.userId)
       .run();
+
+    if (categories && categories.length > 0) {
+      try {
+        await syncCategoryCohortFriends(env, ctx.userId);
+      } catch (syncErr) {
+        console.error('[updateProfile] Category cohort friend sync failed:', syncErr);
+      }
+    }
 
     return json({
       id: ctx.userId,

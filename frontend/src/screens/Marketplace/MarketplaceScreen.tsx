@@ -12,6 +12,7 @@ import { getProductImageUrl } from '../../utils/images';
 import EmptyState from '../../components/ui/EmptyState';
 import SearchField from '../../components/ui/SearchField';
 import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
+import CATEGORIES from '../../data/categories';
 
 // Marketplace recommendation algorithm
 // This algorithm considers:
@@ -80,21 +81,44 @@ export default function MarketplaceScreen() {
   const { products, selectedCategory, isLoading, error } = useAppSelector((state) => state.marketplace);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
 
   useEffect(() => {
-    dispatch(fetchProducts(selectedCategory || undefined));
-  }, [dispatch, selectedCategory]);
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const fetchParams = useMemo(
+    () => ({
+      category: selectedCategory ?? undefined,
+      subcategory: selectedSubcategory ?? undefined,
+      search: debouncedSearch || undefined,
+    }),
+    [selectedCategory, selectedSubcategory, debouncedSearch]
+  );
+
+  useEffect(() => {
+    dispatch(fetchProducts(fetchParams));
+  }, [dispatch, fetchParams]);
 
   const onRefresh = async () => {
     console.log('[Marketplace] Pull to refresh triggered');
     setRefreshing(true);
-    await dispatch(fetchProducts(selectedCategory || undefined));
+    await dispatch(fetchProducts(fetchParams));
     setRefreshing(false);
   };
 
   const handleCategoryChange = (category: string | null) => {
+    setSelectedSubcategory(null);
     dispatch(setSelectedCategory(category));
   };
+
+  const subcategoryOptions = useMemo(() => {
+    if (!selectedCategory) return [];
+    const cat = CATEGORIES.find((c) => c.key === selectedCategory);
+    return cat?.subcategories || [];
+  }, [selectedCategory]);
 
   const recommendedProducts = useMemo(() => {
     const userCategories = user?.categories || [];
@@ -108,15 +132,24 @@ export default function MarketplaceScreen() {
     }));
 
     // Filter by selected category if any (already filtered by API, but double-check)
-    const filtered = selectedCategory
+    let filtered = selectedCategory
       ? productsWithScores.filter(
           (p) => p.category === selectedCategory || p.category.includes(selectedCategory.split(':')[0])
         )
       : productsWithScores;
 
+    if (selectedSubcategory) {
+      filtered = filtered.filter(
+        (p) =>
+          (p.subcategory || '').toLowerCase() === selectedSubcategory.toLowerCase() ||
+          `${p.category}:${p.subcategory || ''}`.toLowerCase() ===
+            `${selectedCategory || ''}:${selectedSubcategory}`.toLowerCase()
+      );
+    }
+
     // Sort by relevance score
     return filtered.sort((a, b) => b.relevanceScore - a.relevanceScore);
-  }, [products, user?.categories, user?.points, selectedCategory]);
+  }, [products, user?.categories, user?.points, selectedCategory, selectedSubcategory]);
 
   const searchFiltered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -125,7 +158,8 @@ export default function MarketplaceScreen() {
       (p) =>
         p.name.toLowerCase().includes(q) ||
         (p.description && p.description.toLowerCase().includes(q)) ||
-        p.category.toLowerCase().includes(q)
+        p.category.toLowerCase().includes(q) ||
+        !!(p.subcategory && p.subcategory.toLowerCase().includes(q))
     );
   }, [recommendedProducts, searchQuery]);
 
@@ -158,7 +192,7 @@ export default function MarketplaceScreen() {
             </TouchableOpacity>
           </View>
           <Text style={tw`text-sm text-stone-500`}>
-            Personalized picks from your categories — search filters the list instantly.
+            Keyword search hits the catalog API; category pills filter locally and sync with your interests.
           </Text>
         </View>
 
@@ -203,6 +237,43 @@ export default function MarketplaceScreen() {
           </ScrollView>
         ) : null}
 
+        {selectedCategory && subcategoryOptions.length > 0 ? (
+          <ScrollView
+            horizontal
+            style={tw`border-b border-stone-100 bg-white`}
+            contentContainerStyle={tw`px-4 py-2`}
+            {...horizontalScrollProps}
+          >
+            <TouchableOpacity
+              onPress={() => setSelectedSubcategory(null)}
+              style={tw`px-3 py-1.5 rounded-full mr-2 ${selectedSubcategory === null ? 'bg-emerald-100' : 'bg-stone-100'}`}
+            >
+              <Text
+                style={tw`text-xs font-semibold ${selectedSubcategory === null ? 'text-emerald-800' : 'text-stone-600'}`}
+              >
+                All in category
+              </Text>
+            </TouchableOpacity>
+            {subcategoryOptions.map((sub) => (
+              <TouchableOpacity
+                key={sub.key}
+                onPress={() => setSelectedSubcategory(sub.key)}
+                style={tw`px-3 py-1.5 rounded-full mr-2 ${
+                  selectedSubcategory === sub.key ? 'bg-emerald-600' : 'bg-stone-100'
+                }`}
+              >
+                <Text
+                  style={tw`text-xs font-semibold ${
+                    selectedSubcategory === sub.key ? 'text-white' : 'text-stone-600'
+                  }`}
+                >
+                  {sub.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+
         {isLoading && products.length === 0 ? (
           <View style={tw`flex-1 items-center justify-center py-16`}>
             <ActivityIndicator size="large" color="#059669" />
@@ -226,7 +297,7 @@ export default function MarketplaceScreen() {
               <SearchField
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="Search name, description, category"
+                placeholder="Search products (server) — refines name & description here too"
               />
             }
             renderItem={({ item }) => {
@@ -284,7 +355,7 @@ export default function MarketplaceScreen() {
                   title="Couldn’t load products"
                   description={error}
                   actionLabel="Try again"
-                  onAction={() => dispatch(fetchProducts(selectedCategory || undefined))}
+                  onAction={() => dispatch(fetchProducts(fetchParams))}
                 />
               ) : searchQuery.trim() ? (
                 <EmptyState

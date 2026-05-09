@@ -6,6 +6,8 @@ export interface Env {
   ENVIRONMENT: string;
   JWT_SECRET: string;
   API_VERSION: string;
+  /** Comma-separated lowercased emails that get is_business (and instructor) synced on sign-in */
+  BUSINESS_BOOTSTRAP_EMAILS?: string;
 }
 
 // User types
@@ -24,6 +26,8 @@ export interface User {
 export interface UserMetadata {
   username?: string;
   avatar?: string;
+  /** When set to "business", user is treated as a business account on sign-in (DB flags synced). */
+  account_type?: string;
   categories?: string[];
   engagementHistory?: any[];
   instructorVotes?: any[];

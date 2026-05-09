@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
+import { resetNavigationToAuth } from '../../app/navigation/rootNavigation';
 
 export default function BizSettings() {
   const { user, signOut } = useAuth();
@@ -14,28 +14,25 @@ export default function BizSettings() {
   const [emailNotifications, setEmailNotifications] = React.useState(true);
   const [pushNotifications, setPushNotifications] = React.useState(true);
 
-  const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-            const rootNavigation = navigation.getParent() || navigation;
-            rootNavigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'Auth' as never }],
-              })
-            );
-          },
-        },
-      ]
-    );
+  const performSignOut = async () => {
+    await signOut();
+    resetNavigationToAuth(navigation);
+  };
+
+  const handleSignOut = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const ok = window.confirm('Are you sure you want to sign out?');
+      if (ok) void performSignOut();
+      return;
+    }
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: () => void performSignOut(),
+      },
+    ]);
   };
 
   return (
@@ -136,7 +133,10 @@ export default function BizSettings() {
         {/* Business Preferences */}
         <View style={tw`bg-white px-4 py-4 mb-3 border-b border-gray-200`}>
           <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Business Preferences</Text>
-          <TouchableOpacity style={tw`flex-row items-center justify-between py-3 border-b border-gray-100`}>
+          <TouchableOpacity
+            style={tw`flex-row items-center justify-between py-3 border-b border-gray-100`}
+            onPress={() => (navigation as any).navigate('Partnerships')}
+          >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="people-outline" size={20} color="#6B7280" />
               <Text style={tw`text-gray-900 ml-3`}>Partnership Settings</Text>

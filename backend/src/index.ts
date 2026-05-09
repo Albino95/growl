@@ -8,6 +8,7 @@ import * as instructorRoutes from './routes/instructor';
 import * as businessRoutes from './routes/business';
 import * as profileRoutes from './routes/profile';
 import * as storiesRoutes from './routes/stories';
+import * as friendsRoutes from './routes/friends';
 
 /**
  * Main request handler
@@ -50,6 +51,10 @@ export default {
             orders: `${apiPrefix}/marketplace/orders`,
           },
           profile: `${apiPrefix}/profile`,
+          social: {
+            friends: `${apiPrefix}/social/friends`,
+            friendshipStatus: `${apiPrefix}/social/friends/status/:userId`,
+          },
           stories: `${apiPrefix}/stories`,
         },
         documentation: 'See API documentation for full endpoint details',
@@ -242,6 +247,24 @@ export default {
       }
       if (path === `${apiPrefix}/stories` && request.method === 'POST') {
         return storiesRoutes.createStory(request, env);
+      }
+
+      // Friends / cohort social graph
+      const friendStatusMatch = path.match(new RegExp(`^${apiPrefix}/social/friends/status/([^/]+)$`));
+      if (friendStatusMatch && request.method === 'GET') {
+        return friendsRoutes.getFriendshipStatus(request, env, friendStatusMatch[1]);
+      }
+
+      const friendDeleteMatch = path.match(new RegExp(`^${apiPrefix}/social/friends/([^/]+)$`));
+      if (friendDeleteMatch && request.method === 'DELETE') {
+        return friendsRoutes.removeFriend(request, env, friendDeleteMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/social/friends` && request.method === 'GET') {
+        return friendsRoutes.listFriends(request, env);
+      }
+      if (path === `${apiPrefix}/social/friends` && request.method === 'POST') {
+        return friendsRoutes.addFriend(request, env);
       }
 
       // Profile routes

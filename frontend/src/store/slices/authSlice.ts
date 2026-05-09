@@ -8,6 +8,8 @@ export type User = {
   id: string;
   email?: string;
   isInstructor?: boolean;
+  /** Set from API on sign-in; used for business app shell routing */
+  isBusiness?: boolean;
   categories?: string[];
   hasCompletedOnboarding?: boolean;
   points?: number;
@@ -59,6 +61,7 @@ export const signIn = createAsyncThunk(
         token: string;
         userId: string;
         isInstructor: boolean;
+        isBusiness?: boolean;
         hasCompletedOnboarding: boolean;
         categories?: string[];
       }>('/auth/sign-in', {
@@ -69,6 +72,7 @@ export const signIn = createAsyncThunk(
         id: res.userId,
         email,
         isInstructor: res.isInstructor || false,
+        isBusiness: res.isBusiness === true,
         hasCompletedOnboarding: res.hasCompletedOnboarding || false,
         categories: res.categories || [],
       };
@@ -108,6 +112,7 @@ export const signIn = createAsyncThunk(
           id: userId,
           email,
           isInstructor: false,
+          isBusiness: false,
           hasCompletedOnboarding: true,
           categories: ['fitness', 'art'],
           points: 150,
@@ -119,6 +124,7 @@ export const signIn = createAsyncThunk(
           id: userId,
           email,
           isInstructor: true,
+          isBusiness: false,
           hasCompletedOnboarding: true,
           categories: ['fitness', 'mindset'],
           points: 750,
@@ -130,6 +136,7 @@ export const signIn = createAsyncThunk(
           id: userId,
           email,
           isInstructor: true, // Business users also have instructor access
+          isBusiness: true,
           hasCompletedOnboarding: true,
           categories: ['fitness', 'art', 'mindset'],
           points: 1000,
@@ -141,6 +148,7 @@ export const signIn = createAsyncThunk(
           id: userId,
           email,
           isInstructor: false,
+          isBusiness: false,
           hasCompletedOnboarding: false,
           categories: [],
           points: 0,
@@ -168,6 +176,7 @@ export const signInWithSSO = createAsyncThunk(
         token: string;
         userId: string;
         isInstructor: boolean;
+        isBusiness?: boolean;
         hasCompletedOnboarding: boolean;
         categories?: string[];
       }>('/auth/sso', {
@@ -177,6 +186,7 @@ export const signInWithSSO = createAsyncThunk(
       const user: User = {
         id: res.userId,
         isInstructor: res.isInstructor || false,
+        isBusiness: res.isBusiness === true,
         hasCompletedOnboarding: res.hasCompletedOnboarding || false,
         categories: res.categories || [],
       };
@@ -201,6 +211,7 @@ export const signInWithSSO = createAsyncThunk(
       const user: User = {
         id: 'dev',
         isInstructor: false,
+        isBusiness: false,
         hasCompletedOnboarding: false,
         categories: [],
         points: 0,

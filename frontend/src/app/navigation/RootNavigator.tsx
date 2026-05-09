@@ -17,6 +17,7 @@ import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import { useAppSelector } from '../../store/store';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
+import { shouldShowBusinessShell } from '../../constants/businessShell';
 
 type PostDetailParam = {
   id: string;
@@ -83,8 +84,7 @@ export default function RootNavigator() {
   // Check if user needs onboarding
   const needsOnboarding = token && user && !user.hasCompletedOnboarding;
   
-  // Business accounts go directly to Business screen
-  const isBusinessAccount = user?.email === 'business@growl.app';
+  const isBusinessAccount = shouldShowBusinessShell(user);
   const initialRouteName = !token 
     ? 'Auth' 
     : isBusinessAccount 
@@ -115,7 +115,6 @@ export default function RootNavigator() {
             }}
           />
           <Stack.Screen name="Reels" component={ReelsScreen} />
-          <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
           <Stack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
@@ -138,6 +137,7 @@ export default function RootNavigator() {
           />
         </>
       )}
+      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
       <Stack.Screen name="Business" component={BusinessRootStack} />
     </Stack.Navigator>
   );

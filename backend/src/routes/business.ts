@@ -118,7 +118,12 @@ export async function getBusinessProducts(request: Request, env: Env): Promise<R
       metadata: JSON.parse(product.metadata || '{}'),
     }));
 
-    return json(formattedProducts);
+    return json({
+      products: formattedProducts,
+      total: formattedProducts.length,
+      limit: formattedProducts.length,
+      offset: 0,
+    });
   } catch (err) {
     console.error('[getBusinessProducts] Error:', err);
     return error('DATABASE_ERROR', 'Failed to fetch products', 500);

@@ -172,6 +172,7 @@ describe('Auth Routes', () => {
       expect(data.data.token).toBeDefined();
       expect(data.data.userId).toBe('user-123');
       expect(data.data.isInstructor).toBe(false);
+      expect(data.data.isBusiness).toBe(false);
       expect(data.data.hasCompletedOnboarding).toBe(true);
       expect(data.data.categories).toEqual(['fitness']);
     });
@@ -206,6 +207,63 @@ describe('Auth Routes', () => {
       expect(response.status).toBe(401);
       expect(data.success).toBe(false);
       expect(data.error.code).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('should sync business privileges for bootstrap business email', async () => {
+      const passwordHash = 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f';
+      let updateRan = false;
+
+      mockDb.prepare = (query: string) => {
+        if (query.includes('SELECT * FROM users')) {
+          return {
+            bind: () => ({
+              first: async () => ({
+                id: 'biz-user-1',
+                email: 'business@growl.app',
+                password_hash: passwordHash,
+                points: 100,
+                is_instructor: false,
+                is_business: false,
+                metadata: JSON.stringify({
+                  username: 'bizdemo',
+                  categories: ['fitness'],
+                }),
+              }),
+            }),
+          };
+        }
+        if (query.includes('UPDATE users SET is_business')) {
+          updateRan = true;
+          return {
+            bind: () => ({
+              run: async () => ({ success: true }),
+            }),
+          };
+        }
+        return {
+          bind: () => ({
+            first: async () => null,
+            run: async () => ({ success: true }),
+          }),
+        };
+      };
+
+      const request = createMockRequest('https://example.com/api/v1/auth/sign-in', {
+        method: 'POST',
+        body: {
+          email: 'business@growl.app',
+          passwordHash,
+        },
+      });
+
+      const response = await authRoutes.signIn(request, env);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(updateRan).toBe(true);
+      expect(data.data.isBusiness).toBe(true);
+      expect(data.data.isInstructor).toBe(true);
     });
   });
 

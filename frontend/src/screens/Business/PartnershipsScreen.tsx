@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 
 type Instructor = {
   id: string;
@@ -70,10 +72,39 @@ const AVAILABLE_INSTRUCTORS: Instructor[] = [
   },
 ];
 
+function notify(title: string, message?: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(message ? `${title}\n${message}` : title);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
 export default function PartnershipsScreen() {
+  const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<'partners' | 'discover'>('partners');
   const [partners] = useState<Instructor[]>(MOCK_INSTRUCTORS);
   const [available] = useState<Instructor[]>(AVAILABLE_INSTRUCTORS);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+
+  const openInstructorProfile = (instructor: Instructor) => {
+    navigateFromRoot(navigation, 'PublicProfile', { userId: instructor.id });
+  };
+
+  const managePartner = (instructor: Instructor) => {
+    notify(
+      'Partnership',
+      `Open partnership tools for ${instructor.name}. Contract and payout flows can plug in here.`
+    );
+  };
+
+  const sendPartnershipRequest = (instructor: Instructor) => {
+    setPendingIds((prev) => new Set(prev).add(instructor.id));
+    notify(
+      'Request sent',
+      `We notified ${instructor.name} about your partnership proposal. They can accept from their instructor inbox.`
+    );
+  };
 
   const totalPartners = partners.length;
   const activePartners = partners.filter(p => p.status === 'active').length;
@@ -216,10 +247,16 @@ export default function PartnershipsScreen() {
               </View>
 
               <View style={tw`flex-row gap-2 mt-3`}>
-                <TouchableOpacity style={tw`flex-1 bg-blue-600 rounded-lg py-2`}>
+                <TouchableOpacity
+                  style={tw`flex-1 bg-blue-600 rounded-lg py-2`}
+                  onPress={() => managePartner(instructor)}
+                >
                   <Text style={tw`text-white text-center font-semibold text-sm`}>Manage</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={tw`flex-1 bg-gray-200 rounded-lg py-2`}>
+                <TouchableOpacity
+                  style={tw`flex-1 bg-gray-200 rounded-lg py-2`}
+                  onPress={() => openInstructorProfile(instructor)}
+                >
                   <Text style={tw`text-gray-700 text-center font-semibold text-sm`}>View Profile</Text>
                 </TouchableOpacity>
               </View>
@@ -277,8 +314,17 @@ export default function PartnershipsScreen() {
                     </View>
                   )}
                 </View>
-                <TouchableOpacity style={tw`bg-green-600 rounded-lg py-3`}>
-                  <Text style={tw`text-white text-center font-bold`}>Send Partnership Request</Text>
+                <TouchableOpacity
+                  style={[
+                    tw`rounded-lg py-3`,
+                    pendingIds.has(instructor.id) ? tw`bg-gray-400` : tw`bg-green-600`,
+                  ]}
+                  disabled={pendingIds.has(instructor.id)}
+                  onPress={() => sendPartnershipRequest(instructor)}
+                >
+                  <Text style={tw`text-white text-center font-bold`}>
+                    {pendingIds.has(instructor.id) ? 'Request sent' : 'Send Partnership Request'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

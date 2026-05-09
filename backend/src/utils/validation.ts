@@ -39,6 +39,29 @@ export const createPostSchema = z.object({
   metadata: z.record(z.any()).optional(),
 });
 
+/** Accept only http(s) URLs; strip local picker URIs (file://, ph://, content://) before validate. */
+const productRemoteImageUrl = z.preprocess(
+  (val) => {
+    if (val === undefined || val === null) return undefined;
+    const s = String(val).trim();
+    if (!s) return undefined;
+    if (/^https?:\/\//i.test(s)) return s;
+    return undefined;
+  },
+  z.string().url().optional()
+);
+
+const productRemoteImageUrls = z.preprocess(
+  (val) => {
+    if (!Array.isArray(val)) return undefined;
+    const filtered = val
+      .map((x) => String(x).trim())
+      .filter((s) => /^https?:\/\//i.test(s));
+    return filtered.length ? filtered : undefined;
+  },
+  z.array(z.string().url()).optional()
+);
+
 export const createProductSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   description: z.string().optional(),
@@ -46,8 +69,8 @@ export const createProductSchema = z.object({
   subcategory: z.string().optional(),
   price: z.number().positive('Price must be positive'),
   stock: z.number().int().min(0, 'Stock cannot be negative'),
-  image_url: z.string().url().optional(),
-  images: z.array(z.string().url()).optional(),
+  image_url: productRemoteImageUrl,
+  images: productRemoteImageUrls,
   metadata: z.record(z.any()).optional(),
 });
 
