@@ -44,3 +44,11 @@ export async function toggleFeedPostLike(postId: string): Promise<{ success: boo
     method: 'POST',
   });
 }
+
+export async function getUserPosts(userId: string): Promise<FeedPost[]> {
+  const res = await request<{ success: boolean; data: FeedPost[] }>(
+    `/feed/posts/user/${encodeURIComponent(userId)}`
+  );
+  if (!res.success || !Array.isArray(res.data)) return [];
+  return res.data;
+}

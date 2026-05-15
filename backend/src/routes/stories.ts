@@ -96,18 +96,26 @@ export async function getUserStories(
   userId: string
 ): Promise<Response> {
   const ctx = await getRequestContext(request, env);
-  
+
   try {
+    const viewerId = ctx.userId || '';
+    const viewingSelf = !!ctx.userId && ctx.userId === userId;
+
+    const timeClause = viewingSelf
+      ? `s.user_id = ? AND s.created_at > datetime('now', '-90 days')`
+      : `s.user_id = ? AND s.created_at > datetime('now', '-24 hours')`;
+
     const stories = await env.DB.prepare(
       `SELECT 
         s.*,
-        CASE WHEN sv.user_id IS NOT NULL THEN 1 ELSE 0 END as has_viewed
+        CASE WHEN sv.user_id IS NOT NULL THEN 1 ELSE 0 END as has_viewed,
+        (SELECT COUNT(*) FROM story_views sv2 WHERE sv2.story_id = s.id) as view_count
       FROM stories s
       LEFT JOIN story_views sv ON s.id = sv.story_id AND sv.user_id = ?
-      WHERE s.user_id = ? AND s.created_at > datetime('now', '-24 hours')
-      ORDER BY s.created_at ASC`
+      WHERE ${timeClause}
+      ORDER BY s.created_at DESC`
     )
-      .bind(ctx.userId || '', userId)
+      .bind(viewerId, userId)
       .all<{
         id: string;
         user_id: string;
@@ -116,6 +124,7 @@ export async function getUserStories(
         views: number;
         created_at: string;
         has_viewed: number;
+        view_count: number;
       }>();
 
     const user = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
@@ -132,7 +141,7 @@ export async function getUserStories(
         avatar: userMeta.avatar || null,
         image: story.image_url,
         caption: story.caption,
-        views: story.views,
+        views: typeof story.view_count === 'number' ? story.view_count : story.views,
         hasViewed: story.has_viewed === 1,
         createdAt: story.created_at,
       })),

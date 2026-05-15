@@ -4,6 +4,18 @@
 
 import { request } from './http';
 
+export type FriendSummary = { id: string; username: string; avatar?: string };
+
+export async function listFriends(): Promise<FriendSummary[]> {
+  try {
+    const res = await request<{ success: boolean; data: { friends: FriendSummary[] } }>('/social/friends');
+    if (!res.success || !res.data?.friends) return [];
+    return res.data.friends;
+  } catch {
+    return [];
+  }
+}
+
 export async function addFriend(targetUserId: string): Promise<void> {
   await request('/social/friends', {
     method: 'POST',

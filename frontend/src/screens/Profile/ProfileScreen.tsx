@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, FlatList, Modal, TextInput, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
-import { getAvatarUrl, getCategoryImageUrl } from '../../utils/images';
+import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
+import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { getUserStories, type StoryItem } from '../../services/api/stories';
+import { listFriends, type FriendSummary } from '../../services/api/friends';
+import { shouldShowBusinessShell } from '../../constants/businessShell';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 
 type Award = {
   id: string;
@@ -70,59 +75,84 @@ const AWARDS: Award[] = [
   },
 ];
 
-const MOCK_POSTS: Post[] = [
-  {
-    id: '1',
-    image: getCategoryImageUrl('fitness'),
-    caption: 'Day 15 of my fitness journey!',
-    likes: 42,
-    comments: 8,
-    createdAt: '2024-01-10',
-    daysUntilDecay: 5,
-    category: 'fitness',
-  },
-  {
-    id: '2',
-    image: getCategoryImageUrl('art', 'piano'),
-    caption: 'Practiced piano for 2 hours today',
-    likes: 28,
-    comments: 5,
-    createdAt: '2024-01-12',
-    daysUntilDecay: 3,
-    category: 'art',
-  },
-  {
-    id: '3',
-    image: getCategoryImageUrl('mindset', 'meditation'),
-    caption: 'Morning meditation session',
-    likes: 35,
-    comments: 12,
-    createdAt: '2024-01-14',
-    daysUntilDecay: 1,
-    category: 'mindset',
-  },
-];
+function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
+  const created = new Date(createdAtIso).getTime();
+  if (Number.isNaN(created)) return decayDays;
+  const end = created + decayDays * 86400000;
+  return Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+}
 
-const MOCK_STORIES: Story[] = [
-  { id: '1', image: '🌱', createdAt: '2024-01-15', views: 120 },
-  { id: '2', image: '🏃', createdAt: '2024-01-14', views: 89 },
-  { id: '3', image: '📚', createdAt: '2024-01-13', views: 156 },
-];
+function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
+  const img = p.image_url || getPostImageUrl(p.category, p.id);
+  const likes = p.metadata?.likes ?? 0;
+  const comments = p.metadata?.comments ?? 0;
+  return {
+    id: p.id,
+    image: img,
+    caption: p.caption || '',
+    likes,
+    comments,
+    createdAt: p.created_at,
+    daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
+    category: p.category,
+  };
+}
+
+function mapStoryToProfileStory(s: StoryItem): Story {
+  return {
+    id: s.id,
+    image: s.image,
+    createdAt: s.createdAt,
+    views: s.views ?? 0,
+  };
+}
 
 export default function ProfileScreen({ navigation: navProp }: any) {
   const { user, signOut, updateUser } = useAuth();
   const navigation = navProp || useNavigation();
   const points = user?.points || 0;
   const isInstructor = user?.isInstructor || false;
-  const isBusinessAccount = user?.email === 'business@growl.app';
-  
+  const isBusinessAccount = shouldShowBusinessShell(user);
+
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'shared'>('posts');
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
-  const [posts] = useState<Post[]>(MOCK_POSTS);
-  const [stories] = useState<Story[]>(MOCK_STORIES);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [friends, setFriends] = useState<FriendSummary[]>([]);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  const loadProfileContent = useCallback(async () => {
+    if (!user?.id) return;
+    setProfileLoading(true);
+    try {
+      const [postList, storyList, friendList] = await Promise.all([
+        getUserPosts(user.id),
+        getUserStories(user.id),
+        listFriends(),
+      ]);
+      const decay = user.decayTimer || 7;
+      setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
+      setStories(storyList.map(mapStoryToProfileStory));
+      setFriends(friendList);
+    } catch (e) {
+      console.warn('[ProfileScreen] load profile content', e);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [user?.id, user?.decayTimer]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfileContent();
+    }, [loadProfileContent])
+  );
+
+  useEffect(() => {
+    setDecayDays(user?.decayTimer || 7);
+  }, [user?.decayTimer]);
 
   // If business account, don't show profile - they should only see business screens
   if (isBusinessAccount) {
@@ -236,6 +266,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     updateUser({ decayTimer: decayDays });
     setShowDecaySettings(false);
     Alert.alert('Success', `Decay timer set to ${decayDays} days`);
+    void loadProfileContent();
   };
 
   const handleUpdateCategories = (selectedCategories: string[]) => {
@@ -348,6 +379,48 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </View>
           ) : (
             <Text style={tw`text-gray-500 text-sm`}>No categories selected</Text>
+          )}
+        </View>
+
+        {/* Friends */}
+        <View style={tw`px-4 py-4 border-b border-gray-200`}>
+          <View style={tw`flex-row items-center justify-between mb-2`}>
+            <Text style={tw`text-lg font-semibold text-gray-900`}>Friends</Text>
+            {profileLoading ? (
+              <Text style={tw`text-xs text-gray-400`}>Updating…</Text>
+            ) : (
+              <Text style={tw`text-xs text-gray-500`}>{friends.length} connected</Text>
+            )}
+          </View>
+          {friends.length === 0 ? (
+            <Text style={tw`text-sm text-gray-500`}>
+              No friends yet. People in your same growth-area cohorts connect automatically when your categories are saved to the server; you can also add friends from their profile.
+            </Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={tw`flex-row gap-3`}>
+                {friends.map((f) => (
+                  <TouchableOpacity
+                    key={f.id}
+                    onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: f.id })}
+                    style={tw`items-center w-16`}
+                  >
+                    <View style={tw`w-14 h-14 rounded-full bg-green-100 items-center justify-center border-2 border-green-200`}>
+                      {f.avatar && (f.avatar.startsWith('http') || f.avatar.startsWith('https')) ? (
+                        <Image source={{ uri: f.avatar }} style={tw`w-full h-full rounded-full`} contentFit="cover" />
+                      ) : (
+                        <Text style={tw`text-xl font-bold text-green-800`}>
+                          {(f.username || '?').charAt(0).toUpperCase()}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={tw`text-xs text-gray-700 mt-1 text-center`} numberOfLines={1}>
+                      {f.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
           )}
         </View>
 
@@ -471,23 +544,33 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
         {activeTab === 'stories' && (
           <View style={tw`p-4`}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={tw`flex-row gap-3`}>
-                {stories.map((story) => (
-                  <View key={story.id} style={tw`items-center`}>
-                    <View style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500`}>
-                      <Text style={tw`text-4xl`}>{story.image}</Text>
+            {stories.length === 0 ? (
+              <Text style={tw`text-gray-500 text-center py-8`}>
+                No stories in the last 90 days, or you have not posted a story yet. Create one from the feed story flow when available.
+              </Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={tw`flex-row gap-3`}>
+                  {stories.map((story) => (
+                    <View key={story.id} style={tw`items-center`}>
+                      <View
+                        style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
+                      >
+                        {story.image.startsWith('http') || story.image.startsWith('https') ? (
+                          <Image source={{ uri: story.image }} style={tw`w-full h-full`} contentFit="cover" />
+                        ) : (
+                          <Text style={tw`text-4xl`}>{story.image}</Text>
+                        )}
+                      </View>
+                      <Text style={tw`text-xs text-gray-500`}>{story.views} views</Text>
+                      <Text style={tw`text-xs text-gray-400 mt-1`}>
+                        {new Date(story.createdAt).toLocaleDateString()}
+                      </Text>
                     </View>
-                    <Text style={tw`text-xs text-gray-500`}>
-                      {story.views} views
-                    </Text>
-                    <Text style={tw`text-xs text-gray-400 mt-1`}>
-                      {new Date(story.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
           </View>
         )}
 

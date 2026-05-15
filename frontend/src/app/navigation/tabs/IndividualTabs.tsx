@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import FeedScreen from '../../../screens/Feed/FeedScreen';
+import ExploreScreen from '../../../screens/Explore/ExploreScreen';
 import JournalScreen from '../../../screens/Journal/JournalScreen';
 import ProfileScreen from '../../../screens/Profile/ProfileScreen';
 import InstructorScreen from '../../../screens/Instructor/InstructorScreen';
@@ -13,6 +14,7 @@ import tw from '../../../lib/tw';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
+  Explore: undefined;
   Journal: undefined;
   Marketplace: undefined;
   Profile: undefined;
@@ -53,6 +55,8 @@ export default function IndividualTabs() {
 
           if (route.name === 'Feed') {
             iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Explore') {
+            iconName = focused ? 'compass' : 'compass-outline';
           } else if (route.name === 'Journal') {
             iconName = focused ? 'book' : 'book-outline';
           } else if (route.name === 'Marketplace') {
@@ -78,72 +82,81 @@ export default function IndividualTabs() {
       })}
       tabBar={(props) => {
         const routes = props.state.routes;
-        const currentIndex = props.state.index;
-        
+        const currentRoute = routes[props.state.index]?.name;
+
         return (
           <View style={tw`bg-stone-50 border-t border-stone-200 relative`}>
-            <View style={tw`flex-row items-center justify-around px-2 py-2 pb-1`}>
-              {/* Feed */}
+            <View style={tw`flex-row items-center justify-around px-1 py-2 pb-1`}>
               <TouchableOpacity
                 onPress={() => props.navigation.navigate('Feed')}
                 style={tw`items-center flex-1`}
               >
                 <Ionicons
-                  name={currentIndex === 0 ? 'home' : 'home-outline'}
-                  size={24}
-                  color={currentIndex === 0 ? '#059669' : '#A8A29E'}
+                  name={currentRoute === 'Feed' ? 'home' : 'home-outline'}
+                  size={22}
+                  color={currentRoute === 'Feed' ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 0 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentRoute === 'Feed' ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Feed
                 </Text>
               </TouchableOpacity>
 
-              {/* Journal */}
+              <TouchableOpacity
+                onPress={() => props.navigation.navigate('Explore')}
+                style={tw`items-center flex-1`}
+              >
+                <Ionicons
+                  name={currentRoute === 'Explore' ? 'compass' : 'compass-outline'}
+                  size={22}
+                  color={currentRoute === 'Explore' ? '#7C3AED' : '#A8A29E'}
+                />
+                <Text style={tw`text-xs mt-1 ${currentRoute === 'Explore' ? 'text-violet-700 font-medium' : 'text-stone-500'}`}>
+                  Explore
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={() => props.navigation.navigate('Journal')}
                 style={tw`items-center flex-1`}
               >
                 <Ionicons
-                  name={currentIndex === 1 ? 'book' : 'book-outline'}
-                  size={24}
-                  color={currentIndex === 1 ? '#059669' : '#A8A29E'}
+                  name={currentRoute === 'Journal' ? 'book' : 'book-outline'}
+                  size={22}
+                  color={currentRoute === 'Journal' ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 1 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentRoute === 'Journal' ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Journal
                 </Text>
               </TouchableOpacity>
 
-              {/* Create Post Button - Centered */}
-              <View style={tw`w-20 items-center`}>
+              <View style={tw`w-16 items-center`}>
                 <CreatePostButton onPress={handleCreatePost} />
               </View>
 
-              {/* Marketplace */}
               <TouchableOpacity
                 onPress={() => props.navigation.navigate('Marketplace')}
                 style={tw`items-center flex-1`}
               >
                 <Ionicons
-                  name={currentIndex === 2 ? 'storefront' : 'storefront-outline'}
-                  size={24}
-                  color={currentIndex === 2 ? '#059669' : '#A8A29E'}
+                  name={currentRoute === 'Marketplace' ? 'storefront' : 'storefront-outline'}
+                  size={22}
+                  color={currentRoute === 'Marketplace' ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 2 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentRoute === 'Marketplace' ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Shop
                 </Text>
               </TouchableOpacity>
 
-              {/* Profile */}
               <TouchableOpacity
                 onPress={() => props.navigation.navigate('Profile')}
                 style={tw`items-center flex-1`}
               >
                 <Ionicons
-                  name={currentIndex === 3 ? 'person' : 'person-outline'}
-                  size={24}
-                  color={currentIndex === 3 ? '#059669' : '#A8A29E'}
+                  name={currentRoute === 'Profile' ? 'person' : 'person-outline'}
+                  size={22}
+                  color={currentRoute === 'Profile' ? '#059669' : '#A8A29E'}
                 />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 3 ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
+                <Text style={tw`text-xs mt-1 ${currentRoute === 'Profile' ? 'text-emerald-700 font-medium' : 'text-stone-500'}`}>
                   Profile
                 </Text>
               </TouchableOpacity>
@@ -155,6 +168,11 @@ export default function IndividualTabs() {
       <Tab.Screen 
         name="Feed" 
         component={FeedScreen}
+        options={{ tabBarButton: () => null }}
+      />
+      <Tab.Screen 
+        name="Explore" 
+        component={ExploreScreen}
         options={{ tabBarButton: () => null }}
       />
       <Tab.Screen 
