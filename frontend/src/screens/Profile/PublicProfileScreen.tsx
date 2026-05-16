@@ -11,12 +11,17 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import tw from '../../lib/tw';
 import { addFriend, removeFriend, getFriendshipStatus } from '../../services/api/friends';
+import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { getUserStories, type StoryItem } from '../../services/api/stories';
+import { getPostImageUrl, resolveAvatarUri, resolveStoryDisplayUri } from '../../utils/images';
+import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 
 type Post = {
   id: string;
@@ -44,16 +49,7 @@ type JournalEntry = {
   tags?: string[];
 };
 
-type PublicUser = {
-  id: string;
-  username: string;
-  avatar: string;
-  points: number;
-  isInstructor: boolean;
-  categories: string[];
-  postsCount: number;
-  storiesCount: number;
-};
+type PublicUser = PublicProfileSummary;
 
 type RouteParams = {
   PublicProfile: {
@@ -61,165 +57,35 @@ type RouteParams = {
   };
 };
 
-// Mock function - in real app, this would fetch from API
-async function fetchPublicProfile(userId: string): Promise<PublicUser> {
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Mock data based on userId
-  const mockUsers: Record<string, PublicUser> = {
-    'u1': {
-      id: 'u1',
-      username: 'John',
-      avatar: '👤',
-      points: 250,
-      isInstructor: false,
-      categories: ['fitness', 'mindset'],
-      postsCount: 15,
-      storiesCount: 8,
-    },
-    'u2': {
-      id: 'u2',
-      username: 'Sarah',
-      avatar: '👩',
-      points: 450,
-      isInstructor: true,
-      categories: ['art', 'music'],
-      postsCount: 32,
-      storiesCount: 12,
-    },
-    'u3': {
-      id: 'u3',
-      username: 'Mike',
-      avatar: '👨',
-      points: 180,
-      isInstructor: false,
-      categories: ['mindset', 'fitness'],
-      postsCount: 9,
-      storiesCount: 5,
-    },
-    '1': {
-      id: '1',
-      username: 'Sarah Johnson',
-      avatar: '👩',
-      points: 820,
-      isInstructor: true,
-      categories: ['fitness'],
-      postsCount: 48,
-      storiesCount: 14,
-    },
-    '2': {
-      id: '2',
-      username: 'Mike Chen',
-      avatar: '👨',
-      points: 640,
-      isInstructor: true,
-      categories: ['mindset'],
-      postsCount: 31,
-      storiesCount: 9,
-    },
-    '3': {
-      id: '3',
-      username: 'Emma Davis',
-      avatar: '👧',
-      points: 910,
-      isInstructor: true,
-      categories: ['mindset', 'fitness'],
-      postsCount: 55,
-      storiesCount: 18,
-    },
-    '4': {
-      id: '4',
-      username: 'Alex Thompson',
-      avatar: '🧑',
-      points: 1200,
-      isInstructor: true,
-      categories: ['fitness'],
-      postsCount: 72,
-      storiesCount: 22,
-    },
-  };
-  
-  return mockUsers[userId] || {
-    id: userId,
-    username: 'User',
-    avatar: '👤',
-    points: 0,
-    isInstructor: false,
-    categories: [],
-    postsCount: 0,
-    storiesCount: 0,
+function mapFeedPostToPublicPost(p: FeedPost): Post {
+  return {
+    id: p.id,
+    image: p.image_url || getPostImageUrl(p.category, p.id),
+    caption: p.caption || '',
+    likes: p.metadata?.likes ?? 0,
+    comments: p.metadata?.comments ?? 0,
+    createdAt: p.created_at,
+    category: p.category,
   };
 }
 
-// Mock function to fetch user posts
+function mapStoryItemToStory(s: StoryItem): Story {
+  return {
+    id: s.id,
+    image: s.image,
+    createdAt: s.createdAt,
+    views: s.views ?? 0,
+  };
+}
+
 async function fetchUserPosts(userId: string): Promise<Post[]> {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const mockPosts: Record<string, Post[]> = {
-    'u1': [
-      {
-        id: '1',
-        image: '🏋️',
-        caption: 'Day 15 of my fitness journey!',
-        likes: 42,
-        comments: 8,
-        createdAt: '2024-01-10',
-        category: 'fitness',
-      },
-      {
-        id: '2',
-        image: '💪',
-        caption: 'Feeling stronger every day',
-        likes: 28,
-        comments: 5,
-        createdAt: '2024-01-12',
-        category: 'fitness',
-      },
-    ],
-    'u2': [
-      {
-        id: '3',
-        image: '🎹',
-        caption: 'Practiced piano for 2 hours today',
-        likes: 35,
-        comments: 12,
-        createdAt: '2024-01-14',
-        category: 'art',
-      },
-    ],
-    'u3': [
-      {
-        id: '4',
-        image: '🧘',
-        caption: 'Morning meditation session',
-        likes: 25,
-        comments: 6,
-        createdAt: '2024-01-15',
-        category: 'mindset',
-      },
-    ],
-  };
-  
-  return mockPosts[userId] || [];
+  const list = await getUserPosts(userId);
+  return list.map(mapFeedPostToPublicPost);
 }
 
-// Mock function to fetch user stories
 async function fetchUserStories(userId: string): Promise<Story[]> {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const mockStories: Record<string, Story[]> = {
-    'u1': [
-      { id: '1', image: '🌱', createdAt: '2024-01-15', views: 120 },
-      { id: '2', image: '🏃', createdAt: '2024-01-14', views: 89 },
-    ],
-    'u2': [
-      { id: '3', image: '📚', createdAt: '2024-01-13', views: 156 },
-    ],
-    'u3': [],
-  };
-  
-  return mockStories[userId] || [];
+  const list = await getUserStories(userId);
+  return list.map(mapStoryItemToStory);
 }
 
 // Mock function to fetch public journal entries
@@ -300,10 +166,11 @@ export default function PublicProfileScreen() {
   const loadProfile = async () => {
     try {
       setLoading(true);
-      const userData = await fetchPublicProfile(userId);
+      const userData = await getPublicProfile(userId);
       setProfileUser(userData);
     } catch (error) {
       console.error('Error loading profile:', error);
+      setProfileUser(null);
     } finally {
       setLoading(false);
     }
@@ -384,8 +251,12 @@ export default function PublicProfileScreen() {
         {/* Profile Header */}
         <View style={tw`px-4 pt-6 pb-6 border-b border-gray-200`}>
           <View style={tw`flex-row items-center mb-4`}>
-            <View style={tw`w-20 h-20 rounded-full bg-green-100 items-center justify-center mr-4`}>
-              <Text style={tw`text-4xl`}>{profileUser.avatar}</Text>
+            <View style={tw`w-20 h-20 rounded-full overflow-hidden mr-4 bg-green-100`}>
+              <Image
+                source={{ uri: resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar) }}
+                style={tw`w-full h-full`}
+                contentFit="cover"
+              />
             </View>
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-gray-900`}>
@@ -547,8 +418,12 @@ export default function PublicProfileScreen() {
                 >
                   <View style={tw`flex-row items-center justify-between mb-3`}>
                     <View style={tw`flex-row items-center`}>
-                      <View style={tw`w-16 h-16 bg-gray-100 rounded-xl items-center justify-center mr-3`}>
-                        <Text style={tw`text-3xl`}>{post.image}</Text>
+                      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-gray-100`}>
+                        <Image
+                          source={{ uri: post.image }}
+                          style={tw`w-full h-full`}
+                          contentFit="cover"
+                        />
                       </View>
                       <View style={tw`flex-1`}>
                         <Text style={tw`font-semibold text-gray-900`} numberOfLines={2}>
@@ -588,8 +463,12 @@ export default function PublicProfileScreen() {
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
                     <View key={story.id} style={tw`items-center`}>
-                      <View style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500`}>
-                        <Text style={tw`text-4xl`}>{story.image}</Text>
+                      <View style={tw`w-20 h-20 rounded-xl overflow-hidden mb-2 border-2 border-purple-500 bg-gray-100`}>
+                        <Image
+                          source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
+                          style={tw`w-full h-full`}
+                          contentFit="cover"
+                        />
                       </View>
                       <Text style={tw`text-xs text-gray-500`}>
                         {story.views} views

@@ -38,7 +38,7 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 | **Add / remove friend** | From another user’s public profile: **Add friend** creates reciprocal edges via `POST /social/friends`; remove uses `DELETE /social/friends/:targetUserId`. |
 | Friendship status | `GET /social/friends/status/:userId` powers button state. |
 | Friend list API | `GET /social/friends` returns friends with basic username/avatar from metadata (UI list can be wired later). |
-| Public profile | Tabs for posts / stories / journal (mix of API + mock seed data by `userId`). |
+| Public profile | Header + counts from **`GET /profile/user/:userId`** (auth required); posts and stories from feed/stories APIs; journal tab still mock. |
 | User relationships (existing types) | **follow**, **block**, **mute** remain in schema; **friend** + **friend_request** reserved for migrations / future flows. |
 
 ---
@@ -91,10 +91,16 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 
 ---
 
+## Demo data (real image URLs)
+
+Apply **`backend/scripts/seed-demo-social.sql`** to D1 (see file header for `wrangler d1 execute`). It inserts five users (`demo-*@growl.seed`), ten posts, six stories (HTTPS images), sample likes/comments, and demo friend edges. Password for all demo seeds: **`growlseed123`** (SHA-256 matches email sign-in flow).
+
+---
+
 ## API surface (representative)
 
 - **Auth:** `/auth/sign-up`, `/sign-in`, `/sign-out`, `/sso`
-- **Profile:** `GET/PUT /profile` (categories trigger cohort sync)
+- **Profile:** `GET/PUT /profile` (categories trigger cohort sync); **`GET /profile/user/:userId`** for another user’s public summary (no email)
 - **Social:** `GET /social/friends`, `POST /social/friends`, `GET /social/friends/status/:id`, `DELETE /social/friends/:id`
 - **Marketplace:** products CRUD, orders, filters `category`, `subcategory`, `search`
 - **Feed / stories / instructor / business:** as registered in `backend/src/index.ts`

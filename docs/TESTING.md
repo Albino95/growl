@@ -111,7 +111,10 @@ If local schema looks stale, see `NEXT_STEPS.md` for `npm run db:reset:local`.
 cd frontend
 npm run typecheck
 npm run lint
+npm test
 ```
+
+`npm test` runs **Vitest** on pure utilities (e.g. `src/utils/exploreAlgorithm.test.ts` — Explore ranking). It does not load the React Native runtime.
 
 There is no dedicated E2E suite in-repo yet; rely on the backend integration script plus manual flows below.
 

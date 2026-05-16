@@ -7,7 +7,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
-import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl } from '../../utils/images';
+import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri } from '../../utils/images';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, type StoryItem } from '../../services/api/stories';
@@ -556,11 +556,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       <View
                         style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
                       >
-                        {story.image.startsWith('http') || story.image.startsWith('https') ? (
-                          <Image source={{ uri: story.image }} style={tw`w-full h-full`} contentFit="cover" />
-                        ) : (
-                          <Text style={tw`text-4xl`}>{story.image}</Text>
-                        )}
+                        <Image
+                          source={{ uri: resolveStoryDisplayUri(story.image, user?.id || 'me', story.id) }}
+                          style={tw`w-full h-full`}
+                          contentFit="cover"
+                        />
                       </View>
                       <Text style={tw`text-xs text-gray-500`}>{story.views} views</Text>
                       <Text style={tw`text-xs text-gray-400 mt-1`}>

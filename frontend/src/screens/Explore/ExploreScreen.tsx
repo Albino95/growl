@@ -1,14 +1,6 @@
 /**
  * Explore — discovery surface (separate from home feed).
- *
- * ## Algorithm brainstorm (v1 shipped here)
- * - **Signals:** category overlap with the viewer’s onboarding paths; recency (half-life decay);
- *   light engagement weight (likes + comments on posts); products get a smaller base weight plus category match.
- * - **Blend:** merge recent feed posts + marketplace SKUs into one ranked list so commerce and social both surface.
- * - **Diversity (future):** MMR or per-author caps so one creator does not dominate; session-level de-duplication.
- * - **Cold start:** if the user has no categories, fall back to pure recency + small deterministic jitter (stable shuffle).
- * - **Next iterations:** explicit “trending” table; negative signals (hide/skip); friend-boost; geo or locale;
- *   instructor-only rails; A/B on weights via remote config.
+ * Ranking logic lives in `utils/exploreAlgorithm.ts` (unit-tested). Human-readable notes: `docs/EXPLORE_ALGORITHM.md`.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -27,78 +19,12 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
 import { getProducts, type Product } from '../../services/api/marketplace';
-import { getAvatarUrl, getPostImageUrl } from '../../utils/images';
+import { resolveAvatarUri, getPostImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 import { feedListPerformanceProps } from '../../constants/scroll';
+import { rankExploreRows, type ExploreRankedRow } from '../../utils/exploreAlgorithm';
 
-type ExploreRow =
-  | { kind: 'post'; post: FeedPost; score: number }
-  | { kind: 'product'; product: Product; score: number };
-
-function expandUserCategoryKeys(paths: string[]): Set<string> {
-  const s = new Set<string>();
-  for (const p of paths || []) {
-    const x = String(p).trim().toLowerCase();
-    if (!x) continue;
-    s.add(x);
-    const i = x.indexOf(':');
-    if (i > 0) s.add(x.slice(0, i));
-  }
-  return s;
-}
-
-function categoryScore(userKeys: Set<string>, category: string, sub?: string | null): number {
-  const c = category.toLowerCase();
-  const subKey = sub ? `${c}:${String(sub).toLowerCase()}` : '';
-  let score = 0;
-  if (userKeys.has(c)) score += 35;
-  if (subKey && userKeys.has(subKey)) score += 55;
-  for (const k of userKeys) {
-    if (k.includes(':')) continue;
-    if (c.startsWith(k) || k.startsWith(c)) score += 12;
-  }
-  return score;
-}
-
-function recencyScore(iso: string): number {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return 0;
-  const hours = (Date.now() - t) / (1000 * 60 * 60);
-  return Math.max(0, 48 - hours);
-}
-
-function jitter(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 997;
-  return (h % 100) / 100;
-}
-
-function rankExploreRows(posts: FeedPost[], products: Product[], userPaths: string[]): ExploreRow[] {
-  const keys = expandUserCategoryKeys(userPaths);
-  const rows: ExploreRow[] = [];
-
-  for (const p of posts) {
-    const likes = p.metadata?.likes ?? 0;
-    const comments = p.metadata?.comments ?? 0;
-    const score =
-      categoryScore(keys, p.category, p.subcategory) +
-      recencyScore(p.created_at) * 0.6 +
-      Math.min(40, (likes + comments) * 1.2) +
-      jitter(p.id) * 8;
-    rows.push({ kind: 'post', post: p, score });
-  }
-
-  for (const pr of products) {
-    const score =
-      categoryScore(keys, pr.category, pr.subcategory) * 0.85 +
-      recencyScore(pr.created_at) * 0.35 +
-      Math.min(15, (pr.stock > 0 ? 8 : 0)) +
-      jitter(pr.id) * 6;
-    rows.push({ kind: 'product', product: pr, score });
-  }
-
-  return rows.sort((a, b) => b.score - a.score);
-}
+type ExploreRow = ExploreRankedRow<FeedPost, Product>;
 
 export default function ExploreScreen() {
   const navigation = useNavigation();
@@ -151,7 +77,7 @@ export default function ExploreScreen() {
     if (item.kind === 'post') {
       const p = item.post;
       const username = p.metadata?.username || 'Member';
-      const avatar = p.metadata?.avatar || getAvatarUrl(p.user_id, username);
+      const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
       const image = p.image_url || getPostImageUrl(p.category, p.id);
       return (
         <TouchableOpacity

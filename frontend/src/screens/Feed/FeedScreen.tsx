@@ -9,7 +9,7 @@ import { horizontalScrollProps, verticalScrollProps, feedListPerformanceProps } 
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import { getAvatarUrl, getStoryImageUrl, getPostImageUrl } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri, getAvatarUrl, getPostImageUrl } from '../../utils/images';
 import { toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import tw from '../../lib/tw';
@@ -19,6 +19,8 @@ type Story = {
   userId: string;
   username: string;
   avatar: string;
+  /** CDN/device URI from API; resolved again before render */
+  image?: string;
   hasViewed: boolean;
 };
 
@@ -252,7 +254,8 @@ export default function FeedScreen({ navigation, route }: any) {
               id: s.id,
               userId: s.userId,
               username: s.username,
-              avatar: s.avatar || getAvatarUrl(s.userId, s.username),
+              avatar: resolveAvatarUri(s.userId, s.username, s.avatar),
+              image: s.image,
               hasViewed: !!s.hasViewed,
             }))
           );
@@ -474,8 +477,8 @@ export default function FeedScreen({ navigation, route }: any) {
                     // Create full story objects with images for the viewer
                     const fullStories = userStories.map((s, idx) => ({
                       ...s,
-                      image: getStoryImageUrl(s.userId, s.id), // Generate story image based on user and story ID
-                      createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(), // Stagger times
+                      image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+                      createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(),
                       views: Math.floor(Math.random() * 100),
                     }));
                     
@@ -505,7 +508,7 @@ export default function FeedScreen({ navigation, route }: any) {
                       } items-center justify-center bg-purple-100 p-0.5`}
                     >
                       <Image
-                        source={{ uri: user.avatar }}
+                        source={{ uri: resolveAvatarUri(user.userId, user.username, user.avatar) }}
                         style={tw`w-full h-full rounded-full`}
                         contentFit="cover"
                       />

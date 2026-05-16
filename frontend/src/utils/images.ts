@@ -100,7 +100,50 @@ export function getStoryImageUrl(userId: string, storyId?: string): string {
   // Use a seed based on userId and storyId for consistent images
   const seed = storyId ? `${userId}-${storyId}` : userId;
   // Use picsum.photos for variety with consistent seeding
-  return `https://picsum.photos/seed/${seed}/800/1200`;
+  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/800/1200`;
+}
+
+/**
+ * Story API may return https URLs, device file/content URIs, or legacy placeholders (emoji / bare paths).
+ * Anything that is not a loadable remote/local URI gets a deterministic picsum fallback so UI never shows raw paths.
+ */
+export function resolveStoryDisplayUri(
+  raw: string | null | undefined,
+  userId: string,
+  storyId?: string
+): string {
+  const s = (raw || '').trim();
+  if (!s) return getStoryImageUrl(userId, storyId);
+  const lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (
+    lower.startsWith('file://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('data:')
+  ) {
+    return s;
+  }
+  return getStoryImageUrl(userId, storyId);
+}
+
+/** Avatar from metadata may be emoji or invalid — prefer remote URL or pravatar fallback */
+export function resolveAvatarUri(userId: string, username?: string, raw?: string | null): string {
+  const s = (raw || '').trim();
+  if (!s) return getAvatarUrl(userId, username);
+  const lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (
+    lower.startsWith('file://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('data:')
+  ) {
+    return s;
+  }
+  return getAvatarUrl(userId, username);
 }
 
 /**

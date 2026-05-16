@@ -5,6 +5,60 @@ import { validateRequest, updateUserSchema } from '../utils/validation';
 import { syncCategoryCohortFriends } from './friends';
 
 /**
+ * GET /api/v1/profile/user/:userId
+ * Public-ish profile for another user (authenticated viewer). Omits email.
+ */
+export async function getPublicProfile(request: Request, env: Env, targetUserId: string): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const row = await env.DB.prepare(
+      `SELECT id, points, is_instructor, is_business, metadata, created_at FROM users WHERE id = ?`
+    )
+      .bind(targetUserId)
+      .first<{
+        id: string;
+        points: number;
+        is_instructor: number;
+        is_business: number;
+        metadata: string;
+        created_at: string;
+      }>();
+
+    if (!row) {
+      return error('USER_NOT_FOUND', 'User not found', 404);
+    }
+
+    const meta = JSON.parse(row.metadata || '{}');
+    const postsRow = await env.DB.prepare(`SELECT COUNT(*) AS n FROM posts WHERE user_id = ?`)
+      .bind(targetUserId)
+      .first<{ n: number }>();
+    const storiesRow = await env.DB.prepare(`SELECT COUNT(*) AS n FROM stories WHERE user_id = ?`)
+      .bind(targetUserId)
+      .first<{ n: number }>();
+
+    return json({
+      id: row.id,
+      username: meta.username ?? null,
+      avatar: meta.avatar ?? null,
+      points: row.points,
+      is_instructor: !!row.is_instructor,
+      is_business: !!row.is_business,
+      categories: Array.isArray(meta.categories) ? meta.categories : [],
+      posts_count: Number(postsRow?.n ?? 0),
+      stories_count: Number(storiesRow?.n ?? 0),
+      created_at: row.created_at,
+    });
+  } catch (err) {
+    console.error('[getPublicProfile]', err);
+    return error('DATABASE_ERROR', 'Failed to load profile', 500);
+  }
+}
+
+/**
  * GET /api/v1/profile
  * Get current user profile
  */

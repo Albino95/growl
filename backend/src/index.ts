@@ -51,6 +51,7 @@ export default {
             orders: `${apiPrefix}/marketplace/orders`,
           },
           profile: `${apiPrefix}/profile`,
+          publicProfileByUserId: `${apiPrefix}/profile/user/:userId`,
           social: {
             friends: `${apiPrefix}/social/friends`,
             friendshipStatus: `${apiPrefix}/social/friends/status/:userId`,
@@ -267,7 +268,12 @@ export default {
         return friendsRoutes.addFriend(request, env);
       }
 
-      // Profile routes
+      // Profile routes (specific paths before /profile)
+      const publicProfileMatch = path.match(new RegExp(`^${apiPrefix}/profile/user/([^/]+)$`));
+      if (publicProfileMatch && request.method === 'GET') {
+        return profileRoutes.getPublicProfile(request, env, decodeURIComponent(publicProfileMatch[1]));
+      }
+
       if (path === `${apiPrefix}/profile` && request.method === 'GET') {
         return profileRoutes.getProfile(request, env);
       }
