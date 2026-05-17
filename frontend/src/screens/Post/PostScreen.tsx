@@ -128,11 +128,17 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     try {
       const category = selectedCategory?.split(':')[0] || userCategories[0]?.split(':')[0] || 'mindset';
       const subcategory = selectedCategory?.includes(':') ? selectedCategory.split(':')[1] : undefined;
-      const isRemoteImage = image.startsWith('http://') || image.startsWith('https://');
-      
-      // For local images, use placeholder URL (actual image upload would be implemented later)
-      // The placeholder ensures the post is created even if image upload isn't implemented yet
-      const imageUrl = isRemoteImage ? image : getPostImageUrl(category, `${Date.now()}`);
+      const lower = image.toLowerCase();
+      const isDirectRenderable =
+        lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('file://') ||
+        lower.startsWith('content://') ||
+        lower.startsWith('ph://') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('data:');
+      // Persist the real device URI so your own feed shows the photo; remote viewers need hosted URLs later.
+      const imageUrl = isDirectRenderable ? image : getPostImageUrl(category, `${Date.now()}`);
 
       console.log('[PostScreen] Creating post with:', { category, subcategory, imageUrl: imageUrl.substring(0, 50) + '...' });
 

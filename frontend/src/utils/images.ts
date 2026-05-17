@@ -104,6 +104,30 @@ export function getStoryImageUrl(userId: string, storyId?: string): string {
 }
 
 /**
+ * Post image URL from API may be https, device URI, or legacy bare paths — normalize for Image source.
+ */
+export function resolvePostMediaUri(
+  raw: string | null | undefined,
+  category: string,
+  postId: string
+): string {
+  const s = (raw || '').trim();
+  if (!s) return getPostImageUrl(category, postId);
+  const lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (
+    lower.startsWith('file://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('data:')
+  ) {
+    return s;
+  }
+  return getPostImageUrl(category, postId);
+}
+
+/**
  * Story API may return https URLs, device file/content URIs, or legacy placeholders (emoji / bare paths).
  * Anything that is not a loadable remote/local URI gets a deterministic picsum fallback so UI never shows raw paths.
  */

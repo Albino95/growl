@@ -11,7 +11,8 @@ export async function listFriends(): Promise<FriendSummary[]> {
     const res = await request<{ success: boolean; data: { friends: FriendSummary[] } }>('/social/friends');
     if (!res.success || !res.data?.friends) return [];
     return res.data.friends;
-  } catch {
+  } catch (e) {
+    console.warn('[friends] listFriends failed', e);
     return [];
   }
 }

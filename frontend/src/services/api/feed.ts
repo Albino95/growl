@@ -11,9 +11,25 @@ export type FeedPost = {
   metadata?: {
     likes?: number;
     comments?: number;
+    has_liked?: boolean;
+    friend_likes_count?: number;
     username?: string;
     avatar?: string;
     isInstructor?: boolean;
+  };
+};
+
+export type FeedComment = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  user: {
+    id: string;
+    username?: string;
+    avatar?: string | null;
+    is_instructor?: boolean;
   };
 };
 
@@ -50,5 +66,22 @@ export async function getUserPosts(userId: string): Promise<FeedPost[]> {
     `/feed/posts/user/${encodeURIComponent(userId)}`
   );
   if (!res.success || !Array.isArray(res.data)) return [];
+  return res.data;
+}
+
+export async function getFeedPostComments(postId: string): Promise<FeedComment[]> {
+  const res = await request<{ success: boolean; data: FeedComment[] }>(
+    `/feed/posts/${encodeURIComponent(postId)}/comments`
+  );
+  if (!res.success || !Array.isArray(res.data)) return [];
+  return res.data;
+}
+
+export async function createFeedPostComment(postId: string, content: string): Promise<FeedComment> {
+  const res = await request<{ success: boolean; data: FeedComment }>(
+    `/feed/posts/${encodeURIComponent(postId)}/comments`,
+    { method: 'POST', body: JSON.stringify({ content }) }
+  );
+  if (!res.success || !res.data) throw new Error('Could not post comment');
   return res.data;
 }

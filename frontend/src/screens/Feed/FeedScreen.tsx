@@ -9,7 +9,7 @@ import { horizontalScrollProps, verticalScrollProps, feedListPerformanceProps } 
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import { resolveStoryDisplayUri, resolveAvatarUri, getAvatarUrl, getPostImageUrl } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri, getAvatarUrl, getPostImageUrl, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import tw from '../../lib/tw';
@@ -40,6 +40,8 @@ type Post = {
   timestamp: string;
   hasLiked: boolean;
   reaction: ReactionType;
+  /** Friends (of viewer) who liked — from API when available */
+  friendLikesCount?: number;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -207,28 +209,26 @@ export default function FeedScreen({ navigation, route }: any) {
     const username = post.metadata?.username || 'User';
     const likes = Number(post.metadata?.likes || 0);
     const comments = Number(post.metadata?.comments || 0);
-    
-    // Ensure we always have a valid image URL
-    let imageUrl = post.image_url;
-    if (!imageUrl || imageUrl.trim() === '') {
-      // Use category-based placeholder image if no image_url provided
-      imageUrl = getPostImageUrl(post.category || 'default', post.id);
-    }
-    
+    const friendLikesCount = Number(post.metadata?.friend_likes_count || 0);
+    const hasLiked = !!post.metadata?.has_liked;
+
+    const imageUri = resolvePostMediaUri(post.image_url, post.category || 'general', post.id);
+
     return {
       id: post.id,
       userId: post.user_id,
       username,
-      avatar: post.metadata?.avatar || getAvatarUrl(post.user_id, username),
-      image: imageUrl,
+      avatar: resolveAvatarUri(post.user_id, username, post.metadata?.avatar),
+      image: imageUri,
       caption: post.caption || '',
       category: post.category || 'general',
       subcategory: post.subcategory || undefined,
       likes,
       comments,
       timestamp: formatTimeAgo(post.created_at),
-      hasLiked: false,
-      reaction: null,
+      hasLiked,
+      reaction: hasLiked ? 'love' : null,
+      friendLikesCount,
     };
   };
 
@@ -278,14 +278,11 @@ export default function FeedScreen({ navigation, route }: any) {
     loadStoriesOnly();
   }, [dispatch]);
 
-  /** Merge Redux feed with curated mock posts once the API request settles. */
+  /** Replace feed with API posts when load succeeds (avoid duplicate mock + API cards). */
   useEffect(() => {
     if (feedStatus !== 'succeeded') return;
     if (feedItems.length > 0) {
-      const apiPosts = feedItems.map(toLocalPost);
-      const apiPostIds = new Set(apiPosts.map((p) => p.id));
-      const uniqueMockPosts = MOCK_POSTS.filter((p) => !apiPostIds.has(p.id));
-      setPosts([...apiPosts, ...uniqueMockPosts]);
+      setPosts(feedItems.map(toLocalPost));
     } else {
       setPosts(MOCK_POSTS);
     }
@@ -357,58 +354,91 @@ export default function FeedScreen({ navigation, route }: any) {
             ? {
                 ...post,
                 hasLiked: liked,
-                likes: liked ? post.likes + (post.hasLiked ? 0 : 1) : post.likes - (post.hasLiked ? 1 : 0),
-                reaction: liked ? post.reaction || 'like' : null,
+                likes: liked ? post.likes + (post.hasLiked ? 0 : 1) : Math.max(0, post.likes - (post.hasLiked ? 1 : 0)),
+                reaction: liked ? post.reaction || 'love' : null,
               }
             : post
         )
       );
       return;
-    } catch (error) {
-      // Fallback to local optimistic toggle if API call fails.
+    } catch {
+      // Fallback optimistic toggle
     }
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
-          ? { ...post, hasLiked: !post.hasLiked, likes: post.hasLiked ? post.likes - 1 : post.likes + 1, reaction: post.hasLiked ? null : 'like' }
+          ? {
+              ...post,
+              hasLiked: !post.hasLiked,
+              likes: post.hasLiked ? Math.max(0, post.likes - 1) : post.likes + 1,
+              reaction: post.hasLiked ? null : post.reaction || 'love',
+            }
           : post
       )
     );
   };
 
-  const setReaction = (postId: string, reaction: ReactionType) => {
-    setPosts((prev) =>
-      prev.map((post) => {
-        if (post.id === postId) {
-          const wasLiked = post.hasLiked || post.reaction !== null;
-          const willBeLiked = reaction !== null;
-          return {
-            ...post,
-            reaction,
-            hasLiked: willBeLiked,
-            likes: wasLiked && !willBeLiked ? post.likes - 1 : !wasLiked && willBeLiked ? post.likes + 1 : post.likes,
-          };
-        }
-        return post;
-      })
-    );
+  const setReaction = async (postId: string, reaction: ReactionType) => {
     setShowReactionPicker(null);
+    const current = posts.find((p) => p.id === postId);
+    try {
+      if (reaction === null) {
+        if (current?.hasLiked) {
+          await toggleFeedPostLike(postId);
+        }
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? {
+                  ...p,
+                  reaction: null,
+                  hasLiked: false,
+                  likes: Math.max(0, p.likes - (current?.hasLiked ? 1 : 0)),
+                }
+              : p
+          )
+        );
+        return;
+      }
+      if (!current?.hasLiked) {
+        await toggleFeedPostLike(postId);
+      }
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                reaction,
+                hasLiked: true,
+                likes: p.likes + (current?.hasLiked ? 0 : 1),
+              }
+            : p
+        )
+      );
+    } catch {
+      void dispatch(fetchFeedPosts());
+    }
   };
 
-  const getReactionIcon = (reaction: ReactionType) => {
-    switch (reaction) {
+  const renderReactionIcon = (item: Post) => {
+    const active = item.hasLiked || item.reaction != null;
+    if (!active) {
+      return <Ionicons name="heart-outline" size={26} color="#374151" />;
+    }
+    const r = item.reaction || 'love';
+    switch (r) {
       case 'like':
-        return '👍';
+        return <Text style={tw`text-2xl leading-none`}>👍</Text>;
       case 'love':
-        return '❤️';
+        return <Ionicons name="heart" size={26} color="#EF4444" />;
       case 'laugh':
-        return '😂';
+        return <Text style={tw`text-2xl leading-none`}>😂</Text>;
       case 'wow':
-        return '😮';
+        return <Text style={tw`text-2xl leading-none`}>😮</Text>;
       case 'support':
-        return '💪';
+        return <Text style={tw`text-2xl leading-none`}>💪</Text>;
       default:
-        return null;
+        return <Ionicons name="heart" size={26} color="#EF4444" />;
     }
   };
 
@@ -683,29 +713,26 @@ export default function FeedScreen({ navigation, route }: any) {
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View style={tw`flex-row items-center`}>
                     <TouchableOpacity
-                      onPress={() => toggleLike(item.id)}
+                      onPress={() => void toggleLike(item.id)}
                       onLongPress={() => setShowReactionPicker(showReactionPicker === item.id ? null : item.id)}
                       style={tw`mr-3`}
                     >
-                      {item.reaction ? (
-                        <View style={tw`flex-row items-center`}>
-                          <Text style={tw`text-2xl mr-1`}>{getReactionIcon(item.reaction)}</Text>
-                          <Ionicons name="heart" size={26} color="#EF4444" />
-                        </View>
-                      ) : (
-                        <Ionicons
-                          name={item.hasLiked ? 'heart' : 'heart-outline'}
-                          size={26}
-                          color={item.hasLiked ? '#EF4444' : '#374151'}
-                        />
-                      )}
+                      {renderReactionIcon(item)}
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setSelectedPost(item)}
-                      style={tw`mr-3`}
-                    >
-                      <Ionicons name="chatbubble-outline" size={24} color="#374151" />
-                    </TouchableOpacity>
+                    <View style={tw`relative mr-3`}>
+                      <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                        <Ionicons name="chatbubble-outline" size={24} color="#374151" />
+                      </TouchableOpacity>
+                      <View
+                        style={tw`absolute -top-2 -right-2 min-w-[18px] px-1 py-0.5 rounded-full items-center justify-center ${
+                          item.comments > 0 ? 'bg-stone-700' : 'bg-stone-300'
+                        }`}
+                      >
+                        <Text style={tw`text-[10px] font-bold ${item.comments > 0 ? 'text-white' : 'text-stone-600'}`}>
+                          {item.comments > 99 ? '99+' : item.comments}
+                        </Text>
+                      </View>
+                    </View>
                     <TouchableOpacity>
                       <Ionicons name="paper-plane-outline" size={24} color="#374151" />
                     </TouchableOpacity>
@@ -718,19 +745,19 @@ export default function FeedScreen({ navigation, route }: any) {
                 {/* Reaction Picker */}
                 {showReactionPicker === item.id && (
                   <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-gray-200 z-10`}>
-                    <TouchableOpacity onPress={() => setReaction(item.id, 'like')} style={tw`mx-1`}>
+                    <TouchableOpacity onPress={() => void setReaction(item.id, 'like')} style={tw`mx-1`}>
                       <Text style={tw`text-2xl`}>👍</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setReaction(item.id, 'love')} style={tw`mx-1`}>
+                    <TouchableOpacity onPress={() => void setReaction(item.id, 'love')} style={tw`mx-1`}>
                       <Text style={tw`text-2xl`}>❤️</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setReaction(item.id, 'laugh')} style={tw`mx-1`}>
+                    <TouchableOpacity onPress={() => void setReaction(item.id, 'laugh')} style={tw`mx-1`}>
                       <Text style={tw`text-2xl`}>😂</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setReaction(item.id, 'wow')} style={tw`mx-1`}>
+                    <TouchableOpacity onPress={() => void setReaction(item.id, 'wow')} style={tw`mx-1`}>
                       <Text style={tw`text-2xl`}>😮</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setReaction(item.id, 'support')} style={tw`mx-1`}>
+                    <TouchableOpacity onPress={() => void setReaction(item.id, 'support')} style={tw`mx-1`}>
                       <Text style={tw`text-2xl`}>💪</Text>
                     </TouchableOpacity>
                   </View>
@@ -739,9 +766,12 @@ export default function FeedScreen({ navigation, route }: any) {
                 {/* Likes Count */}
                 <Text style={tw`font-bold text-gray-900 mb-2 text-base`}>
                   {item.likes} {item.likes === 1 ? 'like' : 'likes'}
-                  {item.reaction && item.reaction !== 'like' && (
-                    <Text style={tw`text-gray-600 font-normal`}> • {getReactionIcon(item.reaction)}</Text>
-                  )}
+                  {(item.friendLikesCount ?? 0) > 0 ? (
+                    <Text style={tw`text-emerald-700 font-semibold`}>
+                      {' '}
+                      · {item.friendLikesCount} from friends
+                    </Text>
+                  ) : null}
                 </Text>
 
                 {/* Caption */}
@@ -768,6 +798,11 @@ export default function FeedScreen({ navigation, route }: any) {
                     </Text>
                   </TouchableOpacity>
                 )}
+                {item.comments === 0 ? (
+                  <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                    <Text style={tw`text-gray-400 text-xs mb-1`}>No comments yet</Text>
+                  </TouchableOpacity>
+                ) : null}
 
                 {/* Add Comment */}
                 <TouchableOpacity
@@ -813,6 +848,9 @@ export default function FeedScreen({ navigation, route }: any) {
               postUsername={selectedPost.username}
               postCaption={selectedPost.caption}
               onClose={() => setSelectedPost(null)}
+              onCommentsChanged={() => {
+                void dispatch(fetchFeedPosts());
+              }}
             />
           </Modal>
         )}

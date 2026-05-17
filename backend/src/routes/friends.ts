@@ -115,13 +115,16 @@ export async function listFriends(request: Request, env: Env): Promise<Response>
 
   try {
     const rows = await env.DB.prepare(
-      `SELECT u.id, u.metadata
+      `SELECT DISTINCT u.id, u.metadata
        FROM users u
-       INNER JOIN user_relationships r ON r.target_user_id = u.id
-       WHERE r.user_id = ? AND r.type = 'friend'
-       ORDER BY r.created_at DESC`
+       INNER JOIN (
+         SELECT target_user_id AS fid FROM user_relationships WHERE user_id = ? AND type = 'friend'
+         UNION
+         SELECT user_id AS fid FROM user_relationships WHERE target_user_id = ? AND type = 'friend'
+       ) AS edges ON edges.fid = u.id
+       ORDER BY u.id`
     )
-      .bind(ctx.userId)
+      .bind(ctx.userId, ctx.userId)
       .all<{ id: string; metadata: string }>();
 
     const friends = (rows.results || []).map((row) => {

@@ -14,19 +14,6 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Check cache
-  const cacheKey = `feed:${ctx.userId}`;
-  const cached = await env.KV.get(cacheKey);
-  if (cached) {
-    return new Response(cached, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Cache': 'HIT',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  }
-
   // Get user metadata
   const user = await env.DB.prepare(
     'SELECT metadata FROM users WHERE id = ?'
@@ -51,7 +38,11 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       u.metadata as user_metadata,
       u.is_instructor,
       COUNT(DISTINCT pe1.id) as likes_count,
-      COUNT(DISTINCT pe2.id) as comments_count
+      COUNT(DISTINCT pe2.id) as comments_count,
+      (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
+      (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
+        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
     LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
@@ -75,8 +66,17 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   `;
 
   const posts = await env.DB.prepare(query)
-    .bind(...bindings)
-    .all<Post & { user_metadata: string; is_instructor: boolean; likes_count: number; comments_count: number }>();
+    .bind(...bindings, ctx.userId, ctx.userId)
+    .all<
+      Post & {
+        user_metadata: string;
+        is_instructor: boolean;
+        likes_count: number;
+        comments_count: number;
+        viewer_has_liked: number;
+        friend_likes_count: number;
+      }
+    >();
 
   // Apply personalization (simplified - full algorithm would be more complex)
   const personalizedPosts = posts.results.map((post) => {
@@ -88,6 +88,8 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       metadata: {
         likes: post.likes_count || 0,
         comments: post.comments_count || 0,
+        has_liked: Number(post.viewer_has_liked) > 0,
+        friend_likes_count: Number(post.friend_likes_count) || 0,
         isInstructor: post.is_instructor,
         username: userMeta.username,
         avatar: userMeta.avatar,
@@ -99,12 +101,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   // Sort by relevance score
   personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
-  // Cache result (5 minutes)
-  await env.KV.put(cacheKey, JSON.stringify(json(personalizedPosts).body), {
-    expirationTtl: 300,
-  });
-
-  return json(personalizedPosts, 200, { cached: false });
+  return json(personalizedPosts, 200);
 }
 
 /**
@@ -187,9 +184,6 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
 
     console.log('[createPost] Post created successfully:', postId, 'for user:', ctx.userId);
 
-    // Invalidate feed cache for user
-    await env.KV.delete(`feed:${ctx.userId}`);
-
     return json(
       {
         id: postId,
@@ -241,13 +235,20 @@ export async function getPost(
   env: Env,
   postId: string
 ): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  const viewerId = ctx.isAuthenticated && ctx.userId ? ctx.userId : '__no_viewer__';
+
   const post = await env.DB.prepare(
     `SELECT 
       p.*,
       u.metadata as user_metadata,
       u.is_instructor,
       COUNT(DISTINCT pe1.id) as likes_count,
-      COUNT(DISTINCT pe2.id) as comments_count
+      COUNT(DISTINCT pe2.id) as comments_count,
+      (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
+      (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
+        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
     LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
@@ -255,8 +256,17 @@ export async function getPost(
     WHERE p.id = ?
     GROUP BY p.id`
   )
-    .bind(postId)
-    .first<Post & { user_metadata: string; is_instructor: boolean; likes_count: number; comments_count: number }>();
+    .bind(viewerId, viewerId, postId)
+    .first<
+      Post & {
+        user_metadata: string;
+        is_instructor: boolean;
+        likes_count: number;
+        comments_count: number;
+        viewer_has_liked: number;
+        friend_likes_count: number;
+      }
+    >();
 
   if (!post) {
     return error('POST_NOT_FOUND', 'Post not found', 404);
@@ -269,6 +279,8 @@ export async function getPost(
     metadata: {
       likes: post.likes_count || 0,
       comments: post.comments_count || 0,
+      has_liked: ctx.isAuthenticated && ctx.userId ? Number(post.viewer_has_liked) > 0 : false,
+      friend_likes_count: ctx.isAuthenticated && ctx.userId ? Number(post.friend_likes_count) || 0 : 0,
       isInstructor: post.is_instructor,
       username: userMeta.username,
       avatar: userMeta.avatar,
@@ -335,7 +347,10 @@ export async function getUserPosts(
   userId: string
 ): Promise<Response> {
   const ctx = await getRequestContext(request, env);
-  
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
   console.log('[getUserPosts] Request for userId:', userId, 'authenticated:', ctx.isAuthenticated, 'requestingUserId:', ctx.userId);
   
   try {
@@ -345,7 +360,11 @@ export async function getUserPosts(
         u.metadata as user_metadata,
         u.is_instructor,
         COUNT(DISTINCT pe1.id) as likes_count,
-        COUNT(DISTINCT pe2.id) as comments_count
+        COUNT(DISTINCT pe2.id) as comments_count,
+        (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
+        (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
+          INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+          WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
       FROM posts p
       JOIN users u ON p.user_id = u.id
       LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
@@ -355,8 +374,17 @@ export async function getUserPosts(
       ORDER BY p.created_at DESC
       LIMIT 100`
     )
-      .bind(userId)
-      .all<Post & { user_metadata: string; is_instructor: boolean; likes_count: number; comments_count: number }>();
+      .bind(ctx.userId, ctx.userId, userId)
+      .all<
+        Post & {
+          user_metadata: string;
+          is_instructor: boolean;
+          likes_count: number;
+          comments_count: number;
+          viewer_has_liked: number;
+          friend_likes_count: number;
+        }
+      >();
 
     console.log('[getUserPosts] Found posts:', posts.results?.length || 0);
 
@@ -367,6 +395,8 @@ export async function getUserPosts(
         metadata: {
           likes: post.likes_count || 0,
           comments: post.comments_count || 0,
+          has_liked: Number(post.viewer_has_liked) > 0,
+          friend_likes_count: Number(post.friend_likes_count) || 0,
           isInstructor: post.is_instructor,
           username: userMeta.username,
           avatar: userMeta.avatar,

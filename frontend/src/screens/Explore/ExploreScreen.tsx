@@ -19,7 +19,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
 import { getProducts, type Product } from '../../services/api/marketplace';
-import { resolveAvatarUri, getPostImageUrl } from '../../utils/images';
+import { listFriends } from '../../services/api/friends';
+import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import tw from '../../lib/tw';
 import { feedListPerformanceProps } from '../../constants/scroll';
 import { rankExploreRows, type ExploreRankedRow } from '../../utils/exploreAlgorithm';
@@ -37,16 +38,24 @@ export default function ExploreScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [feedRes, prodRes] = await Promise.all([
+      const [feedRes, prodRes, friends] = await Promise.all([
         getFeedPosts(),
         getProducts({ limit: 24, offset: 0 }),
+        listFriends(),
       ]);
       const posts = feedRes.success && Array.isArray(feedRes.data) ? feedRes.data : [];
       const products =
         prodRes.success && prodRes.data?.products && Array.isArray(prodRes.data.products)
           ? prodRes.data.products
           : [];
-      setRows(rankExploreRows(posts, products, userPaths));
+      const friendIds = new Set(friends.map((f) => f.id));
+      const ranked = rankExploreRows(posts, products, userPaths, {
+        friendIds,
+        productScoreMultiplier: 0.42,
+      });
+      const postRows = ranked.filter((r) => r.kind === 'post');
+      const shopTail = ranked.filter((r) => r.kind === 'product').slice(0, 4);
+      setRows(postRows.length > 0 ? [...postRows, ...shopTail] : ranked);
     } catch (e) {
       console.warn('[Explore] load failed', e);
       setRows([]);
@@ -69,8 +78,9 @@ export default function ExploreScreen() {
   };
 
   const subtitle = useMemo(() => {
-    if (!userPaths.length) return 'Showing a mix of recent posts and marketplace picks.';
-    return `Ranked for your growth areas (${userPaths.length} path${userPaths.length === 1 ? '' : 's'}).`;
+    if (!userPaths.length)
+      return 'Posts ranked by your interests, recency, and engagement — plus a few marketplace picks at the end.';
+    return `Ranked for your growth areas (${userPaths.length} path${userPaths.length === 1 ? '' : 's'}), with friend boosts when available.`;
   }, [userPaths]);
 
   const renderItem = ({ item }: { item: ExploreRow }) => {
@@ -78,7 +88,7 @@ export default function ExploreScreen() {
       const p = item.post;
       const username = p.metadata?.username || 'Member';
       const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
-      const image = p.image_url || getPostImageUrl(p.category, p.id);
+      const image = resolvePostMediaUri(p.image_url, p.category, p.id);
       return (
         <TouchableOpacity
           style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
@@ -98,8 +108,8 @@ export default function ExploreScreen() {
                 likes: p.metadata?.likes ?? 0,
                 comments: p.metadata?.comments ?? 0,
                 createdAt: p.created_at,
-                hasLiked: false,
-                reaction: null,
+                hasLiked: !!p.metadata?.has_liked,
+                reaction: p.metadata?.has_liked ? 'love' : null,
               },
             });
           }}

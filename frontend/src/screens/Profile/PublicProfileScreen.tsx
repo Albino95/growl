@@ -20,7 +20,7 @@ import tw from '../../lib/tw';
 import { addFriend, removeFriend, getFriendshipStatus } from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, type StoryItem } from '../../services/api/stories';
-import { getPostImageUrl, resolveAvatarUri, resolveStoryDisplayUri } from '../../utils/images';
+import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 
 type Post = {
@@ -60,7 +60,7 @@ type RouteParams = {
 function mapFeedPostToPublicPost(p: FeedPost): Post {
   return {
     id: p.id,
-    image: p.image_url || getPostImageUrl(p.category, p.id),
+    image: resolvePostMediaUri(p.image_url, p.category, p.id),
     caption: p.caption || '',
     likes: p.metadata?.likes ?? 0,
     comments: p.metadata?.comments ?? 0,

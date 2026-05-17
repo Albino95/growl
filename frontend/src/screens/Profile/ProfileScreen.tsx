@@ -7,7 +7,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
-import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri } from '../../utils/images';
+import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, type StoryItem } from '../../services/api/stories';
@@ -83,7 +83,7 @@ function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
 }
 
 function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
-  const img = p.image_url || getPostImageUrl(p.category, p.id);
+  const img = resolvePostMediaUri(p.image_url, p.category, p.id);
   const likes = p.metadata?.likes ?? 0;
   const comments = p.metadata?.comments ?? 0;
   return {
@@ -405,14 +405,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: f.id })}
                     style={tw`items-center w-16`}
                   >
-                    <View style={tw`w-14 h-14 rounded-full bg-green-100 items-center justify-center border-2 border-green-200`}>
-                      {f.avatar && (f.avatar.startsWith('http') || f.avatar.startsWith('https')) ? (
-                        <Image source={{ uri: f.avatar }} style={tw`w-full h-full rounded-full`} contentFit="cover" />
-                      ) : (
-                        <Text style={tw`text-xl font-bold text-green-800`}>
-                          {(f.username || '?').charAt(0).toUpperCase()}
-                        </Text>
-                      )}
+                    <View style={tw`w-14 h-14 rounded-full overflow-hidden bg-green-100 border-2 border-green-200`}>
+                      <Image
+                        source={{ uri: resolveAvatarUri(f.id, f.username, f.avatar) }}
+                        style={tw`w-full h-full`}
+                        contentFit="cover"
+                      />
                     </View>
                     <Text style={tw`text-xs text-gray-700 mt-1 text-center`} numberOfLines={1}>
                       {f.username}

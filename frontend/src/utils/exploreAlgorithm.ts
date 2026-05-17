@@ -6,32 +6,33 @@
  * For each **post** we compute:
  *
  * ```
- * score = categoryMatch + recencyBoost + engagementBoost + jitter
+ * score = categoryMatch + recencyBoost + engagementBoost + friendSignals + jitter
  * ```
  *
- * - **categoryMatch** — Expand your onboarding paths (`["art:violin","fitness"]` → keys `art`, `art:violin`,
- *   `fitness`). Compare to each item’s `category` / `category:subcategory`. Exact subcategory path wins most;
- *   parent category only wins less; fuzzy prefix adds a small tie-break.
- * - **recencyBoost** — `max(0, 48 - ageHours) * weight`. Newer content scores higher; fades linearly over ~2 days.
- * - **engagementBoost** — `min(cap, (likes + comments) * multiplier)` so viral-ish posts rise slightly without domination.
- * - **jitter** — Tiny deterministic hash from id so tie-breaks stay stable between renders (not crypto random).
+ * - **categoryMatch** — Expand onboarding paths (`["art:violin","fitness"]` → keys `art`, `art:violin`,
+ *   `fitness`). Compare to each item’s `category` / `category:subcategory`.
+ * - **recencyBoost** — Newer posts score higher (see `recencyScore`).
+ * - **engagementBoost** — Likes + comments, capped.
+ * - **friendSignals** — Boost when the author is in `friendIds`, and when `metadata.friend_likes_count`
+ *   shows friends engaged with the post.
+ * - **jitter** — Stable tie-break from id hash.
  *
- * **Products** use the same category + recency ideas but tuned down on recency and add a small “in stock” nudge.
- *
- * Finally we **sort descending by score** and interleave post/product kinds naturally by score alone.
+ * **Products** use similar category/recency ideas but scores are multiplied by `productScoreMultiplier`
+ * (defaults below 1) so Explore stays **post-first** unless you load products-only elsewhere.
  *
  * ### Limitations (v1)
  *
- * No friend boost, no “already seen” penalty, no MMR diversity — see docs/EXPLORE_ALGORITHM.md for roadmap notes.
+ * No “already seen” penalty, no MMR diversity — see docs/EXPLORE_ALGORITHM.md.
  */
 
 /** Inputs mirror feed/marketplace payloads enough for ranking */
 export type ExploreAlgorithmPost = {
   id: string;
+  user_id?: string;
   category: string;
   subcategory?: string | null;
   created_at: string;
-  metadata?: { likes?: number; comments?: number };
+  metadata?: { likes?: number; comments?: number; friend_likes_count?: number };
 };
 
 export type ExploreAlgorithmProduct = {
@@ -48,6 +49,14 @@ export type ExploreRankedRow<
 > =
   | { kind: 'post'; post: P; score: number }
   | { kind: 'product'; product: Pr; score: number };
+
+export type RankExploreOptions = {
+  nowMs?: number;
+  /** Viewer’s friend user ids — boosts posts authored by friends. */
+  friendIds?: Set<string>;
+  /** Multiply final product scores (default 0.45 keeps Explore post-heavy). */
+  productScoreMultiplier?: number;
+};
 
 export function expandUserCategoryKeys(paths: string[]): Set<string> {
   const s = new Set<string>();
@@ -91,27 +100,37 @@ export function jitter(id: string): number {
 export function rankExploreRows<
   P extends ExploreAlgorithmPost,
   Pr extends ExploreAlgorithmProduct,
->(posts: P[], products: Pr[], userPaths: string[], nowMs: number = Date.now()): ExploreRankedRow<P, Pr>[] {
+>(posts: P[], products: Pr[], userPaths: string[], options: RankExploreOptions = {}): ExploreRankedRow<P, Pr>[] {
+  const nowMs = options.nowMs ?? Date.now();
+  const friendIds = options.friendIds ?? new Set<string>();
+  const productMul = options.productScoreMultiplier ?? 0.45;
+
   const keys = expandUserCategoryKeys(userPaths);
   const rows: ExploreRankedRow<P, Pr>[] = [];
 
   for (const p of posts) {
     const likes = p.metadata?.likes ?? 0;
     const comments = p.metadata?.comments ?? 0;
+    const friendLikes = p.metadata?.friend_likes_count ?? 0;
+    const friendAuthorBoost = p.user_id && friendIds.has(p.user_id) ? 30 : 0;
+    const friendEngagementBoost = Math.min(26, friendLikes * 8);
     const score =
       categoryScore(keys, p.category, p.subcategory) +
-      recencyScore(p.created_at, nowMs) * 0.6 +
-      Math.min(40, (likes + comments) * 1.2) +
+      recencyScore(p.created_at, nowMs) * 0.65 +
+      Math.min(42, (likes + comments) * 1.25) +
+      friendAuthorBoost +
+      friendEngagementBoost +
       jitter(p.id) * 8;
     rows.push({ kind: 'post', post: p, score });
   }
 
   for (const pr of products) {
-    const score =
-      categoryScore(keys, pr.category, pr.subcategory) * 0.85 +
+    let score =
+      categoryScore(keys, pr.category, pr.subcategory) * 0.82 +
       recencyScore(pr.created_at, nowMs) * 0.35 +
-      Math.min(15, pr.stock > 0 ? 8 : 0) +
+      Math.min(14, pr.stock > 0 ? 8 : 0) +
       jitter(pr.id) * 6;
+    score *= productMul;
     rows.push({ kind: 'product', product: pr, score });
   }
 

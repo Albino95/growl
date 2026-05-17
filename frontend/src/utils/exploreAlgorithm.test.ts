@@ -59,7 +59,7 @@ describe('exploreAlgorithm', () => {
         stock: 5,
       },
     ];
-    const ranked = rankExploreRows(posts, products, ['fitness:cardio'], now);
+    const ranked = rankExploreRows(posts, products, ['fitness:cardio'], { nowMs: now });
     expect(ranked[0].kind).toBe('post');
     if (ranked[0].kind === 'post') expect(ranked[0].post.id).toBe('p-hot');
   });
@@ -71,5 +71,31 @@ describe('exploreAlgorithm', () => {
     const ranked = rankExploreRows(posts, [], []);
     expect(ranked).toHaveLength(1);
     expect(ranked[0].score).toBeGreaterThanOrEqual(0);
+  });
+
+  it('friend author and friend-like signals boost Explore ranking', () => {
+    const now = Date.parse('2026-06-01T12:00:00Z');
+    const posts: ExploreAlgorithmPost[] = [
+      {
+        id: 'stranger',
+        user_id: 'u-stranger',
+        category: 'fitness',
+        created_at: '2026-06-01T11:00:00Z',
+        metadata: { likes: 5, comments: 0, friend_likes_count: 0 },
+      },
+      {
+        id: 'friend-post',
+        user_id: 'u-friend',
+        category: 'fitness',
+        created_at: '2026-06-01T11:00:00Z',
+        metadata: { likes: 5, comments: 0, friend_likes_count: 2 },
+      },
+    ];
+    const ranked = rankExploreRows(posts, [], ['fitness'], {
+      nowMs: now,
+      friendIds: new Set(['u-friend']),
+    });
+    expect(ranked[0].kind).toBe('post');
+    if (ranked[0].kind === 'post') expect(ranked[0].post.id).toBe('friend-post');
   });
 });
