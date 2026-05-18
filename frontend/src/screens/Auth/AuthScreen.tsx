@@ -21,6 +21,7 @@ import {
   signInWithGooglePrompt,
   signInWithFacebookPrompt,
 } from '../../services/auth/oauth';
+import { DEMO_ACCOUNTS, DEMO_ACCOUNT_PASSWORD } from '../../constants/demoAccounts';
 import tw from '../../lib/tw';
 
 function notify(title: string, message?: string) {
@@ -70,7 +71,16 @@ export default function AuthScreen() {
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : error || 'Authentication failed';
-      notify(isSignUp ? 'Sign up failed' : 'Sign in failed', msg);
+      const alreadyExists =
+        isSignUp &&
+        typeof msg === 'string' &&
+        msg.toLowerCase().includes('already exists');
+      if (alreadyExists) {
+        setIsSignUp(false);
+        notify('Account exists', `${msg}\n\nSwitched to sign in — use your password.`);
+      } else {
+        notify(isSignUp ? 'Sign up failed' : 'Sign in failed', msg);
+      }
     } finally {
       setLocalLoading(false);
     }
@@ -90,6 +100,24 @@ export default function AuthScreen() {
       setVerifyCode('');
     } catch (e: unknown) {
       notify('Verification failed', e instanceof Error ? e.message : 'Invalid code');
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const fillDemoAndSignIn = async (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword(DEMO_ACCOUNT_PASSWORD);
+    setIsSignUp(false);
+    setLocalLoading(true);
+    try {
+      await signIn(demoEmail, DEMO_ACCOUNT_PASSWORD).unwrap();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Demo sign-in failed';
+      notify(
+        'Demo account unavailable',
+        `${msg}\n\nRun: cd backend && npm run demo:local`
+      );
     } finally {
       setLocalLoading(false);
     }
@@ -259,6 +287,31 @@ export default function AuthScreen() {
                 <Text style={tw`text-emerald-700 font-semibold`}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
               </Text>
             </TouchableOpacity>
+
+            <View style={tw`mt-10 pt-6 border-t border-stone-200`}>
+              <Text style={tw`text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1`}>
+                Demo accounts
+              </Text>
+              <Text style={tw`text-xs text-stone-400 mb-3`}>
+                Password: {DEMO_ACCOUNT_PASSWORD} (seed with npm run demo:local)
+              </Text>
+              <View style={tw`gap-2`}>
+                {DEMO_ACCOUNTS.map((demo) => (
+                  <TouchableOpacity
+                    key={demo.email}
+                    onPress={() => void fillDemoAndSignIn(demo.email)}
+                    disabled={busy}
+                    style={tw`flex-row items-center border border-stone-200 rounded-xl px-3 py-2.5 bg-stone-50`}
+                  >
+                    <View style={tw`flex-1`}>
+                      <Text style={tw`text-sm font-semibold text-stone-800`}>{demo.label}</Text>
+                      <Text style={tw`text-xs text-stone-500`}>{demo.email}</Text>
+                    </View>
+                    <Ionicons name="log-in-outline" size={20} color="#059669" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { getSecureItem } from '../storage/secureStore';
 import { getToken } from '../storage/tokenManager';
+import { messageFromApiError } from './apiErrors';
 
 const BASE_URL: string = (Constants?.expoConfig?.extra?.API_BASE_URL as string) || 'https://growl-backend.albino-ndreu.workers.dev/api/v1';
 
@@ -55,8 +56,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     
     // Check if backend returned an error in the response body
     if (!res.ok || (data && data.success === false)) {
-      const errorMessage = data?.error?.message || data?.error?.code || `HTTP ${res.status}`;
-      throw new Error(errorMessage);
+      throw new Error(messageFromApiError(data, res.status));
     }
     
     if (res.status === 204) return undefined as unknown as T;

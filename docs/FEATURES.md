@@ -8,9 +8,9 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 
 | Feature | Notes |
 |--------|--------|
-| Email sign-in / sign-up | Password hashed client-side; JWT-style tokens against Workers API; Redux persistence via SecureStore. |
-| Demo fallback accounts | Offline/demo flows (`demo@growl.app`, `instructor@growl.app`, `business@growl.app`) generate JWT-like demo tokens when API unreachable. |
-| SSO scaffold | Google/Facebook hooks call `/auth/sso`; mocked elsewhere until OAuth wired end-to-end. |
+| Email sign-in / sign-up | Plain password over HTTPS; PBKDF2 on server; email verification required for sign-up; JWT in SecureStore only. |
+| Demo accounts | Seed `demo@growl.app`, `instructor@growl.app`, `business@growl.app` (`npm run demo:local`); password `GrowlDemo123!`. |
+| SSO | Google `idToken` / Facebook `accessToken` via `POST /auth/sso` when OAuth client IDs are configured. |
 | Business vs consumer shells | `isBusiness` from API + fallback emails drives Root navigator into **Business** tabs vs **Individual** tabs. |
 | Hydration | Auth restored from storage on launch; token cached in memory for HTTP. |
 

@@ -87,8 +87,8 @@ Default local URL: `http://localhost:8787/api/v1`
 
 | Field | Value |
 |--------|--------|
-| Email | `demo-fitness@growl.seed` (also `demo-art@`, `demo-violin@`, `demo-mind@`, `demo-nutrition@`) |
-| Password | `growlseed123` |
+| **Core demos** | `demo@growl.app`, `instructor@growl.app`, `business@growl.app` — password **`GrowlDemo123!`** |
+| Social cohort seeds | `demo-fitness@growl.seed`, etc. — password **`growlseed123`** |
 
 After sign-in, open **Profile → Friends** for seeded connections, **Explore** for people with active stories/reels who are not yet friends, and **Feed** for posts.
 

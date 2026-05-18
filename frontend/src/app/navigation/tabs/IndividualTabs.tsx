@@ -42,6 +42,32 @@ const TAB_RIGHT: typeof TAB_LEFT = [
   { key: 'Profile', label: 'Profile', activeIcon: 'person', inactiveIcon: 'person-outline', activeColor: '#059669' },
 ];
 
+function TabButton({
+  tab,
+  isActive,
+  onPress,
+}: {
+  tab: (typeof TAB_LEFT)[number];
+  isActive: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity onPress={onPress} style={tw`flex-1 items-center pb-1 min-w-0`}>
+      <Ionicons
+        name={isActive ? tab.activeIcon : tab.inactiveIcon}
+        size={22}
+        color={isActive ? tab.activeColor : '#A8A29E'}
+      />
+      <Text
+        style={tw`text-[11px] mt-0.5 ${isActive ? 'font-semibold' : ''}`}
+        numberOfLines={1}
+      >
+        <Text style={{ color: isActive ? tab.activeColor : '#78716C' }}>{tab.label}</Text>
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function IndividualTabs() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -49,6 +75,16 @@ export default function IndividualTabs() {
     const rootNavigation = navigation.getParent() || navigation;
     rootNavigation.navigate('Post' as never);
   };
+
+  const fabShadow =
+    Platform.OS === 'ios'
+      ? {
+          shadowColor: '#047857',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.35,
+          shadowRadius: 6,
+        }
+      : { elevation: 8 };
 
   return (
     <Tab.Navigator
@@ -63,58 +99,45 @@ export default function IndividualTabs() {
               { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6) },
             ]}
           >
-            <View style={tw`flex-row items-end px-1 pt-2`}>
-              {[...TAB_LEFT, ...TAB_RIGHT].map((tab) => {
-                const isLeft = TAB_LEFT.some((t) => t.key === tab.key);
-                const showFabAfter = isLeft && tab.key === 'Explore';
-                return (
-                  <React.Fragment key={tab.key}>
-                    <TouchableOpacity
-                      onPress={() => props.navigation.navigate(tab.key)}
-                      style={tw`flex-1 items-center pb-1`}
-                    >
-                      <Ionicons
-                        name={currentRoute === tab.key ? tab.activeIcon : tab.inactiveIcon}
-                        size={22}
-                        color={currentRoute === tab.key ? tab.activeColor : '#A8A29E'}
-                      />
-                      <Text
-                        style={tw`text-[11px] mt-0.5 ${currentRoute === tab.key ? 'font-semibold' : ''}`}
-                        numberOfLines={1}
-                      >
-                        <Text style={{ color: currentRoute === tab.key ? tab.activeColor : '#78716C' }}>
-                          {tab.label}
-                        </Text>
-                      </Text>
-                    </TouchableOpacity>
-                    {showFabAfter ? (
-                      <View style={tw`flex-1 items-center justify-end min-w-[72px]`}>
-                        <TouchableOpacity
-                          onPress={handleCreatePost}
-                          activeOpacity={0.85}
-                          style={[
-                            tw`w-14 h-14 rounded-full bg-emerald-600 items-center justify-center border-4 border-white`,
-                            Platform.OS === 'ios'
-                              ? {
-                                  shadowColor: '#047857',
-                                  shadowOffset: { width: 0, height: 4 },
-                                  shadowOpacity: 0.35,
-                                  shadowRadius: 6,
-                                }
-                              : { elevation: 8 },
-                            { marginTop: -24 },
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel="Create post"
-                        >
-                          <Ionicons name="add" size={30} color="#FFFFFF" />
-                        </TouchableOpacity>
-                        <View style={tw`h-5`} />
-                      </View>
-                    ) : null}
-                  </React.Fragment>
-                );
-              })}
+            <View style={tw`flex-row items-end pt-2 px-1`}>
+              <View style={tw`flex-1 flex-row`}>
+                {TAB_LEFT.map((tab) => (
+                  <TabButton
+                    key={tab.key}
+                    tab={tab}
+                    isActive={currentRoute === tab.key}
+                    onPress={() => props.navigation.navigate(tab.key)}
+                  />
+                ))}
+              </View>
+
+              <View style={tw`w-[72px] items-center justify-end pb-0.5`} pointerEvents="box-none">
+                <TouchableOpacity
+                  onPress={handleCreatePost}
+                  activeOpacity={0.85}
+                  style={[
+                    tw`w-14 h-14 rounded-full bg-emerald-600 items-center justify-center border-4 border-white`,
+                    fabShadow,
+                    { marginTop: -22 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create post"
+                >
+                  <Ionicons name="add" size={30} color="#FFFFFF" style={{ marginTop: -1 }} />
+                </TouchableOpacity>
+                <View style={tw`h-[18px]`} />
+              </View>
+
+              <View style={tw`flex-1 flex-row`}>
+                {TAB_RIGHT.map((tab) => (
+                  <TabButton
+                    key={tab.key}
+                    tab={tab}
+                    isActive={currentRoute === tab.key}
+                    onPress={() => props.navigation.navigate(tab.key)}
+                  />
+                ))}
+              </View>
             </View>
           </View>
         );
