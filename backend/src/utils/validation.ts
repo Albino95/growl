@@ -4,32 +4,41 @@ import { error } from './response';
 // Order status enum
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'completed' | 'cancelled';
 
-// Validation schemas
+const strongPasswordSchema = z
+  .string()
+  .min(12, 'Password must be at least 12 characters')
+  .max(128, 'Password is too long')
+  .regex(/[a-z]/, 'Password must include a lowercase letter')
+  .regex(/[A-Z]/, 'Password must include an uppercase letter')
+  .regex(/[0-9]/, 'Password must include a number')
+  .regex(/[^a-zA-Z0-9]/, 'Password must include a symbol');
+
 export const signUpSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  username: z.string().min(3, 'Username must be at least 3 characters').optional(),
+  email: z.string().email('Invalid email address').max(254),
+  password: strongPasswordSchema,
+  username: z.string().min(3, 'Username must be at least 3 characters').max(32).optional(),
 });
 
-export const signInSchema = z
+export const signInSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required').max(128),
+});
+
+export const verifyEmailSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  code: z.string().min(6, 'Enter your verification code').max(64),
+});
+
+export const ssoSchema = z
   .object({
-    email: z.string().email('Invalid email address'),
-    // For dev/tests we allow either plain password or pre-hashed password
-    password: z.string().min(1, 'Password is required').optional(),
-    passwordHash: z.string().optional(), // Frontend sends hashed password
+    provider: z.enum(['google', 'facebook']),
+    idToken: z.string().min(10).optional(),
+    accessToken: z.string().min(10).optional(),
   })
   .refine(
-    (data) => !!data.password || !!data.passwordHash,
-    {
-      message: 'Either password or passwordHash must be provided',
-      path: ['password'],
-    }
+    (d) => (d.provider === 'google' ? !!d.idToken : !!d.accessToken),
+    { message: 'Google requires idToken; Facebook requires accessToken', path: ['idToken'] }
   );
-
-export const ssoSchema = z.object({
-  provider: z.enum(['google', 'facebook']),
-  token: z.string().min(1, 'SSO token is required'),
-});
 
 export const createPostSchema = z.object({
   image_url: z.string().url().optional(),

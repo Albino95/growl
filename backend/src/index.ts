@@ -77,6 +77,9 @@ export default {
       if (path === `${apiPrefix}/auth/sso` && request.method === 'POST') {
         return authRoutes.signInWithSSO(request, env);
       }
+      if (path === `${apiPrefix}/auth/verify-email` && request.method === 'POST') {
+        return authRoutes.verifyEmail(request, env);
+      }
       if (path === `${apiPrefix}/auth/refresh` && request.method === 'POST') {
         return authRoutes.refresh(request, env);
       }

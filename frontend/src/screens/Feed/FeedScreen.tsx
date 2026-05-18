@@ -9,7 +9,7 @@ import { horizontalScrollProps, verticalScrollProps, feedListPerformanceProps } 
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import { resolveStoryDisplayUri, resolveAvatarUri, getAvatarUrl, getPostImageUrl, resolvePostMediaUri } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import tw from '../../lib/tw';
@@ -56,143 +56,6 @@ function formatTimeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-// Mock data - in real app, this would come from API
-// Each user has multiple stories
-const MOCK_STORIES: Story[] = [
-  { id: '1', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
-  { id: '1-2', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
-  { id: '1-3', userId: 'u1', username: 'John', avatar: getAvatarUrl('u1', 'John'), hasViewed: false },
-  { id: '2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
-  { id: '2-2', userId: 'u2', username: 'Sarah', avatar: getAvatarUrl('u2', 'Sarah'), hasViewed: true },
-  { id: '3', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
-  { id: '3-2', userId: 'u3', username: 'Mike', avatar: getAvatarUrl('u3', 'Mike'), hasViewed: false },
-  { id: '4', userId: 'u4', username: 'Emma', avatar: getAvatarUrl('u4', 'Emma'), hasViewed: true },
-  { id: '5', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
-  { id: '5-2', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
-  { id: '5-3', userId: 'u5', username: 'Alex', avatar: getAvatarUrl('u5', 'Alex'), hasViewed: false },
-];
-
-const MOCK_POSTS: Post[] = [
-  {
-    id: '1',
-    userId: 'u1',
-    username: 'John',
-    avatar: getAvatarUrl('u1', 'John'),
-    image: getPostImageUrl('fitness', '1'),
-    caption: 'Day 15 of my fitness journey! Feeling stronger every day 💪',
-    category: 'fitness',
-    subcategory: 'losing-weight',
-    likes: 42,
-    comments: 8,
-    timestamp: '2h ago',
-    hasLiked: false,
-    reaction: null,
-  },
-  {
-    id: '2',
-    userId: 'u2',
-    username: 'Sarah',
-    avatar: getAvatarUrl('u2', 'Sarah'),
-    image: getPostImageUrl('art', '2'),
-    caption: 'Practiced piano for 2 hours today. Progress is slow but steady 🎵',
-    category: 'art',
-    subcategory: 'piano',
-    likes: 28,
-    comments: 5,
-    timestamp: '4h ago',
-    hasLiked: true,
-    reaction: 'like',
-  },
-  {
-    id: '3',
-    userId: 'u3',
-    username: 'Mike',
-    avatar: getAvatarUrl('u3', 'Mike'),
-    image: getPostImageUrl('mindset', '3'),
-    caption: 'Morning meditation session complete. Starting the day with clarity ✨',
-    category: 'mindset',
-    subcategory: 'meditation',
-    likes: 35,
-    comments: 12,
-    timestamp: '6h ago',
-    hasLiked: false,
-    reaction: 'love',
-  },
-  {
-    id: '4',
-    userId: 'u4',
-    username: 'Emma',
-    avatar: getAvatarUrl('u4', 'Emma'),
-    image: getPostImageUrl('cooking', '4'),
-    caption: 'Homemade pasta from scratch! Nothing beats fresh ingredients 🍝',
-    category: 'cooking',
-    subcategory: 'baking',
-    likes: 56,
-    comments: 15,
-    timestamp: '8h ago',
-    hasLiked: true,
-    reaction: 'wow',
-  },
-  {
-    id: '5',
-    userId: 'u5',
-    username: 'Alex',
-    avatar: getAvatarUrl('u5', 'Alex'),
-    image: getPostImageUrl('reading', '5'),
-    caption: 'Just finished "Atomic Habits" - game changer! 📚',
-    category: 'reading',
-    likes: 31,
-    comments: 7,
-    timestamp: '10h ago',
-    hasLiked: false,
-    reaction: null,
-  },
-  {
-    id: '6',
-    userId: 'u1',
-    username: 'John',
-    avatar: getAvatarUrl('u1', 'John'),
-    image: getPostImageUrl('fitness', '6'),
-    caption: 'New PR in deadlift! 225lbs 🏋️',
-    category: 'fitness',
-    subcategory: 'weight-training',
-    likes: 67,
-    comments: 22,
-    timestamp: '12h ago',
-    hasLiked: true,
-    reaction: 'support',
-  },
-  {
-    id: '7',
-    userId: 'u2',
-    username: 'Sarah',
-    avatar: getAvatarUrl('u2', 'Sarah'),
-    image: getPostImageUrl('art', '7'),
-    caption: 'Working on a new painting. Acrylics are so vibrant! 🎨',
-    category: 'art',
-    subcategory: 'painting',
-    likes: 44,
-    comments: 9,
-    timestamp: '14h ago',
-    hasLiked: false,
-    reaction: 'love',
-  },
-  {
-    id: '8',
-    userId: 'u3',
-    username: 'Mike',
-    avatar: getAvatarUrl('u3', 'Mike'),
-    image: getPostImageUrl('yoga', '8'),
-    caption: 'Sunrise yoga session. Perfect way to start the day 🌅',
-    category: 'yoga',
-    likes: 52,
-    comments: 18,
-    timestamp: '1d ago',
-    hasLiked: true,
-    reaction: 'like',
-  },
-];
-
 export default function FeedScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const dispatch = useAppDispatch();
@@ -200,10 +63,10 @@ export default function FeedScreen({ navigation, route }: any) {
   const feedStatus = useAppSelector((s) => s.feed.status);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS); // Initialize with mock posts as fallback
+  const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [stories, setStories] = useState<Story[]>(MOCK_STORIES); // Initialize with mock stories
+  const [stories, setStories] = useState<Story[]>([]);
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -260,16 +123,14 @@ export default function FeedScreen({ navigation, route }: any) {
             }))
           );
         } else {
-          console.log('[FeedScreen] No API stories, using mock stories');
-          setStories(MOCK_STORIES);
+          setStories([]);
         }
       } else {
-        console.log('[FeedScreen] Stories response not successful, using mock stories');
-        setStories(MOCK_STORIES);
+        setStories([]);
       }
     } catch (error: unknown) {
       console.error('[FeedScreen] Error loading stories:', error);
-      setStories(MOCK_STORIES);
+      setStories([]);
     }
   };
 
@@ -278,14 +139,9 @@ export default function FeedScreen({ navigation, route }: any) {
     loadStoriesOnly();
   }, [dispatch]);
 
-  /** Replace feed with API posts when load succeeds (avoid duplicate mock + API cards). */
   useEffect(() => {
     if (feedStatus !== 'succeeded') return;
-    if (feedItems.length > 0) {
-      setPosts(feedItems.map(toLocalPost));
-    } else {
-      setPosts(MOCK_POSTS);
-    }
+    setPosts(feedItems.map(toLocalPost));
   }, [feedItems, feedStatus]);
 
   // Group stories by user - show each person only once

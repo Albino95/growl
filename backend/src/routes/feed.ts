@@ -3,6 +3,7 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, createPostSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
+import { categoryRelevanceScore, postMatchesUserCategories } from '../utils/categories';
 
 /**
  * GET /api/v1/feed/feed
@@ -78,60 +79,57 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       }
     >();
 
-  // Apply personalization (simplified - full algorithm would be more complex)
-  const personalizedPosts = posts.results.map((post) => {
-    const userMeta = JSON.parse(post.user_metadata || '{}');
-    const relevanceScore = calculateRelevanceScore(post, metadata, categories);
+  const friendRows = await env.DB.prepare(
+    `SELECT target_user_id FROM user_relationships WHERE user_id = ? AND type = 'friend'`
+  )
+    .bind(ctx.userId)
+    .all<{ target_user_id: string }>();
+  const friendIds = new Set((friendRows.results || []).map((r) => r.target_user_id));
 
-    return {
-      ...post,
-      metadata: {
-        likes: post.likes_count || 0,
-        comments: post.comments_count || 0,
-        has_liked: Number(post.viewer_has_liked) > 0,
-        friend_likes_count: Number(post.friend_likes_count) || 0,
-        isInstructor: post.is_instructor,
-        username: userMeta.username,
-        avatar: userMeta.avatar,
-      },
-      relevanceScore,
-    };
-  });
+  const personalizedPosts = (posts.results || [])
+    .map((post) => {
+      const userMeta = JSON.parse(post.user_metadata || '{}');
+      const catScore = categoryRelevanceScore(categories, post.category, post.subcategory);
+      const daysSincePost =
+        (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      const isOwn = post.user_id === ctx.userId;
+      const isFriend = friendIds.has(post.user_id);
+      let relevanceScore = catScore + Math.max(0, 10 - daysSincePost);
+      if (isFriend) relevanceScore += 25;
+      if (isOwn) relevanceScore += 100;
 
-  // Sort by relevance score
+      return {
+        ...post,
+        metadata: {
+          likes: post.likes_count || 0,
+          comments: post.comments_count || 0,
+          has_liked: Number(post.viewer_has_liked) > 0,
+          friend_likes_count: Number(post.friend_likes_count) || 0,
+          isInstructor: post.is_instructor,
+          username: userMeta.username,
+          avatar: userMeta.avatar,
+        },
+        relevanceScore,
+        isOwn,
+        isFriend,
+      };
+    })
+    .filter((post) => {
+      if (post.isOwn) return true;
+      if (!categories.length) return true;
+      return (
+        post.isFriend ||
+        post.relevanceScore >= 35 ||
+        postMatchesUserCategories(categories, post.category, post.subcategory)
+      );
+    });
+
   personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
-  return json(personalizedPosts, 200);
-}
-
-/**
- * Calculate relevance score for a post
- */
-function calculateRelevanceScore(
-  post: Post,
-  userMetadata: any,
-  userCategories: string[]
-): number {
-  let score = 0;
-
-  // Category match (40%)
-  if (userCategories.includes(post.category)) {
-    score += 40;
-  }
-
-  // Subcategory match (20%)
-  if (post.subcategory && userCategories.includes(`${post.category}:${post.subcategory}`)) {
-    score += 20;
-  }
-
-  // Engagement score (30%)
-  score += Math.min(post.engagement_score / 10, 30);
-
-  // Recency (10%)
-  const daysSincePost = (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
-  score += Math.max(0, 10 - daysSincePost);
-
-  return score;
+  return json(
+    personalizedPosts.map(({ relevanceScore, isOwn, isFriend, ...rest }) => rest),
+    200
+  );
 }
 
 /**

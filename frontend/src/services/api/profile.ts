@@ -10,6 +10,17 @@ export type ProfileUpdatePayload = {
   categories?: string[];
 };
 
+export type CurrentProfile = {
+  id: string;
+  email: string;
+  username?: string;
+  avatar?: string;
+  points: number;
+  is_instructor: boolean;
+  is_business: boolean;
+  categories: string[];
+};
+
 export type PublicProfileApiData = {
   id: string;
   username: string | null;
@@ -22,7 +33,6 @@ export type PublicProfileApiData = {
   stories_count: number;
 };
 
-/** Mapped shape for UI (matches legacy PublicProfile screen fields). */
 export type PublicProfileSummary = {
   id: string;
   username: string;
@@ -34,7 +44,18 @@ export type PublicProfileSummary = {
   storiesCount: number;
 };
 
-/** GET /profile/user/:userId — viewer must be signed in. */
+/** GET /profile — source of truth for categories after login (not stored in AsyncStorage). */
+export async function fetchCurrentProfile(): Promise<CurrentProfile> {
+  const res = await request<{ success: boolean; data: CurrentProfile }>('/profile');
+  if (!res.success || !res.data) {
+    throw new Error('Failed to load profile');
+  }
+  return {
+    ...res.data,
+    categories: Array.isArray(res.data.categories) ? res.data.categories : [],
+  };
+}
+
 export async function getPublicProfile(userId: string): Promise<PublicProfileSummary> {
   const res = await request<{ success: boolean; data: PublicProfileApiData }>(
     `/profile/user/${encodeURIComponent(userId)}`

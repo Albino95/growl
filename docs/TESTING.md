@@ -92,6 +92,16 @@ Default local URL: `http://localhost:8787/api/v1`
 
 After sign-in, open **Profile → Friends** for seeded connections, **Explore** for people with active stories/reels who are not yet friends, and **Feed** for posts.
 
+### Auth (production behavior)
+
+- **Sign-up** is `POST /auth/sign-up` only — returns `requiresEmailVerification: true` (no session until email is confirmed).
+- **Verify** with `POST /auth/verify-email` `{ email, code }` (6-digit code; in dev, check Worker logs if `RESEND_API_KEY` is unset).
+- **Sign-in** is `POST /auth/sign-in` with `{ email, password }` (plain password over HTTPS; server stores **PBKDF2**, not reversible).
+- **Password rules:** 12+ chars, upper, lower, number, symbol.
+- **SSO:** `POST /auth/sso` with Google `idToken` or Facebook `accessToken` (configure OAuth IDs in `frontend/app.config.ts` `extra`).
+- **Session:** only the JWT is kept in **Expo SecureStore**; categories load from `GET /profile` on each app start (not duplicated in AsyncStorage).
+- Apply migration **`0004_email_verification.sql`** before testing sign-up: `npm run migrate:local`
+
 Point the app at local API:
 
 ```bash

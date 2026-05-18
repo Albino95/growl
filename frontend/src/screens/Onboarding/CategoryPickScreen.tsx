@@ -20,7 +20,7 @@ interface CategoryPickScreenProps {
 export default function CategoryPickScreen({ navigation }: CategoryPickScreenProps) {
   const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] = React.useState<string | null>(null);
-  const { setOnboardingComplete } = useAuth();
+  const { setOnboardingComplete, refreshProfile } = useAuth();
 
   const toggleCategory = (categoryKey: string) => {
     setSelectedCategories((prev) => {
@@ -69,17 +69,15 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
       await updateProfileOnServer({ categories: selectedCategories });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';
-      console.warn('[CategoryPick] Profile sync:', err);
       if (Platform.OS === 'web') {
-        window.alert(`${msg}\n\nContinuing with preferences on this device only.`);
+        window.alert(msg);
       } else {
-        Alert.alert(
-          'Saved locally',
-          `${msg} Your picks still personalize the app; cohort friends sync when the API is available.`
-        );
+        Alert.alert('Could not save', msg);
       }
+      return;
     }
     setOnboardingComplete(selectedCategories);
+    await refreshProfile();
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
