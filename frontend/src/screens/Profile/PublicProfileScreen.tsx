@@ -150,12 +150,61 @@ export default function PublicProfileScreen() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
-  
+  const [friendConnected, setFriendConnected] = useState(false);
+  const [friendBusy, setFriendBusy] = useState(false);
+
   const isOwnProfile = currentUser?.id === userId;
 
   useEffect(() => {
     loadProfile();
   }, [userId]);
+
+  useEffect(() => {
+    if (isOwnProfile || !currentUser?.id) {
+      setFriendConnected(false);
+      return;
+    }
+    let cancelled = false;
+    getFriendshipStatus(userId).then((s) => {
+      if (!cancelled) setFriendConnected(s.connected);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUser?.id, isOwnProfile]);
+
+  const onToggleFriend = async () => {
+    if (friendBusy || isOwnProfile) return;
+    setFriendBusy(true);
+    try {
+      if (friendConnected) {
+        await removeFriend(userId);
+        setFriendConnected(false);
+        if (Platform.OS === 'web') {
+          window.alert('Removed from your connections.');
+        } else {
+          Alert.alert('Removed', 'They are no longer in your network.');
+        }
+      } else {
+        await addFriend(userId);
+        setFriendConnected(true);
+        if (Platform.OS === 'web') {
+          window.alert('You are now connected.');
+        } else {
+          Alert.alert('Connected', 'You are now following each other in your growth network.');
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not update connection';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    } finally {
+      setFriendBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (profileUser) {
@@ -271,19 +320,18 @@ export default function PublicProfileScreen() {
             </View>
           </View>
 
-          {/* Stats */}
-          <View style={tw`flex-row gap-3 mb-4`}>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Posts</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.postsCount}</Text>
+          <View style={tw`flex-row justify-around mb-4 py-2`}>
+            <View style={tw`items-center`}>
+              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.postsCount}</Text>
+              <Text style={tw`text-xs text-gray-500`}>Posts</Text>
             </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Stories</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.storiesCount}</Text>
+            <View style={tw`items-center`}>
+              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.storiesCount}</Text>
+              <Text style={tw`text-xs text-gray-500`}>Stories</Text>
             </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Points</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.points}</Text>
+            <View style={tw`items-center`}>
+              <Text style={tw`text-lg font-bold text-emerald-600`}>{profileUser.points}</Text>
+              <Text style={tw`text-xs text-gray-500`}>Points</Text>
             </View>
           </View>
 
@@ -291,21 +339,26 @@ export default function PublicProfileScreen() {
             <TouchableOpacity
               onPress={() => void onToggleFriend()}
               disabled={friendBusy}
-              style={tw`mb-4 py-3 rounded-xl items-center justify-center ${
-                friendConnected ? 'bg-stone-200' : 'bg-green-600'
+              style={tw`mb-4 py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
+                friendConnected ? 'bg-stone-100 border border-stone-200' : 'bg-emerald-600'
               } ${friendBusy ? 'opacity-60' : ''}`}
             >
-              <Text style={tw`font-bold text-base ${friendConnected ? 'text-stone-800' : 'text-white'}`}>
-                {friendBusy ? 'Please wait…' : friendConnected ? 'Remove friend' : 'Add friend'}
-              </Text>
-              <Text style={tw`text-xs mt-1 ${friendConnected ? 'text-stone-600' : 'text-green-100'}`}>
-                Same growth-area cohorts are linked automatically when profiles sync to the server.
+              {friendBusy ? (
+                <ActivityIndicator color={friendConnected ? '#57534E' : '#fff'} />
+              ) : (
+                <Ionicons
+                  name={friendConnected ? 'checkmark-circle' : 'person-add'}
+                  size={20}
+                  color={friendConnected ? '#44403C' : '#fff'}
+                />
+              )}
+              <Text style={tw`font-semibold text-base ${friendConnected ? 'text-stone-800' : 'text-white'}`}>
+                {friendBusy ? 'Updating…' : friendConnected ? 'Following' : 'Follow'}
               </Text>
             </TouchableOpacity>
           ) : null}
 
-          {/* Points Display */}
-          <View style={tw`bg-green-500 rounded-xl p-4 shadow-lg`}>
+          <View style={tw`bg-emerald-600 rounded-2xl p-4`}>
             <View style={tw`flex-row items-center justify-between`}>
               <View>
                 <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
@@ -314,7 +367,7 @@ export default function PublicProfileScreen() {
               <Ionicons name="trophy" size={40} color="white" />
             </View>
             {!profileUser.isInstructor && (
-              <View style={tw`mt-3 pt-3 border-t border-green-400`}>
+              <View style={tw`mt-3 pt-3 border-t border-emerald-400/60`}>
                 <View style={tw`flex-row items-center justify-between`}>
                   <Text style={tw`text-white text-sm`}>Points to Instructor: {500 - profileUser.points}</Text>
                   <View style={tw`flex-1 h-2 bg-green-400 rounded-full mx-3 overflow-hidden`}>

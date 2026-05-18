@@ -6,13 +6,42 @@ import { request } from './http';
 
 export type FriendSummary = { id: string; username: string; avatar?: string };
 
-/** Re-run cohort auto-friending (shared category paths) and return updated list */
-export async function syncCohortFriends(): Promise<{ linked: number; friends: FriendSummary[] }> {
+export type ConnectionsPayload = {
+  following: FriendSummary[];
+  followers: FriendSummary[];
+  followingCount: number;
+  followersCount: number;
+};
+
+/** Re-run cohort auto-friending and return following / followers lists */
+export async function syncCohortFriends(): Promise<
+  ConnectionsPayload & { linked: number }
+> {
   const res = await request<{
     success: boolean;
-    data: { linked: number; friends: FriendSummary[] };
+    data: ConnectionsPayload & { linked: number };
   }>('/social/friends/sync-cohort', { method: 'POST' });
-  return res.data ?? { linked: 0, friends: [] };
+  const d = res.data;
+  return {
+    linked: d?.linked ?? 0,
+    following: d?.following ?? [],
+    followers: d?.followers ?? [],
+    followingCount: d?.followingCount ?? d?.following?.length ?? 0,
+    followersCount: d?.followersCount ?? d?.followers?.length ?? 0,
+  };
+}
+
+export async function getConnections(): Promise<ConnectionsPayload> {
+  const res = await request<{ success: boolean; data: ConnectionsPayload }>(
+    '/social/friends/connections'
+  );
+  const d = res.data;
+  return {
+    following: d?.following ?? [],
+    followers: d?.followers ?? [],
+    followingCount: d?.followingCount ?? d?.following?.length ?? 0,
+    followersCount: d?.followersCount ?? d?.followers?.length ?? 0,
+  };
 }
 
 export async function listFriends(): Promise<FriendSummary[]> {

@@ -14,6 +14,10 @@ import { getUserStories, type StoryItem } from '../../services/api/stories';
 import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import ProfileStatsRow from '../../components/profile/ProfileStatsRow';
+import ConnectionsListSheet, {
+  type ConnectionsSheetMode,
+} from '../../components/profile/ConnectionsListSheet';
 
 type Award = {
   id: string;
@@ -121,8 +125,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
-  const [friends, setFriends] = useState<FriendSummary[]>([]);
+  const [following, setFollowing] = useState<FriendSummary[]>([]);
+  const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
 
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
@@ -133,11 +139,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         getUserStories(user.id),
         syncCohortFriends(),
       ]);
-      const friendList = cohort.friends;
       const decay = user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
-      setFriends(friendList);
+      setFollowing(cohort.following);
+      setFollowers(cohort.followers);
     } catch (e) {
       console.warn('[ProfileScreen] load profile content', e);
     } finally {
@@ -303,24 +309,19 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </TouchableOpacity>
           </View>
 
-          {/* Stats */}
-          <View style={tw`flex-row gap-3 mb-4`}>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Posts</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{posts.length}</Text>
-            </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Stories</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{stories.length}</Text>
-            </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Points</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{points}</Text>
-            </View>
-          </View>
+          <ProfileStatsRow
+            postsCount={posts.length}
+            followingCount={following.length}
+            followersCount={followers.length}
+            onPressFollowing={() => setConnectionsSheet('following')}
+            onPressFollowers={() => setConnectionsSheet('followers')}
+          />
 
-          {/* Points Display */}
-          <View style={tw`bg-green-500 rounded-xl p-4 shadow-lg`}>
+          <Text style={tw`text-xs text-stone-500 mt-3 mb-4 text-center`}>
+            Shared growth categories connect you automatically — tap Following or Followers to see everyone.
+          </Text>
+
+          <View style={tw`bg-emerald-600 rounded-2xl p-4 mb-1`}>
             <View style={tw`flex-row items-center justify-between`}>
               <View>
                 <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
@@ -380,46 +381,6 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </View>
           ) : (
             <Text style={tw`text-gray-500 text-sm`}>No categories selected</Text>
-          )}
-        </View>
-
-        {/* Friends */}
-        <View style={tw`px-4 py-4 border-b border-gray-200`}>
-          <View style={tw`flex-row items-center justify-between mb-2`}>
-            <Text style={tw`text-lg font-semibold text-gray-900`}>Friends</Text>
-            {profileLoading ? (
-              <Text style={tw`text-xs text-gray-400`}>Updating…</Text>
-            ) : (
-              <Text style={tw`text-xs text-gray-500`}>{friends.length} connected</Text>
-            )}
-          </View>
-          {friends.length === 0 ? (
-            <Text style={tw`text-sm text-gray-500`}>
-              No friends yet. Anyone who shares at least one of your growth categories (e.g. both picked fitness) is connected automatically. Pull to refresh or open this tab again after saving categories.
-            </Text>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={tw`flex-row gap-3`}>
-                {friends.map((f) => (
-                  <TouchableOpacity
-                    key={f.id}
-                    onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: f.id })}
-                    style={tw`items-center w-16`}
-                  >
-                    <View style={tw`w-14 h-14 rounded-full overflow-hidden bg-green-100 border-2 border-green-200`}>
-                      <Image
-                        source={{ uri: resolveAvatarUri(f.id, f.username, f.avatar) }}
-                        style={tw`w-full h-full`}
-                        contentFit="cover"
-                      />
-                    </View>
-                    <Text style={tw`text-xs text-gray-700 mt-1 text-center`} numberOfLines={1}>
-                      {f.username}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
           )}
         </View>
 
@@ -692,6 +653,18 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <ConnectionsListSheet
+        visible={connectionsSheet !== null}
+        mode={connectionsSheet ?? 'following'}
+        users={connectionsSheet === 'followers' ? followers : following}
+        loading={profileLoading}
+        onClose={() => setConnectionsSheet(null)}
+        onSelectUser={(id) => {
+          setConnectionsSheet(null);
+          navigateFromRoot(navigation, 'PublicProfile', { userId: id });
+        }}
+      />
 
       {/* Sign Out Confirmation Modal */}
       <Modal

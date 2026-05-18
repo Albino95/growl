@@ -267,6 +267,9 @@ export default {
       if (path === `${apiPrefix}/social/friends/sync-cohort` && request.method === 'POST') {
         return friendsRoutes.syncCohortFriendsRoute(request, env);
       }
+      if (path === `${apiPrefix}/social/friends/connections` && request.method === 'GET') {
+        return friendsRoutes.listConnections(request, env);
+      }
       if (path === `${apiPrefix}/social/friends` && request.method === 'GET') {
         return friendsRoutes.listFriends(request, env);
       }

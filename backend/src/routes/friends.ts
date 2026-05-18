@@ -138,12 +138,54 @@ export async function syncCohortFriendsRoute(request: Request, env: Env): Promis
   }
   try {
     const linked = await syncCategoryCohortFriends(env, ctx.userId);
-    const friends = await listFriendsPayload(env, ctx.userId);
-    return json({ linked, friends });
+    const connections = await listConnectionsPayload(env, ctx.userId);
+    return json({ linked, ...connections });
   } catch (err) {
     console.error('[syncCohortFriends]', err);
     return error('DATABASE_ERROR', 'Could not sync cohort friends', 500);
   }
+}
+
+function mapUserRow(row: { id: string; metadata: string }) {
+  const meta = JSON.parse(row.metadata || '{}');
+  return {
+    id: row.id,
+    username: meta.username || row.id.slice(0, 8),
+    avatar: meta.avatar,
+  };
+}
+
+async function listFollowingPayload(env: Env, userId: string) {
+  const rows = await env.DB.prepare(
+    `SELECT u.id, u.metadata FROM users u
+     INNER JOIN user_relationships r ON r.target_user_id = u.id AND r.user_id = ? AND r.type = 'friend'
+     ORDER BY r.created_at DESC`
+  )
+    .bind(userId)
+    .all<{ id: string; metadata: string }>();
+  return (rows.results || []).map(mapUserRow);
+}
+
+async function listFollowersPayload(env: Env, userId: string) {
+  const rows = await env.DB.prepare(
+    `SELECT u.id, u.metadata FROM users u
+     INNER JOIN user_relationships r ON r.user_id = u.id AND r.target_user_id = ? AND r.type = 'friend'
+     ORDER BY r.created_at DESC`
+  )
+    .bind(userId)
+    .all<{ id: string; metadata: string }>();
+  return (rows.results || []).map(mapUserRow);
+}
+
+async function listConnectionsPayload(env: Env, userId: string) {
+  const following = await listFollowingPayload(env, userId);
+  const followers = await listFollowersPayload(env, userId);
+  return {
+    following,
+    followers,
+    followingCount: following.length,
+    followersCount: followers.length,
+  };
 }
 
 async function listFriendsPayload(env: Env, userId: string) {
@@ -160,14 +202,20 @@ async function listFriendsPayload(env: Env, userId: string) {
     .bind(userId, userId)
     .all<{ id: string; metadata: string }>();
 
-  return (rows.results || []).map((row) => {
-    const meta = JSON.parse(row.metadata || '{}');
-    return {
-      id: row.id,
-      username: meta.username || row.id.slice(0, 8),
-      avatar: meta.avatar,
-    };
-  });
+  return (rows.results || []).map(mapUserRow);
+}
+
+export async function listConnections(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+  try {
+    return json(await listConnectionsPayload(env, ctx.userId));
+  } catch (err) {
+    console.error('[listConnections]', err);
+    return error('DATABASE_ERROR', 'Failed to load connections', 500);
+  }
 }
 
 export async function listFriends(request: Request, env: Env): Promise<Response> {
