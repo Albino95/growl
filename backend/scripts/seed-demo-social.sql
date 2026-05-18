@@ -7,30 +7,33 @@
 -- Remote (production Worker DB binding uses database_name = growl-db):
 --   cd backend && npx wrangler d1 execute growl-db --remote --file=scripts/seed-demo-social.sql
 --
--- Sign-in (frontend sends SHA256 hash of password — same as production email auth path):
---   Password for every demo account below:  growlseed123
---   Emails: demo-fitness@growl.seed, demo-art@growl.seed, demo-violin@growl.seed, demo-mind@growl.seed, demo-nutrition@growl.seed
+-- Sign-in: plain password over HTTPS — password for every account below: growlseed123
+-- Emails: demo-fitness@growl.seed, demo-art@growl.seed, demo-violin@growl.seed, demo-mind@growl.seed, demo-nutrition@growl.seed
 
 PRAGMA foreign_keys = ON;
 
 -- Shared password hash (SHA-256 hex of "growlseed123")
-INSERT OR IGNORE INTO users (id, email, password_hash, points, is_instructor, is_business, metadata, created_at, updated_at)
+INSERT OR REPLACE INTO users (
+  id, email, password_hash, points, is_instructor, is_business, metadata,
+  email_verified, email_verification_token_hash, email_verification_expires_at,
+  created_at, updated_at
+)
 VALUES
   ('seed-u-fitness', 'demo-fitness@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 420, 1, 0,
    '{"username":"Jordan Miles","avatar":"https://i.pravatar.cc/150?img=12","categories":["fitness:losing-weight"]}',
-   datetime('now'), datetime('now')),
+   1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-art', 'demo-art@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 310, 1, 0,
    '{"username":"River Keys","avatar":"https://i.pravatar.cc/150?img=33","categories":["art:piano"]}',
-   datetime('now'), datetime('now')),
+   1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-violin', 'demo-violin@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 280, 0, 0,
    '{"username":"Casey Strings","avatar":"https://i.pravatar.cc/150?img=47","categories":["art:violin"]}',
-   datetime('now'), datetime('now')),
+   1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-mind', 'demo-mind@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 195, 0, 0,
    '{"username":"Morgan Calm","avatar":"https://i.pravatar.cc/150?img=5","categories":["mindset:meditation"]}',
-   datetime('now'), datetime('now')),
+   1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-nutrition', 'demo-nutrition@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 240, 0, 0,
    '{"username":"Sam Prep","avatar":"https://i.pravatar.cc/150?img=56","categories":["nutrition:meal-planning"]}',
-   datetime('now'), datetime('now'));
+   1, NULL, NULL, datetime('now'), datetime('now'));
 
 -- Posts (real HTTPS images — good for feed / reels / explore)
 INSERT OR IGNORE INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at)
@@ -82,10 +85,12 @@ VALUES
   ('seed-story-006', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
    'Lunch prep done', 0, datetime('now', '+19 hours'), datetime('now', '-90 minutes'), datetime('now', '-90 minutes'));
 
--- Mutual friends (same cohort art — also explicit edges for demos)
+-- Mutual friends (cohort overlap: art↔art, fitness↔nutrition, demo user↔fitness seed)
 INSERT OR IGNORE INTO user_relationships (id, user_id, target_user_id, type, created_at)
 VALUES
   ('seed-rel-friend-1', 'seed-u-art', 'seed-u-violin', 'friend', datetime('now')),
   ('seed-rel-friend-2', 'seed-u-violin', 'seed-u-art', 'friend', datetime('now')),
   ('seed-rel-friend-3', 'seed-u-fitness', 'seed-u-nutrition', 'friend', datetime('now')),
-  ('seed-rel-friend-4', 'seed-u-nutrition', 'seed-u-fitness', 'friend', datetime('now'));
+  ('seed-rel-friend-4', 'seed-u-nutrition', 'seed-u-fitness', 'friend', datetime('now')),
+  ('seed-rel-demo-fit-a', 'demo-core-user', 'seed-u-fitness', 'friend', datetime('now')),
+  ('seed-rel-demo-fit-b', 'seed-u-fitness', 'demo-core-user', 'friend', datetime('now'));

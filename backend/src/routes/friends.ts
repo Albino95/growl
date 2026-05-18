@@ -107,6 +107,69 @@ export async function syncCategoryCohortFriends(env: Env, userId: string): Promi
   return pairsCreated;
 }
 
+/** All friend user ids (either direction of the friend edge). */
+export async function getFriendUserIds(env: Env, userId: string): Promise<Set<string>> {
+  const rows = await env.DB.prepare(
+    `SELECT target_user_id AS fid FROM user_relationships WHERE user_id = ? AND type = 'friend'
+     UNION
+     SELECT user_id AS fid FROM user_relationships WHERE target_user_id = ? AND type = 'friend'`
+  )
+    .bind(userId, userId)
+    .all<{ fid: string }>();
+  return new Set((rows.results || []).map((r) => r.fid));
+}
+
+export async function areFriends(env: Env, a: string, b: string): Promise<boolean> {
+  if (a === b) return false;
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM user_relationships WHERE type = 'friend'
+     AND ((user_id = ? AND target_user_id = ?) OR (user_id = ? AND target_user_id = ?))
+     LIMIT 1`
+  )
+    .bind(a, b, b, a)
+    .first<{ ok: number }>();
+  return !!row;
+}
+
+export async function syncCohortFriendsRoute(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+  try {
+    const linked = await syncCategoryCohortFriends(env, ctx.userId);
+    const friends = await listFriendsPayload(env, ctx.userId);
+    return json({ linked, friends });
+  } catch (err) {
+    console.error('[syncCohortFriends]', err);
+    return error('DATABASE_ERROR', 'Could not sync cohort friends', 500);
+  }
+}
+
+async function listFriendsPayload(env: Env, userId: string) {
+  const rows = await env.DB.prepare(
+    `SELECT DISTINCT u.id, u.metadata
+     FROM users u
+     INNER JOIN (
+       SELECT target_user_id AS fid FROM user_relationships WHERE user_id = ? AND type = 'friend'
+       UNION
+       SELECT user_id AS fid FROM user_relationships WHERE target_user_id = ? AND type = 'friend'
+     ) AS edges ON edges.fid = u.id
+     ORDER BY u.id`
+  )
+    .bind(userId, userId)
+    .all<{ id: string; metadata: string }>();
+
+  return (rows.results || []).map((row) => {
+    const meta = JSON.parse(row.metadata || '{}');
+    return {
+      id: row.id,
+      username: meta.username || row.id.slice(0, 8),
+      avatar: meta.avatar,
+    };
+  });
+}
+
 export async function listFriends(request: Request, env: Env): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
@@ -114,28 +177,7 @@ export async function listFriends(request: Request, env: Env): Promise<Response>
   }
 
   try {
-    const rows = await env.DB.prepare(
-      `SELECT DISTINCT u.id, u.metadata
-       FROM users u
-       INNER JOIN (
-         SELECT target_user_id AS fid FROM user_relationships WHERE user_id = ? AND type = 'friend'
-         UNION
-         SELECT user_id AS fid FROM user_relationships WHERE target_user_id = ? AND type = 'friend'
-       ) AS edges ON edges.fid = u.id
-       ORDER BY u.id`
-    )
-      .bind(ctx.userId, ctx.userId)
-      .all<{ id: string; metadata: string }>();
-
-    const friends = (rows.results || []).map((row) => {
-      const meta = JSON.parse(row.metadata || '{}');
-      return {
-        id: row.id,
-        username: meta.username || row.id.slice(0, 8),
-        avatar: meta.avatar,
-      };
-    });
-
+    const friends = await listFriendsPayload(env, ctx.userId);
     return json({ friends });
   } catch (err) {
     console.error('[listFriends]', err);
@@ -158,12 +200,8 @@ export async function getFriendshipStatus(
   }
 
   try {
-    const row = await env.DB.prepare(
-      `SELECT 1 FROM user_relationships WHERE type = 'friend' AND user_id = ? AND target_user_id = ? LIMIT 1`
-    )
-      .bind(ctx.userId, targetUserId)
-      .first();
-    return json({ connected: !!row, isSelf: false });
+    const connected = await areFriends(env, ctx.userId, targetUserId);
+    return json({ connected, isSelf: false });
   } catch (err) {
     console.error('[getFriendshipStatus]', err);
     return error('DATABASE_ERROR', 'Failed to load friendship status', 500);

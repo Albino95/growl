@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -138,6 +139,12 @@ export default function FeedScreen({ navigation, route }: any) {
     dispatch(fetchFeedPosts());
     loadStoriesOnly();
   }, [dispatch]);
+
+  useFocusEffect(
+    useCallback(() => {
+      dispatch(fetchFeedPosts());
+    }, [dispatch])
+  );
 
   useEffect(() => {
     if (feedStatus !== 'succeeded') return;

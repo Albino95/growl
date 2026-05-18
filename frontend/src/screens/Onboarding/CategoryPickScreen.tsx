@@ -8,6 +8,7 @@ import PrimaryButton from '../../components/ui/PrimaryButton';
 import CATEGORIES, { Category, Subcategory } from '../../data/categories';
 import { useAuth } from '../../store/hooks';
 import { updateProfileOnServer } from '../../services/api/profile';
+import { syncCohortFriends } from '../../services/api/friends';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import tw from '../../lib/tw';
 
@@ -67,6 +68,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
     }
     try {
       await updateProfileOnServer({ categories: selectedCategories });
+      await syncCohortFriends();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';
       if (Platform.OS === 'web') {

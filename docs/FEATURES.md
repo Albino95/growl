@@ -27,6 +27,8 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 
 - Each selected path contributes cohort keys: e.g. `art:violin` → `{ art:violin, art }`.
 - Any **shared key** between two accounts implies they share a cohort (e.g. `art:piano` and `art:violin` both include `art`).
+- Matching users are **auto-friended** (bidirectional `friend` edges) when categories are saved, on profile load, or via `POST /social/friends/sync-cohort`.
+- **Feed** shows only **your posts** and **friends’ posts** (cohort peers appear once auto-linked).
 - Friend edges are stored as **`user_relationships.type = 'friend'`** in **both directions** (unless a **block** exists).
 
 ---

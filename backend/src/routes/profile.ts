@@ -69,6 +69,16 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
   }
 
   const metadata = JSON.parse(ctx.user.metadata || '{}');
+  const categories = metadata.categories || [];
+
+  let cohortFriendsLinked = 0;
+  if (categories.length > 0) {
+    try {
+      cohortFriendsLinked = await syncCategoryCohortFriends(env, ctx.userId);
+    } catch (syncErr) {
+      console.error('[getProfile] cohort friend sync failed:', syncErr);
+    }
+  }
 
   return json({
     id: ctx.user.id,
@@ -78,7 +88,8 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     points: ctx.user.points,
     is_instructor: ctx.user.is_instructor,
     is_business: ctx.user.is_business,
-    categories: metadata.categories || [],
+    categories,
+    cohort_friends_linked: cohortFriendsLinked,
     created_at: ctx.user.created_at,
   });
 }

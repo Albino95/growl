@@ -3,7 +3,8 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, createPostSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
-import { categoryRelevanceScore, postMatchesUserCategories } from '../utils/categories';
+import { categoryRelevanceScore } from '../utils/categories';
+import { getFriendUserIds } from './friends';
 
 /**
  * GET /api/v1/feed/feed
@@ -79,12 +80,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       }
     >();
 
-  const friendRows = await env.DB.prepare(
-    `SELECT target_user_id FROM user_relationships WHERE user_id = ? AND type = 'friend'`
-  )
-    .bind(ctx.userId)
-    .all<{ target_user_id: string }>();
-  const friendIds = new Set((friendRows.results || []).map((r) => r.target_user_id));
+  const friendIds = await getFriendUserIds(env, ctx.userId);
 
   const personalizedPosts = (posts.results || [])
     .map((post) => {
@@ -115,13 +111,10 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       };
     })
     .filter((post) => {
+      // Feed = your posts + friends only (cohort peers are auto-friended on profile sync)
       if (post.isOwn) return true;
-      if (!categories.length) return true;
-      return (
-        post.isFriend ||
-        post.relevanceScore >= 35 ||
-        postMatchesUserCategories(categories, post.category, post.subcategory)
-      );
+      if (!categories.length) return false;
+      return post.isFriend;
     });
 
   personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));

@@ -11,7 +11,7 @@ import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplay
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, type StoryItem } from '../../services/api/stories';
-import { listFriends, type FriendSummary } from '../../services/api/friends';
+import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 
@@ -128,11 +128,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, friendList] = await Promise.all([
+      const [postList, storyList, cohort] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
-        listFriends(),
+        syncCohortFriends(),
       ]);
+      const friendList = cohort.friends;
       const decay = user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
@@ -394,7 +395,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
           {friends.length === 0 ? (
             <Text style={tw`text-sm text-gray-500`}>
-              No friends yet. People in your same growth-area cohorts connect automatically when your categories are saved to the server; you can also add friends from their profile.
+              No friends yet. Anyone who shares at least one of your growth categories (e.g. both picked fitness) is connected automatically. Pull to refresh or open this tab again after saving categories.
             </Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>

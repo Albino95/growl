@@ -92,6 +92,16 @@ Default local URL: `http://localhost:8787/api/v1`
 
 After sign-in, open **Profile → Friends** for seeded connections, **Explore** for people with active stories/reels who are not yet friends, and **Feed** for posts.
 
+**Vercel / production web:** the app calls the **remote** Worker (`growl-backend.*.workers.dev`), not your local D1. Seed demos on remote once:
+
+```bash
+cd backend
+npx wrangler d1 migrations apply growl-db --remote   # if not already applied
+npm run demo:remote
+```
+
+If demo sign-in fails with “Invalid email or password”, the remote database is missing seeded accounts — run the commands above.
+
 ### Auth (production behavior)
 
 - **Sign-up** is `POST /auth/sign-up` only — returns `requiresEmailVerification: true` (no session until email is confirmed).

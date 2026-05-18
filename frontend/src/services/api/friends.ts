@@ -6,6 +6,15 @@ import { request } from './http';
 
 export type FriendSummary = { id: string; username: string; avatar?: string };
 
+/** Re-run cohort auto-friending (shared category paths) and return updated list */
+export async function syncCohortFriends(): Promise<{ linked: number; friends: FriendSummary[] }> {
+  const res = await request<{
+    success: boolean;
+    data: { linked: number; friends: FriendSummary[] };
+  }>('/social/friends/sync-cohort', { method: 'POST' });
+  return res.data ?? { linked: 0, friends: [] };
+}
+
 export async function listFriends(): Promise<FriendSummary[]> {
   try {
     const res = await request<{ success: boolean; data: { friends: FriendSummary[] } }>('/social/friends');

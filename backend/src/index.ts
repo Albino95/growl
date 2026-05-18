@@ -264,6 +264,9 @@ export default {
         return friendsRoutes.removeFriend(request, env, friendDeleteMatch[1]);
       }
 
+      if (path === `${apiPrefix}/social/friends/sync-cohort` && request.method === 'POST') {
+        return friendsRoutes.syncCohortFriendsRoute(request, env);
+      }
       if (path === `${apiPrefix}/social/friends` && request.method === 'GET') {
         return friendsRoutes.listFriends(request, env);
       }
