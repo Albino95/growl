@@ -33,6 +33,74 @@ Expect JSON with `success: true` and `data.database` / `data.kv` showing connect
 
 ---
 
+## Local demo environment (migrations + friends + posts)
+
+Use this to simulate a realistic social graph on **local D1** while running `wrangler dev`.
+
+### 1. Apply schema (migrations)
+
+```bash
+cd backend
+npm run migrate:local
+```
+
+Fresh reset (wipes local D1 state, then reapplies migrations):
+
+```bash
+cd backend
+npm run db:reset:local
+```
+
+### 2. Seed demo users, posts, stories, and friend edges
+
+```bash
+cd backend
+npm run seed:social:local
+```
+
+Or one command (migrate + social seed):
+
+```bash
+cd backend
+npm run demo:local
+```
+
+**Remote** (production/staging D1 — use with care):
+
+```bash
+cd backend
+npm run migrate
+npm run seed:social:remote
+# or: npm run demo:remote
+```
+
+### 3. Start the API
+
+```bash
+cd backend
+npm run dev
+```
+
+Default local URL: `http://localhost:8787/api/v1`
+
+### 4. Sign in on the app
+
+| Field | Value |
+|--------|--------|
+| Email | `demo-fitness@growl.seed` (also `demo-art@`, `demo-violin@`, `demo-mind@`, `demo-nutrition@`) |
+| Password | `growlseed123` |
+
+After sign-in, open **Profile → Friends** for seeded connections, **Explore** for people with active stories/reels who are not yet friends, and **Feed** for posts.
+
+Point the app at local API:
+
+```bash
+cd frontend
+API_BASE_URL=http://localhost:8787/api/v1 npx expo start
+```
+
+---
+
 ## Backend — unit tests (Vitest)
 
 Requirements: **Node 18+** (Node **20+** recommended). Vitest/Vite may fail on Node 16 with crypto-related startup errors.

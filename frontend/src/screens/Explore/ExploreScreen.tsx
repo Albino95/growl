@@ -1,6 +1,6 @@
 /**
- * Explore — discovery surface (separate from home feed).
- * Ranking logic lives in `utils/exploreAlgorithm.ts` (unit-tested). Human-readable notes: `docs/EXPLORE_ALGORITHM.md`.
+ * Explore — discover people via stories & reels (not marketplace).
+ * Ranking: `utils/discoverPeople.ts` + category overlap from onboarding paths.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -18,52 +20,63 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
-import { getProducts, type Product } from '../../services/api/marketplace';
-import { listFriends } from '../../services/api/friends';
-import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { getStories, type StoryItem } from '../../services/api/stories';
+import { addFriend, listFriends } from '../../services/api/friends';
+import { resolveAvatarUri, resolvePostMediaUri, resolveStoryDisplayUri } from '../../utils/images';
+import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/discoverPeople';
 import tw from '../../lib/tw';
-import { feedListPerformanceProps } from '../../constants/scroll';
-import { rankExploreRows, type ExploreRankedRow } from '../../utils/exploreAlgorithm';
-
-type ExploreRow = ExploreRankedRow<FeedPost, Product>;
+import { feedListPerformanceProps, horizontalScrollProps } from '../../constants/scroll';
 
 export default function ExploreScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
-  const [rows, setRows] = useState<ExploreRow[]>([]);
+  const [people, setPeople] = useState<DiscoverPerson[]>([]);
+  const [reels, setReels] = useState<FeedPost[]>([]);
+  const [storyGroups, setStoryGroups] = useState<
+    Array<{ userId: string; username: string; avatar: string | null; stories: StoryItem[] }>
+  >([]);
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
 
   const userPaths = user?.categories || [];
 
   const load = useCallback(async () => {
     try {
-      const [feedRes, prodRes, friends] = await Promise.all([
+      const [feedRes, storiesRes, friends] = await Promise.all([
         getFeedPosts(),
-        getProducts({ limit: 24, offset: 0 }),
+        getStories(),
         listFriends(),
       ]);
       const posts = feedRes.success && Array.isArray(feedRes.data) ? feedRes.data : [];
-      const products =
-        prodRes.success && prodRes.data?.products && Array.isArray(prodRes.data.products)
-          ? prodRes.data.products
-          : [];
-      const friendIds = new Set(friends.map((f) => f.id));
-      const ranked = rankExploreRows(posts, products, userPaths, {
-        friendIds,
-        productScoreMultiplier: 0.42,
+      const fIds = new Set(friends.map((f) => f.id));
+      setFriendIds(fIds);
+
+      const grouped =
+        storiesRes.success && storiesRes.data?.grouped ? storiesRes.data.grouped : [];
+      setStoryGroups(grouped);
+
+      const rankedPeople = rankDiscoverPeople(grouped, posts, userPaths, {
+        selfId: user?.id,
+        friendIds: fIds,
       });
-      const postRows = ranked.filter((r) => r.kind === 'post');
-      const shopTail = ranked.filter((r) => r.kind === 'product').slice(0, 4);
-      setRows(postRows.length > 0 ? [...postRows, ...shopTail] : ranked);
+      const rankedReels = rankDiscoverReelPosts(posts, userPaths, {
+        selfId: user?.id,
+        friendIds: fIds,
+      });
+
+      setPeople(rankedPeople);
+      setReels(rankedReels);
     } catch (e) {
       console.warn('[Explore] load failed', e);
-      setRows([]);
+      setPeople([]);
+      setReels([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userPaths]);
+  }, [user?.id, userPaths]);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,91 +91,198 @@ export default function ExploreScreen() {
   };
 
   const subtitle = useMemo(() => {
-    if (!userPaths.length)
-      return 'Posts ranked by your interests, recency, and engagement — plus a few marketplace picks at the end.';
-    return `Ranked for your growth areas (${userPaths.length} path${userPaths.length === 1 ? '' : 's'}), with friend boosts when available.`;
+    if (!userPaths.length) {
+      return 'Meet people through their stories and reels — add friends in your growth areas.';
+    }
+    return `People outside your friend list, ranked by shared growth areas (${userPaths.length} path${userPaths.length === 1 ? '' : 's'}).`;
   }, [userPaths]);
 
-  const renderItem = ({ item }: { item: ExploreRow }) => {
-    if (item.kind === 'post') {
-      const p = item.post;
-      const username = p.metadata?.username || 'Member';
-      const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
-      const image = resolvePostMediaUri(p.image_url, p.category, p.id);
-      return (
-        <TouchableOpacity
-          style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
-          activeOpacity={0.88}
-          onPress={() => {
-            const root = navigation.getParent?.() || navigation;
-            (root as { navigate: (a: string, b: object) => void }).navigate('PostDetail', {
-              post: {
-                id: p.id,
-                userId: p.user_id,
-                username,
-                avatar,
-                image,
-                caption: p.caption || '',
-                category: p.category,
-                subcategory: p.subcategory || undefined,
-                likes: p.metadata?.likes ?? 0,
-                comments: p.metadata?.comments ?? 0,
-                createdAt: p.created_at,
-                hasLiked: !!p.metadata?.has_liked,
-                reaction: p.metadata?.has_liked ? 'love' : null,
-              },
-            });
-          }}
-        >
-          <View style={tw`flex-row items-center mb-2`}>
-            <Image source={{ uri: avatar }} style={tw`w-9 h-9 rounded-full bg-stone-100 mr-2`} />
-            <View style={tw`flex-1`}>
-              <Text style={tw`font-semibold text-stone-900`}>{username}</Text>
-              <Text style={tw`text-xs text-stone-500 capitalize`}>{p.category}</Text>
-            </View>
-            <View style={tw`px-2 py-0.5 bg-violet-50 rounded-full`}>
-              <Text style={tw`text-xs font-semibold text-violet-700`}>Post</Text>
-            </View>
-          </View>
-          <Image source={{ uri: image }} style={tw`w-full h-44 rounded-xl bg-stone-100 mb-2`} contentFit="cover" />
-          <Text style={tw`text-stone-800`} numberOfLines={3}>
-            {p.caption || ' '}
-          </Text>
-        </TouchableOpacity>
-      );
-    }
+  const openProfile = (userId: string) => {
+    const root = navigation.getParent?.() || navigation;
+    (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId });
+  };
 
-    const pr = item.product;
-    const img = pr.image_url || pr.images?.[0];
+  const openStoryViewer = (person: DiscoverPerson) => {
+    const g = storyGroups.find((x) => x.userId === person.userId);
+    if (!g?.stories?.length) {
+      openProfile(person.userId);
+      return;
+    }
+    const root = navigation.getParent?.() || navigation;
+    const fullStories = g.stories.map((s) => ({
+      ...s,
+      image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+    }));
+    (root as { navigate: (a: string, b: object) => void }).navigate('StoryViewer', {
+      stories: fullStories,
+      initialIndex: 0,
+    });
+  };
+
+  const onAddFriend = async (userId: string) => {
+    if (addingId) return;
+    setAddingId(userId);
+    try {
+      await addFriend(userId);
+      setFriendIds((prev) => new Set([...prev, userId]));
+      setPeople((prev) => prev.filter((p) => p.userId !== userId));
+      setReels((prev) => prev.filter((p) => p.user_id !== userId));
+      Alert.alert('Connected', 'You are now friends.');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not add friend';
+      Alert.alert('Error', msg);
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  const openReels = () => {
+    const root = navigation.getParent?.() || navigation;
+    (root as { navigate: (a: string) => void }).navigate('Reels');
+  };
+
+  const openPostDetail = (p: FeedPost) => {
+    const username = p.metadata?.username || 'Member';
+    const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
+    const image = resolvePostMediaUri(p.image_url, p.category, p.id);
+    const root = navigation.getParent?.() || navigation;
+    (root as { navigate: (a: string, b: object) => void }).navigate('PostDetail', {
+      post: {
+        id: p.id,
+        userId: p.user_id,
+        username,
+        avatar,
+        image,
+        caption: p.caption || '',
+        category: p.category,
+        subcategory: p.subcategory || undefined,
+        likes: p.metadata?.likes ?? 0,
+        comments: p.metadata?.comments ?? 0,
+        createdAt: p.created_at,
+        hasLiked: !!p.metadata?.has_liked,
+        reaction: p.metadata?.has_liked ? 'love' : null,
+      },
+    });
+  };
+
+  const renderPersonCard = (person: DiscoverPerson) => {
+    const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
+    const ringUri = person.latestStoryImage
+      ? resolveStoryDisplayUri(person.latestStoryImage, person.userId)
+      : null;
+    const busy = addingId === person.userId;
+
     return (
-      <TouchableOpacity
+      <View
+        key={person.userId}
         style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
-        activeOpacity={0.88}
-        onPress={() => {
-          const root = navigation.getParent?.() || navigation;
-          (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
-            productId: pr.id,
-          });
-        }}
       >
-        <View style={tw`flex-row items-center justify-between mb-2`}>
-          <Text style={tw`font-semibold text-stone-900`} numberOfLines={1}>
-            {pr.name}
-          </Text>
-          <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-full`}>
-            <Text style={tw`text-xs font-semibold text-emerald-700`}>Shop</Text>
+        <View style={tw`flex-row items-center`}>
+          <TouchableOpacity
+            onPress={() => (person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId))}
+            style={tw`mr-3`}
+          >
+            <View
+              style={tw`w-16 h-16 rounded-full p-0.5 ${
+                person.storyCount > 0 ? 'border-2 border-violet-500' : 'border border-stone-200'
+              }`}
+            >
+              {ringUri ? (
+                <Image source={{ uri: ringUri }} style={tw`w-full h-full rounded-full`} contentFit="cover" />
+              ) : (
+                <Image source={{ uri: avatar }} style={tw`w-full h-full rounded-full`} contentFit="cover" />
+              )}
+            </View>
+            {person.storyCount > 0 ? (
+              <View style={tw`absolute -bottom-1 -right-1 bg-violet-600 rounded-full px-1.5 py-0.5`}>
+                <Text style={tw`text-[10px] text-white font-bold`}>{person.storyCount}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          <View style={tw`flex-1`}>
+            <Text style={tw`font-bold text-stone-900`}>{person.username}</Text>
+            <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+              {person.storyCount > 0
+                ? `${person.storyCount} active ${person.storyCount === 1 ? 'story' : 'stories'}`
+                : 'New in your cohort'}
+            </Text>
           </View>
+          <TouchableOpacity
+            onPress={() => void onAddFriend(person.userId)}
+            disabled={busy || friendIds.has(person.userId)}
+            style={tw`bg-violet-600 px-3 py-2 rounded-xl ${busy ? 'opacity-60' : ''}`}
+          >
+            <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Add'}</Text>
+          </TouchableOpacity>
         </View>
-        {img ? (
-          <Image source={{ uri: img }} style={tw`w-full h-36 rounded-xl bg-stone-100 mb-2`} contentFit="cover" />
-        ) : null}
-        <Text style={tw`text-sm text-stone-600 mb-1`} numberOfLines={2}>
-          {pr.description || pr.category}
-        </Text>
-        <Text style={tw`text-emerald-700 font-bold`}>${pr.price.toFixed(2)}</Text>
-      </TouchableOpacity>
+        <View style={tw`flex-row mt-3 gap-2`}>
+          <TouchableOpacity
+            onPress={() => openProfile(person.userId)}
+            style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
+          >
+            <Text style={tw`text-stone-700 text-sm font-semibold`}>Profile</Text>
+          </TouchableOpacity>
+          {person.storyCount > 0 ? (
+            <TouchableOpacity
+              onPress={() => openStoryViewer(person)}
+              style={tw`flex-1 py-2 rounded-xl bg-violet-50 items-center`}
+            >
+              <Text style={tw`text-violet-800 text-sm font-semibold`}>Stories</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
     );
   };
+
+  const ListHeader = (
+    <>
+      <View style={tw`mb-4`}>
+        <View style={tw`flex-row items-center justify-between mb-2`}>
+          <Text style={tw`text-lg font-bold text-violet-900`}>Stories to meet</Text>
+          <TouchableOpacity onPress={openReels} style={tw`flex-row items-center`}>
+            <Ionicons name="play-circle" size={20} color="#7C3AED" />
+            <Text style={tw`text-violet-700 text-sm font-semibold ml-1`}>All reels</Text>
+          </TouchableOpacity>
+        </View>
+        {people.filter((p) => p.storyCount > 0).length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} {...horizontalScrollProps}>
+            {people
+              .filter((p) => p.storyCount > 0)
+              .slice(0, 12)
+              .map((person) => {
+                const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
+                const thumb = resolveStoryDisplayUri(
+                  person.latestStoryImage,
+                  person.userId
+                );
+                return (
+                  <TouchableOpacity
+                    key={person.userId}
+                    onPress={() => openStoryViewer(person)}
+                    style={tw`items-center mr-4 w-20`}
+                  >
+                    <View style={tw`w-16 h-16 rounded-full border-2 border-violet-500 p-0.5`}>
+                      <Image
+                        source={{ uri: thumb || avatar }}
+                        style={tw`w-full h-full rounded-full`}
+                        contentFit="cover"
+                      />
+                    </View>
+                    <Text style={tw`text-xs text-stone-600 mt-1 text-center`} numberOfLines={1}>
+                      {person.username.split(' ')[0]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+          </ScrollView>
+        ) : (
+          <Text style={tw`text-sm text-stone-500`}>No new story rings right now. Check reels below.</Text>
+        )}
+      </View>
+      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>Reels & posts to discover</Text>
+    </>
+  );
 
   return (
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
@@ -170,25 +290,74 @@ export default function ExploreScreen() {
         <Text style={tw`text-2xl font-bold text-violet-800`}>Explore</Text>
         <Text style={tw`text-sm text-stone-500 mt-1`}>{subtitle}</Text>
       </View>
-      {loading && rows.length === 0 ? (
+      {loading && people.length === 0 && reels.length === 0 ? (
         <View style={tw`flex-1 items-center justify-center py-20`}>
           <ActivityIndicator size="large" color="#7C3AED" />
         </View>
       ) : (
         <FlatList
-          data={rows}
-          keyExtractor={(r) => (r.kind === 'post' ? `p-${r.post.id}` : `pr-${r.product.id}`)}
-          renderItem={renderItem}
-          contentContainerStyle={tw`px-4 pt-3 pb-24`}
+          data={reels}
+          keyExtractor={(p) => p.id}
+          ListHeaderComponent={
+            <>
+              {ListHeader}
+              {people.map(renderPersonCard)}
+            </>
+          }
+          renderItem={({ item: p }) => {
+            const username = p.metadata?.username || 'Member';
+            const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
+            const image = resolvePostMediaUri(p.image_url, p.category, p.id);
+            const isFriend = friendIds.has(p.user_id);
+            return (
+              <TouchableOpacity
+                style={tw`bg-white border border-stone-100 rounded-2xl overflow-hidden mb-3`}
+                activeOpacity={0.9}
+                onPress={() => openPostDetail(p)}
+              >
+                <Image source={{ uri: image }} style={tw`w-full h-52 bg-stone-200`} contentFit="cover" />
+                <View style={tw`p-3 flex-row items-center`}>
+                  <Image source={{ uri: avatar }} style={tw`w-9 h-9 rounded-full mr-2`} />
+                  <View style={tw`flex-1`}>
+                    <Text style={tw`font-semibold text-stone-900`}>{username}</Text>
+                    <Text style={tw`text-xs text-stone-500 capitalize`}>{p.category}</Text>
+                  </View>
+                  {!isFriend ? (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        void onAddFriend(p.user_id);
+                      }}
+                      style={tw`bg-violet-100 px-2 py-1 rounded-lg`}
+                    >
+                      <Text style={tw`text-violet-800 text-xs font-bold`}>+ Friend</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Ionicons name="checkmark-circle" size={22} color="#059669" />
+                  )}
+                </View>
+                {p.caption ? (
+                  <Text style={tw`px-3 pb-3 text-stone-700`} numberOfLines={2}>
+                    {p.caption}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          }}
+          contentContainerStyle={tw`px-4 pt-3 pb-28`}
           {...feedListPerformanceProps}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7C3AED" colors={['#7C3AED']} />
           }
           ListEmptyComponent={
-            <View style={tw`items-center py-16 px-6`}>
-              <Ionicons name="planet-outline" size={48} color="#C4B5FD" />
-              <Text style={tw`text-stone-600 text-center mt-3`}>Nothing to explore yet. Pull to refresh.</Text>
-            </View>
+            people.length === 0 ? (
+              <View style={tw`items-center py-12 px-6`}>
+                <Ionicons name="people-outline" size={48} color="#C4B5FD" />
+                <Text style={tw`text-stone-600 text-center mt-3`}>
+                  No one new to discover yet. Run the demo seed or post a story, then pull to refresh.
+                </Text>
+              </View>
+            ) : null
           }
         />
       )}
