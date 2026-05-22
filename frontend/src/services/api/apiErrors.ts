@@ -6,6 +6,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   VALIDATION_ERROR: 'Please check your email and password.',
   WEAK_PASSWORD: 'Password does not meet security requirements.',
   EMAIL_SEND_FAILED: 'Could not send verification email. Try again later.',
+  AUTH_TEMPORARILY_UNAVAILABLE: 'Account creation is temporarily unavailable. Please try again shortly.',
+  DATABASE_ERROR: 'We could not create your account right now. Please try again in a minute.',
   SSO_ERROR: 'Sign-in with Google or Facebook failed. Try again.',
   METHOD_NOT_ALLOWED: 'Invalid request. Please update the app.',
 };

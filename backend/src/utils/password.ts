@@ -3,7 +3,11 @@
  * Legacy rows may still use bare SHA-256 hex from early MVP; verifyPassword handles both.
  */
 
-const PBKDF2_ITERATIONS = 210_000;
+/**
+ * Cloudflare Workers WebCrypto currently rejects PBKDF2 iterations above 100k.
+ * Keep the default at the platform-safe ceiling so sign-up/sign-in never crash in production.
+ */
+const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const KEY_BITS = 256;
 
@@ -59,13 +63,20 @@ export async function verifyPassword(password: string, stored: string): Promise<
     const parts = stored.split('$');
     if (parts.length !== 4) return false;
     const iterations = parseInt(parts[1], 10);
+    if (!Number.isFinite(iterations) || iterations <= 0) return false;
     const salt = fromBase64Url(parts[2]);
     const expected = fromBase64Url(parts[3]);
-    const derived = await pbkdf2Hash(password, salt, iterations);
-    if (derived.length !== expected.length) return false;
-    let diff = 0;
-    for (let i = 0; i < derived.length; i++) diff |= derived[i] ^ expected[i];
-    return diff === 0;
+    try {
+      const derived = await pbkdf2Hash(password, salt, iterations);
+      if (derived.length !== expected.length) return false;
+      let diff = 0;
+      for (let i = 0; i < derived.length; i++) diff |= derived[i] ^ expected[i];
+      return diff === 0;
+    } catch (err) {
+      // Corrupted/unusable hash parameters should fail closed as invalid credentials, not 500.
+      console.error('[verifyPassword] Unsupported PBKDF2 params:', err);
+      return false;
+    }
   }
   // Legacy SHA-256 hex (demo seed + early accounts)
   const legacy = await sha256Hex(password);

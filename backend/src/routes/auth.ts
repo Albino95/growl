@@ -100,6 +100,16 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
     );
   } catch (err: unknown) {
     console.error('[signUp] Error:', err);
+    if (
+      err instanceof Error &&
+      /pbkdf2|iteration|not supported|notsupported/i.test(err.message)
+    ) {
+      return error(
+        'AUTH_TEMPORARILY_UNAVAILABLE',
+        'Account creation is temporarily unavailable. Please try again shortly.',
+        503
+      );
+    }
     return error('DATABASE_ERROR', 'Failed to create user', 500);
   }
 }

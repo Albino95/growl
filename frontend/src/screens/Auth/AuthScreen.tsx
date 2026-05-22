@@ -43,7 +43,8 @@ export default function AuthScreen() {
   const [localLoading, setLocalLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [step, setStep] = useState<Step>('auth');
-  const { signIn, signUp, verifyEmail, signInWithSSO, isLoading, error } = useAuth();
+  const { signIn, signUp, verifyEmail, signInWithSSO, markSignupOnboardingRequired, isLoading, error } =
+    useAuth();
   const busy = localLoading || isLoading;
 
   const handleEmailAuth = async () => {
@@ -63,6 +64,7 @@ export default function AuthScreen() {
     try {
       if (isSignUp) {
         const result = await signUp(trimmedEmail, password).unwrap();
+        markSignupOnboardingRequired();
         setDevCodeHint(result.devVerificationCode ?? null);
         setStep('verify');
         notify('Verify your email', result.message);

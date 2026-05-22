@@ -27,6 +27,7 @@ interface AuthState {
   hydrated: boolean;
   isLoading: boolean;
   error: string | null;
+  shouldCompleteSignupOnboarding: boolean;
 }
 
 const TOKEN_KEY = 'auth_token';
@@ -162,6 +163,7 @@ const initialState: AuthState = {
   hydrated: false,
   isLoading: false,
   error: null,
+  shouldCompleteSignupOnboarding: false,
 };
 
 const authSlice = createSlice({
@@ -181,6 +183,10 @@ const authSlice = createSlice({
           hasCompletedOnboarding: action.payload.length > 0,
         };
       }
+      state.shouldCompleteSignupOnboarding = false;
+    },
+    markSignupOnboardingRequired: (state) => {
+      state.shouldCompleteSignupOnboarding = true;
     },
     clearError: (state) => {
       state.error = null;
@@ -197,6 +203,9 @@ const authSlice = createSlice({
         state.hydrated = true;
         state.isLoading = false;
         state.error = null;
+        if (!action.payload.token) {
+          state.shouldCompleteSignupOnboarding = false;
+        }
       })
       .addCase(hydrateAuth.rejected, (state, action) => {
         state.token = null;
@@ -204,6 +213,7 @@ const authSlice = createSlice({
         state.hydrated = true;
         state.isLoading = false;
         state.error = (action.payload as string) || null;
+        state.shouldCompleteSignupOnboarding = false;
       });
 
     builder
@@ -274,14 +284,17 @@ const authSlice = createSlice({
         state.user = null;
         state.isLoading = false;
         state.error = null;
+        state.shouldCompleteSignupOnboarding = false;
       })
       .addCase(signOut.rejected, (state) => {
         state.token = null;
         state.user = null;
         state.isLoading = false;
+        state.shouldCompleteSignupOnboarding = false;
       });
   },
 });
 
-export const { updateUser, setOnboardingComplete, clearError } = authSlice.actions;
+export const { updateUser, setOnboardingComplete, markSignupOnboardingRequired, clearError } =
+  authSlice.actions;
 export default authSlice.reducer;

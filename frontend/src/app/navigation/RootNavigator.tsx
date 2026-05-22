@@ -79,10 +79,16 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { token, user, hydrated } = useAppSelector((state) => state.auth);
+  const { token, user, hydrated, shouldCompleteSignupOnboarding } = useAppSelector(
+    (state) => state.auth
+  );
 
-  // Check if user needs onboarding
-  const needsOnboarding = token && user && !user.hasCompletedOnboarding;
+  // Show category picker only for users currently in the sign-up flow.
+  const needsOnboarding =
+    token &&
+    user &&
+    shouldCompleteSignupOnboarding &&
+    !user.hasCompletedOnboarding;
   
   const isBusinessAccount = shouldShowBusinessShell(user);
   const initialRouteName = !token 

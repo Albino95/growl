@@ -9,6 +9,7 @@ import {
   refreshProfile,
   updateUser,
   setOnboardingComplete,
+  markSignupOnboardingRequired,
   clearError,
 } from './slices/authSlice';
 import type { User } from './slices/authSlice';
@@ -37,6 +38,7 @@ export const useAuth = () => {
     refreshProfile: () => dispatch(refreshProfile()),
     updateUser: (updates: Partial<User>) => dispatch(updateUser(updates)),
     setOnboardingComplete: (categories: string[]) => dispatch(setOnboardingComplete(categories)),
+    markSignupOnboardingRequired: () => dispatch(markSignupOnboardingRequired()),
     clearError: () => dispatch(clearError()),
   };
 };
