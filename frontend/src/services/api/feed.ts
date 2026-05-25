@@ -13,6 +13,8 @@ export type FeedPost = {
     comments?: number;
     has_liked?: boolean;
     friend_likes_count?: number;
+    friend_likers?: string[];
+    is_friend?: boolean;
     username?: string;
     avatar?: string;
     isInstructor?: boolean;

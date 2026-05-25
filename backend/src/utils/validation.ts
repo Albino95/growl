@@ -13,11 +13,21 @@ const strongPasswordSchema = z
   .regex(/[0-9]/, 'Password must include a number')
   .regex(/[^a-zA-Z0-9]/, 'Password must include a symbol');
 
-export const signUpSchema = z.object({
-  email: z.string().email('Invalid email address').max(254),
-  password: strongPasswordSchema,
-  username: z.string().min(3, 'Username must be at least 3 characters').max(32).optional(),
-});
+const clientPasswordHashSchema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/i, 'Invalid password hash format');
+
+export const signUpSchema = z
+  .object({
+    email: z.string().email('Invalid email address').max(254),
+    password: strongPasswordSchema.optional(),
+    passwordHash: clientPasswordHashSchema.optional(),
+    username: z.string().min(3, 'Username must be at least 3 characters').max(32).optional(),
+  })
+  .refine((data) => !!data.password || !!data.passwordHash, {
+    message: 'password or passwordHash is required',
+    path: ['password'],
+  });
 
 export const signInSchema = z.object({
   email: z.string().email('Invalid email address'),

@@ -84,6 +84,7 @@ export default function AuthScreen() {
         notify(isSignUp ? 'Sign up failed' : 'Sign in failed', msg);
       }
     } finally {
+      setPassword('');
       setLocalLoading(false);
     }
   };

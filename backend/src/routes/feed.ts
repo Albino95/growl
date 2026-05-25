@@ -44,7 +44,12 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
       (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
         INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
-        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
+        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count,
+      (SELECT GROUP_CONCAT(DISTINCT COALESCE(json_extract(ul.metadata, '$.username'), substr(ul.id, 1, 8)))
+        FROM post_engagement pef
+        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+        INNER JOIN users ul ON ul.id = pef.user_id
+        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likers_csv
     FROM posts p
     JOIN users u ON p.user_id = u.id
     LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
@@ -68,7 +73,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   `;
 
   const posts = await env.DB.prepare(query)
-    .bind(...bindings, ctx.userId, ctx.userId)
+    .bind(ctx.userId, ctx.userId, ctx.userId, ...bindings)
     .all<
       Post & {
         user_metadata: string;
@@ -77,6 +82,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
         comments_count: number;
         viewer_has_liked: number;
         friend_likes_count: number;
+        friend_likers_csv?: string | null;
       }
     >();
 
@@ -101,6 +107,11 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
           comments: post.comments_count || 0,
           has_liked: Number(post.viewer_has_liked) > 0,
           friend_likes_count: Number(post.friend_likes_count) || 0,
+          friend_likers:
+            typeof post.friend_likers_csv === 'string' && post.friend_likers_csv.length > 0
+              ? post.friend_likers_csv.split(',').map((x) => x.trim()).filter(Boolean)
+              : [],
+          is_friend: isFriend,
           isInstructor: post.is_instructor,
           username: userMeta.username,
           avatar: userMeta.avatar,

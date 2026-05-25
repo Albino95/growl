@@ -1,4 +1,5 @@
 import { request } from './http';
+import { sha256Hex } from '../../utils/cryptoHash';
 
 export type SessionResponse = {
   token: string;
@@ -22,9 +23,14 @@ export async function signUpApi(payload: {
   password: string;
   username?: string;
 }): Promise<SignUpResponse> {
+  const passwordHash = await sha256Hex(payload.password);
   const res = await request<{ success: boolean; data: SignUpResponse }>('/auth/sign-up', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      email: payload.email,
+      username: payload.username,
+      passwordHash,
+    }),
   });
   return res.data;
 }

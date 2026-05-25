@@ -11,6 +11,7 @@ import ProfileScreen from '../../../screens/Profile/ProfileScreen';
 import InstructorScreen from '../../../screens/Instructor/InstructorScreen';
 import MarketplaceScreen from '../../../screens/Marketplace/MarketplaceScreen';
 import tw from '../../../lib/tw';
+import { navigateFromRoot } from '../rootNavigation';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
@@ -72,8 +73,7 @@ export default function IndividualTabs() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const handleCreatePost = () => {
-    const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.navigate('Post' as never);
+    navigateFromRoot(navigation, 'Post');
   };
 
   const fabShadow =
@@ -115,6 +115,7 @@ export default function IndividualTabs() {
                 <TouchableOpacity
                   onPress={handleCreatePost}
                   activeOpacity={0.85}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   style={[
                     tw`w-14 h-14 rounded-full bg-emerald-600 items-center justify-center border-4 border-white`,
                     fabShadow,
@@ -123,7 +124,7 @@ export default function IndividualTabs() {
                   accessibilityRole="button"
                   accessibilityLabel="Create post"
                 >
-                  <Ionicons name="add" size={30} color="#FFFFFF" style={{ marginTop: -1 }} />
+                  <Ionicons name="add" size={30} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={tw`h-[18px]`} />
               </View>

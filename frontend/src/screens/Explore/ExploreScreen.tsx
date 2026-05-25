@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -39,6 +40,8 @@ export default function ExploreScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const userPaths = user?.categories || [];
 
@@ -96,6 +99,35 @@ export default function ExploreScreen() {
     }
     return `People outside your friend list, ranked by shared growth areas (${userPaths.length} path${userPaths.length === 1 ? '' : 's'}).`;
   }, [userPaths]);
+
+  const filteredPeople = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return people.filter((p) => {
+      if (q && !p.username.toLowerCase().includes(q)) return false;
+      if (!selectedCategory) return true;
+      const cat = p.latestPost?.category;
+      return cat === selectedCategory;
+    });
+  }, [people, query, selectedCategory]);
+
+  const filteredReels = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return reels.filter((p) => {
+      const username = (p.metadata?.username || 'member').toLowerCase();
+      const caption = (p.caption || '').toLowerCase();
+      if (q && !username.includes(q) && !caption.includes(q)) return false;
+      if (!selectedCategory) return true;
+      return p.category === selectedCategory;
+    });
+  }, [reels, query, selectedCategory]);
+
+  const availableCategories = useMemo(() => {
+    const uniq = new Set<string>();
+    for (const p of reels) {
+      if (p.category) uniq.add(p.category);
+    }
+    return Array.from(uniq).sort();
+  }, [reels]);
 
   const openProfile = (userId: string) => {
     const root = navigation.getParent?.() || navigation;
@@ -245,9 +277,9 @@ export default function ExploreScreen() {
             <Text style={tw`text-violet-700 text-sm font-semibold ml-1`}>All reels</Text>
           </TouchableOpacity>
         </View>
-        {people.filter((p) => p.storyCount > 0).length > 0 ? (
+        {filteredPeople.filter((p) => p.storyCount > 0).length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} {...horizontalScrollProps}>
-            {people
+            {filteredPeople
               .filter((p) => p.storyCount > 0)
               .slice(0, 12)
               .map((person) => {
@@ -289,19 +321,71 @@ export default function ExploreScreen() {
       <View style={tw`px-5 pt-3 pb-2 border-b border-stone-100 bg-white`}>
         <Text style={tw`text-2xl font-bold text-violet-800`}>Explore</Text>
         <Text style={tw`text-sm text-stone-500 mt-1`}>{subtitle}</Text>
+        <View style={tw`mt-3`}>
+          <View style={tw`flex-row items-center bg-stone-100 rounded-xl px-3`}>
+            <Ionicons name="search" size={16} color="#78716C" />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search people or captions"
+              placeholderTextColor="#A8A29E"
+              style={tw`flex-1 py-2.5 px-2 text-stone-800`}
+            />
+            {query ? (
+              <TouchableOpacity onPress={() => setQuery('')} style={tw`p-1`}>
+                <Ionicons name="close-circle" size={16} color="#78716C" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {availableCategories.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2`}>
+              <TouchableOpacity
+                onPress={() => setSelectedCategory(null)}
+                style={tw`mr-2 px-3 py-1.5 rounded-full ${
+                  selectedCategory === null ? 'bg-violet-600' : 'bg-stone-100'
+                }`}
+              >
+                <Text
+                  style={tw`text-xs font-semibold ${
+                    selectedCategory === null ? 'text-white' : 'text-stone-700'
+                  }`}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              {availableCategories.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setSelectedCategory(cat)}
+                  style={tw`mr-2 px-3 py-1.5 rounded-full ${
+                    selectedCategory === cat ? 'bg-violet-600' : 'bg-stone-100'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-xs font-semibold capitalize ${
+                      selectedCategory === cat ? 'text-white' : 'text-stone-700'
+                    }`}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
       </View>
-      {loading && people.length === 0 && reels.length === 0 ? (
+      {loading && filteredPeople.length === 0 && filteredReels.length === 0 ? (
         <View style={tw`flex-1 items-center justify-center py-20`}>
           <ActivityIndicator size="large" color="#7C3AED" />
         </View>
       ) : (
         <FlatList
-          data={reels}
+          data={filteredReels}
           keyExtractor={(p) => p.id}
           ListHeaderComponent={
             <>
               {ListHeader}
-              {people.map(renderPersonCard)}
+              {filteredPeople.map(renderPersonCard)}
             </>
           }
           renderItem={({ item: p }) => {
@@ -350,11 +434,13 @@ export default function ExploreScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7C3AED" colors={['#7C3AED']} />
           }
           ListEmptyComponent={
-            people.length === 0 ? (
+            filteredPeople.length === 0 ? (
               <View style={tw`items-center py-12 px-6`}>
                 <Ionicons name="people-outline" size={48} color="#C4B5FD" />
                 <Text style={tw`text-stone-600 text-center mt-3`}>
-                  No one new to discover yet. Run the demo seed or post a story, then pull to refresh.
+                  {query || selectedCategory
+                    ? 'No matches for this search/filter yet.'
+                    : 'No one new to discover yet. Run the demo seed or post a story, then pull to refresh.'}
                 </Text>
               </View>
             ) : null

@@ -43,6 +43,9 @@ type Post = {
   reaction: ReactionType;
   /** Friends (of viewer) who liked — from API when available */
   friendLikesCount?: number;
+  friendLikers?: string[];
+  isFriend?: boolean;
+  isOwn?: boolean;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -93,6 +96,9 @@ export default function FeedScreen({ navigation, route }: any) {
       hasLiked,
       reaction: hasLiked ? 'love' : null,
       friendLikesCount,
+      friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
+      isFriend: !!post.metadata?.is_friend,
+      isOwn: post.user_id === user?.id,
     };
   };
 
@@ -549,6 +555,23 @@ export default function FeedScreen({ navigation, route }: any) {
                   <Ionicons name="ellipsis-horizontal" size={22} color="#6B7280" />
                 </TouchableOpacity>
               </View>
+              {(item.isFriend || item.isOwn) && (
+                <View style={tw`px-4 pb-2`}>
+                  <View
+                    style={tw`self-start rounded-full px-2.5 py-1 ${
+                      item.isOwn ? 'bg-emerald-100' : 'bg-indigo-100'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-[11px] font-semibold ${
+                        item.isOwn ? 'text-emerald-800' : 'text-indigo-800'
+                      }`}
+                    >
+                      {item.isOwn ? 'Your post' : 'Friend'}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {/* Post Image - Modern Style */}
               <View style={tw`w-full bg-gray-50`}>
@@ -636,6 +659,14 @@ export default function FeedScreen({ navigation, route }: any) {
                     </Text>
                   ) : null}
                 </Text>
+                {(item.friendLikers?.length ?? 0) > 0 ? (
+                  <Text style={tw`text-xs text-indigo-700 mb-2`}>
+                    Liked by friends: {item.friendLikers?.slice(0, 3).join(', ')}
+                    {(item.friendLikers?.length ?? 0) > 3
+                      ? ` +${(item.friendLikers?.length ?? 0) - 3} more`
+                      : ''}
+                  </Text>
+                ) : null}
 
                 {/* Caption */}
                 <View style={tw`mb-2 flex-row flex-wrap`}>

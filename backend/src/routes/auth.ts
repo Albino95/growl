@@ -42,7 +42,7 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
     const validation = await validateRequest(request, signUpSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password, username } = validation.data;
+    const { email, password, passwordHash, username } = validation.data;
     const normalizedEmail = email.trim().toLowerCase();
 
     const existingUser = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
@@ -53,7 +53,11 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
       return error('USER_EXISTS', 'User with this email already exists', 409);
     }
 
-    const passwordHash = await hashPassword(password);
+    const credentialSecret = passwordHash || password;
+    if (!credentialSecret) {
+      return error('VALIDATION_ERROR', 'Password is required', 400);
+    }
+    const passwordHashToStore = await hashPassword(credentialSecret);
     const userId = generateId('user');
     const verifyToken = generateVerificationToken();
     const tokenHash = await hashVerificationToken(verifyToken);
@@ -77,7 +81,14 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
         created_at, updated_at
       ) VALUES (?, ?, ?, 0, 0, 0, ?, 0, ?, ?, datetime('now'), datetime('now'))`
     )
-      .bind(userId, normalizedEmail, passwordHash, JSON.stringify(metadata), tokenHash, expiresAt)
+      .bind(
+        userId,
+        normalizedEmail,
+        passwordHashToStore,
+        JSON.stringify(metadata),
+        tokenHash,
+        expiresAt
+      )
       .run();
 
     try {
