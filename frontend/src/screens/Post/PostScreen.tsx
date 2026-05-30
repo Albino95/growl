@@ -12,6 +12,7 @@ import { setCurrentImage, setCurrentCaption, setSelectedCategory, setPosting, re
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import CATEGORIES from '../../data/categories';
 import { createFeedPost } from '../../services/api/feed';
+import { uploadMediaApi } from '../../services/api/media';
 import { getPostImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
@@ -30,6 +31,36 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const { user, updateUser } = useAuth();
 
   const userCategories = user?.categories || [];
+
+  const blobToOptimizedDataUrl = async (uri: string): Promise<string> => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const imageEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Could not decode selected image'));
+        img.src = objectUrl;
+      });
+
+      const maxDim = 1400;
+      const scale = Math.min(1, maxDim / Math.max(imageEl.width, imageEl.height));
+      const width = Math.max(1, Math.round(imageEl.width * scale));
+      const height = Math.max(1, Math.round(imageEl.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return uri;
+      ctx.drawImage(imageEl, 0, 0, width, height);
+      return canvas.toDataURL('image/jpeg', 0.8);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -128,7 +159,16 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     try {
       const category = selectedCategory?.split(':')[0] || userCategories[0]?.split(':')[0] || 'mindset';
       const subcategory = selectedCategory?.includes(':') ? selectedCategory.split(':')[1] : undefined;
-      const lower = image.toLowerCase();
+      let persistableImage = image;
+      if (Platform.OS === 'web' && image.toLowerCase().startsWith('blob:')) {
+        try {
+          persistableImage = await blobToOptimizedDataUrl(image);
+        } catch (err) {
+          console.warn('[PostScreen] Could not convert blob image to persistent URL:', err);
+        }
+      }
+
+      const lower = persistableImage.toLowerCase();
       const isDirectRenderable =
         lower.startsWith('http://') ||
         lower.startsWith('https://') ||
@@ -137,8 +177,19 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         lower.startsWith('ph://') ||
         lower.startsWith('blob:') ||
         lower.startsWith('data:');
-      // Persist the real device URI so your own feed shows the photo; remote viewers need hosted URLs later.
-      const imageUrl = isDirectRenderable ? image : getPostImageUrl(category, `${Date.now()}`);
+      const shouldUpload = lower.startsWith('data:');
+      let imageUrl = isDirectRenderable
+        ? persistableImage
+        : getPostImageUrl(category, `${Date.now()}`);
+      if (shouldUpload) {
+        try {
+          imageUrl = await uploadMediaApi(persistableImage, 'post');
+        } catch (uploadErr) {
+          // Keep posting functional before R2 is configured; once R2 is enabled uploads become durable URLs.
+          console.warn('[PostScreen] Media upload unavailable, falling back to inline data URL:', uploadErr);
+          imageUrl = persistableImage;
+        }
+      }
 
       console.log('[PostScreen] Creating post with:', { category, subcategory, imageUrl: imageUrl.substring(0, 50) + '...' });
 

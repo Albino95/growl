@@ -9,6 +9,7 @@ import * as businessRoutes from './routes/business';
 import * as profileRoutes from './routes/profile';
 import * as storiesRoutes from './routes/stories';
 import * as friendsRoutes from './routes/friends';
+import * as mediaRoutes from './routes/media';
 
 /**
  * Main request handler
@@ -57,6 +58,10 @@ export default {
             friendshipStatus: `${apiPrefix}/social/friends/status/:userId`,
           },
           stories: `${apiPrefix}/stories`,
+          media: {
+            upload: `${apiPrefix}/media/upload`,
+            get: `${apiPrefix}/media/:key`,
+          },
         },
         documentation: 'See API documentation for full endpoint details',
       });
@@ -251,6 +256,15 @@ export default {
       }
       if (path === `${apiPrefix}/stories` && request.method === 'POST') {
         return storiesRoutes.createStory(request, env);
+      }
+
+      // Media routes
+      if (path === `${apiPrefix}/media/upload` && request.method === 'POST') {
+        return mediaRoutes.uploadMedia(request, env);
+      }
+      const mediaMatch = path.match(new RegExp(`^${apiPrefix}/media/(.+)$`));
+      if (mediaMatch && request.method === 'GET') {
+        return mediaRoutes.getMedia(request, env, mediaMatch[1]);
       }
 
       // Friends / cohort social graph

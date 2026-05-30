@@ -37,6 +37,7 @@ export default function ProductDetailScreen() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [saved, setSaved] = useState(false);
+  const [failedImageIndexes, setFailedImageIndexes] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     loadProduct();
@@ -45,6 +46,7 @@ export default function ProductDetailScreen() {
   const loadProduct = async () => {
     try {
       setLoading(true);
+      setFailedImageIndexes({});
       const response = await getProduct(productId);
       if (response.success && response.data) {
         setProduct(response.data);
@@ -150,9 +152,18 @@ export default function ProductDetailScreen() {
             {productImages.map((image: string, index: number) => (
               <Image
                 key={index}
-                source={{ uri: image }}
+                source={{
+                  uri: failedImageIndexes[index]
+                    ? getProductImageUrl(product.category, `${product.id}-fallback-${index}`)
+                    : image,
+                }}
                 style={{ width, height: 384 }}
                 contentFit="cover"
+                onError={() => {
+                  setFailedImageIndexes((prev) =>
+                    prev[index] ? prev : { ...prev, [index]: true }
+                  );
+                }}
               />
             ))}
           </ScrollView>

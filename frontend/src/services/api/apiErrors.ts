@@ -8,6 +8,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   EMAIL_SEND_FAILED: 'Could not send verification email. Try again later.',
   AUTH_TEMPORARILY_UNAVAILABLE: 'Account creation is temporarily unavailable. Please try again shortly.',
   DATABASE_ERROR: 'We could not create your account right now. Please try again in a minute.',
+  MEDIA_NOT_CONFIGURED: 'Image upload is not configured yet. Please contact support.',
+  PAYLOAD_TOO_LARGE: 'Image is too large. Please choose a smaller file.',
   SSO_ERROR: 'Sign-in with Google or Facebook failed. Try again.',
   METHOD_NOT_ALLOWED: 'Invalid request. Please update the app.',
 };
