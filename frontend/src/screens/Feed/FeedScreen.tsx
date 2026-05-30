@@ -71,6 +71,7 @@ export default function FeedScreen({ navigation, route }: any) {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
+  const [failedPostImages, setFailedPostImages] = useState<Record<string, boolean>>({});
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -577,11 +578,17 @@ export default function FeedScreen({ navigation, route }: any) {
               <View style={tw`w-full bg-gray-50`}>
                 {item.image && item.image.trim() !== '' ? (
                   <Image
-                    source={{ uri: item.image }}
+                    source={{
+                      uri: failedPostImages[item.id]
+                        ? `https://picsum.photos/seed/fallback-post-${encodeURIComponent(item.id)}/1200/1200`
+                        : item.image,
+                    }}
                     style={tw`w-full h-96`}
                     contentFit="cover"
-                    onError={(error) => {
-                      console.error('[FeedScreen] Image load error for post:', item.id, 'URL:', item.image, error);
+                    onError={() => {
+                      setFailedPostImages((prev) =>
+                        prev[item.id] ? prev : { ...prev, [item.id]: true }
+                      );
                     }}
                     placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
                     transition={200}

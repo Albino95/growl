@@ -81,7 +81,7 @@ export function getPostImageUrl(category: string, postId?: string): string {
     // Use category-based images with variation
     const baseUrl = getCategoryImageUrl(category);
     // Add variation based on postId
-    return `${baseUrl}&sig=${index % 100}`;
+    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}sig=${index % 100}`;
   }
   return getCategoryImageUrl(category);
 }
@@ -182,7 +182,7 @@ export function getProductImageUrl(category: string, productId?: string): string
   if (productId) {
     const index = productId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     // Add variation parameter to get different images for same category
-    return `${baseUrl}&sig=${index % 50}`;
+    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}sig=${index % 50}`;
   }
   return baseUrl;
 }
@@ -199,7 +199,7 @@ export function getProductImages(category: string, productId: string, count: num
     const seed = `${productId}-${i}`;
     const index = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     // Use category image with variation for each image in the array
-    images.push(`${baseUrl}&sig=${(index + i * 10) % 50}`);
+    images.push(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}sig=${(index + i * 10) % 50}`);
   }
   return images;
 }

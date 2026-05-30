@@ -83,6 +83,7 @@ export default function MarketplaceScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+  const [failedProductImages, setFailedProductImages] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
@@ -205,12 +206,12 @@ export default function MarketplaceScreen() {
           >
             <TouchableOpacity
               onPress={() => handleCategoryChange(null)}
-              style={tw`px-4 py-2 rounded-full mr-2 ${
+              style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
                 selectedCategory === null ? 'bg-emerald-600' : 'bg-stone-100'
               }`}
             >
               <Text
-                style={tw`font-semibold text-sm ${
+                style={tw`font-semibold text-[15px] ${
                   selectedCategory === null ? 'text-white' : 'text-stone-600'
                 }`}
               >
@@ -221,12 +222,12 @@ export default function MarketplaceScreen() {
               <TouchableOpacity
                 key={cat}
                 onPress={() => handleCategoryChange(cat)}
-                style={tw`px-4 py-2 rounded-full mr-2 ${
+                style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
                   selectedCategory === cat ? 'bg-emerald-600' : 'bg-stone-100'
                 }`}
               >
                 <Text
-                  style={tw`font-semibold text-sm ${
+                  style={tw`font-semibold text-[15px] ${
                     selectedCategory === cat ? 'text-white' : 'text-stone-600'
                   }`}
                 >
@@ -246,10 +247,10 @@ export default function MarketplaceScreen() {
           >
             <TouchableOpacity
               onPress={() => setSelectedSubcategory(null)}
-              style={tw`px-3 py-1.5 rounded-full mr-2 ${selectedSubcategory === null ? 'bg-emerald-100' : 'bg-stone-100'}`}
+              style={tw`px-4 py-2 rounded-full mr-2 min-h-[38px] items-center justify-center ${selectedSubcategory === null ? 'bg-emerald-100' : 'bg-stone-100'}`}
             >
               <Text
-                style={tw`text-xs font-semibold ${selectedSubcategory === null ? 'text-emerald-800' : 'text-stone-600'}`}
+                style={tw`text-sm font-semibold ${selectedSubcategory === null ? 'text-emerald-800' : 'text-stone-600'}`}
               >
                 All in category
               </Text>
@@ -258,12 +259,12 @@ export default function MarketplaceScreen() {
               <TouchableOpacity
                 key={sub.key}
                 onPress={() => setSelectedSubcategory(sub.key)}
-                style={tw`px-3 py-1.5 rounded-full mr-2 ${
+                style={tw`px-4 py-2 rounded-full mr-2 min-h-[38px] items-center justify-center ${
                   selectedSubcategory === sub.key ? 'bg-emerald-600' : 'bg-stone-100'
                 }`}
               >
                 <Text
-                  style={tw`text-xs font-semibold ${
+                  style={tw`text-sm font-semibold ${
                     selectedSubcategory === sub.key ? 'text-white' : 'text-stone-600'
                   }`}
                 >
@@ -301,7 +302,10 @@ export default function MarketplaceScreen() {
               />
             }
             renderItem={({ item }) => {
-              const productImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
+              const defaultImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
+              const productImage = failedProductImages[item.id]
+                ? `https://picsum.photos/seed/fallback-product-${encodeURIComponent(item.id)}/600/600`
+                : defaultImage;
               return (
                 <TouchableOpacity
                   style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
@@ -319,6 +323,11 @@ export default function MarketplaceScreen() {
                       style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 88, height: 88 }]}
                       contentFit="cover"
                       transition={150}
+                      onError={() => {
+                        setFailedProductImages((prev) =>
+                          prev[item.id] ? prev : { ...prev, [item.id]: true }
+                        );
+                      }}
                     />
                     <View style={tw`flex-1`}>
                       <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
