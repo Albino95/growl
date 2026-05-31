@@ -115,11 +115,14 @@ export function resolvePostMediaUri(
   if (!s) return getPostImageUrl(category, postId);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  // Persisted blob: URLs are browser-session local and break after refresh.
+  if (lower.startsWith('blob:')) {
+    return getPostImageUrl(category, postId);
+  }
   if (
     lower.startsWith('file://') ||
     lower.startsWith('content://') ||
     lower.startsWith('ph://') ||
-    lower.startsWith('blob:') ||
     lower.startsWith('data:')
   ) {
     return s;
@@ -140,11 +143,13 @@ export function resolveStoryDisplayUri(
   if (!s) return getStoryImageUrl(userId, storyId);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (lower.startsWith('blob:')) {
+    return getStoryImageUrl(userId, storyId);
+  }
   if (
     lower.startsWith('file://') ||
     lower.startsWith('content://') ||
     lower.startsWith('ph://') ||
-    lower.startsWith('blob:') ||
     lower.startsWith('data:')
   ) {
     return s;
@@ -158,11 +163,13 @@ export function resolveAvatarUri(userId: string, username?: string, raw?: string
   if (!s) return getAvatarUrl(userId, username);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (lower.startsWith('blob:')) {
+    return getAvatarUrl(userId, username);
+  }
   if (
     lower.startsWith('file://') ||
     lower.startsWith('content://') ||
     lower.startsWith('ph://') ||
-    lower.startsWith('blob:') ||
     lower.startsWith('data:')
   ) {
     return s;
