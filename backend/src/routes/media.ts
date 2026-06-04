@@ -4,6 +4,10 @@ import { getRequestContext } from '../utils/auth';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
 
+/**
+ * Accept only explicit image data URLs we trust the frontend to send.
+ * Keeping this strict prevents unexpected payload types from being stored.
+ */
 function parseImageDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array; ext: string } | null {
   const m = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/i);
   if (!m) return null;
@@ -60,6 +64,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     return error('PAYLOAD_TOO_LARGE', 'Image exceeds 5MB upload limit', 413);
   }
 
+  // Purpose keeps object keys organized so cleanup/reporting is easier later.
   const purpose =
     body.purpose === 'product' || body.purpose === 'story' || body.purpose === 'post'
       ? body.purpose
@@ -89,6 +94,7 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
     return error('MEDIA_NOT_CONFIGURED', 'R2 media storage is not configured', 503);
   }
 
+  // Basic key hardening to avoid path traversal-like access attempts.
   const safeKey = decodeURIComponent(key).replace(/^\/+/, '');
   if (!safeKey || safeKey.includes('..')) {
     return error('VALIDATION_ERROR', 'Invalid media key', 400);

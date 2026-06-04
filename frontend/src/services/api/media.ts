@@ -13,6 +13,7 @@ type UploadMediaResponse = {
 };
 
 export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): Promise<string> {
+  // Returns a backend-served URL (R2-backed when configured).
   const res = await request<UploadMediaResponse>('/media/upload', {
     method: 'POST',
     body: JSON.stringify({ dataUrl, purpose }),

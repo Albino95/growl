@@ -19,6 +19,13 @@ type Instructor = {
   commissionRate?: number;
 };
 
+type PartnershipRequest = {
+  id: string;
+  instructor: Instructor;
+  createdAt: string;
+  status: 'pending' | 'approved' | 'declined';
+};
+
 const MOCK_INSTRUCTORS: Instructor[] = [
   {
     id: '1',
@@ -83,9 +90,9 @@ function notify(title: string, message?: string) {
 export default function PartnershipsScreen() {
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<'partners' | 'discover'>('partners');
-  const [partners] = useState<Instructor[]>(MOCK_INSTRUCTORS);
-  const [available] = useState<Instructor[]>(AVAILABLE_INSTRUCTORS);
-  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [partners, setPartners] = useState<Instructor[]>(MOCK_INSTRUCTORS);
+  const [available, setAvailable] = useState<Instructor[]>(AVAILABLE_INSTRUCTORS);
+  const [requests, setRequests] = useState<PartnershipRequest[]>([]);
 
   const openInstructorProfile = (instructor: Instructor) => {
     navigateFromRoot(navigation, 'PublicProfile', { userId: instructor.id });
@@ -99,11 +106,40 @@ export default function PartnershipsScreen() {
   };
 
   const sendPartnershipRequest = (instructor: Instructor) => {
-    setPendingIds((prev) => new Set(prev).add(instructor.id));
+    setRequests((prev) => [
+      {
+        id: `req-${Date.now()}-${instructor.id}`,
+        instructor,
+        createdAt: new Date().toISOString(),
+        status: 'pending',
+      },
+      ...prev,
+    ]);
+    setAvailable((prev) => prev.filter((candidate) => candidate.id !== instructor.id));
     notify(
       'Request sent',
       `We notified ${instructor.name} about your partnership proposal. They can accept from their instructor inbox.`
     );
+  };
+
+  const updateRequestStatus = (requestId: string, status: 'approved' | 'declined') => {
+    let targetInstructor: Instructor | null = null;
+    setRequests((prev) =>
+      prev.map((request) => {
+        if (request.id === requestId) {
+          targetInstructor = request.instructor;
+          return { ...request, status };
+        }
+        return request;
+      })
+    );
+    if (status === 'approved' && targetInstructor) {
+      setPartners((prev) => [{ ...targetInstructor, status: 'active' }, ...prev]);
+      notify('Partnership approved', `${targetInstructor.name} is now an active partner.`);
+    } else if (status === 'declined' && targetInstructor) {
+      setAvailable((prev) => [targetInstructor, ...prev]);
+      notify('Request declined', `${targetInstructor.name} stayed in your discover list.`);
+    }
   };
 
   const totalPartners = partners.length;
@@ -171,6 +207,45 @@ export default function PartnershipsScreen() {
 
       {activeTab === 'partners' && (
         <ScrollView style={tw`flex-1 px-4 pt-4`}>
+          {requests.length > 0 ? (
+            <View style={tw`mb-4`}>
+              <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Request queue</Text>
+              {requests.map((request) => (
+                <View key={request.id} style={tw`bg-white rounded-xl p-3 mb-2 border border-gray-100`}>
+                  <View style={tw`flex-row items-center justify-between`}>
+                    <Text style={tw`font-semibold text-gray-900`}>{request.instructor.name}</Text>
+                    <Text style={tw`text-xs text-gray-500`}>{new Date(request.createdAt).toLocaleDateString()}</Text>
+                  </View>
+                  <Text style={tw`text-xs text-gray-500 mt-1 mb-2`}>{request.instructor.category}</Text>
+                  {request.status === 'pending' ? (
+                    <View style={tw`flex-row`}>
+                      <TouchableOpacity
+                        style={tw`px-3 py-1.5 bg-emerald-100 rounded-lg mr-2`}
+                        onPress={() => updateRequestStatus(request.id, 'approved')}
+                      >
+                        <Text style={tw`text-xs font-semibold text-emerald-800`}>Approve</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={tw`px-3 py-1.5 bg-red-100 rounded-lg`}
+                        onPress={() => updateRequestStatus(request.id, 'declined')}
+                      >
+                        <Text style={tw`text-xs font-semibold text-red-800`}>Decline</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Text
+                      style={tw`text-xs font-semibold ${
+                        request.status === 'approved' ? 'text-emerald-700' : 'text-red-700'
+                      }`}
+                    >
+                      {request.status === 'approved' ? 'Approved' : 'Declined'}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {partners.map((instructor) => (
             <View
               key={instructor.id}
@@ -317,13 +392,17 @@ export default function PartnershipsScreen() {
                 <TouchableOpacity
                   style={[
                     tw`rounded-lg py-3`,
-                    pendingIds.has(instructor.id) ? tw`bg-gray-400` : tw`bg-green-600`,
+                    requests.some((request) => request.instructor.id === instructor.id && request.status === 'pending')
+                      ? tw`bg-gray-400`
+                      : tw`bg-green-600`,
                   ]}
-                  disabled={pendingIds.has(instructor.id)}
+                  disabled={requests.some((request) => request.instructor.id === instructor.id && request.status === 'pending')}
                   onPress={() => sendPartnershipRequest(instructor)}
                 >
                   <Text style={tw`text-white text-center font-bold`}>
-                    {pendingIds.has(instructor.id) ? 'Request sent' : 'Send Partnership Request'}
+                    {requests.some((request) => request.instructor.id === instructor.id && request.status === 'pending')
+                      ? 'Request sent'
+                      : 'Send Partnership Request'}
                   </Text>
                 </TouchableOpacity>
               </View>

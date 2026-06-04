@@ -32,6 +32,12 @@ export default function PostScreen({ navigation }: PostScreenProps) {
 
   const userCategories = user?.categories || [];
 
+  /**
+   * Web-only helper:
+   * Photos selected in browser often come as `blob:` URLs, which are temporary and break after refresh.
+   * We convert them to a compressed data URL first so the value is serializable and can be
+   * uploaded/fallback-saved safely.
+   */
   const blobToOptimizedDataUrl = async (uri: string): Promise<string> => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
     const res = await fetch(uri);
@@ -144,12 +150,11 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       return;
     }
 
-    // Category is optional for stories, required for posts
-    // For now, allow posting without category (treat as story)
-    // if (!selectedCategory) {
-    //   Alert.alert('Category required', 'Please select a category for your post.');
-    //   return;
-    // }
+    // Posting is intentionally category-gated to keep feed relevance quality high.
+    if (!selectedCategory) {
+      Alert.alert('Category required', 'Please select one category before posting.');
+      return;
+    }
 
     if (isPosting) {
       return; // Prevent double posting
@@ -157,8 +162,10 @@ export default function PostScreen({ navigation }: PostScreenProps) {
 
     dispatch(setPosting(true));
     try {
-      const category = selectedCategory?.split(':')[0] || userCategories[0]?.split(':')[0] || 'mindset';
-      const subcategory = selectedCategory?.includes(':') ? selectedCategory.split(':')[1] : undefined;
+      // We allow exactly one chosen category chip (radio behavior).
+      // If a path is "fitness:cardio", category is "fitness", subcategory is "cardio".
+      const category = selectedCategory.split(':')[0];
+      const subcategory = selectedCategory.includes(':') ? selectedCategory.split(':')[1] : undefined;
       let persistableImage = image;
       if (Platform.OS === 'web' && image.toLowerCase().startsWith('blob:')) {
         try {
@@ -177,6 +184,8 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         lower.startsWith('ph://') ||
         lower.startsWith('blob:') ||
         lower.startsWith('data:');
+      // If we have an inline data URL, try uploading it to backend media endpoint.
+      // With R2 configured this returns a permanent URL; without R2 we gracefully fallback.
       const shouldUpload = lower.startsWith('data:');
       let imageUrl = isDirectRenderable
         ? persistableImage
@@ -384,6 +393,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
                     return (
                       <TouchableOpacity
                         key={cat}
+                        // Single-select behavior: selecting a chip replaces previous selection.
                         onPress={() => dispatch(setSelectedCategory(cat))}
                         style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                           selectedCategory === cat ? 'bg-green-600' : 'bg-gray-100'
@@ -408,7 +418,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
               <PrimaryButton
                 label={isPosting ? 'Posting...' : 'Post'}
                 onPress={handlePost}
-                disabled={!image || isPosting}
+                disabled={!image || !selectedCategory || isPosting}
               />
             </View>
           </View>

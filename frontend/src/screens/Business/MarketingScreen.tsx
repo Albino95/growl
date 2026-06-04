@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,14 +94,81 @@ export default function MarketingScreen() {
   const feedError = useAppSelector((s) => s.feed.error);
   const feedLoading = feedStatus === 'loading';
 
-  const [campaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
   const [activeTab, setActiveTab] = useState<'campaigns' | 'posts' | 'create' | 'analytics'>('campaigns');
+  const [newCampaign, setNewCampaign] = useState<{
+    name: string;
+    type: Campaign['type'];
+    budget: string;
+    endDate: string;
+  }>({
+    name: '',
+    type: 'promotion',
+    budget: '',
+    endDate: '',
+  });
 
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiNotice, setKpiNotice] = useState<string | null>(null);
 
   const [refreshing, setRefreshing] = useState(false);
+
+  const resetNewCampaign = () => {
+    setNewCampaign({
+      name: '',
+      type: 'promotion',
+      budget: '',
+      endDate: '',
+    });
+  };
+
+  const createCampaignDraft = () => {
+    const name = newCampaign.name.trim();
+    const budget = Number(newCampaign.budget);
+    if (!name) {
+      showError('Please enter a campaign name.');
+      return;
+    }
+    if (!Number.isFinite(budget) || budget <= 0) {
+      showError('Please enter a valid budget.');
+      return;
+    }
+    const endDate =
+      newCampaign.endDate.trim() ||
+      new Date(Date.now() + 21 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const created: Campaign = {
+      id: `local-${Date.now()}`,
+      name,
+      type: newCampaign.type,
+      status: 'paused',
+      budget,
+      spent: 0,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate,
+    };
+    setCampaigns((prev) => [created, ...prev]);
+    resetNewCampaign();
+    setActiveTab('campaigns');
+    if (Platform.OS === 'web') {
+      alert('Campaign draft created. You can activate it from Campaigns tab.');
+    } else {
+      Alert.alert('Draft created', 'You can activate it from Campaigns tab.');
+    }
+  };
+
+  const toggleCampaignStatus = (campaignId: string) => {
+    setCampaigns((prev) =>
+      prev.map((campaign) =>
+        campaign.id === campaignId
+          ? { ...campaign, status: campaign.status === 'active' ? 'paused' : 'active' }
+          : campaign
+      )
+    );
+  };
 
   const loadKpis = useCallback(async () => {
     setKpiLoading(true);
@@ -330,6 +398,11 @@ export default function MarketingScreen() {
                         {campaign.status}
                       </Text>
                     </View>
+                    {campaign.id.startsWith('local-') ? (
+                      <View style={tw`px-2 py-1 rounded-full bg-stone-100 ml-2`}>
+                        <Text style={tw`text-xs font-semibold text-stone-600`}>draft</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </View>
@@ -363,13 +436,29 @@ export default function MarketingScreen() {
                     <Text style={tw`text-sm font-bold text-green-600`}>{campaign.conversions}</Text>
                   </View>
                 </View>
+                <View style={tw`mt-3`}>
+                  <TouchableOpacity
+                    style={tw`self-start px-3 py-2 rounded-lg ${
+                      campaign.status === 'active' ? 'bg-amber-100' : 'bg-emerald-100'
+                    }`}
+                    onPress={() => toggleCampaignStatus(campaign.id)}
+                  >
+                    <Text
+                      style={tw`text-xs font-semibold ${
+                        campaign.status === 'active' ? 'text-amber-800' : 'text-emerald-800'
+                      }`}
+                    >
+                      {campaign.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           ))}
 
           <TouchableOpacity
-            style={tw`bg-blue-600 rounded-xl py-4 flex-row items-center justify-center mb-4 opacity-60`}
-            onPress={() => showError('Campaign creation will be available when the marketing API is added.')}
+            style={tw`bg-blue-600 rounded-xl py-4 flex-row items-center justify-center mb-4`}
+            onPress={() => setActiveTab('create')}
           >
             <Ionicons name="add-circle" size={24} color="#FFFFFF" style={tw`mr-2`} />
             <Text style={tw`text-white font-bold text-base`}>Create New Campaign</Text>
@@ -462,12 +551,78 @@ export default function MarketingScreen() {
       )}
 
       {activeTab === 'create' && (
-        <View style={tw`flex-1 items-center justify-center p-6`}>
-          <Ionicons name="megaphone-outline" size={64} color="#D1D5DB" />
-          <Text style={tw`text-gray-500 mt-4 text-center text-lg`}>
-            Campaign creation form coming soon
-          </Text>
-        </View>
+        <ScrollView style={tw`flex-1 px-4 pt-4`} {...verticalScrollProps}>
+          <View style={tw`bg-white rounded-xl p-4 border border-gray-100 mb-4`}>
+            <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Create campaign draft</Text>
+            <Text style={tw`text-sm text-gray-500 mb-4`}>
+              Draft campaigns stay paused so your team can review copy and assets before launch.
+            </Text>
+
+            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Campaign name</Text>
+            <TextInput
+              value={newCampaign.name}
+              onChangeText={(name) => setNewCampaign((prev) => ({ ...prev, name }))}
+              placeholder="e.g. June Strength Bundle"
+              placeholderTextColor="#9CA3AF"
+              style={tw`bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 mb-3`}
+            />
+
+            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Type</Text>
+            <View style={tw`flex-row mb-3`}>
+              {(['promotion', 'sponsored', 'influencer'] as const).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => setNewCampaign((prev) => ({ ...prev, type }))}
+                  style={tw`px-3 py-2 rounded-full mr-2 ${
+                    newCampaign.type === type ? 'bg-blue-600' : 'bg-gray-100'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-xs font-semibold ${
+                      newCampaign.type === type ? 'text-white' : 'text-gray-700'
+                    }`}
+                  >
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Budget (USD)</Text>
+            <TextInput
+              value={newCampaign.budget}
+              onChangeText={(budget) => setNewCampaign((prev) => ({ ...prev, budget }))}
+              placeholder="1500"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="numeric"
+              style={tw`bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 mb-3`}
+            />
+
+            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>End date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={newCampaign.endDate}
+              onChangeText={(endDate) => setNewCampaign((prev) => ({ ...prev, endDate }))}
+              placeholder="2026-07-01"
+              placeholderTextColor="#9CA3AF"
+              style={tw`bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 mb-4`}
+            />
+
+            <View style={tw`flex-row`}>
+              <TouchableOpacity
+                style={tw`flex-1 bg-gray-100 rounded-lg py-3 items-center mr-2`}
+                onPress={resetNewCampaign}
+              >
+                <Text style={tw`font-semibold text-gray-700`}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={tw`flex-1 bg-blue-600 rounded-lg py-3 items-center`}
+                onPress={createCampaignDraft}
+              >
+                <Text style={tw`text-white font-bold`}>Create draft</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
       )}
 
       {activeTab === 'analytics' && (
