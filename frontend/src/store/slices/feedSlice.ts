@@ -19,11 +19,20 @@ const initialState: FeedState = {
 
 export const fetchFeedPosts = createAsyncThunk('feed/fetchPosts', async (_, { rejectWithValue }) => {
   try {
-    const res = await getFeedPosts();
-    if (!res.success || !Array.isArray(res.data)) {
+    const homeRes = await getFeedPosts();
+    if (!homeRes.success || !Array.isArray(homeRes.data)) {
       return rejectWithValue('Unexpected feed response');
     }
-    return res.data;
+
+    // Fallback for sparse/new accounts: show discoverable posts when home feed is empty.
+    if (homeRes.data.length === 0) {
+      const exploreRes = await getFeedPosts({ mode: 'explore' });
+      if (exploreRes.success && Array.isArray(exploreRes.data) && exploreRes.data.length > 0) {
+        return exploreRes.data;
+      }
+    }
+
+    return homeRes.data;
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Failed to load feed';
     return rejectWithValue(message);
