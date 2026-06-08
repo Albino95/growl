@@ -247,7 +247,14 @@ export default function PublicProfileScreen() {
     if (profileUser) {
       loadContent();
     }
-  }, [profileUser, activeTab]);
+  }, [profileUser, activeTab, isBlocked]);
+
+  useEffect(() => {
+    if (!isBlocked) return;
+    setPosts([]);
+    setStories([]);
+    setJournalEntries([]);
+  }, [isBlocked]);
 
   /** Loads public profile header/stats metadata. */
   const loadProfile = async () => {
@@ -266,6 +273,12 @@ export default function PublicProfileScreen() {
   /** Loads selected tab content (posts/stories/journal) for current profile user. */
   const loadContent = async () => {
     if (!profileUser) return;
+    if (isBlocked) {
+      setPosts([]);
+      setStories([]);
+      setJournalEntries([]);
+      return;
+    }
     
     try {
       setLoadingContent(true);
@@ -515,7 +528,15 @@ export default function PublicProfileScreen() {
         </View>
 
         {/* Content */}
-        {loadingContent ? (
+        {isBlocked ? (
+          <View style={tw`p-6 items-center justify-center`}>
+            <Ionicons name="ban-outline" size={48} color="#9CA3AF" />
+            <Text style={tw`text-gray-700 mt-3 text-center font-semibold`}>You have blocked this user</Text>
+            <Text style={tw`text-gray-500 mt-1 text-center`}>
+              Unblock them to view their posts, stories, and activity again.
+            </Text>
+          </View>
+        ) : loadingContent ? (
           <View style={tw`p-8 items-center justify-center`}>
             <ActivityIndicator size="large" color="#10B981" />
           </View>
@@ -711,6 +732,9 @@ export default function PublicProfileScreen() {
                                 await blockUser(userId);
                                 setIsBlocked(true);
                                 setFriendConnected(false);
+                              setPosts([]);
+                              setStories([]);
+                              setJournalEntries([]);
                                 Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
                               }
                             } catch (error: unknown) {

@@ -782,7 +782,12 @@ export default function FeedScreen({ navigation, route }: any) {
               postUsername={selectedPost.username}
               postCaption={selectedPost.caption}
               onClose={() => setSelectedPost(null)}
-              onCommentsChanged={() => {
+              onCommentsChanged={(count) => {
+                setPosts((prev) =>
+                  prev.map((post) =>
+                    post.id === selectedPost.id ? { ...post, comments: count } : post
+                  )
+                );
                 void dispatch(fetchFeedPosts());
               }}
             />

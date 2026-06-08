@@ -42,7 +42,7 @@ interface CommentsScreenProps {
   postUsername: string;
   postCaption: string;
   onClose: () => void;
-  onCommentsChanged?: () => void;
+  onCommentsChanged?: (count: number) => void;
 }
 
 export default function CommentsScreen({
@@ -88,8 +88,9 @@ export default function CommentsScreen({
       await createFeedPostComment(postId, text);
       setCommentText('');
       setFailedCommentDraft('');
-      await loadComments();
-      onCommentsChanged?.();
+      const list = await getFeedPostComments(postId);
+      setComments(list);
+      onCommentsChanged?.(list.length);
     } catch {
       setFailedCommentDraft(text);
       setSendError('Failed to send comment. Please retry.');
