@@ -180,8 +180,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const friendIds = await getFriendUserIds(env, ctx.userId);
 
-  const personalizedPosts = (posts.results || [])
-    .map((post) => {
+  const scoredPosts = (posts.results || []).map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
       const catScore = categoryRelevanceScore(categories, post.category, post.subcategory);
       const daysSincePost =
@@ -212,8 +211,9 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
         isOwn,
         isFriend,
       };
-    })
-    .filter((post) => {
+    });
+
+  const scopedPosts = scoredPosts.filter((post) => {
       // Feed mode stays narrow: own posts + friend posts only.
       if (!isExploreMode) {
         if (post.isOwn) return true;
@@ -225,6 +225,13 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       if (post.isOwn) return false;
       return !post.isFriend;
     });
+
+  // If strict home-feed rules produce no cards, fall back to best available non-muted posts.
+  // This prevents a successful-but-empty feed for new users without connections yet.
+  let personalizedPosts = scopedPosts;
+  if (!isExploreMode && personalizedPosts.length === 0) {
+    personalizedPosts = scoredPosts.filter((post) => !post.isOwn);
+  }
 
   personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
