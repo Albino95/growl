@@ -31,7 +31,11 @@ export const signUpSchema = z
 
 export const signInSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required').max(128),
+  password: z.string().min(1, 'Password is required').max(128).optional(),
+  passwordHash: clientPasswordHashSchema.optional(),
+}).refine((data) => !!data.password || !!data.passwordHash, {
+  message: 'password or passwordHash is required',
+  path: ['password'],
 });
 
 export const verifyEmailSchema = z.object({

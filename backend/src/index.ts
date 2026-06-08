@@ -277,6 +277,14 @@ export default {
       if (friendDeleteMatch && request.method === 'DELETE') {
         return friendsRoutes.removeFriend(request, env, friendDeleteMatch[1]);
       }
+      const blockDeleteMatch = path.match(new RegExp(`^${apiPrefix}/social/block/([^/]+)$`));
+      if (blockDeleteMatch && request.method === 'DELETE') {
+        return friendsRoutes.unblockUser(request, env, blockDeleteMatch[1]);
+      }
+      const muteDeleteMatch = path.match(new RegExp(`^${apiPrefix}/social/mute/([^/]+)$`));
+      if (muteDeleteMatch && request.method === 'DELETE') {
+        return friendsRoutes.unmuteUser(request, env, muteDeleteMatch[1]);
+      }
 
       if (path === `${apiPrefix}/social/friends/sync-cohort` && request.method === 'POST') {
         return friendsRoutes.syncCohortFriendsRoute(request, env);
@@ -289,6 +297,15 @@ export default {
       }
       if (path === `${apiPrefix}/social/friends` && request.method === 'POST') {
         return friendsRoutes.addFriend(request, env);
+      }
+      if (path === `${apiPrefix}/social/block` && request.method === 'POST') {
+        return friendsRoutes.blockUser(request, env);
+      }
+      if (path === `${apiPrefix}/social/mute` && request.method === 'POST') {
+        return friendsRoutes.muteUser(request, env);
+      }
+      if (path === `${apiPrefix}/social/report` && request.method === 'POST') {
+        return friendsRoutes.reportUser(request, env);
       }
 
       // Profile routes (specific paths before /profile)

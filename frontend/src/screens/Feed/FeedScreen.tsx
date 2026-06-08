@@ -65,8 +65,10 @@ export default function FeedScreen({ navigation, route }: any) {
   const dispatch = useAppDispatch();
   const feedItems = useAppSelector((s) => s.feed.items);
   const feedStatus = useAppSelector((s) => s.feed.status);
+  const feedError = useAppSelector((s) => s.feed.error);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [retryingFeed, setRetryingFeed] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
@@ -212,6 +214,18 @@ export default function FeedScreen({ navigation, route }: any) {
     }
     await loadStoriesOnly();
     setRefreshing(false);
+  };
+
+  const retryFeed = async () => {
+    if (retryingFeed) return;
+    setRetryingFeed(true);
+    try {
+      await dispatch(fetchFeedPosts()).unwrap();
+    } catch {
+      // Keep banner visible; store already captures the latest error.
+    } finally {
+      setRetryingFeed(false);
+    }
   };
 
   const toggleLike = async (postId: string) => {
@@ -431,9 +445,8 @@ export default function FeedScreen({ navigation, route }: any) {
             <TouchableOpacity
               style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
               onPress={() => {
-                // Navigate to post screen to create story
                 const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Post' as never);
+                rootNavigation.navigate('CreateStory' as never);
               }}
             >
               <Ionicons name="add" size={24} color="#9CA3AF" />
@@ -499,6 +512,26 @@ export default function FeedScreen({ navigation, route }: any) {
                 rootNavigation.navigate('Post');
               }}>
                 <Text style={tw`text-sm font-semibold text-yellow-900`}>Post Now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {feedStatus === 'failed' && (
+          <View style={tw`mx-4 mt-3 mb-1 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+              <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>
+                {feedError || 'Could not load your feed right now.'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => void retryFeed()}
+                disabled={retryingFeed}
+                style={tw`ml-2 px-3 py-1.5 rounded-full bg-red-600 ${retryingFeed ? 'opacity-70' : ''}`}
+              >
+                <Text style={tw`text-xs font-semibold text-white`}>
+                  {retryingFeed ? 'Retrying...' : 'Retry'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

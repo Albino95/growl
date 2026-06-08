@@ -56,16 +56,21 @@ export default function CommentsScreen({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [failedCommentDraft, setFailedCommentDraft] = useState('');
   const { user } = useAuth();
   const navigation = useNavigation();
 
   const loadComments = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const list = await getFeedPostComments(postId);
       setComments(list);
     } catch {
       setComments([]);
+      setLoadError('Could not load comments. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -75,20 +80,33 @@ export default function CommentsScreen({
     void loadComments();
   }, [loadComments]);
 
-  const handleSendComment = async () => {
-    const text = commentText.trim();
+  const submitComment = async (text: string) => {
     if (!text || sending) return;
     setSending(true);
+    setSendError(null);
     try {
       await createFeedPostComment(postId, text);
       setCommentText('');
+      setFailedCommentDraft('');
       await loadComments();
       onCommentsChanged?.();
     } catch {
-      // Error surfaced by fetch layer / toast elsewhere if added
+      setFailedCommentDraft(text);
+      setSendError('Failed to send comment. Please retry.');
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSendComment = async () => {
+    const text = commentText.trim();
+    await submitComment(text);
+  };
+
+  const retrySendComment = async () => {
+    if (!failedCommentDraft) return;
+    setCommentText(failedCommentDraft);
+    await submitComment(failedCommentDraft);
   };
 
   return (
@@ -119,6 +137,18 @@ export default function CommentsScreen({
             </View>
           </View>
         </View>
+
+        {!loading && loadError && (
+          <View style={tw`mx-4 mt-3 mb-1 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+              <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>{loadError}</Text>
+              <TouchableOpacity onPress={() => void loadComments()} style={tw`ml-2 px-3 py-1.5 rounded-full bg-red-600`}>
+                <Text style={tw`text-xs font-semibold text-white`}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {loading ? (
           <View style={tw`flex-1 items-center justify-center py-16`}>
@@ -175,6 +205,16 @@ export default function CommentsScreen({
         )}
 
         <View style={tw`border-t border-gray-200 bg-white px-4 py-3`}>
+          {sendError && (
+            <View style={tw`mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2`}>
+              <View style={tw`flex-row items-center`}>
+                <Text style={tw`flex-1 text-xs text-red-700`}>{sendError}</Text>
+                <TouchableOpacity onPress={() => void retrySendComment()} disabled={sending || !failedCommentDraft}>
+                  <Text style={tw`text-xs font-semibold text-red-800`}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           <View style={tw`flex-row items-end`}>
             <View style={tw`flex-1 bg-gray-100 rounded-full px-4 py-2 max-h-24 mr-2`}>
               <TextInput

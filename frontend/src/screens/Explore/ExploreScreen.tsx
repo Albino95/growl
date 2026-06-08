@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
-import { getStories, type StoryItem } from '../../services/api/stories';
+import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { addFriend, listFriends } from '../../services/api/friends';
 import { resolveAvatarUri, resolvePostMediaUri, resolveStoryDisplayUri } from '../../utils/images';
 import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/discoverPeople';
@@ -48,8 +48,8 @@ export default function ExploreScreen() {
   const load = useCallback(async () => {
     try {
       const [feedRes, storiesRes, friends] = await Promise.all([
-        getFeedPosts(),
-        getStories(),
+        getFeedPosts({ mode: 'explore' }),
+        getStories({ mode: 'explore' }),
         listFriends(),
       ]);
       const posts = feedRes.success && Array.isArray(feedRes.data) ? feedRes.data : [];
@@ -148,6 +148,14 @@ export default function ExploreScreen() {
     (root as { navigate: (a: string, b: object) => void }).navigate('StoryViewer', {
       stories: fullStories,
       initialIndex: 0,
+      onStoriesUpdate: (updatedStories: typeof fullStories) => {
+        const viewedIds = updatedStories
+          .filter((story) => story.hasViewed)
+          .map((story) => story.id);
+        if (viewedIds.length > 0) {
+          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+        }
+      },
     });
   };
 
@@ -440,7 +448,7 @@ export default function ExploreScreen() {
                 <Text style={tw`text-stone-600 text-center mt-3`}>
                   {query || selectedCategory
                     ? 'No matches for this search/filter yet.'
-                    : 'No one new to discover yet. Run the demo seed or post a story, then pull to refresh.'}
+                    : 'No new creators found right now. Check back soon or refresh after more community activity.'}
                 </Text>
               </View>
             ) : null

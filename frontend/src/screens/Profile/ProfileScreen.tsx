@@ -10,8 +10,9 @@ import CATEGORIES from '../../data/categories';
 import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
-import { getUserStories, type StoryItem } from '../../services/api/stories';
+import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
+import { updateProfileOnServer } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import ProfileStatsRow from '../../components/profile/ProfileStatsRow';
@@ -41,9 +42,13 @@ type Post = {
 
 type Story = {
   id: string;
+  userId: string;
+  username: string;
+  avatar: string | null;
   image: string;
   createdAt: string;
   views: number;
+  hasViewed: boolean;
 };
 
 const AWARDS: Award[] = [
@@ -79,6 +84,7 @@ const AWARDS: Award[] = [
   },
 ];
 
+/** Computes remaining full days before a post reaches decay cutoff. */
 function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
   const created = new Date(createdAtIso).getTime();
   if (Number.isNaN(created)) return decayDays;
@@ -86,6 +92,7 @@ function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
   return Math.max(0, Math.ceil((end - Date.now()) / 86400000));
 }
 
+/** Maps feed payload into profile post cards while attaching decay countdown metadata. */
 function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
   const img = resolvePostMediaUri(p.image_url, p.category, p.id);
   const likes = p.metadata?.likes ?? 0;
@@ -102,12 +109,17 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
   };
 }
 
+/** Maps story API payload into local profile story model. */
 function mapStoryToProfileStory(s: StoryItem): Story {
   return {
     id: s.id,
+    userId: s.userId,
+    username: s.username,
+    avatar: s.avatar,
     image: s.image,
     createdAt: s.createdAt,
     views: s.views ?? 0,
+    hasViewed: !!s.hasViewed,
   };
 }
 
@@ -130,6 +142,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
 
+  /** Loads posts, stories, and cohort connections in one synchronized refresh cycle. */
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
@@ -166,6 +179,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     return null;
   }
 
+  /** Signs user out, then hard-resets navigation stack back to auth route. */
   const handleSignOutConfirm = async () => {
     const performSignOut = async () => {
       try {
@@ -210,6 +224,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     await performSignOut();
   };
 
+  /** Navigates to instructor area with defensive fallbacks for nested navigation states. */
   const navigateToInstructor = () => {
     try {
       console.log('[ProfileScreen] Navigating to Instructor hub...');
@@ -269,6 +284,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     }
   };
 
+  /** Persists local decay timer preference and refreshes profile content projections. */
   const handleSaveDecayTimer = () => {
     updateUser({ decayTimer: decayDays });
     setShowDecaySettings(false);
@@ -276,10 +292,54 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     void loadProfileContent();
   };
 
-  const handleUpdateCategories = (selectedCategories: string[]) => {
-    updateUser({ categories: selectedCategories });
-    setShowCategorySettings(false);
-    Alert.alert('Success', 'Growth areas updated!');
+  /** Persists category updates, then re-syncs cohort-based friend graph. */
+  const handleUpdateCategories = async (selectedCategories: string[]) => {
+    try {
+      await updateProfileOnServer({ categories: selectedCategories });
+      updateUser({ categories: selectedCategories });
+      const cohort = await syncCohortFriends();
+      setFollowing(cohort.following);
+      setFollowers(cohort.followers);
+      setShowCategorySettings(false);
+      Alert.alert('Success', 'Growth areas updated!');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not update growth areas';
+      Alert.alert('Error', msg);
+    }
+  };
+
+  /** Opens story viewer and propagates hasViewed updates to backend and local state. */
+  const openStoriesViewer = (selectedStoryId?: string) => {
+    if (!stories.length) return;
+    const initialIndex = selectedStoryId
+      ? Math.max(0, stories.findIndex((story) => story.id === selectedStoryId))
+      : 0;
+    const rootNavigation = navigation.getParent() || navigation;
+    (rootNavigation as any).navigate('StoryViewer', {
+      stories: stories.map((story) => ({
+        id: story.id,
+        userId: story.userId,
+        username: story.username,
+        avatar: story.avatar || resolveAvatarUri(story.userId, story.username, story.avatar),
+        image: resolveStoryDisplayUri(story.image, story.userId, story.id),
+        createdAt: story.createdAt,
+        views: story.views,
+        hasViewed: story.hasViewed,
+      })),
+      initialIndex,
+      onStoriesUpdate: (updatedStories: Array<{ id: string; hasViewed?: boolean }>) => {
+        const viewedIds = updatedStories.filter((s) => s.hasViewed).map((s) => s.id);
+        if (viewedIds.length > 0) {
+          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+        }
+        setStories((prev) =>
+          prev.map((story) => {
+            const updated = updatedStories.find((s) => s.id === story.id);
+            return updated ? { ...story, hasViewed: !!updated.hasViewed } : story;
+          })
+        );
+      },
+    });
   };
 
   return (
@@ -505,14 +565,29 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         {activeTab === 'stories' && (
           <View style={tw`p-4`}>
             {stories.length === 0 ? (
-              <Text style={tw`text-gray-500 text-center py-8`}>
-                No stories in the last 90 days, or you have not posted a story yet. Create one from the feed story flow when available.
-              </Text>
+              <View style={tw`items-center py-8`}>
+                <Text style={tw`text-gray-500 text-center`}>
+                  No active stories yet.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    (rootNavigation as any).navigate('CreateStory');
+                  }}
+                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-violet-600`}
+                >
+                  <Text style={tw`text-white font-semibold`}>Create Story</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
-                    <View key={story.id} style={tw`items-center`}>
+                    <TouchableOpacity
+                      key={story.id}
+                      style={tw`items-center`}
+                      onPress={() => openStoriesViewer(story.id)}
+                    >
                       <View
                         style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
                       >
@@ -526,7 +601,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       <Text style={tw`text-xs text-gray-400 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </ScrollView>
@@ -773,6 +848,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 }
 
 // Category Picker Modal Component
+/** Modal for selecting up to three growth categories and returning the final selection. */
 function CategoryPickerModal({ 
   currentCategories, 
   onSave, 
@@ -785,6 +861,7 @@ function CategoryPickerModal({
   const [selectedCategories, setSelectedCategories] = useState<string[]>(currentCategories);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
+  /** Toggles category selection while enforcing the 3-category maximum. */
   const toggleCategory = (categoryKey: string) => {
     setSelectedCategories((prev) => {
       if (prev.includes(categoryKey)) {

@@ -34,6 +34,11 @@ async function sha256Hex(password: string): Promise<string> {
     .join('');
 }
 
+/** Hash secret using plain SHA-256 hex (same format as client-side hash). */
+export async function hashClientSecret(secret: string): Promise<string> {
+  return sha256Hex(secret);
+}
+
 async function pbkdf2Hash(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',

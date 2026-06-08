@@ -15,6 +15,7 @@ import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
+import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
 import { useAppSelector } from '../../store/store';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
@@ -74,6 +75,7 @@ export type RootStackParamList = {
       hasViewed?: boolean;
     }>) => void;
   };
+  CreateStory: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -141,6 +143,7 @@ export default function RootNavigator() {
             component={StoryViewerScreen}
             options={{ headerShown: false, presentation: 'fullScreenModal' }}
           />
+          <Stack.Screen name="CreateStory" component={CreateStoryScreen} />
         </>
       )}
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />

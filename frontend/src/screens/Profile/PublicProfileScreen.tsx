@@ -17,9 +17,18 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import tw from '../../lib/tw';
-import { addFriend, removeFriend, getFriendshipStatus } from '../../services/api/friends';
+import {
+  addFriend,
+  removeFriend,
+  getFriendshipStatus,
+  blockUser,
+  unblockUser,
+  muteUser,
+  unmuteUser,
+  reportUser,
+} from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
-import { getUserStories, type StoryItem } from '../../services/api/stories';
+import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 
@@ -35,9 +44,13 @@ type Post = {
 
 type Story = {
   id: string;
+  userId: string;
+  username: string;
+  avatar: string | null;
   image: string;
   createdAt: string;
   views: number;
+  hasViewed: boolean;
 };
 
 type JournalEntry = {
@@ -57,6 +70,7 @@ type RouteParams = {
   };
 };
 
+/** Normalizes backend feed payload into compact UI card model for public profile posts. */
 function mapFeedPostToPublicPost(p: FeedPost): Post {
   return {
     id: p.id,
@@ -69,20 +83,27 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
   };
 }
 
+/** Converts story API shape into local story model used by this screen. */
 function mapStoryItemToStory(s: StoryItem): Story {
   return {
     id: s.id,
+    userId: s.userId,
+    username: s.username,
+    avatar: s.avatar,
     image: s.image,
     createdAt: s.createdAt,
     views: s.views ?? 0,
+    hasViewed: !!s.hasViewed,
   };
 }
 
+/** Fetches and maps public posts for the selected profile user. */
 async function fetchUserPosts(userId: string): Promise<Post[]> {
   const list = await getUserPosts(userId);
   return list.map(mapFeedPostToPublicPost);
 }
 
+/** Fetches and maps profile stories for story strip + viewer navigation. */
 async function fetchUserStories(userId: string): Promise<Story[]> {
   const list = await getUserStories(userId);
   return list.map(mapStoryItemToStory);
@@ -90,6 +111,7 @@ async function fetchUserStories(userId: string): Promise<Story[]> {
 
 // Mock function to fetch public journal entries
 async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]> {
+  // Temporary mock until public journal backend endpoint is wired.
   await new Promise(resolve => setTimeout(resolve, 300));
   
   const mockJournalEntries: Record<string, JournalEntry[]> = {
@@ -152,13 +174,17 @@ export default function PublicProfileScreen() {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [friendConnected, setFriendConnected] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   const isOwnProfile = currentUser?.id === userId;
 
+  // Reload profile shell when route user changes.
   useEffect(() => {
     loadProfile();
   }, [userId]);
 
+  // Relationship status drives follow button and moderation toggle labels.
   useEffect(() => {
     if (isOwnProfile || !currentUser?.id) {
       setFriendConnected(false);
@@ -166,15 +192,24 @@ export default function PublicProfileScreen() {
     }
     let cancelled = false;
     getFriendshipStatus(userId).then((s) => {
-      if (!cancelled) setFriendConnected(s.connected);
+      if (!cancelled) {
+        setFriendConnected(s.connected);
+        setIsBlocked(s.blocked);
+        setIsMuted(s.muted);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [userId, currentUser?.id, isOwnProfile]);
 
+  /** Handles follow/unfollow CTA with blocked-user guardrails and feedback. */
   const onToggleFriend = async () => {
     if (friendBusy || isOwnProfile) return;
+    if (isBlocked) {
+      Alert.alert('Blocked user', 'Unblock this user before connecting.');
+      return;
+    }
     setFriendBusy(true);
     try {
       if (friendConnected) {
@@ -206,12 +241,14 @@ export default function PublicProfileScreen() {
     }
   };
 
+  // Lazily load tab-specific content only after profile metadata is available.
   useEffect(() => {
     if (profileUser) {
       loadContent();
     }
   }, [profileUser, activeTab]);
 
+  /** Loads public profile header/stats metadata. */
   const loadProfile = async () => {
     try {
       setLoading(true);
@@ -225,6 +262,7 @@ export default function PublicProfileScreen() {
     }
   };
 
+  /** Loads selected tab content (posts/stories/journal) for current profile user. */
   const loadContent = async () => {
     if (!profileUser) return;
     
@@ -245,6 +283,40 @@ export default function PublicProfileScreen() {
     } finally {
       setLoadingContent(false);
     }
+  };
+
+  /** Opens story viewer modal and syncs viewed-state both locally and server-side. */
+  const openStoryViewer = (selectedStoryId?: string) => {
+    if (!stories.length || !profileUser) return;
+    const initialIndex = selectedStoryId
+      ? Math.max(0, stories.findIndex((story) => story.id === selectedStoryId))
+      : 0;
+    const rootNavigation = navigation.getParent() || navigation;
+    (rootNavigation as any).navigate('StoryViewer', {
+      stories: stories.map((story) => ({
+        id: story.id,
+        userId: story.userId,
+        username: story.username,
+        avatar: story.avatar || resolveAvatarUri(story.userId, story.username, story.avatar),
+        image: resolveStoryDisplayUri(story.image, story.userId, story.id),
+        createdAt: story.createdAt,
+        views: story.views,
+        hasViewed: story.hasViewed,
+      })),
+      initialIndex,
+      onStoriesUpdate: (updatedStories: Array<{ id: string; hasViewed?: boolean }>) => {
+        const viewedIds = updatedStories.filter((s) => s.hasViewed).map((s) => s.id);
+        if (viewedIds.length > 0) {
+          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+        }
+        setStories((prev) =>
+          prev.map((story) => {
+            const updated = updatedStories.find((s) => s.id === story.id);
+            return updated ? { ...story, hasViewed: !!updated.hasViewed } : story;
+          })
+        );
+      },
+    });
   };
 
   if (loading) {
@@ -451,7 +523,7 @@ export default function PublicProfileScreen() {
                   onPress={() => {
                     if (!profileUser) return;
                     const rootNavigation = navigation.getParent() || navigation;
-                    rootNavigation.navigate('PostDetail' as never, {
+                    (rootNavigation as any).navigate('PostDetail', {
                       post: {
                         id: post.id,
                         userId: profileUser.id,
@@ -466,7 +538,7 @@ export default function PublicProfileScreen() {
                         hasLiked: false,
                         reaction: null,
                       },
-                    } as never);
+                    });
                   }}
                 >
                   <View style={tw`flex-row items-center justify-between mb-3`}>
@@ -515,7 +587,11 @@ export default function PublicProfileScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
-                    <View key={story.id} style={tw`items-center`}>
+                    <TouchableOpacity
+                      key={story.id}
+                      style={tw`items-center`}
+                      onPress={() => openStoryViewer(story.id)}
+                    >
                       <View style={tw`w-20 h-20 rounded-xl overflow-hidden mb-2 border-2 border-purple-500 bg-gray-100`}>
                         <Image
                           source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
@@ -529,7 +605,7 @@ export default function PublicProfileScreen() {
                       <Text style={tw`text-xs text-gray-400 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </ScrollView>
@@ -614,24 +690,34 @@ export default function PublicProfileScreen() {
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
                   onPress={() => {
                     setShowOptionsMenu(false);
-                    Alert.alert(
-                      'Block User',
-                      `Are you sure you want to block ${profileUser?.username}? You won't be able to see their posts, stories, or journal entries.`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Block',
-                          style: 'destructive',
-                          onPress: () => {
-                            Alert.alert('User Blocked', `${profileUser?.username} has been blocked.`);
-                          },
+                    Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: isBlocked ? 'Unblock' : 'Block',
+                        style: isBlocked ? 'default' : 'destructive',
+                        onPress: async () => {
+                          try {
+                            if (isBlocked) {
+                              await unblockUser(userId);
+                              setIsBlocked(false);
+                              Alert.alert('Unblocked', `${profileUser?.username} has been unblocked.`);
+                            } else {
+                              await blockUser(userId);
+                              setIsBlocked(true);
+                              setFriendConnected(false);
+                              Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
+                            }
+                          } catch (error: unknown) {
+                            const msg = error instanceof Error ? error.message : 'Could not update block status';
+                            Alert.alert('Error', msg);
+                          }
                         },
-                      ]
-                    );
+                      },
+                    ]);
                   }}
                 >
                   <Ionicons name="ban-outline" size={24} color="#EF4444" />
-                  <Text style={tw`text-base text-gray-900 ml-3`}>Block User</Text>
+                  <Text style={tw`text-base text-gray-900 ml-3`}>{isBlocked ? 'Unblock User' : 'Block User'}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -645,19 +731,51 @@ export default function PublicProfileScreen() {
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: 'Spam',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'spam');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
+                          },
                         },
                         {
                           text: 'Harassment',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'harassment');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
+                          },
                         },
                         {
                           text: 'Inappropriate Content',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'inappropriate_content');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
+                          },
                         },
                         {
                           text: 'Other',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'other');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
+                          },
                         },
                       ]
                     );
@@ -671,11 +789,32 @@ export default function PublicProfileScreen() {
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
                   onPress={() => {
                     setShowOptionsMenu(false);
-                    Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+                    Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: isMuted ? 'Unmute' : 'Mute',
+                        onPress: async () => {
+                          try {
+                            if (isMuted) {
+                              await unmuteUser(userId);
+                              setIsMuted(false);
+                              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+                            } else {
+                              await muteUser(userId);
+                              setIsMuted(true);
+                              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+                            }
+                          } catch (error: unknown) {
+                            const msg = error instanceof Error ? error.message : 'Could not update mute status';
+                            Alert.alert('Error', msg);
+                          }
+                        },
+                      },
+                    ]);
                   }}
                 >
                   <Ionicons name="notifications-off-outline" size={24} color="#6B7280" />
-                  <Text style={tw`text-base text-gray-900 ml-3`}>Mute User</Text>
+                  <Text style={tw`text-base text-gray-900 ml-3`}>{isMuted ? 'Unmute User' : 'Mute User'}</Text>
                 </TouchableOpacity>
               </>
             )}

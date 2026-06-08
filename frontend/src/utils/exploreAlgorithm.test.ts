@@ -8,6 +8,7 @@ import {
   type ExploreAlgorithmPost,
   type ExploreAlgorithmProduct,
 } from './exploreAlgorithm';
+import { rankDiscoverPeople, type StoryGroup } from './discoverPeople';
 
 describe('exploreAlgorithm', () => {
   it('expandUserCategoryKeys adds parent segment', () => {
@@ -97,5 +98,87 @@ describe('exploreAlgorithm', () => {
     });
     expect(ranked[0].kind).toBe('post');
     if (ranked[0].kind === 'post') expect(ranked[0].post.id).toBe('friend-post');
+  });
+
+  it('rankDiscoverPeople prioritizes relevant non-friends and excludes self/friends', () => {
+    const now = Date.parse('2026-06-01T12:00:00Z');
+    const storyGroups: StoryGroup[] = [
+      {
+        userId: 'u-self',
+        username: 'Self',
+        avatar: null,
+        stories: [
+          {
+            id: 's-self',
+            userId: 'u-self',
+            username: 'Self',
+            avatar: null,
+            image: 'self.jpg',
+            hasViewed: false,
+            createdAt: '2026-06-01T11:45:00Z',
+          },
+        ],
+      },
+      {
+        userId: 'u-friend',
+        username: 'Friend',
+        avatar: null,
+        stories: [
+          {
+            id: 's-friend',
+            userId: 'u-friend',
+            username: 'Friend',
+            avatar: null,
+            image: 'friend.jpg',
+            hasViewed: false,
+            createdAt: '2026-06-01T11:45:00Z',
+          },
+        ],
+      },
+      {
+        userId: 'u-candidate',
+        username: 'Candidate',
+        avatar: null,
+        stories: [
+          {
+            id: 's-candidate',
+            userId: 'u-candidate',
+            username: 'Candidate',
+            avatar: null,
+            image: 'candidate.jpg',
+            hasViewed: false,
+            createdAt: '2026-06-01T11:40:00Z',
+          },
+        ],
+      },
+    ];
+
+    const feedPosts = [
+      {
+        id: 'p-candidate',
+        user_id: 'u-candidate',
+        category: 'fitness',
+        subcategory: 'cardio',
+        created_at: '2026-06-01T11:50:00Z',
+        metadata: { likes: 9, comments: 4, username: 'Candidate', avatar: '' },
+      },
+      {
+        id: 'p-other',
+        user_id: 'u-other',
+        category: 'mindset',
+        created_at: '2026-06-01T11:50:00Z',
+        metadata: { likes: 0, comments: 0, username: 'Other', avatar: '' },
+      },
+    ];
+
+    const ranked = rankDiscoverPeople(storyGroups, feedPosts, ['fitness:cardio'], {
+      nowMs: now,
+      selfId: 'u-self',
+      friendIds: new Set(['u-friend']),
+    });
+
+    expect(ranked.some((p) => p.userId === 'u-self')).toBe(false);
+    expect(ranked.some((p) => p.userId === 'u-friend')).toBe(false);
+    expect(ranked[0].userId).toBe('u-candidate');
   });
 });

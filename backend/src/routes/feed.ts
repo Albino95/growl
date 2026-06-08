@@ -6,11 +6,91 @@ import { generateId } from '../utils/id';
 import { categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 
+/** Development-only fallback payload used for explore mode demos. */
+function buildMockExplorePosts() {
+  const now = Date.now();
+  return [
+    {
+      id: 'mock-explore-post-1',
+      user_id: 'mock-user-fitness-coach',
+      image_url:
+        'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=1200&q=80',
+      caption: 'Strength ladder session complete. Save this for your next gym day.',
+      category: 'fitness',
+      subcategory: 'building-muscle',
+      engagement_score: 94,
+      created_at: new Date(now - 1000 * 60 * 40).toISOString(),
+      updated_at: new Date(now - 1000 * 60 * 40).toISOString(),
+      metadata: {
+        likes: 187,
+        comments: 29,
+        has_liked: false,
+        friend_likes_count: 0,
+        friend_likers: [],
+        is_friend: false,
+        isInstructor: true,
+        username: 'Coach Lina',
+        avatar: 'https://i.pravatar.cc/200?img=28',
+      },
+    },
+    {
+      id: 'mock-explore-post-2',
+      user_id: 'mock-user-nutrition-lab',
+      image_url:
+        'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=1200&q=80',
+      caption: 'High-protein prep bowls in under 30 minutes.',
+      category: 'nutrition',
+      subcategory: 'meal-planning',
+      engagement_score: 88,
+      created_at: new Date(now - 1000 * 60 * 95).toISOString(),
+      updated_at: new Date(now - 1000 * 60 * 95).toISOString(),
+      metadata: {
+        likes: 133,
+        comments: 18,
+        has_liked: false,
+        friend_likes_count: 0,
+        friend_likers: [],
+        is_friend: false,
+        isInstructor: false,
+        username: 'Macro Lab',
+        avatar: 'https://i.pravatar.cc/200?img=15',
+      },
+    },
+    {
+      id: 'mock-explore-post-3',
+      user_id: 'mock-user-mindset-flow',
+      image_url:
+        'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1200&q=80',
+      caption: 'A 10-minute breath reset between deep-work blocks.',
+      category: 'mindset',
+      subcategory: 'meditation',
+      engagement_score: 82,
+      created_at: new Date(now - 1000 * 60 * 160).toISOString(),
+      updated_at: new Date(now - 1000 * 60 * 160).toISOString(),
+      metadata: {
+        likes: 101,
+        comments: 12,
+        has_liked: false,
+        friend_likes_count: 0,
+        friend_likers: [],
+        is_friend: false,
+        isInstructor: false,
+        username: 'Mindset Daily',
+        avatar: 'https://i.pravatar.cc/200?img=50',
+      },
+    },
+  ];
+}
+
 /**
  * GET /api/v1/feed/feed
  * Get personalized feed for user
  */
 export async function getFeed(request: Request, env: Env): Promise<Response> {
+  // Query flags are used to switch between home feed and explore behavior.
+  const url = new URL(request.url);
+  const isExploreMode = url.searchParams.get('mode') === 'explore';
+  const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -29,11 +109,23 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const metadata = JSON.parse(user.metadata || '{}');
   const categories = metadata.categories || [];
-  const blockedUsers = metadata.blockedUsers || [];
-  const mutedUsers = metadata.mutedUsers || [];
+  const blockedUsersFromMeta = Array.isArray(metadata.blockedUsers) ? metadata.blockedUsers : [];
+  const mutedUsersFromMeta = Array.isArray(metadata.mutedUsers) ? metadata.mutedUsers : [];
+  const moderationRows = await env.DB.prepare(
+    `SELECT target_user_id, type
+     FROM user_relationships
+     WHERE user_id = ? AND type IN ('block', 'mute')`
+  )
+    .bind(ctx.userId)
+    .all<{ target_user_id: string; type: string }>();
+  const blockedUsers = new Set<string>(blockedUsersFromMeta);
+  const mutedUsers = new Set<string>(mutedUsersFromMeta);
+  for (const row of moderationRows.results || []) {
+    if (row.type === 'block') blockedUsers.add(row.target_user_id);
+    if (row.type === 'mute') mutedUsers.add(row.target_user_id);
+  }
 
-  // Build query to get posts
-  // Get posts from last 7 days, excluding blocked/muted users
+  // Pull a recent post window and hydrate engagement counters in one query.
   let query = `
     SELECT 
       p.*,
@@ -59,8 +151,8 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const bindings: any[] = [];
 
-  // Filter out blocked/muted users
-  if (blockedUsers.length > 0 || mutedUsers.length > 0) {
+  // Exclusion list merges metadata-based moderation with relationship-table moderation.
+  if (blockedUsers.size > 0 || mutedUsers.size > 0) {
     const excludedUsers = [...new Set([...blockedUsers, ...mutedUsers])];
     query += ` AND p.user_id NOT IN (${excludedUsers.map(() => '?').join(',')})`;
     bindings.push(...excludedUsers);
@@ -122,13 +214,23 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       };
     })
     .filter((post) => {
-      // Feed = your posts + friends only (cohort peers are auto-friended on profile sync)
-      if (post.isOwn) return true;
-      if (!categories.length) return false;
-      return post.isFriend;
+      // Feed mode stays narrow: own posts + friend posts only.
+      if (!isExploreMode) {
+        if (post.isOwn) return true;
+        if (!categories.length) return false;
+        return post.isFriend;
+      }
+
+      // Explore mode stays discovery-focused: non-friends only.
+      if (post.isOwn) return false;
+      return !post.isFriend;
     });
 
   personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+
+  if (isExploreMode && allowDevMock && personalizedPosts.length === 0) {
+    return json(buildMockExplorePosts(), 200);
+  }
 
   return json(
     personalizedPosts.map(({ relevanceScore, isOwn, isFriend, ...rest }) => rest),
@@ -140,6 +242,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
  * POST /api/v1/feed/posts
  * Create a new post
  */
+/** Creates a feed post after schema validation and inserts base engagement fields. */
 export async function createPost(request: Request, env: Env): Promise<Response> {
   console.log('[createPost] ===== POST CREATION STARTED =====');
   const ctx = await getRequestContext(request, env);
@@ -237,6 +340,7 @@ export async function getPost(
   env: Env,
   postId: string
 ): Promise<Response> {
+  // Supports authenticated and anonymous viewers by using a sentinel viewer id.
   const ctx = await getRequestContext(request, env);
   const viewerId = ctx.isAuthenticated && ctx.userId ? ctx.userId : '__no_viewer__';
 
@@ -299,6 +403,7 @@ export async function toggleLike(
   env: Env,
   postId: string
 ): Promise<Response> {
+  // Toggle endpoint keeps client API simple: one action for like/unlike.
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -343,6 +448,7 @@ export async function toggleLike(
  * GET /api/v1/feed/posts/user/:userId
  * Get posts by a specific user
  */
+/** Returns profile-grid posts for a given user with viewer-aware metadata. */
 export async function getUserPosts(
   request: Request,
   env: Env,
@@ -417,6 +523,7 @@ export async function getUserPosts(
 /**
  * Update engagement score for a post
  */
+/** Recalculates weighted engagement score after any like/comment mutation. */
 async function updateEngagementScore(env: Env, postId: string): Promise<void> {
   const engagement = await env.DB.prepare(
     `SELECT 

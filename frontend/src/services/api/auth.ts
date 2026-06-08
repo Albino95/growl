@@ -43,9 +43,10 @@ export async function verifyEmailApi(email: string, code: string): Promise<void>
 }
 
 export async function signInApi(email: string, password: string): Promise<SessionResponse> {
+  const passwordHash = await sha256Hex(password);
   const res = await request<{ success: boolean; data: SessionResponse }>('/auth/sign-in', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, passwordHash }),
   });
   return res.data;
 }

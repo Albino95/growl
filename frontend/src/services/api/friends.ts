@@ -31,6 +31,7 @@ export async function syncCohortFriends(): Promise<
   };
 }
 
+/** Loads following/followers with server-computed counts. */
 export async function getConnections(): Promise<ConnectionsPayload> {
   const res = await request<{ success: boolean; data: ConnectionsPayload }>(
     '/social/friends/connections'
@@ -44,6 +45,7 @@ export async function getConnections(): Promise<ConnectionsPayload> {
   };
 }
 
+/** Fetches a resilient friend list (falls back to empty on recoverable errors). */
 export async function listFriends(): Promise<FriendSummary[]> {
   try {
     const res = await request<{ success: boolean; data: { friends: FriendSummary[] } }>('/social/friends');
@@ -55,6 +57,7 @@ export async function listFriends(): Promise<FriendSummary[]> {
   }
 }
 
+/** Creates a mutual friend connection with target user. */
 export async function addFriend(targetUserId: string): Promise<void> {
   await request('/social/friends', {
     method: 'POST',
@@ -62,24 +65,74 @@ export async function addFriend(targetUserId: string): Promise<void> {
   });
 }
 
+/** Removes mutual friend connection with target user. */
 export async function removeFriend(targetUserId: string): Promise<void> {
   await request(`/social/friends/${encodeURIComponent(targetUserId)}`, { method: 'DELETE' });
 }
 
-export async function getFriendshipStatus(targetUserId: string): Promise<{ connected: boolean; isSelf: boolean }> {
+/**
+ * Returns relationship status used by public profile CTA + moderation UI state.
+ * Falls back to a safe "not connected/not moderated" value when request fails.
+ */
+export async function getFriendshipStatus(targetUserId: string): Promise<{
+  connected: boolean;
+  isSelf: boolean;
+  blocked: boolean;
+  muted: boolean;
+}> {
   try {
     const res = await request<{
       success: boolean;
-      data?: { connected: boolean; isSelf?: boolean };
+      data?: { connected: boolean; isSelf?: boolean; blocked?: boolean; muted?: boolean };
     }>(`/social/friends/status/${encodeURIComponent(targetUserId)}`);
     if (!res.success || !res.data) {
-      return { connected: false, isSelf: false };
+      return { connected: false, isSelf: false, blocked: false, muted: false };
     }
     return {
       connected: !!res.data.connected,
       isSelf: !!res.data.isSelf,
+      blocked: !!res.data.blocked,
+      muted: !!res.data.muted,
     };
   } catch {
-    return { connected: false, isSelf: false };
+    return { connected: false, isSelf: false, blocked: false, muted: false };
   }
+}
+
+/** Blocks target user from social graph and content surfaces. */
+export async function blockUser(targetUserId: string): Promise<void> {
+  await request('/social/block', {
+    method: 'POST',
+    body: JSON.stringify({ targetUserId }),
+  });
+}
+
+/** Removes block relationship for target user. */
+export async function unblockUser(targetUserId: string): Promise<void> {
+  await request(`/social/block/${encodeURIComponent(targetUserId)}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Mutes target user content without removing friendship. */
+export async function muteUser(targetUserId: string): Promise<void> {
+  await request('/social/mute', {
+    method: 'POST',
+    body: JSON.stringify({ targetUserId }),
+  });
+}
+
+/** Restores target user content visibility by removing mute relationship. */
+export async function unmuteUser(targetUserId: string): Promise<void> {
+  await request(`/social/mute/${encodeURIComponent(targetUserId)}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Submits a moderation report for a user with a reason slug. */
+export async function reportUser(targetUserId: string, reason: string): Promise<void> {
+  await request('/social/report', {
+    method: 'POST',
+    body: JSON.stringify({ targetUserId, reason }),
+  });
 }

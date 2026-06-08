@@ -40,8 +40,11 @@ export type FeedResponse = {
   data: FeedPost[];
 };
 
-export async function getFeedPosts(): Promise<FeedResponse> {
-  return request<FeedResponse>('/feed/feed');
+export async function getFeedPosts(options?: {
+  mode?: 'default' | 'explore';
+}): Promise<FeedResponse> {
+  const mode = options?.mode === 'explore' ? '?mode=explore' : '';
+  return request<FeedResponse>(`/feed/feed${mode}`);
 }
 
 export async function createFeedPost(payload: {

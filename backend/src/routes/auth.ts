@@ -10,6 +10,7 @@ import {
 import {
   hashPassword,
   verifyPassword,
+  hashClientSecret,
   generateVerificationToken,
   hashVerificationToken,
 } from '../utils/password';
@@ -185,7 +186,7 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
     const validation = await validateRequest(request, signInSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password } = validation.data;
+    const { email, password, passwordHash } = validation.data;
     const normalizedEmail = email.trim().toLowerCase();
 
     const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?')
@@ -205,7 +206,21 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
-    const isValid = await verifyPassword(password, user.password_hash);
+    const secrets = new Set<string>();
+    if (passwordHash) secrets.add(passwordHash);
+    if (password) {
+      secrets.add(password);
+      secrets.add(await hashClientSecret(password));
+    }
+
+    let isValid = false;
+    for (const secret of secrets) {
+      if (await verifyPassword(secret, user.password_hash)) {
+        isValid = true;
+        break;
+      }
+    }
+
     if (!isValid) {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
