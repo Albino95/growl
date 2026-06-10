@@ -7,6 +7,8 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -174,6 +176,7 @@ export default function PublicProfileScreen() {
   const [friendBusy, setFriendBusy] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
 
   const isOwnProfile = currentUser?.id === userId;
 
@@ -342,6 +345,7 @@ export default function PublicProfileScreen() {
   };
 
   const handleBlockMenuPress = () => {
+    setShowOptionsMenu(false);
     Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -370,6 +374,7 @@ export default function PublicProfileScreen() {
   };
 
   const handleReportMenuPress = () => {
+    setShowOptionsMenu(false);
     Alert.alert('Report User', `Why are you reporting ${profileUser?.username}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -424,6 +429,7 @@ export default function PublicProfileScreen() {
   };
 
   const handleMuteMenuPress = () => {
+    setShowOptionsMenu(false);
     Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -448,34 +454,7 @@ export default function PublicProfileScreen() {
   };
 
   const openOptionsMenu = () => {
-    const buttons: Array<{
-      text: string;
-      style?: 'default' | 'cancel' | 'destructive';
-      onPress?: () => void;
-    }> = [];
-
-    if (!isOwnProfile) {
-      buttons.push({
-        text: isBlocked ? 'Unblock User' : 'Block User',
-        style: isBlocked ? 'default' : 'destructive',
-        onPress: handleBlockMenuPress,
-      });
-      buttons.push({ text: 'Report User', onPress: handleReportMenuPress });
-      buttons.push({
-        text: isMuted ? 'Unmute User' : 'Mute User',
-        onPress: handleMuteMenuPress,
-      });
-    }
-
-    buttons.push({
-      text: 'Share Profile',
-      onPress: () => {
-        Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
-      },
-    });
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-
-    Alert.alert('Options', undefined, buttons);
+    setShowOptionsMenu(true);
   };
 
   if (loading) {
@@ -519,8 +498,9 @@ export default function PublicProfileScreen() {
         <Text style={tw`text-lg font-semibold text-gray-900 flex-1`}>
           {profileUser.username}
         </Text>
-        <TouchableOpacity 
-          style={tw`p-1`}
+        <TouchableOpacity
+          style={tw`w-11 h-11 items-center justify-center`}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           onPress={openOptionsMenu}
         >
           <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
@@ -833,6 +813,65 @@ export default function PublicProfileScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={showOptionsMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowOptionsMenu(false)}
+      >
+        <Pressable style={tw`flex-1 bg-black/35 justify-end`} onPress={() => setShowOptionsMenu(false)}>
+          <Pressable style={tw`bg-white px-4 pt-3 pb-6 rounded-t-3xl`}>
+            <View style={tw`w-12 h-1.5 bg-gray-300 rounded-full self-center mb-4`} />
+
+            {!isOwnProfile ? (
+              <>
+                <Pressable
+                  style={tw`py-4 border-b border-gray-100`}
+                  onPress={handleBlockMenuPress}
+                >
+                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-gray-900' : 'text-red-600'}`}>
+                    {isBlocked ? 'Unblock User' : 'Block User'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={tw`py-4 border-b border-gray-100`}
+                  onPress={handleReportMenuPress}
+                >
+                  <Text style={tw`text-base font-semibold text-gray-900`}>Report User</Text>
+                </Pressable>
+
+                <Pressable
+                  style={tw`py-4 border-b border-gray-100`}
+                  onPress={handleMuteMenuPress}
+                >
+                  <Text style={tw`text-base font-semibold text-gray-900`}>
+                    {isMuted ? 'Unmute User' : 'Mute User'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
+
+            <Pressable
+              style={tw`py-4 border-b border-gray-100`}
+              onPress={() => {
+                setShowOptionsMenu(false);
+                Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
+              }}
+            >
+              <Text style={tw`text-base font-semibold text-gray-900`}>Share Profile</Text>
+            </Pressable>
+
+            <Pressable
+              style={tw`py-4 mt-2`}
+              onPress={() => setShowOptionsMenu(false)}
+            >
+              <Text style={tw`text-base font-semibold text-center text-gray-500`}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
     </SafeAreaView>
   );
