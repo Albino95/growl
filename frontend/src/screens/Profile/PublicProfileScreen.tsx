@@ -10,6 +10,7 @@ import {
   Modal,
   Alert,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -335,7 +336,9 @@ export default function PublicProfileScreen() {
 
   const closeOptionsAndRun = (action: () => void) => {
     setShowOptionsMenu(false);
-    setTimeout(action, 80);
+    InteractionManager.runAfterInteractions(() => {
+      action();
+    });
   };
 
   if (loading) {
