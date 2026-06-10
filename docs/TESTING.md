@@ -170,6 +170,36 @@ cd backend
 API_BASE_URL=https://your-host/api/v1 npm run test:integration
 ```
 
+## Backend — social smoke (`test-social-smoke.js`)
+
+Focused smoke coverage for:
+
+- comments count consistency
+- likes list endpoint correctness
+- friend likes list correctness
+- block action + blocked-user feed exclusion
+
+Run against deployed backend:
+
+```bash
+cd backend
+API_BASE_URL=https://growl-backend.albino-ndreu.workers.dev/api/v1 \
+SMOKE_EMAIL=demo@growl.app \
+SMOKE_PASSWORD=GrowlDemo123! \
+npm run test:social-smoke
+```
+
+Run against local `wrangler dev`:
+
+```bash
+cd backend
+SMOKE_EMAIL=demo@growl.app \
+SMOKE_PASSWORD=GrowlDemo123! \
+npm run test:social-smoke:local
+```
+
+See the release-ready checklist in `docs/SOCIAL_DEPLOY_CHECKLIST.md`.
+
 ---
 
 ## Backend — D1 migrations (remote)

@@ -33,8 +33,31 @@ git push origin main
 
 ```bash
 cd backend
+npx wrangler login   # first time on machine
+npm run migrate      # apply D1 migrations remotely
 npm run deploy
 ```
+
+### 2.1 Verify social fixes after deploy
+
+Run focused social smoke (comments count, likes list, friend likes list, block flow):
+
+```bash
+cd backend
+API_BASE_URL=https://growl-backend.albino-ndreu.workers.dev/api/v1 \
+SMOKE_EMAIL=demo@growl.app \
+SMOKE_PASSWORD=GrowlDemo123! \
+npm run test:social-smoke
+```
+
+If smoke shows `feed-load - items=0`, deploy may be fine but remote demo data is missing:
+
+```bash
+cd backend
+npm run seed:social:remote
+```
+
+Then rerun the smoke test.
 
 ### 3. Deploy Frontend Web (Vercel)
 

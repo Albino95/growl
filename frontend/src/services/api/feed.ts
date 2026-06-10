@@ -35,6 +35,13 @@ export type FeedComment = {
   };
 };
 
+export type FeedLiker = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+  isFriend?: boolean;
+};
+
 export type FeedResponse = {
   success: boolean;
   data: FeedPost[];
@@ -89,4 +96,28 @@ export async function createFeedPostComment(postId: string, content: string): Pr
   );
   if (!res.success || !res.data) throw new Error('Could not post comment');
   return res.data;
+}
+
+export async function getFeedPostLikes(postId: string): Promise<{
+  likes: number;
+  likers: FeedLiker[];
+  friendLikesCount: number;
+  friendLikers: FeedLiker[];
+}> {
+  const res = await request<{
+    success: boolean;
+    data: {
+      likes: number;
+      likers: FeedLiker[];
+      friendLikesCount?: number;
+      friendLikers?: FeedLiker[];
+    };
+  }>(`/feed/posts/${encodeURIComponent(postId)}/likes`);
+  const data = res.data || { likes: 0, likers: [], friendLikesCount: 0, friendLikers: [] };
+  return {
+    likes: data.likes || 0,
+    likers: Array.isArray(data.likers) ? data.likers : [],
+    friendLikesCount: data.friendLikesCount || 0,
+    friendLikers: Array.isArray(data.friendLikers) ? data.friendLikers : [],
+  };
 }

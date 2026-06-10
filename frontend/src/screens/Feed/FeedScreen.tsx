@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal, Platform, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,8 +11,9 @@ import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
-import { toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { blockUser } from '../../services/api/friends';
 import tw from '../../lib/tw';
 
 type Story = {
@@ -74,6 +75,13 @@ export default function FeedScreen({ navigation, route }: any) {
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
   const [failedPostImages, setFailedPostImages] = useState<Record<string, boolean>>({});
+  const [likesModal, setLikesModal] = useState<{
+    title: string;
+    users: FeedLiker[];
+    subtitle?: string;
+  } | null>(null);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -301,6 +309,50 @@ export default function FeedScreen({ navigation, route }: any) {
       );
     } catch {
       void dispatch(fetchFeedPosts());
+    }
+  };
+
+  const openLikesModal = async (post: Post, mode: 'all' | 'friends') => {
+    setLikesLoading(true);
+    try {
+      const likes = await getFeedPostLikes(post.id);
+      const users = mode === 'friends' ? likes.friendLikers : likes.likers;
+      setLikesModal({
+        title: mode === 'friends' ? 'Friends who liked' : 'Liked by',
+        users,
+        subtitle:
+          mode === 'friends'
+            ? `${likes.friendLikesCount} friends liked this`
+            : `${likes.likes} total likes`,
+      });
+    } catch (e) {
+      setLikesModal({
+        title: 'Liked by',
+        users: [],
+        subtitle: e instanceof Error ? e.message : 'Could not load likes',
+      });
+    } finally {
+      setLikesLoading(false);
+    }
+  };
+
+  const blockPostUser = async (post: Post) => {
+    try {
+      await blockUser(post.userId);
+      setPosts((prev) => prev.filter((p) => p.userId !== post.userId));
+      setPostMenuPost(null);
+      if (Platform.OS === 'web') {
+        alert(`${post.username} has been blocked.`);
+      } else {
+        Alert.alert('Blocked', `${post.username} has been blocked.`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not block user';
+      if (Platform.OS === 'web') {
+        alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
     }
   };
 
@@ -585,7 +637,7 @@ export default function FeedScreen({ navigation, route }: any) {
                     <Text style={tw`text-xs text-gray-500`}>{item.timestamp}</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={tw`p-1`}>
+                <TouchableOpacity style={tw`p-1`} onPress={() => setPostMenuPost(item)}>
                   <Ionicons name="ellipsis-horizontal" size={22} color="#6B7280" />
                 </TouchableOpacity>
               </View>
@@ -690,15 +742,18 @@ export default function FeedScreen({ navigation, route }: any) {
                 )}
 
                 {/* Likes Count */}
-                <Text style={tw`font-bold text-gray-900 mb-2 text-base`}>
-                  {item.likes} {item.likes === 1 ? 'like' : 'likes'}
-                  {(item.friendLikesCount ?? 0) > 0 ? (
-                    <Text style={tw`text-emerald-700 font-semibold`}>
-                      {' '}
-                      · {item.friendLikesCount} from friends
+                <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
+                  <Text style={tw`font-bold text-gray-900 mb-2 text-base`}>
+                    {item.likes} {item.likes === 1 ? 'like' : 'likes'}
+                  </Text>
+                </TouchableOpacity>
+                {(item.friendLikesCount ?? 0) > 0 ? (
+                  <TouchableOpacity onPress={() => void openLikesModal(item, 'friends')}>
+                    <Text style={tw`text-emerald-700 font-semibold mb-2`}>
+                      {item.friendLikesCount} from friends
                     </Text>
-                  ) : null}
-                </Text>
+                  </TouchableOpacity>
+                ) : null}
                 {(item.friendLikers?.length ?? 0) > 0 ? (
                   <Text style={tw`text-xs text-indigo-700 mb-2`}>
                     Liked by friends: {item.friendLikers?.slice(0, 3).join(', ')}
@@ -791,6 +846,100 @@ export default function FeedScreen({ navigation, route }: any) {
                 void dispatch(fetchFeedPosts());
               }}
             />
+          </Modal>
+        )}
+
+        {likesModal && (
+          <Modal
+            visible={!!likesModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setLikesModal(null)}
+          >
+            <View style={tw`flex-1 bg-black/40 justify-end`}>
+              <View style={tw`bg-white rounded-t-3xl p-4 max-h-[70%]`}>
+                <View style={tw`flex-row items-center justify-between mb-2`}>
+                  <Text style={tw`text-lg font-bold text-stone-900`}>{likesModal.title}</Text>
+                  <TouchableOpacity onPress={() => setLikesModal(null)}>
+                    <Ionicons name="close" size={22} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
+                {likesModal.subtitle ? (
+                  <Text style={tw`text-sm text-stone-500 mb-3`}>{likesModal.subtitle}</Text>
+                ) : null}
+                {likesLoading ? (
+                  <View style={tw`py-10 items-center`}>
+                    <Text style={tw`text-stone-500`}>Loading likes...</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={likesModal.users}
+                    keyExtractor={(u) => u.id}
+                    renderItem={({ item }) => (
+                      <View style={tw`flex-row items-center py-2.5 border-b border-stone-100`}>
+                        <Image
+                          source={{ uri: resolveAvatarUri(item.id, item.username, item.avatar || null) }}
+                          style={tw`w-9 h-9 rounded-full bg-stone-100 mr-3`}
+                          contentFit="cover"
+                        />
+                        <View style={tw`flex-1`}>
+                          <Text style={tw`font-semibold text-stone-900`}>{item.username}</Text>
+                          {item.isFriend ? (
+                            <Text style={tw`text-xs text-emerald-600`}>Friend</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    )}
+                    ListEmptyComponent={
+                      <View style={tw`py-8 items-center`}>
+                        <Text style={tw`text-stone-500`}>No likes to show.</Text>
+                      </View>
+                    }
+                  />
+                )}
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {postMenuPost && (
+          <Modal
+            visible={!!postMenuPost}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setPostMenuPost(null)}
+          >
+            <View style={tw`flex-1 justify-end`}>
+              <Pressable style={tw`absolute inset-0 bg-black/40`} onPress={() => setPostMenuPost(null)} />
+              <View style={tw`bg-white rounded-t-3xl p-4`}>
+                <TouchableOpacity
+                  style={tw`flex-row items-center py-4 border-b border-stone-200`}
+                  onPress={() => {
+                    const target = postMenuPost;
+                    if (!target) return;
+                    setPostMenuPost(null);
+                    if (target.isOwn) return;
+                    Alert.alert('Block User', `Block ${target.username}?`, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Block',
+                        style: 'destructive',
+                        onPress: () => {
+                          void blockPostUser(target);
+                        },
+                      },
+                    ]);
+                  }}
+                >
+                  <Ionicons name="ban-outline" size={22} color="#DC2626" />
+                  <Text style={tw`ml-3 text-base text-stone-900`}>Block user</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={tw`flex-row items-center py-4`} onPress={() => setPostMenuPost(null)}>
+                  <Ionicons name="close-outline" size={22} color="#6B7280" />
+                  <Text style={tw`ml-3 text-base text-stone-900`}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </Modal>
         )}
 

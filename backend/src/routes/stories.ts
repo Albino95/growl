@@ -8,62 +8,45 @@ import { z } from 'zod';
 /** Development-only grouped stories fallback used in explore mode. */
 function buildMockExploreStories() {
   const now = Date.now();
-  return [
-    {
-      userId: 'mock-user-fitness-coach',
-      username: 'Coach Lina',
-      avatar: 'https://i.pravatar.cc/200?img=28',
-      stories: [
-        {
-          id: 'mock-story-1',
-          userId: 'mock-user-fitness-coach',
-          username: 'Coach Lina',
-          avatar: 'https://i.pravatar.cc/200?img=28',
-          image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=900&q=80',
-          caption: 'Morning mobility routine',
-          views: 0,
-          hasViewed: false,
-          createdAt: new Date(now - 1000 * 60 * 25).toISOString(),
-        },
-      ],
-    },
-    {
-      userId: 'mock-user-creative-hub',
-      username: 'Creative Hub',
-      avatar: 'https://i.pravatar.cc/200?img=45',
-      stories: [
-        {
-          id: 'mock-story-2',
-          userId: 'mock-user-creative-hub',
-          username: 'Creative Hub',
-          avatar: 'https://i.pravatar.cc/200?img=45',
-          image: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=900&q=80',
-          caption: 'Sketch sprint challenge',
-          views: 0,
-          hasViewed: false,
-          createdAt: new Date(now - 1000 * 60 * 50).toISOString(),
-        },
-      ],
-    },
-    {
-      userId: 'mock-user-mindset-flow',
-      username: 'Mindset Daily',
-      avatar: 'https://i.pravatar.cc/200?img=50',
-      stories: [
-        {
-          id: 'mock-story-3',
-          userId: 'mock-user-mindset-flow',
-          username: 'Mindset Daily',
-          avatar: 'https://i.pravatar.cc/200?img=50',
-          image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=900&q=80',
-          caption: '90-second reset breath',
-          views: 0,
-          hasViewed: false,
-          createdAt: new Date(now - 1000 * 60 * 70).toISOString(),
-        },
-      ],
-    },
-  ];
+  const groups: Array<{
+    userId: string;
+    username: string;
+    avatar: string;
+    stories: Array<{
+      id: string;
+      userId: string;
+      username: string;
+      avatar: string;
+      image: string;
+      caption: string;
+      views: number;
+      hasViewed: boolean;
+      createdAt: string;
+    }>;
+  }> = [];
+
+  for (let userIdx = 1; userIdx <= 60; userIdx += 1) {
+    const userId = `mock-user-${String(userIdx).padStart(2, '0')}`;
+    const username = `Creator ${String(userIdx).padStart(2, '0')}`;
+    const avatar = `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`;
+    const stories = Array.from({ length: 10 }).map((_, storyIdx) => {
+      const createdAt = new Date(now - (userIdx * 5 + storyIdx * 15) * 60000).toISOString();
+      return {
+        id: `mock-story-${userIdx}-${storyIdx + 1}`,
+        userId,
+        username,
+        avatar,
+        image: `https://picsum.photos/seed/mock-story-${userIdx}-${storyIdx + 1}/900/1400`,
+        caption: `Story ${storyIdx + 1} from ${username}`,
+        views: 120 + ((userIdx * 9 + storyIdx * 13) % 400),
+        hasViewed: false,
+        createdAt,
+      };
+    });
+    groups.push({ userId, username, avatar, stories });
+  }
+
+  return groups;
 }
 
 const createStorySchema = z.object({

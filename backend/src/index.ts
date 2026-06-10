@@ -116,6 +116,11 @@ export default {
         }
       }
 
+      const likesListMatch = path.match(new RegExp(`^${apiPrefix}/feed/posts/([^/]+)/likes$`));
+      if (likesListMatch && request.method === 'GET') {
+        return feedRoutes.getPostLikes(request, env, likesListMatch[1]);
+      }
+
       // Comments routes
       const commentDeleteMatch = path.match(new RegExp(`^${apiPrefix}/feed/posts/([^/]+)/comments/([^/]+)$`));
       if (commentDeleteMatch) {

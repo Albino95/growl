@@ -6,80 +6,103 @@ import { generateId } from '../utils/id';
 import { categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 
+const MOCK_USER_COUNT = 60;
+const MOCK_POSTS_PER_USER = 10;
+const MOCK_CATEGORIES = [
+  ['fitness', 'building-muscle'],
+  ['fitness', 'cardio'],
+  ['nutrition', 'meal-planning'],
+  ['mindset', 'meditation'],
+  ['skills', 'learning-systems'],
+  ['productivity', 'deep-work'],
+] as const;
+
+type FeedLiker = {
+  id: string;
+  username: string;
+  avatar: string | null;
+  isFriend: boolean;
+};
+
+function parseMockPostId(postId: string): { userIdx: number; postIdx: number } | null {
+  const modern = postId.match(/^mock-explore-post-(\d+)-(\d+)$/);
+  if (modern) {
+    return { userIdx: Number(modern[1]), postIdx: Number(modern[2]) };
+  }
+  const legacy = postId.match(/^mock-explore-post-(\d+)$/);
+  if (legacy) {
+    return { userIdx: Number(legacy[1]), postIdx: 1 };
+  }
+  return null;
+}
+
+function makeMockUser(userIdx: number) {
+  return {
+    id: `mock-user-${String(userIdx).padStart(2, '0')}`,
+    username: `Creator ${String(userIdx).padStart(2, '0')}`,
+    avatar: `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`,
+  };
+}
+
+function computeMockEngagement(userIdx: number, postIdx: number) {
+  return {
+    likes: 70 + ((userIdx * 11 + postIdx * 17) % 180),
+    comments: 8 + ((userIdx * 7 + postIdx * 5) % 40),
+  };
+}
+
+function buildMockLikers(userIdx: number, postIdx: number, count: number): FeedLiker[] {
+  const likers: FeedLiker[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const base = (userIdx * 13 + postIdx * 19 + i) % 500;
+    const likerIdx = base + 1;
+    likers.push({
+      id: `mock-liker-${String(likerIdx).padStart(3, '0')}`,
+      username: `User ${String(likerIdx).padStart(3, '0')}`,
+      avatar: `https://i.pravatar.cc/200?img=${(likerIdx % 70) + 1}`,
+      isFriend: i % 4 === 0,
+    });
+  }
+  return likers;
+}
+
 /** Development-only fallback payload used for explore mode demos. */
 function buildMockExplorePosts() {
   const now = Date.now();
-  return [
-    {
-      id: 'mock-explore-post-1',
-      user_id: 'mock-user-fitness-coach',
-      image_url:
-        'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=1200&q=80',
-      caption: 'Strength ladder session complete. Save this for your next gym day.',
-      category: 'fitness',
-      subcategory: 'building-muscle',
-      engagement_score: 94,
-      created_at: new Date(now - 1000 * 60 * 40).toISOString(),
-      updated_at: new Date(now - 1000 * 60 * 40).toISOString(),
-      metadata: {
-        likes: 187,
-        comments: 29,
-        has_liked: false,
-        friend_likes_count: 0,
-        friend_likers: [],
-        is_friend: false,
-        isInstructor: true,
-        username: 'Coach Lina',
-        avatar: 'https://i.pravatar.cc/200?img=28',
-      },
-    },
-    {
-      id: 'mock-explore-post-2',
-      user_id: 'mock-user-nutrition-lab',
-      image_url:
-        'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=1200&q=80',
-      caption: 'High-protein prep bowls in under 30 minutes.',
-      category: 'nutrition',
-      subcategory: 'meal-planning',
-      engagement_score: 88,
-      created_at: new Date(now - 1000 * 60 * 95).toISOString(),
-      updated_at: new Date(now - 1000 * 60 * 95).toISOString(),
-      metadata: {
-        likes: 133,
-        comments: 18,
-        has_liked: false,
-        friend_likes_count: 0,
-        friend_likers: [],
-        is_friend: false,
-        isInstructor: false,
-        username: 'Macro Lab',
-        avatar: 'https://i.pravatar.cc/200?img=15',
-      },
-    },
-    {
-      id: 'mock-explore-post-3',
-      user_id: 'mock-user-mindset-flow',
-      image_url:
-        'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1200&q=80',
-      caption: 'A 10-minute breath reset between deep-work blocks.',
-      category: 'mindset',
-      subcategory: 'meditation',
-      engagement_score: 82,
-      created_at: new Date(now - 1000 * 60 * 160).toISOString(),
-      updated_at: new Date(now - 1000 * 60 * 160).toISOString(),
-      metadata: {
-        likes: 101,
-        comments: 12,
-        has_liked: false,
-        friend_likes_count: 0,
-        friend_likers: [],
-        is_friend: false,
-        isInstructor: false,
-        username: 'Mindset Daily',
-        avatar: 'https://i.pravatar.cc/200?img=50',
-      },
-    },
-  ];
+  const items: Array<Record<string, unknown>> = [];
+  for (let userIdx = 1; userIdx <= MOCK_USER_COUNT; userIdx += 1) {
+    const user = makeMockUser(userIdx);
+    for (let postIdx = 1; postIdx <= MOCK_POSTS_PER_USER; postIdx += 1) {
+      const [category, subcategory] = MOCK_CATEGORIES[(userIdx + postIdx) % MOCK_CATEGORIES.length];
+      const { likes, comments } = computeMockEngagement(userIdx, postIdx);
+      const likers = buildMockLikers(userIdx, postIdx, likes);
+      const friendLikers = likers.filter((x) => x.isFriend).slice(0, 8).map((x) => x.username);
+      const createdAt = new Date(now - (userIdx * 6 + postIdx * 37) * 60000).toISOString();
+      items.push({
+        id: `mock-explore-post-${userIdx}-${postIdx}`,
+        user_id: user.id,
+        image_url: `https://picsum.photos/seed/mock-post-${userIdx}-${postIdx}/1200/1200`,
+        caption: `${user.username}: progress update #${postIdx} in ${category}.`,
+        category,
+        subcategory,
+        engagement_score: 60 + ((userIdx * 5 + postIdx * 3) % 40),
+        created_at: createdAt,
+        updated_at: createdAt,
+        metadata: {
+          likes,
+          comments,
+          has_liked: false,
+          friend_likes_count: friendLikers.length,
+          friend_likers: friendLikers,
+          is_friend: false,
+          isInstructor: userIdx % 5 === 0,
+          username: user.username,
+          avatar: user.avatar,
+        },
+      });
+    }
+  }
+  return items;
 }
 
 /**
@@ -449,6 +472,69 @@ export async function toggleLike(
 
     return json({ liked: true });
   }
+}
+
+/**
+ * GET /api/v1/feed/posts/:id/likes
+ * Get users who liked a post (including friend subset)
+ */
+export async function getPostLikes(
+  request: Request,
+  env: Env,
+  postId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const mockParsed = parseMockPostId(postId);
+  if (mockParsed) {
+    const { userIdx, postIdx } = mockParsed;
+    const legacyLikeMap: Record<string, number> = {
+      'mock-explore-post-1': 187,
+      'mock-explore-post-2': 133,
+      'mock-explore-post-3': 101,
+    };
+    const { likes: computedLikes } = computeMockEngagement(userIdx, postIdx);
+    const likes = legacyLikeMap[postId] ?? computedLikes;
+    const likers = buildMockLikers(userIdx, postIdx, likes);
+    const friendLikers = likers.filter((x) => x.isFriend);
+    return json({
+      likes: likers.length,
+      likers,
+      friendLikesCount: friendLikers.length,
+      friendLikers,
+    });
+  }
+
+  const friendIds = await getFriendUserIds(env, ctx.userId);
+  const rows = await env.DB.prepare(
+    `SELECT pe.user_id, u.metadata
+     FROM post_engagement pe
+     JOIN users u ON u.id = pe.user_id
+     WHERE pe.post_id = ? AND pe.type = 'like'
+     ORDER BY pe.created_at DESC`
+  )
+    .bind(postId)
+    .all<{ user_id: string; metadata: string }>();
+
+  const likers: FeedLiker[] = (rows.results || []).map((row) => {
+    const meta = JSON.parse(row.metadata || '{}');
+    return {
+      id: row.user_id,
+      username: meta.username || row.user_id.slice(0, 8),
+      avatar: meta.avatar || null,
+      isFriend: friendIds.has(row.user_id),
+    };
+  });
+  const friendLikers = likers.filter((x) => x.isFriend);
+  return json({
+    likes: likers.length,
+    likers,
+    friendLikesCount: friendLikers.length,
+    friendLikers,
+  });
 }
 
 /**
