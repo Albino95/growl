@@ -333,6 +333,126 @@ export default function PublicProfileScreen() {
     });
   };
 
+  const refreshFriendshipState = async () => {
+    try {
+      const state = await getFriendshipStatus(userId);
+      setFriendConnected(state.connected);
+      setIsBlocked(state.blocked);
+      setIsMuted(state.muted);
+    } catch {
+      // Keep current local state when refresh fails.
+    }
+  };
+
+  const handleBlockMenuPress = () => {
+    setShowOptionsMenu(false);
+    Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: isBlocked ? 'Unblock' : 'Block',
+        style: isBlocked ? 'default' : 'destructive',
+        onPress: async () => {
+          try {
+            if (isBlocked) {
+              await unblockUser(userId);
+              Alert.alert('Unblocked', `${profileUser?.username} has been unblocked.`);
+            } else {
+              await blockUser(userId);
+              setPosts([]);
+              setStories([]);
+              setJournalEntries([]);
+              Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
+            }
+            await refreshFriendshipState();
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not update block status';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleReportMenuPress = () => {
+    setShowOptionsMenu(false);
+    Alert.alert('Report User', `Why are you reporting ${profileUser?.username}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Spam',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'spam');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+      {
+        text: 'Harassment',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'harassment');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+      {
+        text: 'Inappropriate Content',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'inappropriate_content');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+      {
+        text: 'Other',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'other');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleMuteMenuPress = () => {
+    setShowOptionsMenu(false);
+    Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: isMuted ? 'Unmute' : 'Mute',
+        onPress: async () => {
+          try {
+            if (isMuted) {
+              await unmuteUser(userId);
+              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+            } else {
+              await muteUser(userId);
+              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+            }
+            await refreshFriendshipState();
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not update mute status';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+    ]);
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white`}>
@@ -696,151 +816,41 @@ export default function PublicProfileScreen() {
         animationType="fade"
         onRequestClose={() => setShowOptionsMenu(false)}
       >
-        <View style={tw`flex-1 justify-end`}>
+        <View style={tw`flex-1 justify-end`} pointerEvents="box-none">
           <Pressable
             style={tw`absolute inset-0 bg-black bg-opacity-50`}
             onPress={() => setShowOptionsMenu(false)}
           />
-          <View style={tw`bg-white rounded-t-3xl p-4`}>
+          <View style={[tw`bg-white rounded-t-3xl p-4`, { zIndex: 2, elevation: 8 }]}>
             <View style={tw`items-center mb-4`}>
               <View style={tw`w-12 h-1 bg-gray-300 rounded-full`} />
             </View>
             
             {!isOwnProfile && (
               <>
-                <TouchableOpacity
+                <Pressable
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
-                  onPress={() => {
-                    Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: isBlocked ? 'Unblock' : 'Block',
-                        style: isBlocked ? 'default' : 'destructive',
-                        onPress: async () => {
-                          try {
-                            if (isBlocked) {
-                              await unblockUser(userId);
-                              setIsBlocked(false);
-                              Alert.alert('Unblocked', `${profileUser?.username} has been unblocked.`);
-                            } else {
-                              await blockUser(userId);
-                              setIsBlocked(true);
-                              setFriendConnected(false);
-                              setPosts([]);
-                              setStories([]);
-                              setJournalEntries([]);
-                              Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
-                            }
-                          } catch (error: unknown) {
-                            const msg = error instanceof Error ? error.message : 'Could not update block status';
-                            Alert.alert('Error', msg);
-                          }
-                        },
-                      },
-                    ]);
-                    setShowOptionsMenu(false);
-                  }}
+                  onPress={handleBlockMenuPress}
                 >
                   <Ionicons name="ban-outline" size={24} color="#EF4444" />
                   <Text style={tw`text-base text-gray-900 ml-3`}>{isBlocked ? 'Unblock User' : 'Block User'}</Text>
-                </TouchableOpacity>
+                </Pressable>
 
-                <TouchableOpacity
+                <Pressable
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
-                  onPress={() => {
-                    Alert.alert(
-                      'Report User',
-                      `Why are you reporting ${profileUser?.username}?`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Spam',
-                          onPress: async () => {
-                            try {
-                              await reportUser(userId, 'spam');
-                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                            } catch (error: unknown) {
-                              const msg = error instanceof Error ? error.message : 'Could not submit report';
-                              Alert.alert('Error', msg);
-                            }
-                          },
-                        },
-                        {
-                          text: 'Harassment',
-                          onPress: async () => {
-                            try {
-                              await reportUser(userId, 'harassment');
-                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                            } catch (error: unknown) {
-                              const msg = error instanceof Error ? error.message : 'Could not submit report';
-                              Alert.alert('Error', msg);
-                            }
-                          },
-                        },
-                        {
-                          text: 'Inappropriate Content',
-                          onPress: async () => {
-                            try {
-                              await reportUser(userId, 'inappropriate_content');
-                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                            } catch (error: unknown) {
-                              const msg = error instanceof Error ? error.message : 'Could not submit report';
-                              Alert.alert('Error', msg);
-                            }
-                          },
-                        },
-                        {
-                          text: 'Other',
-                          onPress: async () => {
-                            try {
-                              await reportUser(userId, 'other');
-                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                            } catch (error: unknown) {
-                              const msg = error instanceof Error ? error.message : 'Could not submit report';
-                              Alert.alert('Error', msg);
-                            }
-                          },
-                        },
-                      ]
-                    );
-                    setShowOptionsMenu(false);
-                  }}
+                  onPress={handleReportMenuPress}
                 >
                   <Ionicons name="flag-outline" size={24} color="#F59E0B" />
                   <Text style={tw`text-base text-gray-900 ml-3`}>Report User</Text>
-                </TouchableOpacity>
+                </Pressable>
 
-                <TouchableOpacity
+                <Pressable
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
-                  onPress={() => {
-                    Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: isMuted ? 'Unmute' : 'Mute',
-                        onPress: async () => {
-                          try {
-                            if (isMuted) {
-                              await unmuteUser(userId);
-                              setIsMuted(false);
-                              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
-                            } else {
-                              await muteUser(userId);
-                              setIsMuted(true);
-                              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
-                            }
-                          } catch (error: unknown) {
-                            const msg = error instanceof Error ? error.message : 'Could not update mute status';
-                            Alert.alert('Error', msg);
-                          }
-                        },
-                      },
-                    ]);
-                    setShowOptionsMenu(false);
-                  }}
+                  onPress={handleMuteMenuPress}
                 >
                   <Ionicons name="notifications-off-outline" size={24} color="#6B7280" />
                   <Text style={tw`text-base text-gray-900 ml-3`}>{isMuted ? 'Unmute User' : 'Mute User'}</Text>
-                </TouchableOpacity>
+                </Pressable>
               </>
             )}
 
