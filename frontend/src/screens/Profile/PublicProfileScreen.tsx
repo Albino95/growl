@@ -344,33 +344,54 @@ export default function PublicProfileScreen() {
     }
   };
 
-  const handleBlockMenuPress = () => {
+  const confirmAction = (title: string, message: string, confirmText = 'Confirm') =>
+    new Promise<boolean>((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(typeof globalThis.confirm === 'function' ? globalThis.confirm(`${title}\n\n${message}`) : true);
+        return;
+      }
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: confirmText, style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+
+  const notify = (title: string, message: string) => {
+    if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+      globalThis.alert(`${title}\n\n${message}`);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
+  const handleBlockMenuPress = async () => {
     setShowOptionsMenu(false);
-    Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: isBlocked ? 'Unblock' : 'Block',
-        style: isBlocked ? 'default' : 'destructive',
-        onPress: async () => {
-          try {
-            if (isBlocked) {
-              await unblockUser(userId);
-              Alert.alert('Unblocked', `${profileUser?.username} has been unblocked.`);
-            } else {
-              await blockUser(userId);
-              setPosts([]);
-              setStories([]);
-              setJournalEntries([]);
-              Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
-            }
-            await refreshFriendshipState();
-          } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : 'Could not update block status';
-            Alert.alert('Error', msg);
-          }
-        },
-      },
-    ]);
+    const username = profileUser?.username || 'this user';
+    const approved = await confirmAction(
+      isBlocked ? 'Unblock User' : 'Block User',
+      isBlocked
+        ? `Do you want to unblock ${username}?`
+        : `Are you sure you want to block ${username}?`,
+      isBlocked ? 'Unblock' : 'Block'
+    );
+    if (!approved) return;
+
+    try {
+      if (isBlocked) {
+        await unblockUser(userId);
+        notify('Unblocked', `${username} has been unblocked.`);
+      } else {
+        await blockUser(userId);
+        setPosts([]);
+        setStories([]);
+        setJournalEntries([]);
+        notify('Blocked', `${username} has been blocked.`);
+      }
+      await refreshFriendshipState();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not update block status';
+      notify('Error', msg);
+    }
   };
 
   const handleReportMenuPress = () => {
@@ -820,15 +841,19 @@ export default function PublicProfileScreen() {
         animationType="fade"
         onRequestClose={() => setShowOptionsMenu(false)}
       >
-        <Pressable style={tw`flex-1 bg-black/35 justify-end`} onPress={() => setShowOptionsMenu(false)}>
-          <Pressable style={tw`bg-white px-4 pt-3 pb-6 rounded-t-3xl`}>
+        <View style={tw`flex-1 justify-end`}>
+          <Pressable
+            style={tw`absolute inset-0 bg-black/35`}
+            onPress={() => setShowOptionsMenu(false)}
+          />
+          <View style={tw`bg-white px-4 pt-3 pb-6 rounded-t-3xl`}>
             <View style={tw`w-12 h-1.5 bg-gray-300 rounded-full self-center mb-4`} />
 
             {!isOwnProfile ? (
               <>
                 <Pressable
                   style={tw`py-4 border-b border-gray-100`}
-                  onPress={handleBlockMenuPress}
+                  onPress={() => void handleBlockMenuPress()}
                 >
                   <Text style={tw`text-base font-semibold ${isBlocked ? 'text-gray-900' : 'text-red-600'}`}>
                     {isBlocked ? 'Unblock User' : 'Block User'}
@@ -869,8 +894,8 @@ export default function PublicProfileScreen() {
             >
               <Text style={tw`text-base font-semibold text-center text-gray-500`}>Cancel</Text>
             </Pressable>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
     </SafeAreaView>
