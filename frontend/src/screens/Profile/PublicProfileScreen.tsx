@@ -10,7 +10,6 @@ import {
   Modal,
   Alert,
   Platform,
-  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -331,13 +330,6 @@ export default function PublicProfileScreen() {
           })
         );
       },
-    });
-  };
-
-  const closeOptionsAndRun = (action: () => void) => {
-    setShowOptionsMenu(false);
-    InteractionManager.runAfterInteractions(() => {
-      action();
     });
   };
 
@@ -719,35 +711,34 @@ export default function PublicProfileScreen() {
                 <TouchableOpacity
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
                   onPress={() => {
-                    closeOptionsAndRun(() => {
-                      Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: isBlocked ? 'Unblock' : 'Block',
-                          style: isBlocked ? 'default' : 'destructive',
-                          onPress: async () => {
-                            try {
-                              if (isBlocked) {
-                                await unblockUser(userId);
-                                setIsBlocked(false);
-                                Alert.alert('Unblocked', `${profileUser?.username} has been unblocked.`);
-                              } else {
-                                await blockUser(userId);
-                                setIsBlocked(true);
-                                setFriendConnected(false);
+                    Alert.alert('Block User', `Are you sure you want to block ${profileUser?.username}?`, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: isBlocked ? 'Unblock' : 'Block',
+                        style: isBlocked ? 'default' : 'destructive',
+                        onPress: async () => {
+                          try {
+                            if (isBlocked) {
+                              await unblockUser(userId);
+                              setIsBlocked(false);
+                              Alert.alert('Unblocked', `${profileUser?.username} has been unblocked.`);
+                            } else {
+                              await blockUser(userId);
+                              setIsBlocked(true);
+                              setFriendConnected(false);
                               setPosts([]);
                               setStories([]);
                               setJournalEntries([]);
-                                Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
-                              }
-                            } catch (error: unknown) {
-                              const msg = error instanceof Error ? error.message : 'Could not update block status';
-                              Alert.alert('Error', msg);
+                              Alert.alert('Blocked', `${profileUser?.username} has been blocked.`);
                             }
-                          },
+                          } catch (error: unknown) {
+                            const msg = error instanceof Error ? error.message : 'Could not update block status';
+                            Alert.alert('Error', msg);
+                          }
                         },
-                      ]);
-                    });
+                      },
+                    ]);
+                    setShowOptionsMenu(false);
                   }}
                 >
                   <Ionicons name="ban-outline" size={24} color="#EF4444" />
@@ -757,63 +748,62 @@ export default function PublicProfileScreen() {
                 <TouchableOpacity
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
                   onPress={() => {
-                    closeOptionsAndRun(() => {
-                      Alert.alert(
-                        'Report User',
-                        `Why are you reporting ${profileUser?.username}?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Spam',
-                            onPress: async () => {
-                              try {
-                                await reportUser(userId, 'spam');
-                                Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                              } catch (error: unknown) {
-                                const msg = error instanceof Error ? error.message : 'Could not submit report';
-                                Alert.alert('Error', msg);
-                              }
-                            },
+                    Alert.alert(
+                      'Report User',
+                      `Why are you reporting ${profileUser?.username}?`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Spam',
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'spam');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
                           },
-                          {
-                            text: 'Harassment',
-                            onPress: async () => {
-                              try {
-                                await reportUser(userId, 'harassment');
-                                Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                              } catch (error: unknown) {
-                                const msg = error instanceof Error ? error.message : 'Could not submit report';
-                                Alert.alert('Error', msg);
-                              }
-                            },
+                        },
+                        {
+                          text: 'Harassment',
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'harassment');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
                           },
-                          {
-                            text: 'Inappropriate Content',
-                            onPress: async () => {
-                              try {
-                                await reportUser(userId, 'inappropriate_content');
-                                Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                              } catch (error: unknown) {
-                                const msg = error instanceof Error ? error.message : 'Could not submit report';
-                                Alert.alert('Error', msg);
-                              }
-                            },
+                        },
+                        {
+                          text: 'Inappropriate Content',
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'inappropriate_content');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
                           },
-                          {
-                            text: 'Other',
-                            onPress: async () => {
-                              try {
-                                await reportUser(userId, 'other');
-                                Alert.alert('Reported', 'Thank you for your report. We will review it.');
-                              } catch (error: unknown) {
-                                const msg = error instanceof Error ? error.message : 'Could not submit report';
-                                Alert.alert('Error', msg);
-                              }
-                            },
+                        },
+                        {
+                          text: 'Other',
+                          onPress: async () => {
+                            try {
+                              await reportUser(userId, 'other');
+                              Alert.alert('Reported', 'Thank you for your report. We will review it.');
+                            } catch (error: unknown) {
+                              const msg = error instanceof Error ? error.message : 'Could not submit report';
+                              Alert.alert('Error', msg);
+                            }
                           },
-                        ]
-                      );
-                    });
+                        },
+                      ]
+                    );
+                    setShowOptionsMenu(false);
                   }}
                 >
                   <Ionicons name="flag-outline" size={24} color="#F59E0B" />
@@ -823,30 +813,29 @@ export default function PublicProfileScreen() {
                 <TouchableOpacity
                   style={tw`flex-row items-center py-4 border-b border-gray-200`}
                   onPress={() => {
-                    closeOptionsAndRun(() => {
-                      Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: isMuted ? 'Unmute' : 'Mute',
-                          onPress: async () => {
-                            try {
-                              if (isMuted) {
-                                await unmuteUser(userId);
-                                setIsMuted(false);
-                                Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
-                              } else {
-                                await muteUser(userId);
-                                setIsMuted(true);
-                                Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
-                              }
-                            } catch (error: unknown) {
-                              const msg = error instanceof Error ? error.message : 'Could not update mute status';
-                              Alert.alert('Error', msg);
+                    Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: isMuted ? 'Unmute' : 'Mute',
+                        onPress: async () => {
+                          try {
+                            if (isMuted) {
+                              await unmuteUser(userId);
+                              setIsMuted(false);
+                              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+                            } else {
+                              await muteUser(userId);
+                              setIsMuted(true);
+                              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
                             }
-                          },
+                          } catch (error: unknown) {
+                            const msg = error instanceof Error ? error.message : 'Could not update mute status';
+                            Alert.alert('Error', msg);
+                          }
                         },
-                      ]);
-                    });
+                      },
+                    ]);
+                    setShowOptionsMenu(false);
                   }}
                 >
                   <Ionicons name="notifications-off-outline" size={24} color="#6B7280" />
@@ -858,9 +847,8 @@ export default function PublicProfileScreen() {
             <TouchableOpacity
               style={tw`flex-row items-center py-4 border-b border-gray-200`}
               onPress={() => {
-                closeOptionsAndRun(() => {
-                  Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
-                });
+                Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
+                setShowOptionsMenu(false);
               }}
             >
               <Ionicons name="share-outline" size={24} color="#6B7280" />
