@@ -15,10 +15,12 @@ import { syncCohortFriends, type FriendSummary } from '../../services/api/friend
 import { updateProfileOnServer } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import ProfileStatsRow from '../../components/profile/ProfileStatsRow';
 import ConnectionsListSheet, {
   type ConnectionsSheetMode,
 } from '../../components/profile/ConnectionsListSheet';
+import EmptyState from '../../components/ui/EmptyState';
 
 type Award = {
   id: string;
@@ -343,8 +345,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <ScrollView style={tw`flex-1`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+      >
         {/* Header */}
         <View style={tw`px-4 pt-4 pb-6 border-b border-gray-200`}>
           <View style={tw`flex-row items-center mb-4`}>
@@ -610,12 +615,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         )}
 
         {activeTab === 'shared' && (
-          <View style={tw`p-4 items-center justify-center min-h-64`}>
-            <Ionicons name="share-outline" size={64} color="#D1D5DB" />
-            <Text style={tw`text-gray-500 mt-4 text-center`}>
-              Content you've shared will appear here
-            </Text>
-          </View>
+          <EmptyState
+            icon="share-outline"
+            title="Nothing shared yet"
+            description="Content you share with the community will appear here."
+          />
         )}
 
         {/* Awards Section */}
@@ -691,6 +695,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Profile editing is in progress.')}
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -700,6 +705,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Notification settings are coming soon.')}
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -709,6 +715,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Help center will be available in the next update.')}
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>

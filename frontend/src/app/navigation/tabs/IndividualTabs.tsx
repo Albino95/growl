@@ -53,14 +53,20 @@ function TabButton({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity onPress={onPress} style={tw`flex-1 items-center pb-1 min-w-0`}>
+    <TouchableOpacity
+      onPress={onPress}
+      style={tw`flex-1 items-center pb-1.5 min-w-0`}
+      hitSlop={{ top: 8, right: 6, bottom: 8, left: 6 }}
+      accessibilityRole="button"
+      accessibilityLabel={tab.label}
+    >
       <Ionicons
         name={isActive ? tab.activeIcon : tab.inactiveIcon}
         size={22}
         color={isActive ? tab.activeColor : '#A8A29E'}
       />
       <Text
-        style={tw`text-[11px] mt-0.5 ${isActive ? 'font-semibold' : ''}`}
+        style={tw`text-xs mt-0.5 ${isActive ? 'font-semibold' : ''}`}
         numberOfLines={1}
       >
         <Text style={{ color: isActive ? tab.activeColor : '#78716C' }}>{tab.label}</Text>
@@ -96,10 +102,10 @@ export default function IndividualTabs() {
           <View
             style={[
               tw`bg-white border-t border-stone-200`,
-              { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 6) },
+              { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 10 : 8) },
             ]}
           >
-            <View style={tw`flex-row items-end pt-2 px-1`}>
+            <View style={tw`flex-row items-end pt-2.5 px-1`}>
               <View style={tw`flex-1 flex-row`}>
                 {TAB_LEFT.map((tab) => (
                   <TabButton
@@ -111,7 +117,7 @@ export default function IndividualTabs() {
                 ))}
               </View>
 
-              <View style={tw`w-[72px] items-center justify-end pb-0.5`} pointerEvents="box-none">
+              <View style={tw`w-[74px] items-center justify-end pb-0.5`} pointerEvents="box-none">
                 <TouchableOpacity
                   onPress={handleCreatePost}
                   activeOpacity={0.85}
@@ -119,7 +125,7 @@ export default function IndividualTabs() {
                   style={[
                     tw`w-14 h-14 rounded-full bg-emerald-600 items-center justify-center border-4 border-white`,
                     fabShadow,
-                    { marginTop: -22 },
+                    { marginTop: -18 },
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel="Create post"

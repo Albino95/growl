@@ -32,6 +32,8 @@ import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
+import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import EmptyState from '../../components/ui/EmptyState';
 
 type Post = {
   id: string;
@@ -553,7 +555,10 @@ export default function PublicProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={tw`flex-1`}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+      >
         {/* Profile Header */}
         <View style={tw`px-4 pt-6 pb-6 border-b border-gray-200`}>
           <View style={tw`flex-row items-center mb-4`}>
@@ -792,12 +797,11 @@ export default function PublicProfileScreen() {
                 </TouchableOpacity>
               ))
             ) : (
-              <View style={tw`items-center justify-center py-12`}>
-                <Ionicons name="images-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-500 mt-4 text-center`}>
-                  No posts yet
-                </Text>
-              </View>
+              <EmptyState
+                icon="images-outline"
+                title="No posts yet"
+                description="This user has not shared posts yet."
+              />
             )}
           </View>
         ) : activeTab === 'stories' ? (
@@ -829,12 +833,11 @@ export default function PublicProfileScreen() {
                 </View>
               </ScrollView>
             ) : (
-              <View style={tw`items-center justify-center py-12`}>
-                <Ionicons name="images-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-500 mt-4 text-center`}>
-                  No stories yet
-                </Text>
-              </View>
+              <EmptyState
+                icon="images-outline"
+                title="No stories yet"
+                description="Stories from this user will appear here."
+              />
             )}
           </View>
         ) : (
@@ -875,12 +878,11 @@ export default function PublicProfileScreen() {
                 </View>
               ))
             ) : (
-              <View style={tw`items-center justify-center py-12`}>
-                <Ionicons name="book-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-500 mt-4 text-center`}>
-                  No public journal entries yet
-                </Text>
-              </View>
+              <EmptyState
+                icon="book-outline"
+                title="No public journal entries"
+                description="Public journal updates from this user will show here."
+              />
             )}
           </View>
         )}

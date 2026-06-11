@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -37,6 +36,8 @@ type Step = 'auth' | 'verify';
 export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState('');
   const [devCodeHint, setDevCodeHint] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -49,7 +50,11 @@ export default function AuthScreen() {
 
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim().toLowerCase();
+    setEmailError(null);
+    setPasswordError(null);
     if (!trimmedEmail || !password) {
+      if (!trimmedEmail) setEmailError('Email is required.');
+      if (!password) setPasswordError('Password is required.');
       notify('Missing fields', 'Please enter email and password.');
       return;
     }
@@ -67,6 +72,7 @@ export default function AuthScreen() {
         markSignupOnboardingRequired();
         setDevCodeHint(result.devVerificationCode ?? null);
         setStep('verify');
+        setPassword('');
         notify('Verify your email', result.message);
       } else {
         await signIn(trimmedEmail, password).unwrap();
@@ -84,7 +90,6 @@ export default function AuthScreen() {
         notify(isSignUp ? 'Sign up failed' : 'Sign in failed', msg);
       }
     } finally {
-      setPassword('');
       setLocalLoading(false);
     }
   };
@@ -182,7 +187,7 @@ export default function AuthScreen() {
             maxLength={6}
             style={tw`border border-stone-200 bg-white rounded-2xl py-3.5 px-4 text-center text-xl tracking-widest mb-4`}
           />
-          <PrimaryButton label="Confirm email" onPress={handleVerify} disabled={busy} />
+          <PrimaryButton label="Confirm email" onPress={handleVerify} disabled={busy} loading={busy} />
           <TouchableOpacity onPress={() => setStep('auth')} style={tw`mt-6 items-center`}>
             <Text style={tw`text-emerald-700 font-semibold`}>Back to sign in</Text>
           </TouchableOpacity>
@@ -220,18 +225,25 @@ export default function AuthScreen() {
                   keyboardType="email-address"
                   autoComplete="email"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(v) => {
+                    setEmail(v);
+                    if (emailError) setEmailError(null);
+                  }}
                   style={tw`border border-stone-200 bg-white rounded-2xl py-3.5 pl-11 pr-4 text-base`}
                   placeholderTextColor="#A8A29E"
                 />
                 <Ionicons name="mail-outline" size={20} color="#78716C" style={tw`absolute left-4 top-4`} />
               </View>
+              {emailError ? <Text style={tw`text-xs text-red-600 -mt-1`}>{emailError}</Text> : null}
               <View style={tw`relative`}>
                 <TextInput
                   placeholder={isSignUp ? 'Password (12+ chars, mixed case, number, symbol)' : 'Password'}
                   secureTextEntry={!showPassword}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                    if (passwordError) setPasswordError(null);
+                  }}
                   autoComplete={isSignUp ? 'password-new' : 'password'}
                   style={tw`border border-stone-200 bg-white rounded-2xl py-3.5 pl-11 pr-12 text-base`}
                   placeholderTextColor="#A8A29E"
@@ -244,6 +256,7 @@ export default function AuthScreen() {
                   <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#78716C" />
                 </TouchableOpacity>
               </View>
+              {passwordError ? <Text style={tw`text-xs text-red-600 -mt-1`}>{passwordError}</Text> : null}
             </View>
 
             {isSignUp ? (
@@ -256,9 +269,8 @@ export default function AuthScreen() {
               label={isSignUp ? 'Sign up' : 'Sign in'}
               onPress={handleEmailAuth}
               disabled={busy}
+              loading={busy}
             />
-
-            {busy ? <ActivityIndicator style={tw`mt-5`} color="#059669" /> : null}
 
             <View style={tw`flex-row items-center my-7`}>
               <View style={tw`flex-1 h-px bg-stone-200`} />

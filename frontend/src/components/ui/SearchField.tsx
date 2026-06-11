@@ -14,13 +14,13 @@ export default function SearchField({ value, onChangeText, placeholder = 'Search
     <View
       style={tw`flex-row items-center bg-white border border-stone-200 rounded-2xl px-3 py-2.5 mb-3`}
     >
-      <Ionicons name="search" size={20} color="#78716C" />
+      <Ionicons name="search" size={18} color="#78716C" />
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor="#A8A29E"
-        style={tw`flex-1 ml-2 text-base text-stone-900 py-0`}
+        style={tw`flex-1 ml-2 text-[15px] text-stone-900 py-0`}
         returnKeyType="search"
         clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
         autoCorrect={false}

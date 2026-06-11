@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
-  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -26,7 +25,10 @@ import { addFriend, listFriends } from '../../services/api/friends';
 import { resolveAvatarUri, resolvePostMediaUri, resolveStoryDisplayUri } from '../../utils/images';
 import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/discoverPeople';
 import tw from '../../lib/tw';
-import { feedListPerformanceProps, horizontalScrollProps } from '../../constants/scroll';
+import { feedListPerformanceProps, horizontalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import SearchField from '../../components/ui/SearchField';
+import Chip from '../../components/ui/Chip';
+import EmptyState from '../../components/ui/EmptyState';
 
 export default function ExploreScreen() {
   const navigation = useNavigation();
@@ -39,6 +41,7 @@ export default function ExploreScreen() {
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -47,6 +50,7 @@ export default function ExploreScreen() {
 
   const load = useCallback(async () => {
     try {
+      setLoadError(null);
       const [feedRes, storiesRes, friends] = await Promise.all([
         getFeedPosts({ mode: 'explore' }),
         getStories({ mode: 'explore' }),
@@ -73,6 +77,7 @@ export default function ExploreScreen() {
       setReels(rankedReels);
     } catch (e) {
       console.warn('[Explore] load failed', e);
+      setLoadError('Could not refresh explore content. Pull to retry.');
       setPeople([]);
       setReels([]);
     } finally {
@@ -335,58 +340,35 @@ export default function ExploreScreen() {
         <Text style={tw`text-2xl font-bold text-violet-800`}>Explore</Text>
         <Text style={tw`text-sm text-stone-500 mt-1`}>{subtitle}</Text>
         <View style={tw`mt-3`}>
-          <View style={tw`flex-row items-center bg-stone-100 rounded-xl px-3`}>
-            <Ionicons name="search" size={16} color="#78716C" />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search people or captions"
-              placeholderTextColor="#A8A29E"
-              style={tw`flex-1 py-2.5 px-2 text-stone-800`}
-            />
-            {query ? (
-              <TouchableOpacity onPress={() => setQuery('')} style={tw`p-1`}>
-                <Ionicons name="close-circle" size={16} color="#78716C" />
-              </TouchableOpacity>
-            ) : null}
-          </View>
+          <SearchField
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search people or captions"
+          />
           {availableCategories.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2`}>
-              <TouchableOpacity
-                onPress={() => setSelectedCategory(null)}
-                style={tw`mr-2 px-3 py-1.5 rounded-full ${
-                  selectedCategory === null ? 'bg-violet-600' : 'bg-stone-100'
-                }`}
-              >
-                <Text
-                  style={tw`text-xs font-semibold ${
-                    selectedCategory === null ? 'text-white' : 'text-stone-700'
-                  }`}
-                >
-                  All
-                </Text>
-              </TouchableOpacity>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-1`}>
+              <Chip tone="accent" selected={selectedCategory === null} onPress={() => setSelectedCategory(null)}>
+                All
+              </Chip>
               {availableCategories.map((cat) => (
-                <TouchableOpacity
+                <Chip
                   key={cat}
+                  tone="accent"
+                  selected={selectedCategory === cat}
                   onPress={() => setSelectedCategory(cat)}
-                  style={tw`mr-2 px-3 py-1.5 rounded-full ${
-                    selectedCategory === cat ? 'bg-violet-600' : 'bg-stone-100'
-                  }`}
                 >
-                  <Text
-                    style={tw`text-xs font-semibold capitalize ${
-                      selectedCategory === cat ? 'text-white' : 'text-stone-700'
-                    }`}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
+                  {cat}
+                </Chip>
               ))}
             </ScrollView>
           ) : null}
         </View>
       </View>
+      {loadError ? (
+        <View style={tw`mx-4 mt-3 px-3 py-2 rounded-xl border border-red-200 bg-red-50`}>
+          <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
+        </View>
+      ) : null}
       {loading && filteredPeople.length === 0 && filteredReels.length === 0 ? (
         <View style={tw`flex-1 items-center justify-center py-20`}>
           <ActivityIndicator size="large" color="#7C3AED" />
@@ -441,21 +423,22 @@ export default function ExploreScreen() {
               </TouchableOpacity>
             );
           }}
-          contentContainerStyle={tw`px-4 pt-3 pb-28`}
+          contentContainerStyle={[tw`px-4 pt-3`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           {...feedListPerformanceProps}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7C3AED" colors={['#7C3AED']} />
           }
           ListEmptyComponent={
             filteredPeople.length === 0 ? (
-              <View style={tw`items-center py-12 px-6`}>
-                <Ionicons name="people-outline" size={48} color="#C4B5FD" />
-                <Text style={tw`text-stone-600 text-center mt-3`}>
-                  {query || selectedCategory
-                    ? 'No matches for this search/filter yet.'
-                    : 'No new creators found right now. Check back soon or refresh after more community activity.'}
-                </Text>
-              </View>
+              <EmptyState
+                icon="people-outline"
+                title="No matching creators"
+                description={
+                  query || selectedCategory
+                    ? 'Try a broader search or reset category filters.'
+                    : 'No new creators found right now. Refresh after more community activity.'
+                }
+              />
             ) : null
           }
         />

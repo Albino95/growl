@@ -1,15 +1,34 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Modal, Platform, Alert, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  Modal,
+  Platform,
+  Alert,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchFeedPosts } from '../../store/slices/feedSlice';
-import { horizontalScrollProps, verticalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
+import {
+  horizontalScrollProps,
+  verticalScrollProps,
+  feedListPerformanceProps,
+  TAB_SCREEN_BOTTOM_PADDING,
+} from '../../constants/scroll';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
+import Chip from '../../components/ui/Chip';
+import EmptyState from '../../components/ui/EmptyState';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
@@ -192,11 +211,14 @@ export default function FeedScreen({ navigation, route }: any) {
     return result;
   }, [stories]);
 
-  // Check if user posted today
+  // Check if viewer has posted today to avoid stale nudges.
   const hasPostedToday = useMemo(() => {
-    // In real app, check against API
-    return false; // Mock: user hasn't posted today
-  }, []);
+    if (!user?.id) return true;
+    const today = new Date().toDateString();
+    return feedItems.some(
+      (p) => p.user_id === user.id && new Date(p.created_at).toDateString() === today
+    );
+  }, [feedItems, user?.id]);
 
   const filteredPosts = useMemo(() => {
     if (!selectedCategory) return posts;
@@ -396,7 +418,7 @@ export default function FeedScreen({ navigation, route }: any) {
           ]}
         >
           <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-2xl font-bold text-green-600`}>Grow!</Text>
+            <Text style={tw`text-2xl font-bold text-brand-600`}>Growl</Text>
           </View>
 
           {/* Messages/Stories Section (Instagram-style) */}
@@ -415,6 +437,7 @@ export default function FeedScreen({ navigation, route }: any) {
               }}
             >
               <Ionicons name="chatbubbles" size={24} color="#10B981" />
+              <Text style={tw`text-[10px] text-stone-600 mt-1`}>Inbox</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={tw`items-center justify-center w-16 h-16 rounded-full bg-purple-50 border-2 border-purple-200 mr-4`}
@@ -425,6 +448,7 @@ export default function FeedScreen({ navigation, route }: any) {
               }}
             >
               <Ionicons name="videocam" size={24} color="#A855F7" />
+              <Text style={tw`text-[10px] text-stone-600 mt-1`}>Reels</Text>
             </TouchableOpacity>
             {groupedStories.map((group) => {
               const { user, stories: userStories } = group;
@@ -508,20 +532,9 @@ export default function FeedScreen({ navigation, route }: any) {
           {/* Category Selector */}
           {userCategories.length > 0 && (
             <ScrollView horizontal contentContainerStyle={tw`px-2`} {...horizontalScrollProps}>
-              <TouchableOpacity
-                onPress={() => setSelectedCategory(null)}
-                style={tw`px-4 py-2 rounded-full mr-2 ${
-                  selectedCategory === null ? 'bg-green-600' : 'bg-gray-100'
-                }`}
-              >
-                <Text
-                  style={tw`text-sm font-medium ${
-                    selectedCategory === null ? 'text-white' : 'text-gray-700'
-                  }`}
-                >
-                  All
-                </Text>
-              </TouchableOpacity>
+              <Chip selected={selectedCategory === null} onPress={() => setSelectedCategory(null)}>
+                All
+              </Chip>
               {userCategories.map((cat) => {
                 const category = CATEGORIES.find((c) => c.key === cat || c.key === cat.split(':')[0]);
                 const subcategory = cat.includes(':')
@@ -530,21 +543,9 @@ export default function FeedScreen({ navigation, route }: any) {
                 const label = subcategory ? subcategory.label : category?.label || cat;
 
                 return (
-                  <TouchableOpacity
-                    key={cat}
-                    onPress={() => setSelectedCategory(cat)}
-                    style={tw`px-4 py-2 rounded-full mr-2 ${
-                      selectedCategory === cat ? 'bg-green-600' : 'bg-gray-100'
-                    }`}
-                  >
-                    <Text
-                      style={tw`text-sm font-medium ${
-                        selectedCategory === cat ? 'text-white' : 'text-gray-700'
-                      }`}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
+                  <Chip key={cat} selected={selectedCategory === cat} onPress={() => setSelectedCategory(cat)}>
+                    {label}
+                  </Chip>
                 );
               })}
             </ScrollView>
@@ -552,7 +553,7 @@ export default function FeedScreen({ navigation, route }: any) {
         </View>
 
         {/* Daily Post Reminder */}
-        {!hasPostedToday && (
+        {!hasPostedToday && posts.length > 0 && (
           <View style={tw`bg-yellow-50 border-b border-yellow-200 px-4 py-3`}>
             <View style={tw`flex-row items-center`}>
               <Ionicons name="information-circle" size={20} color="#F59E0B" />
@@ -589,11 +590,18 @@ export default function FeedScreen({ navigation, route }: any) {
           </View>
         )}
 
+        {feedStatus === 'loading' && posts.length === 0 ? (
+          <View style={tw`py-8 items-center`}>
+            <ActivityIndicator size="small" color="#059669" />
+            <Text style={tw`text-stone-500 mt-2`}>Loading your feed...</Text>
+          </View>
+        ) : null}
+
         {/* Posts Feed */}
         <FlatList
           data={filteredPosts}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`px-4 pt-2 pb-28`}
+          contentContainerStyle={[tw`px-4 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -711,11 +719,15 @@ export default function FeedScreen({ navigation, route }: any) {
                         </Text>
                       </View>
                     </View>
-                    <TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => Alert.alert('Coming soon', 'Share-to-chat is being finalized.')}
+                    >
                       <Ionicons name="paper-plane-outline" size={24} color="#374151" />
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => Alert.alert('Coming soon', 'Save-to-collections is in progress.')}
+                  >
                     <Ionicons name="bookmark-outline" size={24} color="#374151" />
                   </TouchableOpacity>
                 </View>
@@ -804,23 +816,20 @@ export default function FeedScreen({ navigation, route }: any) {
             </View>
           )}
           ListEmptyComponent={
-            <View style={tw`items-center justify-center py-12 px-4`}>
-              <Ionicons name="images-outline" size={64} color="#D1D5DB" />
-              <Text style={tw`text-gray-500 mt-4 text-center text-base font-medium`}>
-                {selectedCategory 
-                  ? 'No posts in this category yet. Be the first to post!'
-                  : 'No posts yet. Be the first to share your journey!'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const rootNavigation = navigation.getParent() || navigation;
-                  rootNavigation.navigate('Post' as never);
-                }}
-                style={tw`mt-6 bg-green-600 px-6 py-3 rounded-full`}
-              >
-                <Text style={tw`text-white font-semibold`}>Create Your First Post</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyState
+              icon="images-outline"
+              title={selectedCategory ? 'No posts in this category yet' : 'Your feed is quiet'}
+              description={
+                selectedCategory
+                  ? 'Try a different category or clear filters to discover more posts.'
+                  : 'No posts yet. Be the first to share your growth journey.'
+              }
+              actionLabel="Create Your First Post"
+              onAction={() => {
+                const rootNavigation = navigation.getParent() || navigation;
+                rootNavigation.navigate('Post' as never);
+              }}
+            />
           }
         />
 
