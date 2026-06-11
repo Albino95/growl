@@ -507,7 +507,7 @@ export default function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator size="large" color="#10B981" />
           <Text style={tw`text-gray-500 mt-4`}>Loading profile...</Text>
@@ -518,7 +518,7 @@ export default function PublicProfileScreen() {
 
   if (!profileUser) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
           <Ionicons name="person-outline" size={64} color="#D1D5DB" />
           <Text style={tw`text-gray-500 mt-4 text-center text-lg`}>User not found</Text>
@@ -534,7 +534,7 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
       {/* Header with Back Button */}
       <View style={tw`px-4 pt-2 pb-3 border-b border-gray-200 bg-white flex-row items-center`}>
         <TouchableOpacity

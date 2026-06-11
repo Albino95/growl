@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, FlatList, Modal, TextInput, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  FlatList,
+  Modal,
+  TextInput,
+  Platform,
+  Switch,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +32,7 @@ import ConnectionsListSheet, {
   type ConnectionsSheetMode,
 } from '../../components/profile/ConnectionsListSheet';
 import EmptyState from '../../components/ui/EmptyState';
+import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 
 type Award = {
   id: string;
@@ -143,6 +155,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
+  const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
+  const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
+  const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
+  const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
 
   /** Loads posts, stories, and cohort connections in one synchronized refresh cycle. */
   const loadProfileContent = useCallback(async () => {
@@ -681,6 +697,34 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         {/* Settings */}
         <View style={tw`px-4 py-4`}>
           <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Settings</Text>
+          <View style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-gray-900 font-medium`}>Haptics feedback</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Subtle vibration on button presses (mobile only).
+              </Text>
+            </View>
+            <Switch
+              value={hapticsEnabled}
+              onValueChange={setHapticsEnabled}
+              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
+              thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
+            />
+          </View>
+          <View style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-gray-900 font-medium`}>Click sound</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Optional click tone where supported.
+              </Text>
+            </View>
+            <Switch
+              value={soundEnabled}
+              onValueChange={setSoundEnabled}
+              trackColor={{ false: '#D6D3D1', true: '#DDD6FE' }}
+              thumbColor={soundEnabled ? '#7C3AED' : '#F5F5F4'}
+            />
+          </View>
           <TouchableOpacity
             onPress={() => {
               const rootNavigation = navigation.getParent() || navigation;

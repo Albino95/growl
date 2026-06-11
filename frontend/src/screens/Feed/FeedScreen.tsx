@@ -232,7 +232,10 @@ export default function FeedScreen({ navigation, route }: any) {
   }, [posts, selectedCategory]);
 
   const userCategories = useMemo(() => {
-    return user?.categories || [];
+    const list = Array.isArray(user?.categories) ? user.categories : [];
+    return list
+      .map((x) => (typeof x === 'string' ? x.trim() : ''))
+      .filter((x) => x.length > 0);
   }, [user?.categories]);
 
   const onRefresh = async () => {
@@ -540,7 +543,8 @@ export default function FeedScreen({ navigation, route }: any) {
                 const subcategory = cat.includes(':')
                   ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
                   : null;
-                const label = subcategory ? subcategory.label : category?.label || cat;
+                const labelCandidate = subcategory ? subcategory.label : category?.label || cat;
+                const label = String(labelCandidate || '').trim() || 'Untitled';
 
                 return (
                   <Chip key={cat} selected={selectedCategory === cat} onPress={() => setSelectedCategory(cat)}>

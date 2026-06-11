@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, Text, ViewStyle, StyleProp, ActivityIndicator } from 'react-native';
+import { Pressable, Text, ViewStyle, StyleProp, ActivityIndicator, Animated } from 'react-native';
 import tw from '../../lib/tw';
+import { usePressFeedback } from '../../hooks/usePressFeedback';
 
 type Props = {
   label: string;
@@ -11,7 +12,7 @@ type Props = {
   variant?: 'solid' | 'soft' | 'ghost';
 };
 
-export default function PrimaryButton({
+function PrimaryButton({
   label,
   onPress,
   style,
@@ -20,6 +21,7 @@ export default function PrimaryButton({
   variant = 'solid',
 }: Props) {
   const isDisabled = !!disabled || !!loading;
+  const feedback = usePressFeedback({ onPress, disabled: isDisabled });
   const baseVariant =
     variant === 'soft'
       ? tw`bg-brand-50 border border-brand-200`
@@ -31,7 +33,9 @@ export default function PrimaryButton({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={feedback.onPress}
+      onPressIn={feedback.onPressIn}
+      onPressOut={feedback.onPressOut}
       disabled={isDisabled}
       style={[
         tw`px-4 py-3.5 rounded-2xl items-center justify-center min-h-[50px]`,
@@ -40,11 +44,15 @@ export default function PrimaryButton({
         style,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={variant === 'solid' ? '#FFFFFF' : '#57534E'} />
-      ) : (
-        <Text style={[tw`font-semibold text-base text-center`, labelVariant]}>{label}</Text>
-      )}
+      <Animated.View style={feedback.animatedStyle}>
+        {loading ? (
+          <ActivityIndicator size="small" color={variant === 'solid' ? '#FFFFFF' : '#57534E'} />
+        ) : (
+          <Text style={[tw`font-semibold text-base text-center`, labelVariant]}>{label}</Text>
+        )}
+      </Animated.View>
     </Pressable>
   );
 }
+
+export default React.memo(PrimaryButton);
