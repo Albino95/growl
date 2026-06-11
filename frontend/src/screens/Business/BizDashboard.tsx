@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,13 +31,15 @@ export default function BizDashboard() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadDashboard = useCallback(async (isPullRefresh = false) => {
+  const loadDashboard = useCallback(async (period: 'today' | 'week' | 'month', isPullRefresh = false) => {
     try {
       if (!isPullRefresh) {
         setLoading(true);
       }
-      const response = await getDashboard();
+      setLoadError(null);
+      const response = await getDashboard(period);
       if (response.success && response.data) {
         setKpis(response.data.kpis);
         setRecentOrders(response.data.kpis.recent_orders || []);
@@ -47,11 +47,7 @@ export default function BizDashboard() {
     } catch (error: unknown) {
       console.error('[BizDashboard] Error loading dashboard:', error);
       const msg = error instanceof Error ? error.message : 'Failed to load dashboard';
-      if (Platform.OS === 'web') {
-        alert(msg);
-      } else {
-        Alert.alert('Error', msg);
-      }
+      setLoadError(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -59,12 +55,12 @@ export default function BizDashboard() {
   }, []);
 
   useEffect(() => {
-    loadDashboard(false);
-  }, [loadDashboard]);
+    void loadDashboard(selectedPeriod, false);
+  }, [loadDashboard, selectedPeriod]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    loadDashboard(true);
+    void loadDashboard(selectedPeriod, true);
   };
 
   const openAnalytics = () => {
@@ -84,21 +80,21 @@ export default function BizDashboard() {
         {
           label: 'Revenue',
           value: `$${kpis.total_revenue.toFixed(2)}`,
-          change: '+0%',
-          trend: 'up',
+          change: `${kpis.deltas?.net_revenue_pct ?? 0}%`,
+          trend: (kpis.deltas?.net_revenue_pct ?? 0) >= 0 ? 'up' : 'down',
           icon: 'cash',
         },
         {
           label: 'Orders',
           value: kpis.total_orders.toString(),
-          change: '+0%',
-          trend: 'up',
+          change: `${kpis.deltas?.orders_pct ?? 0}%`,
+          trend: (kpis.deltas?.orders_pct ?? 0) >= 0 ? 'up' : 'down',
           icon: 'receipt',
         },
         {
           label: 'Products',
           value: kpis.total_products.toString(),
-          change: '+0%',
+          change: 'live',
           trend: 'neutral',
           icon: 'cube',
         },
@@ -106,8 +102,8 @@ export default function BizDashboard() {
           label: 'Avg Order',
           value:
             kpis.total_orders > 0 ? `$${(kpis.total_revenue / kpis.total_orders).toFixed(2)}` : '$0.00',
-          change: '+0%',
-          trend: 'up',
+          change: 'live',
+          trend: 'neutral',
           icon: 'cart',
         },
       ]
@@ -178,6 +174,11 @@ export default function BizDashboard() {
 
         <View style={tw`px-4 pt-4`}>
           <Text style={tw`text-lg font-bold text-stone-900 mb-3`}>Key metrics</Text>
+          {loadError ? (
+            <View style={tw`mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200`}>
+              <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
+            </View>
+          ) : null}
           {loading && !kpis ? (
             <View style={tw`items-center justify-center py-8`}>
               <ActivityIndicator size="large" color="#059669" />

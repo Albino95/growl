@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { horizontalScrollProps, verticalScrollProps } from '../../constants/scroll';
 import { getBusinessOrders, type Order } from '../../services/api/business';
@@ -32,6 +33,7 @@ const STATUS_COLORS = {
 };
 
 export default function OrdersScreen() {
+  const navigation = useNavigation<any>();
   const [orders, setOrders] = useState<BusinessOrder[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,7 @@ export default function OrdersScreen() {
             ...order,
             orderNumber: `ORD-${order.id.slice(-8).toUpperCase()}`,
             customer: shippingAddress?.name || 'Unknown Customer',
-            paymentMethod: 'Credit Card', // Default, could be from metadata
+            paymentMethod: order.metadata?.payment_method || 'Card',
             items: order.items || [],
           };
         });
@@ -219,9 +221,11 @@ export default function OrdersScreen() {
             const orderDate = new Date(order.created_at).toLocaleDateString();
             
             return (
-              <View
+              <TouchableOpacity
                 key={order.id}
                 style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100`}
+                activeOpacity={0.85}
+                onPress={() => navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })}
               >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View>
@@ -269,7 +273,7 @@ export default function OrdersScreen() {
                     <Text style={tw`text-xs text-gray-500 ml-1`}>{order.paymentMethod}</Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}

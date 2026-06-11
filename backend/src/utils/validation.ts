@@ -112,6 +112,14 @@ export const createOrderSchema = z.object({
     zip: z.string().min(1),
     country: z.string().min(1),
   }),
+  metadata: z
+    .object({
+      payment_method: z.string().optional(),
+      source: z.enum(['organic', 'campaign', 'partnership']).optional(),
+      referral_instructor_id: z.string().optional(),
+      campaign_id: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -125,6 +133,25 @@ export const updateOrderStatusSchema = z.object({
   status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'], {
     errorMap: () => ({ message: 'Invalid order status' }),
   }),
+});
+
+export const createPartnershipRequestSchema = z.object({
+  instructorId: z.string().min(1),
+  partnershipType: z.enum(['commission', 'fixed', 'hybrid']),
+  commissionRate: z.number().min(0).max(100).optional(),
+  fixedFee: z.number().min(0).optional(),
+  message: z.string().max(1000).optional(),
+});
+
+export const updatePartnershipRequestSchema = z.object({
+  status: z.enum(['approved', 'declined']),
+});
+
+export const updateBusinessSettingsSchema = z.object({
+  business_name: z.string().min(1).max(120).optional(),
+  logo_url: z.string().url().optional(),
+  analytics_prefs: z.record(z.any()).optional(),
+  notifications_prefs: z.record(z.any()).optional(),
 });
 
 /**

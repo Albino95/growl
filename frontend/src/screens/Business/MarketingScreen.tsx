@@ -35,36 +35,6 @@ type Campaign = {
   endDate: string;
 };
 
-/** UI-only samples until a campaigns API exists */
-const MOCK_CAMPAIGNS: Campaign[] = [
-  {
-    id: '1',
-    name: 'Summer Fitness Sale',
-    type: 'promotion',
-    status: 'active',
-    budget: 5000,
-    spent: 3200,
-    impressions: 45000,
-    clicks: 1200,
-    conversions: 45,
-    startDate: '2024-01-01',
-    endDate: '2024-01-31',
-  },
-  {
-    id: '2',
-    name: 'Instructor Partnership - Yoga',
-    type: 'influencer',
-    status: 'active',
-    budget: 2000,
-    spent: 850,
-    impressions: 28000,
-    clicks: 890,
-    conversions: 23,
-    startDate: '2024-01-10',
-    endDate: '2024-02-10',
-  },
-];
-
 function formatTimeAgo(dateString: string) {
   const date = new Date(dateString);
   const now = new Date();
@@ -94,7 +64,7 @@ export default function MarketingScreen() {
   const feedError = useAppSelector((s) => s.feed.error);
   const feedLoading = feedStatus === 'loading';
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [activeTab, setActiveTab] = useState<'campaigns' | 'posts' | 'create' | 'analytics'>('campaigns');
   const [newCampaign, setNewCampaign] = useState<{
     name: string;
@@ -137,27 +107,10 @@ export default function MarketingScreen() {
     const endDate =
       newCampaign.endDate.trim() ||
       new Date(Date.now() + 21 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const created: Campaign = {
-      id: `local-${Date.now()}`,
-      name,
-      type: newCampaign.type,
-      status: 'paused',
-      budget,
-      spent: 0,
-      impressions: 0,
-      clicks: 0,
-      conversions: 0,
-      startDate: new Date().toISOString().slice(0, 10),
-      endDate,
-    };
-    setCampaigns((prev) => [created, ...prev]);
     resetNewCampaign();
-    setActiveTab('campaigns');
-    if (Platform.OS === 'web') {
-      alert('Campaign draft created. You can activate it from Campaigns tab.');
-    } else {
-      Alert.alert('Draft created', 'You can activate it from Campaigns tab.');
-    }
+    showError(
+      `Campaign creation is not wired yet. Draft captured locally:\n${name} · $${budget.toFixed(0)} · ends ${endDate}`
+    );
   };
 
   const toggleCampaignStatus = (campaignId: string) => {
@@ -215,6 +168,7 @@ export default function MarketingScreen() {
   const totalSpent = campaigns.reduce((sum, c) => sum + c.spent, 0);
   const totalBudget = campaigns.reduce((sum, c) => sum + c.budget, 0);
   const totalConversions = campaigns.reduce((sum, c) => sum + c.conversions, 0);
+  const spendPct = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
   const ctr =
     campaigns.length > 0
       ? (campaigns.reduce((sum, c) => sum + (c.impressions ? c.clicks / c.impressions : 0), 0) / campaigns.length) * 100
@@ -311,24 +265,24 @@ export default function MarketingScreen() {
           {renderStorePerformanceCard()}
 
           <View style={tw`bg-white rounded-xl p-4 mb-4 shadow-sm border border-gray-100`}>
-            <Text style={tw`text-lg font-bold text-gray-900 mb-1`}>Sample campaigns</Text>
+            <Text style={tw`text-lg font-bold text-gray-900 mb-1`}>Campaigns</Text>
             <Text style={tw`text-xs text-gray-500 mb-3`}>
-              Placeholder UI only — no campaign API yet. Metrics below are fictional.
+              Campaign execution endpoints are not enabled yet, so no synthetic KPI is shown here.
             </Text>
             <View style={tw`flex-row flex-wrap -mx-2`}>
               <View style={tw`w-1/2 px-2 mb-3`}>
-                <Text style={tw`text-xs text-gray-500 mb-1`}>Budget (sample)</Text>
+                <Text style={tw`text-xs text-gray-500 mb-1`}>Budget</Text>
                 <Text style={tw`text-xl font-bold text-gray-900`}>
                   ${totalSpent.toFixed(0)} / ${totalBudget.toFixed(0)}
                 </Text>
                 <View style={tw`h-2 bg-gray-200 rounded-full mt-2 overflow-hidden`}>
                   <View
-                    style={[tw`h-full bg-blue-600 rounded-full`, { width: `${(totalSpent / totalBudget) * 100}%` }]}
+                    style={[tw`h-full bg-blue-600 rounded-full`, { width: `${spendPct}%` }]}
                   />
                 </View>
               </View>
               <View style={tw`w-1/2 px-2 mb-3`}>
-                <Text style={tw`text-xs text-gray-500 mb-1`}>Conversions (sample)</Text>
+                <Text style={tw`text-xs text-gray-500 mb-1`}>Conversions</Text>
                 <Text style={tw`text-xl font-bold text-green-600`}>{totalConversions}</Text>
                 {totalConversions > 0 ? (
                   <Text style={tw`text-xs text-gray-500 mt-1`}>
@@ -337,11 +291,11 @@ export default function MarketingScreen() {
                 ) : null}
               </View>
               <View style={tw`w-1/2 px-2 mb-3`}>
-                <Text style={tw`text-xs text-gray-500 mb-1`}>CTR (sample)</Text>
+                <Text style={tw`text-xs text-gray-500 mb-1`}>CTR</Text>
                 <Text style={tw`text-xl font-bold text-blue-600`}>{ctr.toFixed(2)}%</Text>
               </View>
               <View style={tw`w-1/2 px-2 mb-3`}>
-                <Text style={tw`text-xs text-gray-500 mb-1`}>Active (sample)</Text>
+                <Text style={tw`text-xs text-gray-500 mb-1`}>Active</Text>
                 <Text style={tw`text-xl font-bold text-gray-900`}>
                   {campaigns.filter((c) => c.status === 'active').length}
                 </Text>
@@ -349,8 +303,14 @@ export default function MarketingScreen() {
             </View>
           </View>
 
-          <Text style={tw`text-lg font-bold text-gray-900 mb-3`}>Campaign ideas</Text>
-          {campaigns.map((campaign) => (
+          <Text style={tw`text-lg font-bold text-gray-900 mb-3`}>Campaign list</Text>
+          {campaigns.length === 0 ? (
+            <View style={tw`bg-white rounded-xl p-4 mb-3 border border-stone-100`}>
+              <Text style={tw`text-sm text-stone-500`}>
+                No campaigns yet. Use "Create New Campaign" to stage details while backend rollout completes.
+              </Text>
+            </View>
+          ) : campaigns.map((campaign) => (
             <View key={campaign.id} style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100`}>
               <View style={tw`flex-row items-center justify-between mb-3`}>
                 <View style={tw`flex-1`}>

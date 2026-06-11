@@ -5,14 +5,12 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  Platform,
-  Alert,
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
-import { getDashboard, type DashboardKPIs } from '../../services/api/business';
+import { getDashboard, getBusinessTopProducts, type DashboardKPIs } from '../../services/api/business';
 import { verticalScrollProps } from '../../constants/scroll';
 import { startOfBusinessPeriod, bucketOrdersByDay } from '../../utils/businessMetrics';
 
@@ -21,21 +19,23 @@ export default function KpiScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('week');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [topProducts, setTopProducts] = useState<Array<{ id: string; name: string; units_sold: number; revenue: number }>>([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (selected: 'today' | 'week' | 'month') => {
     try {
       setLoading(true);
-      const res = await getDashboard();
+      setLoadError(null);
+      const [res, top] = await Promise.all([getDashboard(selected), getBusinessTopProducts(selected)]);
       if (res.success && res.data?.kpis) {
         setKpis(res.data.kpis);
       }
+      if (top.success && top.data?.products) {
+        setTopProducts(top.data.products);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load analytics';
-      if (Platform.OS === 'web') {
-        alert(msg);
-      } else {
-        Alert.alert('Error', msg);
-      }
+      setLoadError(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -43,8 +43,8 @@ export default function KpiScreen() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    void load(period);
+  }, [load, period]);
 
   const orders = kpis?.recent_orders ?? [];
   const filteredOrders = useMemo(() => {
@@ -101,7 +101,7 @@ export default function KpiScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              load();
+              load(period);
             }}
             tintColor="#059669"
             colors={['#059669']}
@@ -111,6 +111,11 @@ export default function KpiScreen() {
         <Text style={tw`text-sm text-stone-500 mb-3`}>
           Signals from your live dashboard — use this view to prioritize revenue experiments.
         </Text>
+        {loadError ? (
+          <View style={tw`mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200`}>
+            <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
+          </View>
+        ) : null}
 
         <View style={tw`flex-row bg-stone-200/80 rounded-xl p-1 mb-4`}>
           {(['today', 'week', 'month'] as const).map((p) => (
@@ -189,6 +194,21 @@ export default function KpiScreen() {
                 </Text>
               </View>
             </View>
+          </View>
+        ) : null}
+
+        {topProducts.length > 0 ? (
+          <View style={tw`bg-white rounded-2xl p-4 mb-4 border border-stone-100`}>
+            <Text style={tw`text-base font-bold text-stone-900 mb-3`}>Top products ({period})</Text>
+            {topProducts.map((p) => (
+              <View key={p.id} style={tw`flex-row items-center justify-between py-2 border-b border-stone-100 last:border-b-0`}>
+                <View style={tw`flex-1 pr-2`}>
+                  <Text style={tw`text-sm font-medium text-stone-900`} numberOfLines={1}>{p.name}</Text>
+                  <Text style={tw`text-xs text-stone-500`}>{p.units_sold} units sold</Text>
+                </View>
+                <Text style={tw`text-sm font-semibold text-emerald-700`}>${Number(p.revenue).toFixed(2)}</Text>
+              </View>
+            ))}
           </View>
         ) : null}
 

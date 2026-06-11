@@ -227,8 +227,39 @@ export default {
       if (path === `${apiPrefix}/business/orders` && request.method === 'GET') {
         return businessRoutes.getBusinessOrders(request, env);
       }
+      const businessOrderDetailMatch = path.match(new RegExp(`^${apiPrefix}/business/orders/([^/]+)$`));
+      if (businessOrderDetailMatch && request.method === 'GET') {
+        return businessRoutes.getBusinessOrderDetail(request, env, businessOrderDetailMatch[1]);
+      }
       if (path === `${apiPrefix}/business/partnerships` && request.method === 'GET') {
         return businessRoutes.getPartnerships(request, env);
+      }
+      if (path === `${apiPrefix}/business/partnerships/discover` && request.method === 'GET') {
+        return businessRoutes.getPartnershipDiscover(request, env);
+      }
+      if (path === `${apiPrefix}/business/partnerships/requests` && request.method === 'POST') {
+        return businessRoutes.createPartnershipRequest(request, env);
+      }
+      const partnershipRequestMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/partnerships/requests/([^/]+)$`)
+      );
+      if (partnershipRequestMatch && request.method === 'PATCH') {
+        return businessRoutes.updatePartnershipRequest(request, env, partnershipRequestMatch[1]);
+      }
+      if (path === `${apiPrefix}/business/analytics/timeseries` && request.method === 'GET') {
+        return businessRoutes.getAnalyticsTimeseries(request, env);
+      }
+      if (path === `${apiPrefix}/business/analytics/top-products` && request.method === 'GET') {
+        return businessRoutes.getTopProducts(request, env);
+      }
+      if (path === `${apiPrefix}/business/analytics/partnerships` && request.method === 'GET') {
+        return businessRoutes.getPartnershipPerformance(request, env);
+      }
+      if (path === `${apiPrefix}/business/settings` && request.method === 'GET') {
+        return businessRoutes.getBusinessSettings(request, env);
+      }
+      if (path === `${apiPrefix}/business/settings` && request.method === 'PUT') {
+        return businessRoutes.updateBusinessSettings(request, env);
       }
 
       // Stories routes

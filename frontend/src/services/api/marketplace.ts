@@ -65,6 +65,7 @@ export interface Order {
   status: string;
   total: number;
   shipping_address: ShippingAddress;
+  metadata?: Record<string, any>;
   items: Array<{
     id: string;
     product_id: string;

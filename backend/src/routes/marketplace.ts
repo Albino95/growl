@@ -355,11 +355,12 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
   const validation = await validateRequest(request, createOrderSchema);
   if (!validation.success) return validation.response;
 
-  const { items, shipping_address } = validation.data;
+  const { items, shipping_address, metadata } = validation.data;
 
   // Validate products exist and calculate total
   let total = 0;
   const orderItems: Array<{ product_id: string; quantity: number; price: number }> = [];
+  const businessIds = new Set<string>();
 
   for (const item of items) {
     const product = await env.DB.prepare('SELECT * FROM products WHERE id = ?')
@@ -376,6 +377,7 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
 
     const itemTotal = product.price * item.quantity;
     total += itemTotal;
+    businessIds.add(product.user_id);
     orderItems.push({
       product_id: item.product_id,
       quantity: item.quantity,
@@ -385,13 +387,29 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
 
   const orderId = generateId('order');
 
+  const businessId = businessIds.size === 1 ? Array.from(businessIds)[0] : null;
+  const orderMeta = {
+    payment_method: metadata?.payment_method || 'Card',
+    source: metadata?.source || 'organic',
+    referral_instructor_id: metadata?.referral_instructor_id || null,
+    campaign_id: metadata?.campaign_id || null,
+  };
+
   try {
     // Create order
     await env.DB.prepare(
-      `INSERT INTO orders (id, user_id, status, total, shipping_address, metadata, created_at, updated_at)
-       VALUES (?, ?, 'pending', ?, ?, '{}', datetime('now'), datetime('now'))`
+      `INSERT INTO orders (id, user_id, business_id, status, total, shipping_address, metadata, payment_status, source, created_at, updated_at)
+       VALUES (?, ?, ?, 'pending', ?, ?, ?, 'paid', ?, datetime('now'), datetime('now'))`
     )
-      .bind(orderId, ctx.userId, total, JSON.stringify(shipping_address))
+      .bind(
+        orderId,
+        ctx.userId,
+        businessId,
+        total,
+        JSON.stringify(shipping_address),
+        JSON.stringify(orderMeta),
+        orderMeta.source
+      )
       .run();
 
     // Create order items and update stock

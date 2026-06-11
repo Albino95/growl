@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import tw from '../../lib/tw';
 import CATEGORIES from '../../data/categories';
+import { uploadMediaApi } from '../../services/api/media';
 
 interface ProductFormProps {
   visible: boolean;
@@ -42,6 +43,27 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
   const [imageUrl, setImageUrl] = useState(product?.image_url || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+
+  useEffect(() => {
+    setName(product?.name || '');
+    setDescription(product?.description || '');
+    setCategory(product?.category || '');
+    setSubcategory(product?.subcategory || '');
+    setPrice(product?.price?.toString() || '');
+    setStock(product?.stock?.toString() || '');
+    setImageUrl(product?.image_url || '');
+  }, [product, visible]);
+
+  const blobToOptimizedDataUrl = async (uri: string): Promise<string> => {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read selected image'));
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(blob);
+    });
+  };
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -82,6 +104,17 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
 
     setIsSubmitting(true);
     try {
+      let persistableImageUrl = imageUrl || undefined;
+      const lower = (persistableImageUrl || '').toLowerCase();
+      if (persistableImageUrl && !lower.startsWith('http')) {
+        let dataUrl = persistableImageUrl;
+        if (Platform.OS === 'web' && lower.startsWith('blob:')) {
+          dataUrl = await blobToOptimizedDataUrl(persistableImageUrl);
+        }
+        if (dataUrl.toLowerCase().startsWith('data:')) {
+          persistableImageUrl = await uploadMediaApi(dataUrl, 'product');
+        }
+      }
       await onSubmit({
         name: name.trim(),
         description: description.trim() || undefined,
@@ -89,7 +122,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
         subcategory: subcategory.trim() || undefined,
         price: parseFloat(price),
         stock: parseInt(stock),
-        image_url: imageUrl || undefined,
+        image_url: persistableImageUrl,
       });
       // Reset form
       setName('');
