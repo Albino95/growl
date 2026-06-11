@@ -89,6 +89,21 @@ async function hasFriendEdge(env: Env, from: string, to: string): Promise<boolea
   return !!row;
 }
 
+/** Checks whether a directional relationship edge exists for a specific type. */
+async function hasRelationshipEdge(
+  env: Env,
+  from: string,
+  to: string,
+  type: 'friend' | 'friend_request'
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM user_relationships WHERE user_id = ? AND target_user_id = ? AND type = ? LIMIT 1`
+  )
+    .bind(from, to, type)
+    .first();
+  return !!row;
+}
+
 /** Inserts missing friend edges so the pair is bidirectional. Returns true if any row was written. */
 export async function ensureBidirectionalFriend(env: Env, a: string, b: string): Promise<boolean> {
   if (a === b) return false;
@@ -294,7 +309,7 @@ export async function getFriendshipStatus(
 
   try {
     const connected = await areFriends(env, ctx.userId, targetUserId);
-    const [blockedRow, mutedRow] = await Promise.all([
+    const [blockedRow, mutedRow, requestSentRow, requestReceivedRow] = await Promise.all([
       env.DB.prepare(
         `SELECT 1 FROM user_relationships
          WHERE user_id = ? AND target_user_id = ? AND type = 'block' LIMIT 1`
@@ -307,8 +322,27 @@ export async function getFriendshipStatus(
       )
         .bind(ctx.userId, targetUserId)
         .first(),
+      env.DB.prepare(
+        `SELECT 1 FROM user_relationships
+         WHERE user_id = ? AND target_user_id = ? AND type = 'friend_request' LIMIT 1`
+      )
+        .bind(ctx.userId, targetUserId)
+        .first(),
+      env.DB.prepare(
+        `SELECT 1 FROM user_relationships
+         WHERE user_id = ? AND target_user_id = ? AND type = 'friend_request' LIMIT 1`
+      )
+        .bind(targetUserId, ctx.userId)
+        .first(),
     ]);
-    return json({ connected, isSelf: false, blocked: !!blockedRow, muted: !!mutedRow });
+    return json({
+      connected,
+      isSelf: false,
+      blocked: !!blockedRow,
+      muted: !!mutedRow,
+      requestSent: !!requestSentRow,
+      requestReceived: !!requestReceivedRow,
+    });
   } catch (err) {
     console.error('[getFriendshipStatus]', err);
     return error('DATABASE_ERROR', 'Failed to load friendship status', 500);
@@ -343,8 +377,39 @@ export async function addFriend(request: Request, env: Env): Promise<Response> {
   }
 
   try {
-    await ensureBidirectionalFriend(env, ctx.userId, targetUserId);
-    return json({ ok: true, message: 'You are now friends' }, 201);
+    const [alreadyConnected, outgoingRequest, incomingRequest] = await Promise.all([
+      areFriends(env, ctx.userId, targetUserId),
+      hasRelationshipEdge(env, ctx.userId, targetUserId, 'friend_request'),
+      hasRelationshipEdge(env, targetUserId, ctx.userId, 'friend_request'),
+    ]);
+
+    if (alreadyConnected) {
+      return json({ ok: true, connected: true, requestSent: false, message: 'Already connected' }, 200);
+    }
+
+    if (incomingRequest) {
+      await env.DB.prepare(
+        `DELETE FROM user_relationships
+         WHERE user_id = ? AND target_user_id = ? AND type = 'friend_request'`
+      )
+        .bind(targetUserId, ctx.userId)
+        .run();
+      await ensureBidirectionalFriend(env, ctx.userId, targetUserId);
+      return json({ ok: true, connected: true, requestSent: false, message: 'Friend request accepted' }, 201);
+    }
+
+    if (outgoingRequest) {
+      return json({ ok: true, connected: false, requestSent: true, message: 'Friend request already sent' }, 200);
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO user_relationships (id, user_id, target_user_id, type, created_at)
+       VALUES (?, ?, ?, 'friend_request', datetime('now'))`
+    )
+      .bind(generateId('rel'), ctx.userId, targetUserId)
+      .run();
+
+    return json({ ok: true, connected: false, requestSent: true, message: 'Friend request sent' }, 201);
   } catch (err) {
     console.error('[addFriend]', err);
     return error('DATABASE_ERROR', 'Could not add friend', 500);
@@ -361,6 +426,12 @@ export async function removeFriend(request: Request, env: Env, targetUserId: str
   try {
     await env.DB.prepare(
       `DELETE FROM user_relationships WHERE type = 'friend'
+       AND ((user_id = ? AND target_user_id = ?) OR (user_id = ? AND target_user_id = ?))`
+    )
+      .bind(ctx.userId, targetUserId, targetUserId, ctx.userId)
+      .run();
+    await env.DB.prepare(
+      `DELETE FROM user_relationships WHERE type = 'friend_request'
        AND ((user_id = ? AND target_user_id = ?) OR (user_id = ? AND target_user_id = ?))`
     )
       .bind(ctx.userId, targetUserId, targetUserId, ctx.userId)

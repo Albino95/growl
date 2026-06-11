@@ -45,7 +45,7 @@ describe('friends routes', () => {
     env.DB = mockDb as any;
   });
 
-  it('addFriend creates bidirectional friendship edges', async () => {
+  it('addFriend creates friend_request edge when not connected', async () => {
     const insertCalls: any[][] = [];
 
     mockDb.prepare = (query: string) => {
@@ -71,14 +71,17 @@ describe('friends routes', () => {
           }),
         };
       }
-      if (query.includes("SELECT 1 FROM user_relationships WHERE user_id = ? AND target_user_id = ? AND type = 'friend'")) {
+      if (
+        query.includes("SELECT 1 AS ok FROM user_relationships WHERE type = 'friend'") ||
+        query.includes("SELECT 1 FROM user_relationships WHERE user_id = ? AND target_user_id = ? AND type = ?")
+      ) {
         return {
           bind: () => ({
             first: async () => null,
           }),
         };
       }
-      if (query.includes("INSERT INTO user_relationships") && query.includes("'friend'")) {
+      if (query.includes("INSERT INTO user_relationships") && query.includes("'friend_request'")) {
         return {
           bind: (...args: any[]) => ({
             run: async () => {
@@ -108,9 +111,11 @@ describe('friends routes', () => {
 
     expect(response.status).toBe(201);
     expect(data.ok).toBe(true);
-    expect(insertCalls).toHaveLength(2);
-    expect(insertCalls.some((call) => call.includes('test-user') && call.includes('user-b'))).toBe(true);
-    expect(insertCalls.some((call) => call.includes('user-b') && call.includes('test-user'))).toBe(true);
+    expect(data.connected).toBe(false);
+    expect(data.requestSent).toBe(true);
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0]).toContain('test-user');
+    expect(insertCalls[0]).toContain('user-b');
   });
 
   it('listFriends returns mapped friend users', async () => {

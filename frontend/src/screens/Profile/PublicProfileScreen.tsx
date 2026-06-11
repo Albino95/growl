@@ -173,6 +173,8 @@ export default function PublicProfileScreen() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
   const [friendConnected, setFriendConnected] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const [friendRequestReceived, setFriendRequestReceived] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -189,12 +191,16 @@ export default function PublicProfileScreen() {
   useEffect(() => {
     if (isOwnProfile || !currentUser?.id) {
       setFriendConnected(false);
+      setFriendRequestSent(false);
+      setFriendRequestReceived(false);
       return;
     }
     let cancelled = false;
     getFriendshipStatus(userId).then((s) => {
       if (!cancelled) {
         setFriendConnected(s.connected);
+        setFriendRequestSent(s.requestSent);
+        setFriendRequestReceived(s.requestReceived);
         setIsBlocked(s.blocked);
         setIsMuted(s.muted);
       }
@@ -204,7 +210,7 @@ export default function PublicProfileScreen() {
     };
   }, [userId, currentUser?.id, isOwnProfile]);
 
-  /** Handles follow/unfollow CTA with blocked-user guardrails and feedback. */
+  /** Handles friend request send/cancel/accept and remove-friend actions. */
   const onToggleFriend = async () => {
     if (friendBusy || isOwnProfile) return;
     if (isBlocked) {
@@ -216,18 +222,35 @@ export default function PublicProfileScreen() {
       if (friendConnected) {
         await removeFriend(userId);
         setFriendConnected(false);
+        setFriendRequestSent(false);
+        setFriendRequestReceived(false);
         if (Platform.OS === 'web') {
-          window.alert('Removed from your connections.');
+          window.alert('Removed from friends.');
         } else {
-          Alert.alert('Removed', 'They are no longer in your network.');
+          Alert.alert('Removed', 'Friend connection removed.');
+        }
+      } else if (friendRequestSent) {
+        await removeFriend(userId);
+        setFriendRequestSent(false);
+        if (Platform.OS === 'web') {
+          window.alert('Friend request cancelled.');
+        } else {
+          Alert.alert('Cancelled', 'Friend request cancelled.');
         }
       } else {
-        await addFriend(userId);
-        setFriendConnected(true);
+        const result = await addFriend(userId);
+        setFriendConnected(result.connected);
+        setFriendRequestSent(result.requestSent);
+        setFriendRequestReceived(false);
         if (Platform.OS === 'web') {
-          window.alert('You are now connected.');
+          window.alert(result.connected ? 'Friend request accepted.' : 'Friend request sent.');
         } else {
-          Alert.alert('Connected', 'You are now following each other in your growth network.');
+          Alert.alert(
+            result.connected ? 'Friends' : 'Request sent',
+            result.connected
+              ? 'You are now friends.'
+              : `${profileUser?.username ?? 'User'} can accept your friend request.`
+          );
         }
       }
     } catch (e) {
@@ -337,6 +360,8 @@ export default function PublicProfileScreen() {
     try {
       const state = await getFriendshipStatus(userId);
       setFriendConnected(state.connected);
+      setFriendRequestSent(state.requestSent);
+      setFriendRequestReceived(state.requestReceived);
       setIsBlocked(state.blocked);
       setIsMuted(state.muted);
     } catch {
@@ -572,20 +597,46 @@ export default function PublicProfileScreen() {
               onPress={() => void onToggleFriend()}
               disabled={friendBusy}
               style={tw`mb-4 py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
-                friendConnected ? 'bg-stone-100 border border-stone-200' : 'bg-emerald-600'
+                friendConnected || friendRequestSent
+                  ? 'bg-stone-100 border border-stone-200'
+                  : friendRequestReceived
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-600'
               } ${friendBusy ? 'opacity-60' : ''}`}
             >
               {friendBusy ? (
-                <ActivityIndicator color={friendConnected ? '#57534E' : '#fff'} />
+                <ActivityIndicator
+                  color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
+                />
               ) : (
                 <Ionicons
-                  name={friendConnected ? 'checkmark-circle' : 'person-add'}
+                  name={
+                    friendConnected
+                      ? 'checkmark-circle'
+                      : friendRequestSent
+                        ? 'time'
+                        : friendRequestReceived
+                          ? 'mail-open'
+                          : 'person-add'
+                  }
                   size={20}
-                  color={friendConnected ? '#44403C' : '#fff'}
+                  color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
                 />
               )}
-              <Text style={tw`font-semibold text-base ${friendConnected ? 'text-stone-800' : 'text-white'}`}>
-                {friendBusy ? 'Updating…' : friendConnected ? 'Following' : 'Follow'}
+              <Text
+                style={tw`font-semibold text-base ${
+                  friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
+                }`}
+              >
+                {friendBusy
+                  ? 'Updating…'
+                  : friendConnected
+                    ? 'Friends'
+                    : friendRequestSent
+                      ? 'Requested'
+                      : friendRequestReceived
+                        ? 'Accept Request'
+                        : 'Add Friend'}
               </Text>
             </TouchableOpacity>
           ) : null}

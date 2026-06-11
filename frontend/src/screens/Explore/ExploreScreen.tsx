@@ -163,11 +163,16 @@ export default function ExploreScreen() {
     if (addingId) return;
     setAddingId(userId);
     try {
-      await addFriend(userId);
+      const result = await addFriend(userId);
       setFriendIds((prev) => new Set([...prev, userId]));
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
       setReels((prev) => prev.filter((p) => p.user_id !== userId));
-      Alert.alert('Connected', 'You are now friends.');
+      Alert.alert(
+        result.connected ? 'Friends' : 'Request sent',
+        result.connected
+          ? 'You are now friends.'
+          : 'Friend request sent. They can accept it from your profile.'
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not add friend';
       Alert.alert('Error', msg);
@@ -252,7 +257,7 @@ export default function ExploreScreen() {
             disabled={busy || friendIds.has(person.userId)}
             style={tw`bg-violet-600 px-3 py-2 rounded-xl ${busy ? 'opacity-60' : ''}`}
           >
-            <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Add'}</Text>
+            <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Request'}</Text>
           </TouchableOpacity>
         </View>
         <View style={tw`flex-row mt-3 gap-2`}>
@@ -422,7 +427,7 @@ export default function ExploreScreen() {
                       }}
                       style={tw`bg-violet-100 px-2 py-1 rounded-lg`}
                     >
-                      <Text style={tw`text-violet-800 text-xs font-bold`}>+ Friend</Text>
+                      <Text style={tw`text-violet-800 text-xs font-bold`}>+ Request</Text>
                     </TouchableOpacity>
                   ) : (
                     <Ionicons name="checkmark-circle" size={22} color="#059669" />

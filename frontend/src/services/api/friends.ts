@@ -13,6 +13,13 @@ export type ConnectionsPayload = {
   followersCount: number;
 };
 
+export type FriendMutationResult = {
+  ok: boolean;
+  connected: boolean;
+  requestSent: boolean;
+  message?: string;
+};
+
 /** Re-run cohort auto-friending and return following / followers lists */
 export async function syncCohortFriends(): Promise<
   ConnectionsPayload & { linked: number }
@@ -57,12 +64,21 @@ export async function listFriends(): Promise<FriendSummary[]> {
   }
 }
 
-/** Creates a mutual friend connection with target user. */
-export async function addFriend(targetUserId: string): Promise<void> {
-  await request('/social/friends', {
+/** Sends or accepts a friend request with target user. */
+export async function addFriend(targetUserId: string): Promise<FriendMutationResult> {
+  const res = await request<{
+    success: boolean;
+    data?: FriendMutationResult;
+  }>('/social/friends', {
     method: 'POST',
     body: JSON.stringify({ targetUserId }),
   });
+  return {
+    ok: !!res.data?.ok,
+    connected: !!res.data?.connected,
+    requestSent: !!res.data?.requestSent,
+    message: res.data?.message,
+  };
 }
 
 /** Removes mutual friend connection with target user. */
@@ -79,23 +95,48 @@ export async function getFriendshipStatus(targetUserId: string): Promise<{
   isSelf: boolean;
   blocked: boolean;
   muted: boolean;
+  requestSent: boolean;
+  requestReceived: boolean;
 }> {
   try {
     const res = await request<{
       success: boolean;
-      data?: { connected: boolean; isSelf?: boolean; blocked?: boolean; muted?: boolean };
+      data?: {
+        connected: boolean;
+        isSelf?: boolean;
+        blocked?: boolean;
+        muted?: boolean;
+        requestSent?: boolean;
+        requestReceived?: boolean;
+      };
     }>(`/social/friends/status/${encodeURIComponent(targetUserId)}`);
     if (!res.success || !res.data) {
-      return { connected: false, isSelf: false, blocked: false, muted: false };
+      return {
+        connected: false,
+        isSelf: false,
+        blocked: false,
+        muted: false,
+        requestSent: false,
+        requestReceived: false,
+      };
     }
     return {
       connected: !!res.data.connected,
       isSelf: !!res.data.isSelf,
       blocked: !!res.data.blocked,
       muted: !!res.data.muted,
+      requestSent: !!res.data.requestSent,
+      requestReceived: !!res.data.requestReceived,
     };
   } catch {
-    return { connected: false, isSelf: false, blocked: false, muted: false };
+    return {
+      connected: false,
+      isSelf: false,
+      blocked: false,
+      muted: false,
+      requestSent: false,
+      requestReceived: false,
+    };
   }
 }
 
