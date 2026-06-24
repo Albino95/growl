@@ -24,8 +24,6 @@ preview_id = "536de44686804dfaa0f27e5a523b596e"
 ENVIRONMENT = "development"
 JWT_SECRET = "dev-secret-key-change-in-production"
 API_VERSION = "v1"
-# Optional: extra demo/staging emails that receive business privileges on sign-in (comma-separated, lowercase ok)
-# BUSINESS_BOOTSTRAP_EMAILS = "brand@growl.app,retailer@example.com"
 
 # Production environment
 [env.production]

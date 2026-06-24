@@ -10,6 +10,13 @@ import * as profileRoutes from './routes/profile';
 import * as storiesRoutes from './routes/stories';
 import * as friendsRoutes from './routes/friends';
 import * as mediaRoutes from './routes/media';
+import * as adminAuthRoutes from './routes/admin/auth';
+import * as adminModerationRoutes from './routes/admin/moderation';
+import * as adminUsersRoutes from './routes/admin/users';
+import * as adminPrivacyRoutes from './routes/admin/privacy';
+import * as adminBusinessRoutes from './routes/admin/business';
+import * as adminAuditRoutes from './routes/admin/audit';
+import * as adminDashboardRoutes from './routes/admin/dashboard';
 
 /**
  * Main request handler
@@ -355,6 +362,137 @@ export default {
       }
       if (path === `${apiPrefix}/profile` && request.method === 'PUT') {
         return profileRoutes.updateProfile(request, env);
+      }
+
+      // Admin routes
+      if (path === `${apiPrefix}/admin/auth/login` && request.method === 'POST') {
+        return adminAuthRoutes.adminLogin(request, env);
+      }
+      if (path === `${apiPrefix}/admin/auth/logout` && request.method === 'POST') {
+        return adminAuthRoutes.adminLogout(request, env);
+      }
+      if (path === `${apiPrefix}/admin/auth/me` && request.method === 'GET') {
+        return adminAuthRoutes.adminMe(request, env);
+      }
+      if (path === `${apiPrefix}/admin/auth/mfa/setup` && request.method === 'POST') {
+        return adminAuthRoutes.adminSetupMfaSecret(request, env);
+      }
+      if (path === `${apiPrefix}/admin/auth/mfa/enable` && request.method === 'POST') {
+        return adminAuthRoutes.adminEnableMfa(request, env);
+      }
+      if (path === `${apiPrefix}/admin/auth/bootstrap` && request.method === 'POST') {
+        return adminAuthRoutes.adminBootstrap(request, env);
+      }
+
+      if (path === `${apiPrefix}/admin/dashboard/overview` && request.method === 'GET') {
+        return adminDashboardRoutes.getAdminOverview(request, env);
+      }
+      if (path === `${apiPrefix}/admin/dashboard/analytics` && request.method === 'GET') {
+        return adminDashboardRoutes.getAdminAnalytics(request, env);
+      }
+
+      if (path === `${apiPrefix}/admin/moderation/reports` && request.method === 'GET') {
+        return adminModerationRoutes.listReports(request, env);
+      }
+      const adminReportMatch = path.match(new RegExp(`^${apiPrefix}/admin/moderation/reports/([^/]+)$`));
+      if (adminReportMatch && request.method === 'GET') {
+        return adminModerationRoutes.getReport(request, env, adminReportMatch[1]);
+      }
+      if (adminReportMatch && request.method === 'PATCH') {
+        return adminModerationRoutes.assignReport(request, env, adminReportMatch[1]);
+      }
+      const adminReportDecisionMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/moderation/reports/([^/]+)/decision$`)
+      );
+      if (adminReportDecisionMatch && request.method === 'POST') {
+        return adminModerationRoutes.decideReport(request, env, adminReportDecisionMatch[1]);
+      }
+      if (path === `${apiPrefix}/admin/moderation/reports/batch/decision` && request.method === 'POST') {
+        return adminModerationRoutes.batchDecideReports(request, env);
+      }
+      if (path === `${apiPrefix}/admin/moderation/appeals` && request.method === 'GET') {
+        return adminModerationRoutes.listAppeals(request, env);
+      }
+      const adminAppealMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/moderation/appeals/([^/]+)/decision$`)
+      );
+      if (adminAppealMatch && request.method === 'POST') {
+        return adminModerationRoutes.decideAppeal(request, env, adminAppealMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/admin/users` && request.method === 'GET') {
+        return adminUsersRoutes.listUsers(request, env);
+      }
+      const adminUserMatch = path.match(new RegExp(`^${apiPrefix}/admin/users/([^/]+)$`));
+      if (adminUserMatch && request.method === 'GET') {
+        return adminUsersRoutes.getUser(request, env, adminUserMatch[1]);
+      }
+      const adminUserEnforceMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/users/([^/]+)/enforcement$`)
+      );
+      if (adminUserEnforceMatch && request.method === 'POST') {
+        return adminUsersRoutes.enforceUser(request, env, adminUserEnforceMatch[1]);
+      }
+      const adminUserRolesMatch = path.match(new RegExp(`^${apiPrefix}/admin/users/([^/]+)/roles$`));
+      if (adminUserRolesMatch && request.method === 'PATCH') {
+        return adminUsersRoutes.updateUserRoles(request, env, adminUserRolesMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/admin/privacy/requests` && request.method === 'GET') {
+        return adminPrivacyRoutes.listPrivacyRequests(request, env);
+      }
+      if (path === `${apiPrefix}/admin/privacy/requests` && request.method === 'POST') {
+        return adminPrivacyRoutes.createPrivacyRequest(request, env);
+      }
+      const adminPrivacyMatch = path.match(new RegExp(`^${apiPrefix}/admin/privacy/requests/([^/]+)$`));
+      if (adminPrivacyMatch && request.method === 'PATCH') {
+        return adminPrivacyRoutes.updatePrivacyRequest(request, env, adminPrivacyMatch[1]);
+      }
+      const adminPrivacyExportMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/privacy/users/([^/]+)/export$`)
+      );
+      if (adminPrivacyExportMatch && request.method === 'POST') {
+        return adminPrivacyRoutes.exportUserData(request, env, adminPrivacyExportMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/admin/business/accounts` && request.method === 'GET') {
+        return adminBusinessRoutes.listBusinessAccounts(request, env);
+      }
+      if (path === `${apiPrefix}/admin/business/accounts` && request.method === 'POST') {
+        return adminBusinessRoutes.createBusinessAccount(request, env);
+      }
+      const adminBusinessAccountMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/business/accounts/([^/]+)$`)
+      );
+      if (adminBusinessAccountMatch && request.method === 'GET') {
+        return adminBusinessRoutes.getBusinessAccount(request, env, adminBusinessAccountMatch[1]);
+      }
+      if (adminBusinessAccountMatch && request.method === 'PATCH') {
+        return adminBusinessRoutes.updateBusinessAccount(request, env, adminBusinessAccountMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/admin/business/orders` && request.method === 'GET') {
+        return adminBusinessRoutes.listOrders(request, env);
+      }
+      const adminOrderMatch = path.match(new RegExp(`^${apiPrefix}/admin/business/orders/([^/]+)$`));
+      if (adminOrderMatch && request.method === 'GET') {
+        return adminBusinessRoutes.getOrder(request, env, adminOrderMatch[1]);
+      }
+      const adminRefundMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/business/orders/([^/]+)/refund$`)
+      );
+      if (adminRefundMatch && request.method === 'POST') {
+        return adminBusinessRoutes.refundOrder(request, env, adminRefundMatch[1]);
+      }
+      if (path === `${apiPrefix}/admin/business/partnerships/flags` && request.method === 'GET') {
+        return adminBusinessRoutes.listPartnershipFlags(request, env);
+      }
+      if (path === `${apiPrefix}/admin/business/risk-signals` && request.method === 'GET') {
+        return adminBusinessRoutes.getRiskSignals(request, env);
+      }
+
+      if (path === `${apiPrefix}/admin/audit/logs` && request.method === 'GET') {
+        return adminAuditRoutes.listAuditLogs(request, env);
       }
 
       // Health check / ping endpoint

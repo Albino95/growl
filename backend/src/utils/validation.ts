@@ -154,6 +154,110 @@ export const updateBusinessSettingsSchema = z.object({
   notifications_prefs: z.record(z.any()).optional(),
 });
 
+export const adminLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  totp: z.string().min(6).max(8).optional(),
+});
+
+export const adminMfaEnableSchema = z.object({
+  secret: z.string().min(16),
+  totp: z.string().min(6).max(8),
+});
+
+export const reportDecisionSchema = z.object({
+  decision: z.object({
+    action: z.string().optional(),
+    severity: z.string().optional(),
+    reasonCode: z.string().min(1),
+    reasonText: z.string().min(3),
+    enforcement: z
+      .object({
+        contentAction: z.enum(['none', 'remove']).optional(),
+        userAction: z.enum(['none', 'warn', 'suspend', 'ban']).optional(),
+        strikeDelta: z.number().int().min(0).optional(),
+        suspendDays: z.number().int().min(1).max(365).optional(),
+      })
+      .optional(),
+    closeReport: z.boolean().optional(),
+    notifyUser: z.boolean().optional(),
+  }),
+});
+
+export const assignReportSchema = z.object({
+  workflow_status: z.enum(['pending', 'investigating', 'actioned', 'closed']).optional(),
+  priority: z.enum(['critical', 'high', 'normal', 'low']).optional(),
+  assigned_admin_id: z.string().nullable().optional(),
+});
+
+export const appealDecisionSchema = z.object({
+  status: z.enum(['upheld', 'overturned']),
+  reasonText: z.string().min(3).optional(),
+});
+
+export const userEnforcementSchema = z.object({
+  action: z.enum(['warn', 'suspend', 'ban', 'restore']),
+  reasonCode: z.string().min(1),
+  reasonText: z.string().min(3),
+  suspendDays: z.number().int().min(1).max(365).optional(),
+});
+
+export const userRoleUpdateSchema = z.object({
+  is_instructor: z.boolean().optional(),
+  is_business: z.boolean().optional(),
+});
+
+export const privacyRequestCreateSchema = z.object({
+  userId: z.string().min(1),
+  requestType: z.enum(['export', 'delete']),
+  details: z.record(z.any()).optional(),
+});
+
+export const privacyRequestUpdateSchema = z.object({
+  status: z.enum(['pending', 'in_progress', 'completed', 'rejected']),
+  assigned_admin_id: z.string().optional(),
+});
+
+export const adminRefundSchema = z.object({
+  amount: z.number().positive(),
+  reasonText: z.string().min(3),
+});
+
+const businessFieldSchema = z.enum([
+  'fitness',
+  'nutrition',
+  'apparel',
+  'wellness',
+  'education',
+  'other',
+]);
+
+export const createBusinessAccountSchema = z.object({
+  email: z.string().email().max(254),
+  temporaryPassword: strongPasswordSchema,
+  displayName: z.string().min(2).max(120),
+  contactEmail: z.string().email().max(254),
+  contactPhone: z.string().max(32).optional(),
+  fieldOfOperation: businessFieldSchema,
+  vatNumber: z.string().max(64).optional(),
+  countryCode: z.string().max(8).optional(),
+  addressLine: z.string().max(256).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+export const updateBusinessAccountSchema = z.object({
+  displayName: z.string().min(2).max(120).optional(),
+  contactEmail: z.string().email().max(254).optional(),
+  contactPhone: z.string().max(32).optional(),
+  fieldOfOperation: businessFieldSchema.optional(),
+  vatNumber: z.string().max(64).optional(),
+  countryCode: z.string().max(8).optional(),
+  addressLine: z.string().max(256).optional(),
+  verificationStatus: z.enum(['pending', 'verified', 'rejected']).optional(),
+  notes: z.string().max(2000).optional(),
+  deactivate: z.boolean().optional(),
+});
+
 /**
  * Validate request body against a schema
  */

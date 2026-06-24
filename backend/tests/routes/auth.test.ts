@@ -209,7 +209,7 @@ describe('Auth Routes', () => {
       expect(data.error.code).toBe('INVALID_CREDENTIALS');
     });
 
-    it('should sync business privileges for bootstrap business email', async () => {
+    it('should not auto-promote business privileges on sign-in', async () => {
       const passwordHash = 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f';
       let updateRan = false;
 
@@ -262,9 +262,9 @@ describe('Auth Routes', () => {
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
-      expect(updateRan).toBe(true);
-      expect(data.data.isBusiness).toBe(true);
-      expect(data.data.isInstructor).toBe(true);
+      expect(updateRan).toBe(false);
+      expect(data.data.isBusiness).toBe(false);
+      expect(data.data.isInstructor).toBe(false);
     });
   });
 

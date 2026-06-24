@@ -36,7 +36,10 @@
     "test:integration": "node tests/test-api.js",
     "test:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-api.js",
     "test:social-smoke": "node tests/test-social-smoke.js",
-    "test:social-smoke:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-social-smoke.js"
+    "test:social-smoke:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-social-smoke.js",
+    "test:admin-business-smoke": "node tests/test-admin-business-smoke.js",
+    "test:admin-business-smoke:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-admin-business-smoke.js",
+    "seed:admin:local": "node scripts/seed-admin-user.js --local"
   },
   "keywords": [
     "cloudflare",

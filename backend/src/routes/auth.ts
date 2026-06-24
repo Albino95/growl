@@ -17,7 +17,6 @@ import {
 import { signAccessToken } from '../utils/jwt';
 import { getRequestContext, userAuthPayload } from '../utils/auth';
 import { generateId } from '../utils/id';
-import { shouldBootstrapBusinessPrivileges } from '../config/businessBootstrap';
 import { sendVerificationEmail } from '../utils/email';
 
 function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env: Env) {
@@ -233,20 +232,7 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
       );
     }
 
-    const metadata = JSON.parse(user.metadata || '{}');
-    const accountType = typeof metadata.account_type === 'string' ? metadata.account_type.toLowerCase() : '';
-    const treatAsBusiness =
-      shouldBootstrapBusinessPrivileges(normalizedEmail, env) || accountType === 'business';
-
-    if (treatAsBusiness) {
-      await env.DB.prepare('UPDATE users SET is_business = 1, is_instructor = 1 WHERE id = ?')
-        .bind(user.id)
-        .run();
-      user.is_business = 1;
-      user.is_instructor = 1;
-    }
-
-    return sessionResponse(user as Parameters<typeof userAuthPayload>[0], env);
+    return sessionResponse(user as unknown as Parameters<typeof userAuthPayload>[0], env);
   } catch (err) {
     console.error('[signIn] Error:', err);
     return error('INTERNAL_ERROR', 'An error occurred during sign in', 500);
