@@ -2,11 +2,11 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/ui/PrimaryButton';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 
 export default function KYCScreen() {
-  const { signIn } = useAuthStore();
+  const { signIn } = useAuth();
   const handleEnter = async () => { await signIn('demo@growl.app', 'password'); };
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>

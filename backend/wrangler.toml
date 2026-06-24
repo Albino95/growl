@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2024-01-15"
 compatibility_flags = ["nodejs_compat"]
 
+# Stable port for local integration tests (`npm run test:local`)
+[dev]
+port = 8787
+
 # D1 Database
 [[d1_databases]]
 binding = "DB"
@@ -25,7 +29,15 @@ API_VERSION = "v1"
 [env.production]
 vars = { ENVIRONMENT = "production" }
 
-# Staging environment
+# Development environment (remote cloud env, separate from local)
+[env.dev]
+vars = { ENVIRONMENT = "development" }
+
+# QA environment
+[env.qa]
+vars = { ENVIRONMENT = "qa" }
+
+# Staging environment (legacy)
 [env.staging]
 vars = { ENVIRONMENT = "staging" }
 

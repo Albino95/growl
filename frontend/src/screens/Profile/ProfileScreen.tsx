@@ -1,14 +1,38 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, FlatList, Modal, TextInput } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  FlatList,
+  Modal,
+  TextInput,
+  Platform,
+  Switch,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
-import { getAvatarUrl, getCategoryImageUrl } from '../../utils/images';
+import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import tw from '../../lib/tw';
+import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
+import { updateProfileOnServer } from '../../services/api/profile';
+import { shouldShowBusinessShell } from '../../constants/businessShell';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import ProfileStatsRow from '../../components/profile/ProfileStatsRow';
+import ConnectionsListSheet, {
+  type ConnectionsSheetMode,
+} from '../../components/profile/ConnectionsListSheet';
+import EmptyState from '../../components/ui/EmptyState';
+import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 
 type Award = {
   id: string;
@@ -32,9 +56,13 @@ type Post = {
 
 type Story = {
   id: string;
+  userId: string;
+  username: string;
+  avatar: string | null;
   image: string;
   createdAt: string;
   views: number;
+  hasViewed: boolean;
 };
 
 const AWARDS: Award[] = [
@@ -70,107 +98,274 @@ const AWARDS: Award[] = [
   },
 ];
 
-const MOCK_POSTS: Post[] = [
-  {
-    id: '1',
-    image: getCategoryImageUrl('fitness'),
-    caption: 'Day 15 of my fitness journey!',
-    likes: 42,
-    comments: 8,
-    createdAt: '2024-01-10',
-    daysUntilDecay: 5,
-    category: 'fitness',
-  },
-  {
-    id: '2',
-    image: getCategoryImageUrl('art', 'piano'),
-    caption: 'Practiced piano for 2 hours today',
-    likes: 28,
-    comments: 5,
-    createdAt: '2024-01-12',
-    daysUntilDecay: 3,
-    category: 'art',
-  },
-  {
-    id: '3',
-    image: getCategoryImageUrl('mindset', 'meditation'),
-    caption: 'Morning meditation session',
-    likes: 35,
-    comments: 12,
-    createdAt: '2024-01-14',
-    daysUntilDecay: 1,
-    category: 'mindset',
-  },
-];
+/** Computes remaining full days before a post reaches decay cutoff. */
+function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
+  const created = new Date(createdAtIso).getTime();
+  if (Number.isNaN(created)) return decayDays;
+  const end = created + decayDays * 86400000;
+  return Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+}
 
-const MOCK_STORIES: Story[] = [
-  { id: '1', image: '🌱', createdAt: '2024-01-15', views: 120 },
-  { id: '2', image: '🏃', createdAt: '2024-01-14', views: 89 },
-  { id: '3', image: '📚', createdAt: '2024-01-13', views: 156 },
-];
+/** Maps feed payload into profile post cards while attaching decay countdown metadata. */
+function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
+  const img = resolvePostMediaUri(p.image_url, p.category, p.id);
+  const likes = p.metadata?.likes ?? 0;
+  const comments = p.metadata?.comments ?? 0;
+  return {
+    id: p.id,
+    image: img,
+    caption: p.caption || '',
+    likes,
+    comments,
+    createdAt: p.created_at,
+    daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
+    category: p.category,
+  };
+}
 
-export default function ProfileScreen() {
+/** Maps story API payload into local profile story model. */
+function mapStoryToProfileStory(s: StoryItem): Story {
+  return {
+    id: s.id,
+    userId: s.userId,
+    username: s.username,
+    avatar: s.avatar,
+    image: s.image,
+    createdAt: s.createdAt,
+    views: s.views ?? 0,
+    hasViewed: !!s.hasViewed,
+  };
+}
+
+export default function ProfileScreen({ navigation: navProp }: any) {
   const { user, signOut, updateUser } = useAuth();
-  const navigation = useNavigation();
+  const navigation = navProp || useNavigation();
   const points = user?.points || 0;
   const isInstructor = user?.isInstructor || false;
-  const isBusinessAccount = user?.email === 'business@growl.app';
-  
+  const isBusinessAccount = shouldShowBusinessShell(user);
+
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'shared'>('posts');
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
-  const [posts] = useState<Post[]>(MOCK_POSTS);
-  const [stories] = useState<Story[]>(MOCK_STORIES);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [following, setFollowing] = useState<FriendSummary[]>([]);
+  const [followers, setFollowers] = useState<FriendSummary[]>([]);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
+  const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
+  const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
+  const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
+  const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
+
+  /** Loads posts, stories, and cohort connections in one synchronized refresh cycle. */
+  const loadProfileContent = useCallback(async () => {
+    if (!user?.id) return;
+    setProfileLoading(true);
+    try {
+      const [postList, storyList, cohort] = await Promise.all([
+        getUserPosts(user.id),
+        getUserStories(user.id),
+        syncCohortFriends(),
+      ]);
+      const decay = user.decayTimer || 7;
+      setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
+      setStories(storyList.map(mapStoryToProfileStory));
+      setFollowing(cohort.following);
+      setFollowers(cohort.followers);
+    } catch (e) {
+      console.warn('[ProfileScreen] load profile content', e);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [user?.id, user?.decayTimer]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfileContent();
+    }, [loadProfileContent])
+  );
+
+  useEffect(() => {
+    setDecayDays(user?.decayTimer || 7);
+  }, [user?.decayTimer]);
 
   // If business account, don't show profile - they should only see business screens
   if (isBusinessAccount) {
     return null;
   }
 
-  const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-            const rootNavigation = navigation.getParent() || navigation;
-            rootNavigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'Auth' as never }],
-              })
-            );
-          },
-        },
-      ]
-    );
+  /** Signs user out, then hard-resets navigation stack back to auth route. */
+  const handleSignOutConfirm = async () => {
+    const performSignOut = async () => {
+      try {
+        console.log('[ProfileScreen] ===== SIGN OUT STARTED =====');
+        console.log('[ProfileScreen] Calling signOut()...');
+        
+        const result = await signOut();
+        console.log('[ProfileScreen] Sign out result:', result);
+        console.log('[ProfileScreen] Result type:', result.type);
+        console.log('[ProfileScreen] Result payload:', result.payload);
+        
+        // Wait a bit to ensure state is cleared
+        console.log('[ProfileScreen] Waiting 200ms for state to clear...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        console.log('[ProfileScreen] Getting navigation...');
+        const rootNavigation = navigation.getParent() || navigation;
+        console.log('[ProfileScreen] Navigation object:', rootNavigation ? 'found' : 'not found');
+        
+        console.log('[ProfileScreen] Dispatching navigation reset...');
+        rootNavigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'Auth' as never }],
+          })
+        );
+        console.log('[ProfileScreen] ===== NAVIGATION RESET COMPLETE =====');
+      } catch (error) {
+        console.error('[ProfileScreen] ===== SIGN OUT ERROR =====');
+        console.error('[ProfileScreen] Error:', error);
+        console.error('[ProfileScreen] Error stack:', (error as Error)?.stack);
+        if (Platform.OS === 'web') {
+          alert(`Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
+        } else {
+          Alert.alert('Error', `Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
+        }
+      }
+    };
+
+    // Close modal and perform sign-out
+    setShowSignOutModal(false);
+    await performSignOut();
   };
 
+  /** Navigates to instructor area with defensive fallbacks for nested navigation states. */
   const navigateToInstructor = () => {
-    navigation.navigate('Instructor' as never);
+    try {
+      console.log('[ProfileScreen] Navigating to Instructor hub...');
+      
+      // Get the tab navigator (navigation prop should be the Tab navigator)
+      const tabNavigator = navigation;
+      
+      if (!tabNavigator) {
+        console.error('[ProfileScreen] No navigation object available');
+        return;
+      }
+      
+      // Check available routes
+      const state = tabNavigator.getState?.();
+      const routes = state?.routes || [];
+      const routeNames = routes.map((r: any) => r.name);
+      console.log('[ProfileScreen] Available routes:', routeNames);
+      
+      // Check if Instructor route exists
+      const hasInstructorRoute = routeNames.includes('Instructor');
+      console.log('[ProfileScreen] Instructor route exists:', hasInstructorRoute);
+      
+      if (hasInstructorRoute) {
+        // Use CommonActions to navigate (already imported)
+        tabNavigator.dispatch(
+          CommonActions.navigate({
+            name: 'Instructor',
+          })
+        );
+        console.log('[ProfileScreen] Navigation dispatched successfully');
+      } else {
+        console.error('[ProfileScreen] Instructor route not found in available routes');
+        console.log('[ProfileScreen] User isInstructor:', user?.isInstructor);
+        // Try fallback: navigate via root navigator with nested route
+        const rootNavigation = tabNavigator.getParent?.();
+        if (rootNavigation) {
+          console.log('[ProfileScreen] Attempting root navigation to Individual/Instructor...');
+          try {
+            (rootNavigation as any).navigate('Individual', { screen: 'Instructor' });
+          } catch (navError) {
+            console.error('[ProfileScreen] Root navigation failed:', navError);
+            // Last resort: try direct navigate
+            (tabNavigator as any).navigate('Instructor');
+          }
+        } else {
+          // Last resort: try direct navigate
+          console.log('[ProfileScreen] Attempting direct navigate as last resort...');
+          (tabNavigator as any).navigate('Instructor');
+        }
+      }
+    } catch (error) {
+      console.error('[ProfileScreen] Error navigating to Instructor:', error);
+      console.error('[ProfileScreen] Error details:', {
+        message: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
+    }
   };
 
+  /** Persists local decay timer preference and refreshes profile content projections. */
   const handleSaveDecayTimer = () => {
     updateUser({ decayTimer: decayDays });
     setShowDecaySettings(false);
     Alert.alert('Success', `Decay timer set to ${decayDays} days`);
+    void loadProfileContent();
   };
 
-  const handleUpdateCategories = (selectedCategories: string[]) => {
-    updateUser({ categories: selectedCategories });
-    setShowCategorySettings(false);
-    Alert.alert('Success', 'Growth areas updated!');
+  /** Persists category updates, then re-syncs cohort-based friend graph. */
+  const handleUpdateCategories = async (selectedCategories: string[]) => {
+    try {
+      await updateProfileOnServer({ categories: selectedCategories });
+      updateUser({ categories: selectedCategories });
+      const cohort = await syncCohortFriends();
+      setFollowing(cohort.following);
+      setFollowers(cohort.followers);
+      setShowCategorySettings(false);
+      Alert.alert('Success', 'Growth areas updated!');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not update growth areas';
+      Alert.alert('Error', msg);
+    }
+  };
+
+  /** Opens story viewer and propagates hasViewed updates to backend and local state. */
+  const openStoriesViewer = (selectedStoryId?: string) => {
+    if (!stories.length) return;
+    const initialIndex = selectedStoryId
+      ? Math.max(0, stories.findIndex((story) => story.id === selectedStoryId))
+      : 0;
+    const rootNavigation = navigation.getParent() || navigation;
+    (rootNavigation as any).navigate('StoryViewer', {
+      stories: stories.map((story) => ({
+        id: story.id,
+        userId: story.userId,
+        username: story.username,
+        avatar: story.avatar || resolveAvatarUri(story.userId, story.username, story.avatar),
+        image: resolveStoryDisplayUri(story.image, story.userId, story.id),
+        createdAt: story.createdAt,
+        views: story.views,
+        hasViewed: story.hasViewed,
+      })),
+      initialIndex,
+      onStoriesUpdate: (updatedStories: Array<{ id: string; hasViewed?: boolean }>) => {
+        const viewedIds = updatedStories.filter((s) => s.hasViewed).map((s) => s.id);
+        if (viewedIds.length > 0) {
+          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+        }
+        setStories((prev) =>
+          prev.map((story) => {
+            const updated = updatedStories.find((s) => s.id === story.id);
+            return updated ? { ...story, hasViewed: !!updated.hasViewed } : story;
+          })
+        );
+      },
+    });
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <ScrollView style={tw`flex-1`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+      >
         {/* Header */}
         <View style={tw`px-4 pt-4 pb-6 border-b border-gray-200`}>
           <View style={tw`flex-row items-center mb-4`}>
@@ -195,24 +390,19 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Stats */}
-          <View style={tw`flex-row gap-3 mb-4`}>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Posts</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{posts.length}</Text>
-            </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Stories</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{stories.length}</Text>
-            </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Points</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{points}</Text>
-            </View>
-          </View>
+          <ProfileStatsRow
+            postsCount={posts.length}
+            followingCount={following.length}
+            followersCount={followers.length}
+            onPressFollowing={() => setConnectionsSheet('following')}
+            onPressFollowers={() => setConnectionsSheet('followers')}
+          />
 
-          {/* Points Display */}
-          <View style={tw`bg-green-500 rounded-xl p-4 shadow-lg`}>
+          <Text style={tw`text-xs text-stone-500 mt-3 mb-4 text-center`}>
+            Shared growth categories connect you automatically — tap Following or Followers to see everyone.
+          </Text>
+
+          <View style={tw`bg-emerald-600 rounded-2xl p-4 mb-1`}>
             <View style={tw`flex-row items-center justify-between`}>
               <View>
                 <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
@@ -332,7 +522,7 @@ export default function ProfileScreen() {
                 style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
-                  rootNavigation.navigate('PostDetail' as never, {
+                  (rootNavigation as any).navigate('PostDetail', {
                     post: {
                       id: post.id,
                       userId: user?.id || 'me',
@@ -395,33 +585,57 @@ export default function ProfileScreen() {
 
         {activeTab === 'stories' && (
           <View style={tw`p-4`}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={tw`flex-row gap-3`}>
-                {stories.map((story) => (
-                  <View key={story.id} style={tw`items-center`}>
-                    <View style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500`}>
-                      <Text style={tw`text-4xl`}>{story.image}</Text>
-                    </View>
-                    <Text style={tw`text-xs text-gray-500`}>
-                      {story.views} views
-                    </Text>
-                    <Text style={tw`text-xs text-gray-400 mt-1`}>
-                      {new Date(story.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                ))}
+            {stories.length === 0 ? (
+              <View style={tw`items-center py-8`}>
+                <Text style={tw`text-gray-500 text-center`}>
+                  No active stories yet.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    (rootNavigation as any).navigate('CreateStory');
+                  }}
+                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-violet-600`}
+                >
+                  <Text style={tw`text-white font-semibold`}>Create Story</Text>
+                </TouchableOpacity>
               </View>
-            </ScrollView>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={tw`flex-row gap-3`}>
+                  {stories.map((story) => (
+                    <TouchableOpacity
+                      key={story.id}
+                      style={tw`items-center`}
+                      onPress={() => openStoriesViewer(story.id)}
+                    >
+                      <View
+                        style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
+                      >
+                        <Image
+                          source={{ uri: resolveStoryDisplayUri(story.image, user?.id || 'me', story.id) }}
+                          style={tw`w-full h-full`}
+                          contentFit="cover"
+                        />
+                      </View>
+                      <Text style={tw`text-xs text-gray-500`}>{story.views} views</Text>
+                      <Text style={tw`text-xs text-gray-400 mt-1`}>
+                        {new Date(story.createdAt).toLocaleDateString()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
           </View>
         )}
 
         {activeTab === 'shared' && (
-          <View style={tw`p-4 items-center justify-center min-h-64`}>
-            <Ionicons name="share-outline" size={64} color="#D1D5DB" />
-            <Text style={tw`text-gray-500 mt-4 text-center`}>
-              Content you've shared will appear here
-            </Text>
-          </View>
+          <EmptyState
+            icon="share-outline"
+            title="Nothing shared yet"
+            description="Content you share with the community will appear here."
+          />
         )}
 
         {/* Awards Section */}
@@ -483,7 +697,49 @@ export default function ProfileScreen() {
         {/* Settings */}
         <View style={tw`px-4 py-4`}>
           <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Settings</Text>
+          <View style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-gray-900 font-medium`}>Haptics feedback</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Subtle vibration on button presses (mobile only).
+              </Text>
+            </View>
+            <Switch
+              value={hapticsEnabled}
+              onValueChange={setHapticsEnabled}
+              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
+              thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
+            />
+          </View>
+          <View style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-gray-900 font-medium`}>Click sound</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Optional click tone where supported.
+              </Text>
+            </View>
+            <Switch
+              value={soundEnabled}
+              onValueChange={setSoundEnabled}
+              trackColor={{ false: '#D6D3D1', true: '#DDD6FE' }}
+              thumbColor={soundEnabled ? '#7C3AED' : '#F5F5F4'}
+            />
+          </View>
           <TouchableOpacity
+            onPress={() => {
+              const rootNavigation = navigation.getParent() || navigation;
+              rootNavigation.navigate('UserOrders' as never);
+            }}
+            style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="receipt-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-gray-900 ml-3`}>My Orders</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Profile editing is in progress.')}
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -493,6 +749,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Notification settings are coming soon.')}
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -502,6 +759,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Help center will be available in the next update.')}
             style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -511,7 +769,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleSignOut}
+            onPress={() => setShowSignOutModal(true)}
             style={tw`flex-row items-center justify-between py-3 mt-2`}
           >
             <View style={tw`flex-row items-center`}>
@@ -521,6 +779,49 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <ConnectionsListSheet
+        visible={connectionsSheet !== null}
+        mode={connectionsSheet ?? 'following'}
+        users={connectionsSheet === 'followers' ? followers : following}
+        loading={profileLoading}
+        onClose={() => setConnectionsSheet(null)}
+        onSelectUser={(id) => {
+          setConnectionsSheet(null);
+          navigateFromRoot(navigation, 'PublicProfile', { userId: id });
+        }}
+      />
+
+      {/* Sign Out Confirmation Modal */}
+      <Modal
+        visible={showSignOutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSignOutModal(false)}
+      >
+        <View style={tw`flex-1 bg-black/40 justify-center items-center`}>
+          <View style={tw`w-11/12 max-w-sm bg-white rounded-2xl p-6`}>
+            <Text style={tw`text-xl font-semibold text-gray-900 mb-2`}>Sign Out</Text>
+            <Text style={tw`text-sm text-gray-600 mb-6`}>
+              Are you sure you want to sign out? You will need to log in again to access your account.
+            </Text>
+            <View style={tw`flex-row justify-end`}>
+              <TouchableOpacity
+                onPress={() => setShowSignOutModal(false)}
+                style={tw`px-4 py-2 rounded-full mr-2`}
+              >
+                <Text style={tw`text-sm text-gray-600`}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSignOutConfirm}
+                style={tw`px-4 py-2 rounded-full bg-red-500`}
+              >
+                <Text style={tw`text-sm text-white font-semibold`}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Decay Timer Settings Modal */}
       <Modal
@@ -598,6 +899,7 @@ export default function ProfileScreen() {
 }
 
 // Category Picker Modal Component
+/** Modal for selecting up to three growth categories and returning the final selection. */
 function CategoryPickerModal({ 
   currentCategories, 
   onSave, 
@@ -610,6 +912,7 @@ function CategoryPickerModal({
   const [selectedCategories, setSelectedCategories] = useState<string[]>(currentCategories);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
+  /** Toggles category selection while enforcing the 3-category maximum. */
   const toggleCategory = (categoryKey: string) => {
     setSelectedCategories((prev) => {
       if (prev.includes(categoryKey)) {

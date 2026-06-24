@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { horizontalScrollProps, verticalScrollProps } from '../../constants/scroll';
 import { getBusinessOrders, type Order } from '../../services/api/business';
+import { updateOrderStatus } from '../../services/api/marketplace';
 
 type OrderItem = {
   id: string;
@@ -30,6 +33,7 @@ const STATUS_COLORS = {
 };
 
 export default function OrdersScreen() {
+  const navigation = useNavigation<any>();
   const [orders, setOrders] = useState<BusinessOrder[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -49,7 +53,7 @@ export default function OrdersScreen() {
             ...order,
             orderNumber: `ORD-${order.id.slice(-8).toUpperCase()}`,
             customer: shippingAddress?.name || 'Unknown Customer',
-            paymentMethod: 'Credit Card', // Default, could be from metadata
+            paymentMethod: order.metadata?.payment_method || 'Card',
             items: order.items || [],
           };
         });
@@ -77,6 +81,64 @@ export default function OrdersScreen() {
     loadOrders();
   };
 
+  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+    try {
+      const response = await updateOrderStatus(orderId, newStatus);
+      if (response.success && response.data) {
+        // Update the order in local state
+        setOrders(prevOrders =>
+          prevOrders.map(order =>
+            order.id === orderId
+              ? { ...order, status: response.data.status }
+              : order
+          )
+        );
+        if (Platform.OS === 'web') {
+          alert(`Order status updated to ${newStatus}`);
+        } else {
+          Alert.alert('Success', `Order status updated to ${newStatus}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('[OrdersScreen] Error updating order status:', error);
+      if (Platform.OS === 'web') {
+        alert(error.message || 'Failed to update order status');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to update order status');
+      }
+    }
+  };
+
+  const showStatusMenu = (order: BusinessOrder) => {
+    const statusOptions = ['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'];
+    const availableStatuses = statusOptions.filter(s => s !== order.status);
+
+    if (availableStatuses.length === 0) {
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      // For web, show a simple prompt
+      const status = prompt(`Update order status:\n${availableStatuses.join(', ')}`);
+      if (status && availableStatuses.includes(status)) {
+        handleStatusUpdate(order.id, status);
+      }
+    } else {
+      // For native, show action sheet
+      Alert.alert(
+        'Update Order Status',
+        `Current: ${order.status}\n\nSelect new status:`,
+        [
+          ...availableStatuses.map(status => ({
+            text: status.charAt(0).toUpperCase() + status.slice(1),
+            onPress: () => handleStatusUpdate(order.id, status),
+          })),
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    }
+  };
+
   const filteredOrders = statusFilter === 'all' 
     ? orders 
     : orders.filter(o => o.status === statusFilter);
@@ -87,10 +149,9 @@ export default function OrdersScreen() {
   const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-gray-50`}>
-      {/* Header */}
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-gray-200`}>
-        <Text style={tw`text-2xl font-bold text-gray-900 mb-3`}>Orders Management</Text>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+      <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
+        <Text style={tw`text-2xl font-bold text-stone-900 mb-3 tracking-tight`}>Orders</Text>
         
         {/* Stats */}
         <View style={tw`flex-row gap-3 mb-3`}>
@@ -109,18 +170,18 @@ export default function OrdersScreen() {
         </View>
 
         {/* Status Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`-mx-4 px-4`}>
+        <ScrollView horizontal style={tw`-mx-4 px-4`} {...horizontalScrollProps}>
           <View style={tw`flex-row gap-2`}>
             {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
               <TouchableOpacity
                 key={status}
                 onPress={() => setStatusFilter(status)}
                 style={tw`px-4 py-2 rounded-full ${
-                  statusFilter === status ? 'bg-blue-600' : 'bg-gray-200'
+                  statusFilter === status ? 'bg-emerald-600' : 'bg-stone-100'
                 }`}
               >
                 <Text style={tw`text-sm font-semibold ${
-                  statusFilter === status ? 'text-white' : 'text-gray-700'
+                  statusFilter === status ? 'text-white' : 'text-stone-600'
                 }`}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
@@ -133,7 +194,15 @@ export default function OrdersScreen() {
       {/* Orders List */}
       <ScrollView
         style={tw`flex-1 px-4 pt-4`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        {...verticalScrollProps}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#059669"
+            colors={['#059669']}
+          />
+        }
       >
         {loading && orders.length === 0 ? (
           <View style={tw`items-center justify-center py-12`}>
@@ -152,9 +221,11 @@ export default function OrdersScreen() {
             const orderDate = new Date(order.created_at).toLocaleDateString();
             
             return (
-              <View
+              <TouchableOpacity
                 key={order.id}
                 style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100`}
+                activeOpacity={0.85}
+                onPress={() => navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })}
               >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View>
@@ -162,11 +233,15 @@ export default function OrdersScreen() {
                     <Text style={tw`text-lg font-bold text-gray-900 mt-1`}>{order.customer}</Text>
                   </View>
                   <View style={tw`items-end`}>
-                    <View style={tw`px-3 py-1.5 rounded-full ${statusStyle.bg} border ${statusStyle.border} mb-2`}>
+                    <TouchableOpacity
+                      onPress={() => showStatusMenu(order)}
+                      style={tw`px-3 py-1.5 rounded-full ${statusStyle.bg} border ${statusStyle.border} mb-2 flex-row items-center`}
+                    >
                       <Text style={tw`text-xs font-semibold ${statusStyle.text}`}>
                         {order.status.toUpperCase()}
                       </Text>
-                    </View>
+                      <Ionicons name="chevron-down" size={12} style={tw`ml-1 ${statusStyle.text}`} />
+                    </TouchableOpacity>
                     <Text style={tw`text-xl font-bold text-gray-900`}>${order.total.toFixed(2)}</Text>
                   </View>
                 </View>
@@ -198,7 +273,7 @@ export default function OrdersScreen() {
                     <Text style={tw`text-xs text-gray-500 ml-1`}>{order.paymentMethod}</Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}

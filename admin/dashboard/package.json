@@ -1,0 +1,34 @@
+{
+  "name": "growl-admin-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:production": "tsc -b && vite build --mode production",
+    "preview": "vite preview",
+    "pages:deploy": "npm run build:production && npx wrangler@3 pages deploy dist --project-name=growl-admin --branch=main --commit-dirty=true"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.2.5",
+    "framer-motion": "^11.18.2",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

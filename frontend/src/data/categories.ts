@@ -18,6 +18,7 @@ const CATEGORIES: Category[] = [
     label: 'Art',
     subcategories: [
       { key: 'piano', label: 'Piano' },
+      { key: 'violin', label: 'Violin' },
       { key: 'guitar', label: 'Guitar' },
       { key: 'drawing', label: 'Drawing' },
       { key: 'painting', label: 'Painting' },

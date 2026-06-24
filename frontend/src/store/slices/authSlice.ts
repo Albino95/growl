@@ -1,16 +1,24 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import { getSecureItem, setSecureItem, deleteSecureItem } from '../../services/storage/secureStore';
-import { request } from '../../services/api/http';
-import * as Crypto from 'expo-crypto';
+import { setToken, clearToken } from '../../services/storage/tokenManager';
+import {
+  signInApi,
+  signUpApi,
+  verifyEmailApi,
+  signInSsoApi,
+  type SessionResponse,
+} from '../../services/api/auth';
+import { fetchCurrentProfile } from '../../services/api/profile';
 
 export type User = {
   id: string;
   email?: string;
   isInstructor?: boolean;
+  isBusiness?: boolean;
   categories?: string[];
   hasCompletedOnboarding?: boolean;
   points?: number;
-  decayTimer?: number; // Days until posts decay
+  decayTimer?: number;
 };
 
 interface AuthState {
@@ -19,157 +27,134 @@ interface AuthState {
   hydrated: boolean;
   isLoading: boolean;
   error: string | null;
+  shouldCompleteSignupOnboarding: boolean;
 }
 
 const TOKEN_KEY = 'auth_token';
-const USER_KEY = 'user_data';
 
-// Hash password client-side before sending (additional security layer)
-async function hashPassword(password: string): Promise<string> {
-  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, password);
+function sessionToUser(res: SessionResponse, email?: string): User {
+  const categories = res.categories || [];
+  return {
+    id: res.userId,
+    email: email || res.email,
+    isInstructor: res.isInstructor || false,
+    isBusiness: res.isBusiness === true,
+    hasCompletedOnboarding: res.hasCompletedOnboarding ?? categories.length > 0,
+    categories,
+  };
 }
 
-// Async thunks for async operations
-export const hydrateAuth = createAsyncThunk('auth/hydrate', async () => {
+async function persistSession(token: string) {
+  await setSecureItem(TOKEN_KEY, token);
+  setToken(token);
+}
+
+async function loadUserFromApi(email?: string): Promise<User> {
+  const profile = await fetchCurrentProfile();
+  return {
+    id: profile.id,
+    email: profile.email || email,
+    isInstructor: profile.is_instructor,
+    isBusiness: profile.is_business,
+    categories: profile.categories,
+    hasCompletedOnboarding: profile.categories.length > 0,
+    points: profile.points,
+  };
+}
+
+export const hydrateAuth = createAsyncThunk('auth/hydrate', async (_, { rejectWithValue }) => {
   try {
     const token = await getSecureItem(TOKEN_KEY);
-    const userData = await getSecureItem(USER_KEY);
-    if (token) {
-      const user = userData ? JSON.parse(userData) : { id: 'me' };
-      return { token, user };
+    if (!token) {
+      clearToken();
+      return { token: null, user: null };
     }
-    return { token: null, user: null };
+    setToken(token);
+    const user = await loadUserFromApi();
+    return { token, user };
   } catch (error) {
-    console.error('Hydration error:', error);
-    return { token: null, user: null };
+    console.error('[Auth] hydrate failed:', error);
+    await deleteSecureItem(TOKEN_KEY);
+    clearToken();
+    return rejectWithValue('Session expired. Please sign in again.');
   }
 });
 
+export const signUp = createAsyncThunk(
+  'auth/signUp',
+  async (
+    payload: { email: string; password: string; username?: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      return await signUpApi(payload);
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'Sign up failed');
+    }
+  }
+);
+
+export const verifyEmail = createAsyncThunk(
+  'auth/verifyEmail',
+  async (payload: { email: string; code: string }, { rejectWithValue }) => {
+    try {
+      await verifyEmailApi(payload.email, payload.code);
+      return payload;
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'Verification failed');
+    }
+  }
+);
+
 export const signIn = createAsyncThunk(
   'auth/signIn',
-  async ({ email, password }: { email: string; password: string }) => {
+  async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      // Hash password before sending (never send plain password)
-      const hashedPassword = await hashPassword(password);
-      const res = await request<{
-        token: string;
-        userId: string;
-        isInstructor: boolean;
-        hasCompletedOnboarding: boolean;
-        categories?: string[];
-      }>('/auth/sign-in', {
-        method: 'POST',
-        body: JSON.stringify({ email, passwordHash: hashedPassword }),
-      });
-      const user: User = {
-        id: res.userId,
-        email,
-        isInstructor: res.isInstructor || false,
-        hasCompletedOnboarding: res.hasCompletedOnboarding || false,
-        categories: res.categories || [],
-      };
-      await setSecureItem(TOKEN_KEY, res.token);
-      await setSecureItem(USER_KEY, JSON.stringify(user));
+      const res = await signInApi(email.trim(), password);
+      await persistSession(res.token);
+      const user = await loadUserFromApi(email.trim());
       return { token: res.token, user };
-    } catch {
-      // Dev fallback - Demo accounts
-      const devToken = `dev-token-${Date.now()}`;
-
-      // Demo accounts configuration
-      let user: User;
-
-      if (email === 'demo@growl.app' && password === 'demo123') {
-        // Regular user
-        user = {
-          id: 'demo-user',
-          email,
-          isInstructor: false,
-          hasCompletedOnboarding: true,
-          categories: ['fitness', 'art'],
-          points: 150,
-        };
-      } else if (email === 'instructor@growl.app' && password === 'instructor123') {
-        // Instructor account
-        user = {
-          id: 'demo-instructor',
-          email,
-          isInstructor: true,
-          hasCompletedOnboarding: true,
-          categories: ['fitness', 'mindset'],
-          points: 750,
-        };
-      } else if (email === 'business@growl.app' && password === 'business123') {
-        // Business account (also has instructor access)
-        user = {
-          id: 'demo-business',
-          email,
-          isInstructor: true, // Business users also have instructor access
-          hasCompletedOnboarding: true,
-          categories: ['fitness', 'art', 'mindset'],
-          points: 1000,
-        };
-      } else {
-        // Default fallback for any other email/password
-        user = {
-          id: 'dev',
-          email,
-          isInstructor: false,
-          hasCompletedOnboarding: false,
-          categories: [],
-          points: 0,
-        };
-      }
-
-      await setSecureItem(TOKEN_KEY, devToken);
-      await setSecureItem(USER_KEY, JSON.stringify(user));
-      return { token: devToken, user };
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'Sign in failed');
     }
   }
 );
 
 export const signInWithSSO = createAsyncThunk(
   'auth/signInWithSSO',
-  async ({ provider, token: ssoToken }: { provider: 'google' | 'facebook'; token: string }) => {
+  async (
+    payload: { provider: 'google' | 'facebook'; idToken?: string; accessToken?: string },
+    { rejectWithValue }
+  ) => {
     try {
-      const res = await request<{
-        token: string;
-        userId: string;
-        isInstructor: boolean;
-        hasCompletedOnboarding: boolean;
-        categories?: string[];
-      }>('/auth/sso', {
-        method: 'POST',
-        body: JSON.stringify({ provider, token: ssoToken }),
-      });
-      const user: User = {
-        id: res.userId,
-        isInstructor: res.isInstructor || false,
-        hasCompletedOnboarding: res.hasCompletedOnboarding || false,
-        categories: res.categories || [],
-      };
-      await setSecureItem(TOKEN_KEY, res.token);
-      await setSecureItem(USER_KEY, JSON.stringify(user));
+      const res = await signInSsoApi(payload);
+      await persistSession(res.token);
+      const user = await loadUserFromApi();
       return { token: res.token, user };
-    } catch {
-      // Dev fallback
-      const devToken = 'dev-token';
-      const user: User = {
-        id: 'dev',
-        isInstructor: false,
-        hasCompletedOnboarding: false,
-        categories: [],
-        points: 0,
-      };
-      await setSecureItem(TOKEN_KEY, devToken);
-      await setSecureItem(USER_KEY, JSON.stringify(user));
-      return { token: devToken, user };
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'SSO sign in failed');
     }
   }
 );
 
-export const signOut = createAsyncThunk('auth/signOut', async () => {
-  await deleteSecureItem(TOKEN_KEY);
-  await deleteSecureItem(USER_KEY);
+export const refreshProfile = createAsyncThunk('auth/refreshProfile', async (_, { rejectWithValue }) => {
+  try {
+    const user = await loadUserFromApi();
+    return user;
+  } catch (e: unknown) {
+    return rejectWithValue(e instanceof Error ? e.message : 'Failed to refresh profile');
+  }
+});
+
+export const signOut = createAsyncThunk('auth/signOut', async (_, { rejectWithValue }) => {
+  try {
+    await deleteSecureItem(TOKEN_KEY);
+    clearToken();
+    return { success: true };
+  } catch (error: unknown) {
+    clearToken();
+    return rejectWithValue(error instanceof Error ? error.message : 'Sign out failed');
+  }
 });
 
 const initialState: AuthState = {
@@ -178,6 +163,7 @@ const initialState: AuthState = {
   hydrated: false,
   isLoading: false,
   error: null,
+  shouldCompleteSignupOnboarding: false,
 };
 
 const authSlice = createSlice({
@@ -187,8 +173,6 @@ const authSlice = createSlice({
     updateUser: (state, action: PayloadAction<Partial<User>>) => {
       if (state.user) {
         state.user = { ...state.user, ...action.payload };
-        // Persist to storage
-        setSecureItem(USER_KEY, JSON.stringify(state.user));
       }
     },
     setOnboardingComplete: (state, action: PayloadAction<string[]>) => {
@@ -196,18 +180,19 @@ const authSlice = createSlice({
         state.user = {
           ...state.user,
           categories: action.payload,
-          hasCompletedOnboarding: true,
+          hasCompletedOnboarding: action.payload.length > 0,
         };
-        // Persist to storage
-        setSecureItem(USER_KEY, JSON.stringify(state.user));
       }
+      state.shouldCompleteSignupOnboarding = false;
+    },
+    markSignupOnboardingRequired: (state) => {
+      state.shouldCompleteSignupOnboarding = true;
     },
     clearError: (state) => {
       state.error = null;
     },
   },
   extraReducers: (builder) => {
-    // Hydrate
     builder
       .addCase(hydrateAuth.pending, (state) => {
         state.isLoading = true;
@@ -217,13 +202,20 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.hydrated = true;
         state.isLoading = false;
+        state.error = null;
+        if (!action.payload.token) {
+          state.shouldCompleteSignupOnboarding = false;
+        }
       })
-      .addCase(hydrateAuth.rejected, (state) => {
+      .addCase(hydrateAuth.rejected, (state, action) => {
+        state.token = null;
+        state.user = null;
         state.hydrated = true;
         state.isLoading = false;
+        state.error = (action.payload as string) || null;
+        state.shouldCompleteSignupOnboarding = false;
       });
 
-    // Sign In
     builder
       .addCase(signIn.pending, (state) => {
         state.isLoading = true;
@@ -233,14 +225,12 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.user = action.payload.user;
         state.isLoading = false;
-        state.error = null;
       })
       .addCase(signIn.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.error.message || 'Sign in failed';
+        state.error = (action.payload as string) || 'Sign in failed';
       });
 
-    // Sign In with SSO
     builder
       .addCase(signInWithSSO.pending, (state) => {
         state.isLoading = true;
@@ -250,28 +240,61 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.user = action.payload.user;
         state.isLoading = false;
-        state.error = null;
       })
       .addCase(signInWithSSO.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.error.message || 'SSO sign in failed';
+        state.error = (action.payload as string) || 'SSO sign in failed';
       });
 
-    // Sign Out
     builder
-      .addCase(signOut.pending, (state) => {
+      .addCase(signUp.pending, (state) => {
         state.isLoading = true;
+        state.error = null;
       })
+      .addCase(signUp.fulfilled, (state) => {
+        state.isLoading = false;
+      })
+      .addCase(signUp.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = (action.payload as string) || 'Sign up failed';
+      });
+
+    builder
+      .addCase(verifyEmail.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(verifyEmail.fulfilled, (state) => {
+        state.isLoading = false;
+      })
+      .addCase(verifyEmail.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = (action.payload as string) || 'Verification failed';
+      });
+
+    builder.addCase(refreshProfile.fulfilled, (state, action) => {
+      if (state.user) {
+        state.user = { ...state.user, ...action.payload };
+      }
+    });
+
+    builder
       .addCase(signOut.fulfilled, (state) => {
         state.token = null;
         state.user = null;
         state.isLoading = false;
+        state.error = null;
+        state.shouldCompleteSignupOnboarding = false;
       })
       .addCase(signOut.rejected, (state) => {
+        state.token = null;
+        state.user = null;
         state.isLoading = false;
+        state.shouldCompleteSignupOnboarding = false;
       });
   },
 });
 
-export const { updateUser, setOnboardingComplete, clearError } = authSlice.actions;
+export const { updateUser, setOnboardingComplete, markSignupOnboardingRequired, clearError } =
+  authSlice.actions;
 export default authSlice.reducer;

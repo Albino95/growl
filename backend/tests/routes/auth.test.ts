@@ -59,7 +59,7 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           email: 'test@example.com',
-          password: 'password123',
+          password: 'Password123!',
           username: 'testuser',
         },
       });
@@ -69,8 +69,7 @@ describe('Auth Routes', () => {
 
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
-      expect(data.data.token).toBeDefined();
-      expect(data.data.user).toBeDefined();
+      expect(data.data.requiresEmailVerification).toBe(true);
       expect(insertCalled).toBe(true);
     });
 
@@ -95,7 +94,7 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           email: 'existing@example.com',
-          password: 'password123',
+          password: 'Password123!',
         },
       });
 
@@ -112,7 +111,7 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           email: 'invalid-email',
-          password: 'password123',
+          password: 'short',
         },
       });
 
@@ -137,12 +136,13 @@ describe('Auth Routes', () => {
                 id: 'user-123',
                 email: 'test@example.com',
                 password_hash: passwordHash,
+                email_verified: 1,
                 points: 100,
                 is_instructor: false,
                 is_business: false,
                 metadata: JSON.stringify({
                   username: 'testuser',
-                  categories: ['fitness'],
+                  categories: ['fitness:building-muscle'],
                 }),
               }),
             }),
@@ -160,7 +160,7 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           email: 'test@example.com',
-          passwordHash, // Frontend sends hashed password
+          password: 'password123',
         },
       });
 
@@ -172,8 +172,9 @@ describe('Auth Routes', () => {
       expect(data.data.token).toBeDefined();
       expect(data.data.userId).toBe('user-123');
       expect(data.data.isInstructor).toBe(false);
+      expect(data.data.isBusiness).toBe(false);
       expect(data.data.hasCompletedOnboarding).toBe(true);
-      expect(data.data.categories).toEqual(['fitness']);
+      expect(data.data.categories).toEqual(['fitness:building-muscle']);
     });
 
     it('should reject invalid credentials', async () => {
@@ -196,7 +197,7 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           email: 'wrong@example.com',
-          passwordHash: 'wrong-hash',
+          password: 'wrong-password',
         },
       });
 
@@ -207,16 +208,80 @@ describe('Auth Routes', () => {
       expect(data.success).toBe(false);
       expect(data.error.code).toBe('INVALID_CREDENTIALS');
     });
+
+    it('should not auto-promote business privileges on sign-in', async () => {
+      const passwordHash = 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f';
+      let updateRan = false;
+
+      mockDb.prepare = (query: string) => {
+        if (query.includes('SELECT * FROM users')) {
+          return {
+            bind: () => ({
+              first: async () => ({
+                id: 'biz-user-1',
+                email: 'business@growl.app',
+                password_hash: passwordHash,
+                email_verified: 1,
+                points: 100,
+                is_instructor: false,
+                is_business: false,
+                metadata: JSON.stringify({
+                  username: 'bizdemo',
+                  categories: ['fitness'],
+                }),
+              }),
+            }),
+          };
+        }
+        if (query.includes('UPDATE users SET is_business')) {
+          updateRan = true;
+          return {
+            bind: () => ({
+              run: async () => ({ success: true }),
+            }),
+          };
+        }
+        return {
+          bind: () => ({
+            first: async () => null,
+            run: async () => ({ success: true }),
+          }),
+        };
+      };
+
+      const request = createMockRequest('https://example.com/api/v1/auth/sign-in', {
+        method: 'POST',
+        body: {
+          email: 'business@growl.app',
+          password: 'password123',
+        },
+      });
+
+      const response = await authRoutes.signIn(request, env);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(updateRan).toBe(false);
+      expect(data.data.isBusiness).toBe(false);
+      expect(data.data.isInstructor).toBe(false);
+    });
   });
 
   describe('signInWithSSO', () => {
     it('should create user if not exists', async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () =>
+        new Response(JSON.stringify({ email: 'google.user@example.com', name: 'Google User' }), {
+          status: 200,
+        });
+
       let userCreated = false;
       mockDb.prepare = (query: string) => {
         if (query.includes('SELECT * FROM users WHERE email')) {
           return {
             bind: () => ({
-              first: async () => null, // User doesn't exist
+              first: async () => null,
             }),
           };
         }
@@ -233,15 +298,13 @@ describe('Auth Routes', () => {
             bind: () => ({
               first: async () => ({
                 id: 'new-user-123',
-                email: 'sso-google-token-123@google.com',
-                password_hash: 'sso-google',
+                email: 'google.user@example.com',
+                password_hash: 'pbkdf2$x',
+                email_verified: 1,
                 points: 0,
-                is_instructor: false,
-                is_business: false,
-                metadata: JSON.stringify({
-                  username: 'sso-google-token-123',
-                  categories: [],
-                }),
+                is_instructor: 0,
+                is_business: 0,
+                metadata: JSON.stringify({ username: 'Google User', categories: [] }),
               }),
             }),
           };
@@ -258,12 +321,13 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           provider: 'google',
-          token: 'sso-google-token-123',
+          idToken: 'mock-google-id-token',
         },
       });
 
       const response = await authRoutes.signInWithSSO(request, env);
       const data = await parseJsonResponse(response);
+      globalThis.fetch = originalFetch;
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
@@ -272,17 +336,24 @@ describe('Auth Routes', () => {
     });
 
     it('should sign in existing SSO user', async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () =>
+        new Response(JSON.stringify({ email: 'existing@example.com', name: 'Existing' }), {
+          status: 200,
+        });
+
       mockDb.prepare = (query: string) => {
         if (query.includes('SELECT * FROM users WHERE email')) {
           return {
             bind: () => ({
               first: async () => ({
                 id: 'existing-user-123',
-                email: 'sso-google-token-123@google.com',
-                password_hash: 'sso-google',
+                email: 'existing@example.com',
+                password_hash: 'pbkdf2$x',
+                email_verified: 1,
                 points: 50,
-                is_instructor: false,
-                is_business: false,
+                is_instructor: 0,
+                is_business: 0,
                 metadata: JSON.stringify({
                   username: 'existinguser',
                   categories: ['fitness'],
@@ -303,12 +374,13 @@ describe('Auth Routes', () => {
         method: 'POST',
         body: {
           provider: 'google',
-          token: 'sso-google-token-123',
+          idToken: 'mock-google-id-token',
         },
       });
 
       const response = await authRoutes.signInWithSSO(request, env);
       const data = await parseJsonResponse(response);
+      globalThis.fetch = originalFetch;
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);

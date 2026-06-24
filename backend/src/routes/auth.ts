@@ -1,38 +1,70 @@
 import { Env } from '../types';
 import { json, error } from '../utils/response';
-import { validateRequest, signUpSchema, signInSchema, ssoSchema } from '../utils/validation';
-import { hashPassword, verifyPassword, generateToken } from '../utils/auth';
+import {
+  validateRequest,
+  signUpSchema,
+  signInSchema,
+  ssoSchema,
+  verifyEmailSchema,
+} from '../utils/validation';
+import {
+  hashPassword,
+  verifyPassword,
+  hashClientSecret,
+  generateVerificationToken,
+  hashVerificationToken,
+} from '../utils/password';
+import { signAccessToken } from '../utils/jwt';
+import { getRequestContext, userAuthPayload } from '../utils/auth';
 import { generateId } from '../utils/id';
+import { sendVerificationEmail } from '../utils/email';
+
+function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env: Env) {
+  const base = userAuthPayload(user);
+  return signAccessToken(user.id, env).then((token) =>
+    json({
+      ...base,
+      token,
+    })
+  );
+}
 
 /**
  * POST /api/v1/auth/sign-up
- * Register a new user
+ * Register — does not return a session until email is verified.
  */
 export async function signUp(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
   try {
     const validation = await validateRequest(request, signUpSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password, username } = validation.data;
+    const { email, password, passwordHash, username } = validation.data;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if user already exists
-    const existingUser = await env.DB.prepare(
-      'SELECT id FROM users WHERE email = ?'
-    )
-      .bind(email)
+    const existingUser = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
+      .bind(normalizedEmail)
       .first();
 
     if (existingUser) {
       return error('USER_EXISTS', 'User with this email already exists', 409);
     }
 
-    // Hash password
-    const passwordHash = await hashPassword(password);
-
-    // Create user
+    const credentialSecret = passwordHash || password;
+    if (!credentialSecret) {
+      return error('VALIDATION_ERROR', 'Password is required', 400);
+    }
+    const passwordHashToStore = await hashPassword(credentialSecret);
     const userId = generateId('user');
+    const verifyToken = generateVerificationToken();
+    const tokenHash = await hashVerificationToken(verifyToken);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
     const metadata = {
-      username: username || email.split('@')[0],
+      username: username || normalizedEmail.split('@')[0],
       categories: [],
       engagementHistory: [],
       instructorVotes: [],
@@ -43,237 +75,271 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
     };
 
     await env.DB.prepare(
-      `INSERT INTO users (id, email, password_hash, points, is_instructor, is_business, metadata, created_at, updated_at)
-       VALUES (?, ?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))`
+      `INSERT INTO users (
+        id, email, password_hash, points, is_instructor, is_business, metadata,
+        email_verified, email_verification_token_hash, email_verification_expires_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 0, 0, 0, ?, 0, ?, ?, datetime('now'), datetime('now'))`
     )
-      .bind(userId, email, passwordHash, JSON.stringify(metadata))
+      .bind(
+        userId,
+        normalizedEmail,
+        passwordHashToStore,
+        JSON.stringify(metadata),
+        tokenHash,
+        expiresAt
+      )
       .run();
 
-    // Generate token
-    const token = generateToken(userId, env);
+    try {
+      await sendVerificationEmail(env, normalizedEmail, verifyToken);
+    } catch (mailErr) {
+      console.error('[signUp] Email send failed:', mailErr);
+      if (env.ENVIRONMENT === 'production') {
+        return error('EMAIL_SEND_FAILED', 'Could not send verification email. Try again later.', 503);
+      }
+    }
 
     return json(
       {
-        user: {
-          id: userId,
-          email,
-          username: metadata.username,
-          points: 0,
-          is_instructor: false,
-          is_business: false,
-        },
-        token,
+        requiresEmailVerification: true,
+        email: normalizedEmail,
+        message: 'Check your email for a verification code, then confirm before signing in.',
+        ...(env.ENVIRONMENT === 'development' ? { devVerificationCode: verifyToken } : {}),
       },
       201
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[signUp] Error:', err);
-    const errorMessage = err?.message || 'Failed to create user';
-    // Provide more helpful error message if tables don't exist
-    if (errorMessage.includes('no such table')) {
-      return error('DATABASE_ERROR', 'Database tables not initialized. Please run migrations.', 500);
+    if (
+      err instanceof Error &&
+      /pbkdf2|iteration|not supported|notsupported/i.test(err.message)
+    ) {
+      return error(
+        'AUTH_TEMPORARILY_UNAVAILABLE',
+        'Account creation is temporarily unavailable. Please try again shortly.',
+        503
+      );
     }
-    return error('DATABASE_ERROR', errorMessage, 500, env.ENVIRONMENT === 'development' ? String(err) : undefined);
+    return error('DATABASE_ERROR', 'Failed to create user', 500);
   }
 }
 
 /**
+ * POST /api/v1/auth/verify-email
+ */
+export async function verifyEmail(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
+  const validation = await validateRequest(request, verifyEmailSchema);
+  if (!validation.success) return validation.response;
+
+  const { email, code } = validation.data;
+  const normalizedEmail = email.trim().toLowerCase();
+  const tokenHash = await hashVerificationToken(code.trim().replace(/\s/g, ''));
+
+  const user = await env.DB.prepare(
+    `SELECT * FROM users WHERE email = ? AND email_verification_token_hash = ?`
+  )
+    .bind(normalizedEmail, tokenHash)
+    .first<{
+      id: string;
+      email_verification_expires_at: string;
+      email_verified: number;
+    } & Record<string, unknown>>();
+
+  if (!user) {
+    return error('INVALID_CODE', 'Invalid verification code', 400);
+  }
+
+  if (user.email_verified) {
+    return json({ verified: true, message: 'Email already verified' });
+  }
+
+  const expires = new Date(user.email_verification_expires_at).getTime();
+  if (Number.isNaN(expires) || expires < Date.now()) {
+    return error('CODE_EXPIRED', 'Verification code expired. Sign up again or request a new code.', 400);
+  }
+
+  await env.DB.prepare(
+    `UPDATE users SET email_verified = 1, email_verification_token_hash = NULL,
+     email_verification_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(user.id)
+    .run();
+
+  return json({ verified: true, message: 'Email verified. You can sign in now.' });
+}
+
+/**
  * POST /api/v1/auth/sign-in
- * Authenticate user
  */
 export async function signIn(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
   try {
     const validation = await validateRequest(request, signInSchema);
     if (!validation.success) return validation.response;
 
     const { email, password, passwordHash } = validation.data;
-    
-    // If passwordHash is provided, use it directly (frontend hashed it)
-    // Otherwise, use the plain password
-    const passwordToVerify = passwordHash || password;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // Find user
-    const user = await env.DB.prepare(
-      'SELECT * FROM users WHERE email = ?'
-    )
-      .bind(email)
+    const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?')
+      .bind(normalizedEmail)
       .first<{
         id: string;
         email: string;
         password_hash: string;
         points: number;
-        is_instructor: boolean;
-        is_business: boolean;
+        is_instructor: number;
+        is_business: number;
         metadata: string;
+        email_verified?: number;
       }>();
 
     if (!user) {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
-    // Verify password
-    // If frontend sent passwordHash, compare directly (for dev/demo)
-    // Otherwise, verify the hashed password
-    let isValid = false;
-    if (passwordHash) {
-      // For demo/dev: compare hashed passwords directly
-      isValid = passwordHash === user.password_hash;
-    } else {
-      isValid = await verifyPassword(password, user.password_hash);
+    const secrets = new Set<string>();
+    if (passwordHash) secrets.add(passwordHash);
+    if (password) {
+      secrets.add(password);
+      secrets.add(await hashClientSecret(password));
     }
-    
+
+    let isValid = false;
+    for (const secret of secrets) {
+      if (await verifyPassword(secret, user.password_hash)) {
+        isValid = true;
+        break;
+      }
+    }
+
     if (!isValid) {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
-    // Generate token
-    const token = generateToken(user.id, env);
+    if (!user.email_verified) {
+      return error(
+        'EMAIL_NOT_VERIFIED',
+        'Confirm your email before signing in. Check your inbox for the verification code.',
+        403
+      );
+    }
 
-    const metadata = JSON.parse(user.metadata || '{}');
-    const categories = metadata.categories || [];
-    const hasCompletedOnboarding = categories.length > 0;
-
-    // Return format that matches frontend expectations
-    return json({
-      token,
-      userId: user.id,
-      isInstructor: user.is_instructor ? true : false,
-      hasCompletedOnboarding,
-      categories,
-    });
+    return sessionResponse(user as unknown as Parameters<typeof userAuthPayload>[0], env);
   } catch (err) {
     console.error('[signIn] Error:', err);
-    return error('INTERNAL_ERROR', 'An error occurred during sign in', 500, env.ENVIRONMENT === 'development' ? String(err) : undefined);
+    return error('INTERNAL_ERROR', 'An error occurred during sign in', 500);
   }
 }
 
-/**
- * POST /api/v1/auth/sign-out
- * Sign out user (client-side token removal, but we can invalidate if needed)
- */
 export async function signOut(request: Request, env: Env): Promise<Response> {
-  // In a full implementation, you might want to invalidate the token
-  // For now, just return success (client removes token)
   return json({ message: 'Signed out successfully' });
+}
+
+async function verifyGoogleIdToken(idToken: string, env: Env): Promise<{ email: string; name?: string }> {
+  const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  if (!res.ok) throw new Error('Invalid Google token');
+  const data = (await res.json()) as { email?: string; name?: string; aud?: string };
+  if (!data.email) throw new Error('Google account has no email');
+  if (env.GOOGLE_CLIENT_ID && data.aud && data.aud !== env.GOOGLE_CLIENT_ID) {
+    throw new Error('Google token audience mismatch');
+  }
+  return { email: data.email.toLowerCase(), name: data.name };
+}
+
+async function verifyFacebookAccessToken(
+  accessToken: string
+): Promise<{ email: string; name?: string }> {
+  const res = await fetch(
+    `https://graph.facebook.com/me?fields=email,name&access_token=${encodeURIComponent(accessToken)}`
+  );
+  if (!res.ok) throw new Error('Invalid Facebook token');
+  const data = (await res.json()) as { email?: string; name?: string; error?: { message: string } };
+  if (data.error) throw new Error(data.error.message);
+  if (!data.email) throw new Error('Facebook account must share email to use Growl');
+  return { email: data.email.toLowerCase(), name: data.name };
 }
 
 /**
  * POST /api/v1/auth/sso
- * Sign in with SSO (Google, Facebook)
  */
 export async function signInWithSSO(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
   try {
     const validation = await validateRequest(request, ssoSchema);
     if (!validation.success) return validation.response;
 
-    const { provider, token: ssoToken } = validation.data;
+    const { provider, idToken, accessToken } = validation.data;
 
-    // In a real implementation, verify the SSO token with the provider
-    // For MVP, we'll create or find a user based on the token
-    // Extract email from token (in production, verify with provider API)
-    
-    // For demo purposes, we'll use a mock approach
-    // In production, verify token with Google/Facebook APIs
     let email: string;
-    let username: string;
-    
-    // Mock: Extract info from token (in production, verify with provider)
-    if (ssoToken.startsWith('sso-google-')) {
-      email = ssoToken.replace('sso-google-token-', '') + '@google.com';
-      username = email.split('@')[0];
-    } else if (ssoToken.startsWith('sso-facebook-')) {
-      email = ssoToken.replace('sso-facebook-token-', '') + '@facebook.com';
-      username = email.split('@')[0];
+    let username: string | undefined;
+
+    if (provider === 'google') {
+      if (!idToken) return error('VALIDATION_ERROR', 'idToken required for Google', 400);
+      const profile = await verifyGoogleIdToken(idToken, env);
+      email = profile.email;
+      username = profile.name;
     } else {
-      // Try to extract email from token (mock)
-      email = `sso-${provider}-${Date.now()}@example.com`;
-      username = email.split('@')[0];
+      if (!accessToken) return error('VALIDATION_ERROR', 'accessToken required for Facebook', 400);
+      const profile = await verifyFacebookAccessToken(accessToken);
+      email = profile.email;
+      username = profile.name;
     }
 
-    // Check if user exists
-    let user = await env.DB.prepare(
-      'SELECT * FROM users WHERE email = ?'
-    )
-      .bind(email)
-      .first<{
-        id: string;
-        email: string;
-        password_hash: string;
-        points: number;
-        is_instructor: boolean;
-        is_business: boolean;
-        metadata: string;
-      }>();
+    let user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<UserRow>();
 
-    // If user doesn't exist, create one
     if (!user) {
       const userId = generateId('user');
       const metadata = {
-        username,
+        username: username || email.split('@')[0],
         categories: [],
-        engagementHistory: [],
-        instructorVotes: [],
-        purchaseHistory: [],
-        timePreferences: [],
-        blockedUsers: [],
-        mutedUsers: [],
         ssoProvider: provider,
       };
+      const placeholderHash = await hashPassword(crypto.randomUUID());
 
       await env.DB.prepare(
-        `INSERT INTO users (id, email, password_hash, points, is_instructor, is_business, metadata, created_at, updated_at)
-         VALUES (?, ?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))`
+        `INSERT INTO users (
+          id, email, password_hash, points, is_instructor, is_business, metadata,
+          email_verified, created_at, updated_at
+        ) VALUES (?, ?, ?, 0, 0, 0, ?, 1, datetime('now'), datetime('now'))`
       )
-        .bind(userId, email, `sso-${provider}`, JSON.stringify(metadata))
+        .bind(userId, email, placeholderHash, JSON.stringify(metadata))
         .run();
 
-      // Fetch the newly created user
-      user = await env.DB.prepare(
-        'SELECT * FROM users WHERE id = ?'
+      user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<UserRow>();
+    } else if (!user.email_verified) {
+      await env.DB.prepare(
+        'UPDATE users SET email_verified = 1, updated_at = datetime("now") WHERE id = ?'
       )
-        .bind(userId)
-        .first<{
-          id: string;
-          email: string;
-          password_hash: string;
-          points: number;
-          is_instructor: boolean;
-          is_business: boolean;
-          metadata: string;
-        }>();
+        .bind(user.id)
+        .run();
+      user.email_verified = 1;
     }
 
     if (!user) {
       return error('SSO_ERROR', 'Failed to create or find user', 500);
     }
 
-    // Generate token
-    const token = generateToken(user.id, env);
-    const metadata = JSON.parse(user.metadata || '{}');
-    const categories = metadata.categories || [];
-    const hasCompletedOnboarding = categories.length > 0;
-
-    return json({
-      token,
-      userId: user.id,
-      isInstructor: user.is_instructor ? true : false,
-      hasCompletedOnboarding,
-      categories,
-    });
-  } catch (err) {
+    return sessionResponse(user, env);
+  } catch (err: unknown) {
     console.error('[signInWithSSO] Error:', err);
-    return error('INTERNAL_ERROR', 'An error occurred during SSO sign in', 500, env.ENVIRONMENT === 'development' ? String(err) : undefined);
+    const msg = err instanceof Error ? err.message : 'SSO sign in failed';
+    return error('SSO_ERROR', msg, 401);
   }
 }
 
-/**
- * POST /api/v1/auth/refresh
- * Refresh authentication token
- */
+type UserRow = Parameters<typeof userAuthPayload>[0];
+
 export async function refresh(request: Request, env: Env): Promise<Response> {
-  // In a full implementation, verify the refresh token and issue a new access token
-  // For MVP, just return an error indicating it's not implemented
   return error('NOT_IMPLEMENTED', 'Token refresh not implemented', 501);
 }
-
-

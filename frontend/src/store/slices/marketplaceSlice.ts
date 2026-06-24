@@ -47,17 +47,33 @@ const initialState: MarketplaceState = {
 };
 
 // Async thunks
+export type FetchProductsParams = {
+  category?: string | null;
+  subcategory?: string | null;
+  search?: string | null;
+};
+
 export const fetchProducts = createAsyncThunk(
   'marketplace/fetchProducts',
-  async (category?: string) => {
+  async (params?: FetchProductsParams | string | void) => {
+    const normalized =
+      typeof params === 'string'
+        ? { category: params || undefined }
+        : {
+            category: params?.category ?? undefined,
+            subcategory: params?.subcategory ?? undefined,
+            search: params?.search?.trim() ? params.search.trim() : undefined,
+          };
     const response = await getProducts({
-      category: category || undefined,
-      limit: 50,
+      category: normalized.category || undefined,
+      subcategory: normalized.subcategory || undefined,
+      search: normalized.search || undefined,
+      limit: 60,
     });
-    if (response.success && response.data) {
-      return response.data.products || [];
+    if (response.success && response.data?.products) {
+      return response.data.products;
     }
-    throw new Error(response.error?.message || 'Failed to fetch products');
+    throw new Error((response as { error?: { message?: string } }).error?.message || 'Failed to fetch products');
   }
 );
 

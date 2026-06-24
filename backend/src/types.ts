@@ -6,6 +6,11 @@ export interface Env {
   ENVIRONMENT: string;
   JWT_SECRET: string;
   API_VERSION: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  APP_PUBLIC_URL?: string;
+  GOOGLE_CLIENT_ID?: string;
+  FACEBOOK_APP_ID?: string;
 }
 
 // User types
@@ -17,6 +22,9 @@ export interface User {
   is_instructor: boolean;
   is_business: boolean;
   metadata: string; // JSON string
+  email_verified?: number;
+  email_verification_token_hash?: string | null;
+  email_verification_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 }

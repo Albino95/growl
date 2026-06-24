@@ -241,7 +241,12 @@ export default function MessagesScreen() {
         >
         {/* Chat Header */}
         <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-200 bg-white`}>
-          <TouchableOpacity onPress={() => setSelectedConversation(null)} style={tw`mr-3`}>
+          <TouchableOpacity 
+            onPress={() => {
+              setSelectedConversation(null);
+            }} 
+            style={tw`mr-3`}
+          >
             <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
           <View style={tw`flex-row items-center flex-1`}>
@@ -386,7 +391,24 @@ export default function MessagesScreen() {
         {/* Header */}
         <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200 bg-white`}>
           <View style={tw`flex-row items-center justify-between mb-4`}>
-            <Text style={tw`text-3xl font-bold text-green-600`}>Messages</Text>
+            <View style={tw`flex-row items-center flex-1`}>
+              <TouchableOpacity
+                onPress={() => {
+                  // Navigate back to Feed tab
+                  const rootNavigation = navigation.getParent() || navigation;
+                  if (rootNavigation.canGoBack()) {
+                    rootNavigation.goBack();
+                  } else {
+                    // Fallback: navigate to Individual tabs (which defaults to Feed)
+                    rootNavigation.navigate('Individual' as never);
+                  }
+                }}
+                style={tw`mr-3`}
+              >
+                <Ionicons name="arrow-back" size={24} color="#374151" />
+              </TouchableOpacity>
+              <Text style={tw`text-3xl font-bold text-green-600`}>Messages</Text>
+            </View>
             <TouchableOpacity>
               <Ionicons name="create-outline" size={28} color="#10B981" />
             </TouchableOpacity>

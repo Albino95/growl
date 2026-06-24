@@ -1,11 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Modal, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { useAuthStore } from '../../state/useAuthStore';
+import { useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import tw from '../../lib/tw';
+import {
+  addFriend,
+  removeFriend,
+  getFriendshipStatus,
+  blockUser,
+  unblockUser,
+  muteUser,
+  unmuteUser,
+  reportUser,
+} from '../../services/api/friends';
+import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
+import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
+import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import EmptyState from '../../components/ui/EmptyState';
 
 type Post = {
   id: string;
@@ -19,9 +47,13 @@ type Post = {
 
 type Story = {
   id: string;
+  userId: string;
+  username: string;
+  avatar: string | null;
   image: string;
   createdAt: string;
   views: number;
+  hasViewed: boolean;
 };
 
 type JournalEntry = {
@@ -33,16 +65,7 @@ type JournalEntry = {
   tags?: string[];
 };
 
-type PublicUser = {
-  id: string;
-  username: string;
-  avatar: string;
-  points: number;
-  isInstructor: boolean;
-  categories: string[];
-  postsCount: number;
-  storiesCount: number;
-};
+type PublicUser = PublicProfileSummary;
 
 type RouteParams = {
   PublicProfile: {
@@ -50,129 +73,48 @@ type RouteParams = {
   };
 };
 
-// Mock function - in real app, this would fetch from API
-async function fetchPublicProfile(userId: string): Promise<PublicUser> {
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Mock data based on userId
-  const mockUsers: Record<string, PublicUser> = {
-    'u1': {
-      id: 'u1',
-      username: 'John',
-      avatar: '👤',
-      points: 250,
-      isInstructor: false,
-      categories: ['fitness', 'mindset'],
-      postsCount: 15,
-      storiesCount: 8,
-    },
-    'u2': {
-      id: 'u2',
-      username: 'Sarah',
-      avatar: '👩',
-      points: 450,
-      isInstructor: true,
-      categories: ['art', 'music'],
-      postsCount: 32,
-      storiesCount: 12,
-    },
-    'u3': {
-      id: 'u3',
-      username: 'Mike',
-      avatar: '👨',
-      points: 180,
-      isInstructor: false,
-      categories: ['mindset', 'fitness'],
-      postsCount: 9,
-      storiesCount: 5,
-    },
-  };
-  
-  return mockUsers[userId] || {
-    id: userId,
-    username: 'User',
-    avatar: '👤',
-    points: 0,
-    isInstructor: false,
-    categories: [],
-    postsCount: 0,
-    storiesCount: 0,
+/** Normalizes backend feed payload into compact UI card model for public profile posts. */
+function mapFeedPostToPublicPost(p: FeedPost): Post {
+  return {
+    id: p.id,
+    image: resolvePostMediaUri(p.image_url, p.category, p.id),
+    caption: p.caption || '',
+    likes: p.metadata?.likes ?? 0,
+    comments: p.metadata?.comments ?? 0,
+    createdAt: p.created_at,
+    category: p.category,
   };
 }
 
-// Mock function to fetch user posts
+/** Converts story API shape into local story model used by this screen. */
+function mapStoryItemToStory(s: StoryItem): Story {
+  return {
+    id: s.id,
+    userId: s.userId,
+    username: s.username,
+    avatar: s.avatar,
+    image: s.image,
+    createdAt: s.createdAt,
+    views: s.views ?? 0,
+    hasViewed: !!s.hasViewed,
+  };
+}
+
+/** Fetches and maps public posts for the selected profile user. */
 async function fetchUserPosts(userId: string): Promise<Post[]> {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const mockPosts: Record<string, Post[]> = {
-    'u1': [
-      {
-        id: '1',
-        image: '🏋️',
-        caption: 'Day 15 of my fitness journey!',
-        likes: 42,
-        comments: 8,
-        createdAt: '2024-01-10',
-        category: 'fitness',
-      },
-      {
-        id: '2',
-        image: '💪',
-        caption: 'Feeling stronger every day',
-        likes: 28,
-        comments: 5,
-        createdAt: '2024-01-12',
-        category: 'fitness',
-      },
-    ],
-    'u2': [
-      {
-        id: '3',
-        image: '🎹',
-        caption: 'Practiced piano for 2 hours today',
-        likes: 35,
-        comments: 12,
-        createdAt: '2024-01-14',
-        category: 'art',
-      },
-    ],
-    'u3': [
-      {
-        id: '4',
-        image: '🧘',
-        caption: 'Morning meditation session',
-        likes: 25,
-        comments: 6,
-        createdAt: '2024-01-15',
-        category: 'mindset',
-      },
-    ],
-  };
-  
-  return mockPosts[userId] || [];
+  const list = await getUserPosts(userId);
+  return list.map(mapFeedPostToPublicPost);
 }
 
-// Mock function to fetch user stories
+/** Fetches and maps profile stories for story strip + viewer navigation. */
 async function fetchUserStories(userId: string): Promise<Story[]> {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const mockStories: Record<string, Story[]> = {
-    'u1': [
-      { id: '1', image: '🌱', createdAt: '2024-01-15', views: 120 },
-      { id: '2', image: '🏃', createdAt: '2024-01-14', views: 89 },
-    ],
-    'u2': [
-      { id: '3', image: '📚', createdAt: '2024-01-13', views: 156 },
-    ],
-    'u3': [],
-  };
-  
-  return mockStories[userId] || [];
+  const list = await getUserStories(userId);
+  return list.map(mapStoryItemToStory);
 }
 
 // Mock function to fetch public journal entries
 async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]> {
+  // Temporary mock until public journal backend endpoint is wired.
   await new Promise(resolve => setTimeout(resolve, 300));
   
   const mockJournalEntries: Record<string, JournalEntry[]> = {
@@ -220,7 +162,7 @@ async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]
 }
 
 export default function PublicProfileScreen() {
-  const { user: currentUser } = useAuthStore();
+  const { user: currentUser } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PublicProfile'>>();
   const { userId } = route.params;
@@ -232,34 +174,136 @@ export default function PublicProfileScreen() {
   const [stories, setStories] = useState<Story[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
+  const [friendConnected, setFriendConnected] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const [friendRequestReceived, setFriendRequestReceived] = useState(false);
+  const [friendBusy, setFriendBusy] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
-  
+
   const isOwnProfile = currentUser?.id === userId;
 
+  // Reload profile shell when route user changes.
   useEffect(() => {
     loadProfile();
   }, [userId]);
 
+  // Relationship status drives follow button and moderation toggle labels.
+  useEffect(() => {
+    if (isOwnProfile || !currentUser?.id) {
+      setFriendConnected(false);
+      setFriendRequestSent(false);
+      setFriendRequestReceived(false);
+      return;
+    }
+    let cancelled = false;
+    getFriendshipStatus(userId).then((s) => {
+      if (!cancelled) {
+        setFriendConnected(s.connected);
+        setFriendRequestSent(s.requestSent);
+        setFriendRequestReceived(s.requestReceived);
+        setIsBlocked(s.blocked);
+        setIsMuted(s.muted);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUser?.id, isOwnProfile]);
+
+  /** Handles friend request send/cancel/accept and remove-friend actions. */
+  const onToggleFriend = async () => {
+    if (friendBusy || isOwnProfile) return;
+    if (isBlocked) {
+      Alert.alert('Blocked user', 'Unblock this user before connecting.');
+      return;
+    }
+    setFriendBusy(true);
+    try {
+      if (friendConnected) {
+        await removeFriend(userId);
+        setFriendConnected(false);
+        setFriendRequestSent(false);
+        setFriendRequestReceived(false);
+        if (Platform.OS === 'web') {
+          window.alert('Removed from friends.');
+        } else {
+          Alert.alert('Removed', 'Friend connection removed.');
+        }
+      } else if (friendRequestSent) {
+        await removeFriend(userId);
+        setFriendRequestSent(false);
+        if (Platform.OS === 'web') {
+          window.alert('Friend request cancelled.');
+        } else {
+          Alert.alert('Cancelled', 'Friend request cancelled.');
+        }
+      } else {
+        const result = await addFriend(userId);
+        setFriendConnected(result.connected);
+        setFriendRequestSent(result.requestSent);
+        setFriendRequestReceived(false);
+        if (Platform.OS === 'web') {
+          window.alert(result.connected ? 'Friend request accepted.' : 'Friend request sent.');
+        } else {
+          Alert.alert(
+            result.connected ? 'Friends' : 'Request sent',
+            result.connected
+              ? 'You are now friends.'
+              : `${profileUser?.username ?? 'User'} can accept your friend request.`
+          );
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not update connection';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    } finally {
+      setFriendBusy(false);
+    }
+  };
+
+  // Lazily load tab-specific content only after profile metadata is available.
   useEffect(() => {
     if (profileUser) {
       loadContent();
     }
-  }, [profileUser, activeTab]);
+  }, [profileUser, activeTab, isBlocked]);
 
+  useEffect(() => {
+    if (!isBlocked) return;
+    setPosts([]);
+    setStories([]);
+    setJournalEntries([]);
+  }, [isBlocked]);
+
+  /** Loads public profile header/stats metadata. */
   const loadProfile = async () => {
     try {
       setLoading(true);
-      const userData = await fetchPublicProfile(userId);
+      const userData = await getPublicProfile(userId);
       setProfileUser(userData);
     } catch (error) {
       console.error('Error loading profile:', error);
+      setProfileUser(null);
     } finally {
       setLoading(false);
     }
   };
 
+  /** Loads selected tab content (posts/stories/journal) for current profile user. */
   const loadContent = async () => {
     if (!profileUser) return;
+    if (isBlocked) {
+      setPosts([]);
+      setStories([]);
+      setJournalEntries([]);
+      return;
+    }
     
     try {
       setLoadingContent(true);
@@ -280,9 +324,190 @@ export default function PublicProfileScreen() {
     }
   };
 
+  /** Opens story viewer modal and syncs viewed-state both locally and server-side. */
+  const openStoryViewer = (selectedStoryId?: string) => {
+    if (!stories.length || !profileUser) return;
+    const initialIndex = selectedStoryId
+      ? Math.max(0, stories.findIndex((story) => story.id === selectedStoryId))
+      : 0;
+    const rootNavigation = navigation.getParent() || navigation;
+    (rootNavigation as any).navigate('StoryViewer', {
+      stories: stories.map((story) => ({
+        id: story.id,
+        userId: story.userId,
+        username: story.username,
+        avatar: story.avatar || resolveAvatarUri(story.userId, story.username, story.avatar),
+        image: resolveStoryDisplayUri(story.image, story.userId, story.id),
+        createdAt: story.createdAt,
+        views: story.views,
+        hasViewed: story.hasViewed,
+      })),
+      initialIndex,
+      onStoriesUpdate: (updatedStories: Array<{ id: string; hasViewed?: boolean }>) => {
+        const viewedIds = updatedStories.filter((s) => s.hasViewed).map((s) => s.id);
+        if (viewedIds.length > 0) {
+          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+        }
+        setStories((prev) =>
+          prev.map((story) => {
+            const updated = updatedStories.find((s) => s.id === story.id);
+            return updated ? { ...story, hasViewed: !!updated.hasViewed } : story;
+          })
+        );
+      },
+    });
+  };
+
+  const refreshFriendshipState = async () => {
+    try {
+      const state = await getFriendshipStatus(userId);
+      setFriendConnected(state.connected);
+      setFriendRequestSent(state.requestSent);
+      setFriendRequestReceived(state.requestReceived);
+      setIsBlocked(state.blocked);
+      setIsMuted(state.muted);
+    } catch {
+      // Keep current local state when refresh fails.
+    }
+  };
+
+  const confirmAction = (title: string, message: string, confirmText = 'Confirm') =>
+    new Promise<boolean>((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(typeof globalThis.confirm === 'function' ? globalThis.confirm(`${title}\n\n${message}`) : true);
+        return;
+      }
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: confirmText, style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+
+  const notify = (title: string, message: string) => {
+    if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+      globalThis.alert(`${title}\n\n${message}`);
+      return;
+    }
+    Alert.alert(title, message);
+  };
+
+  const handleBlockMenuPress = async () => {
+    setShowOptionsMenu(false);
+    const username = profileUser?.username || 'this user';
+    const approved = await confirmAction(
+      isBlocked ? 'Unblock User' : 'Block User',
+      isBlocked
+        ? `Do you want to unblock ${username}?`
+        : `Are you sure you want to block ${username}?`,
+      isBlocked ? 'Unblock' : 'Block'
+    );
+    if (!approved) return;
+
+    try {
+      if (isBlocked) {
+        await unblockUser(userId);
+        notify('Unblocked', `${username} has been unblocked.`);
+      } else {
+        await blockUser(userId);
+        setPosts([]);
+        setStories([]);
+        setJournalEntries([]);
+        notify('Blocked', `${username} has been blocked.`);
+      }
+      await refreshFriendshipState();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not update block status';
+      notify('Error', msg);
+    }
+  };
+
+  const handleReportMenuPress = () => {
+    setShowOptionsMenu(false);
+    Alert.alert('Report User', `Why are you reporting ${profileUser?.username}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Spam',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'spam');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+      {
+        text: 'Harassment',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'harassment');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+      {
+        text: 'Inappropriate Content',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'inappropriate_content');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+      {
+        text: 'Other',
+        onPress: async () => {
+          try {
+            await reportUser(userId, 'other');
+            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not submit report';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleMuteMenuPress = () => {
+    setShowOptionsMenu(false);
+    Alert.alert(isMuted ? 'Unmute User' : 'Mute User', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: isMuted ? 'Unmute' : 'Mute',
+        onPress: async () => {
+          try {
+            if (isMuted) {
+              await unmuteUser(userId);
+              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+            } else {
+              await muteUser(userId);
+              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+            }
+            await refreshFriendshipState();
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : 'Could not update mute status';
+            Alert.alert('Error', msg);
+          }
+        },
+      },
+    ]);
+  };
+
+  const openOptionsMenu = () => {
+    setShowOptionsMenu(true);
+  };
+
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator size="large" color="#10B981" />
           <Text style={tw`text-gray-500 mt-4`}>Loading profile...</Text>
@@ -293,7 +518,7 @@ export default function PublicProfileScreen() {
 
   if (!profileUser) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
           <Ionicons name="person-outline" size={64} color="#D1D5DB" />
           <Text style={tw`text-gray-500 mt-4 text-center text-lg`}>User not found</Text>
@@ -309,7 +534,7 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
       {/* Header with Back Button */}
       <View style={tw`px-4 pt-2 pb-3 border-b border-gray-200 bg-white flex-row items-center`}>
         <TouchableOpacity
@@ -321,20 +546,28 @@ export default function PublicProfileScreen() {
         <Text style={tw`text-lg font-semibold text-gray-900 flex-1`}>
           {profileUser.username}
         </Text>
-        <TouchableOpacity 
-          style={tw`p-1`}
-          onPress={() => setShowOptionsMenu(true)}
+        <TouchableOpacity
+          style={tw`w-11 h-11 items-center justify-center`}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          onPress={openOptionsMenu}
         >
           <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={tw`flex-1`}>
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+      >
         {/* Profile Header */}
         <View style={tw`px-4 pt-6 pb-6 border-b border-gray-200`}>
           <View style={tw`flex-row items-center mb-4`}>
-            <View style={tw`w-20 h-20 rounded-full bg-green-100 items-center justify-center mr-4`}>
-              <Text style={tw`text-4xl`}>{profileUser.avatar}</Text>
+            <View style={tw`w-20 h-20 rounded-full overflow-hidden mr-4 bg-green-100`}>
+              <Image
+                source={{ uri: resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar) }}
+                style={tw`w-full h-full`}
+                contentFit="cover"
+              />
             </View>
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-gray-900`}>
@@ -349,24 +582,71 @@ export default function PublicProfileScreen() {
             </View>
           </View>
 
-          {/* Stats */}
-          <View style={tw`flex-row gap-3 mb-4`}>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Posts</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.postsCount}</Text>
+          <View style={tw`flex-row justify-around mb-4 py-2`}>
+            <View style={tw`items-center`}>
+              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.postsCount}</Text>
+              <Text style={tw`text-xs text-gray-500`}>Posts</Text>
             </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Stories</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.storiesCount}</Text>
+            <View style={tw`items-center`}>
+              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.storiesCount}</Text>
+              <Text style={tw`text-xs text-gray-500`}>Stories</Text>
             </View>
-            <View style={tw`flex-1 bg-gray-50 rounded-lg p-3`}>
-              <Text style={tw`text-xs text-gray-500 mb-1`}>Points</Text>
-              <Text style={tw`text-xl font-bold text-gray-900`}>{profileUser.points}</Text>
+            <View style={tw`items-center`}>
+              <Text style={tw`text-lg font-bold text-emerald-600`}>{profileUser.points}</Text>
+              <Text style={tw`text-xs text-gray-500`}>Points</Text>
             </View>
           </View>
 
-          {/* Points Display */}
-          <View style={tw`bg-green-500 rounded-xl p-4 shadow-lg`}>
+          {!isOwnProfile && currentUser?.id ? (
+            <TouchableOpacity
+              onPress={() => void onToggleFriend()}
+              disabled={friendBusy}
+              style={tw`mb-4 py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
+                friendConnected || friendRequestSent
+                  ? 'bg-stone-100 border border-stone-200'
+                  : friendRequestReceived
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-600'
+              } ${friendBusy ? 'opacity-60' : ''}`}
+            >
+              {friendBusy ? (
+                <ActivityIndicator
+                  color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
+                />
+              ) : (
+                <Ionicons
+                  name={
+                    friendConnected
+                      ? 'checkmark-circle'
+                      : friendRequestSent
+                        ? 'time'
+                        : friendRequestReceived
+                          ? 'mail-open'
+                          : 'person-add'
+                  }
+                  size={20}
+                  color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
+                />
+              )}
+              <Text
+                style={tw`font-semibold text-base ${
+                  friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
+                }`}
+              >
+                {friendBusy
+                  ? 'Updating…'
+                  : friendConnected
+                    ? 'Friends'
+                    : friendRequestSent
+                      ? 'Requested'
+                      : friendRequestReceived
+                        ? 'Accept Request'
+                        : 'Add Friend'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={tw`bg-emerald-600 rounded-2xl p-4`}>
             <View style={tw`flex-row items-center justify-between`}>
               <View>
                 <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
@@ -375,7 +655,7 @@ export default function PublicProfileScreen() {
               <Ionicons name="trophy" size={40} color="white" />
             </View>
             {!profileUser.isInstructor && (
-              <View style={tw`mt-3 pt-3 border-t border-green-400`}>
+              <View style={tw`mt-3 pt-3 border-t border-emerald-400/60`}>
                 <View style={tw`flex-row items-center justify-between`}>
                   <Text style={tw`text-white text-sm`}>Points to Instructor: {500 - profileUser.points}</Text>
                   <View style={tw`flex-1 h-2 bg-green-400 rounded-full mx-3 overflow-hidden`}>
@@ -445,7 +725,15 @@ export default function PublicProfileScreen() {
         </View>
 
         {/* Content */}
-        {loadingContent ? (
+        {isBlocked ? (
+          <View style={tw`p-6 items-center justify-center`}>
+            <Ionicons name="ban-outline" size={48} color="#9CA3AF" />
+            <Text style={tw`text-gray-700 mt-3 text-center font-semibold`}>You have blocked this user</Text>
+            <Text style={tw`text-gray-500 mt-1 text-center`}>
+              Unblock them to view their posts, stories, and activity again.
+            </Text>
+          </View>
+        ) : loadingContent ? (
           <View style={tw`p-8 items-center justify-center`}>
             <ActivityIndicator size="large" color="#10B981" />
           </View>
@@ -459,7 +747,7 @@ export default function PublicProfileScreen() {
                   onPress={() => {
                     if (!profileUser) return;
                     const rootNavigation = navigation.getParent() || navigation;
-                    rootNavigation.navigate('PostDetail' as never, {
+                    (rootNavigation as any).navigate('PostDetail', {
                       post: {
                         id: post.id,
                         userId: profileUser.id,
@@ -474,13 +762,17 @@ export default function PublicProfileScreen() {
                         hasLiked: false,
                         reaction: null,
                       },
-                    } as never);
+                    });
                   }}
                 >
                   <View style={tw`flex-row items-center justify-between mb-3`}>
                     <View style={tw`flex-row items-center`}>
-                      <View style={tw`w-16 h-16 bg-gray-100 rounded-xl items-center justify-center mr-3`}>
-                        <Text style={tw`text-3xl`}>{post.image}</Text>
+                      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-gray-100`}>
+                        <Image
+                          source={{ uri: post.image }}
+                          style={tw`w-full h-full`}
+                          contentFit="cover"
+                        />
                       </View>
                       <View style={tw`flex-1`}>
                         <Text style={tw`font-semibold text-gray-900`} numberOfLines={2}>
@@ -505,12 +797,11 @@ export default function PublicProfileScreen() {
                 </TouchableOpacity>
               ))
             ) : (
-              <View style={tw`items-center justify-center py-12`}>
-                <Ionicons name="images-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-500 mt-4 text-center`}>
-                  No posts yet
-                </Text>
-              </View>
+              <EmptyState
+                icon="images-outline"
+                title="No posts yet"
+                description="This user has not shared posts yet."
+              />
             )}
           </View>
         ) : activeTab === 'stories' ? (
@@ -519,9 +810,17 @@ export default function PublicProfileScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
-                    <View key={story.id} style={tw`items-center`}>
-                      <View style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500`}>
-                        <Text style={tw`text-4xl`}>{story.image}</Text>
+                    <TouchableOpacity
+                      key={story.id}
+                      style={tw`items-center`}
+                      onPress={() => openStoryViewer(story.id)}
+                    >
+                      <View style={tw`w-20 h-20 rounded-xl overflow-hidden mb-2 border-2 border-purple-500 bg-gray-100`}>
+                        <Image
+                          source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
+                          style={tw`w-full h-full`}
+                          contentFit="cover"
+                        />
                       </View>
                       <Text style={tw`text-xs text-gray-500`}>
                         {story.views} views
@@ -529,17 +828,16 @@ export default function PublicProfileScreen() {
                       <Text style={tw`text-xs text-gray-400 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </ScrollView>
             ) : (
-              <View style={tw`items-center justify-center py-12`}>
-                <Ionicons name="images-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-500 mt-4 text-center`}>
-                  No stories yet
-                </Text>
-              </View>
+              <EmptyState
+                icon="images-outline"
+                title="No stories yet"
+                description="Stories from this user will appear here."
+              />
             )}
           </View>
         ) : (
@@ -580,127 +878,79 @@ export default function PublicProfileScreen() {
                 </View>
               ))
             ) : (
-              <View style={tw`items-center justify-center py-12`}>
-                <Ionicons name="book-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-gray-500 mt-4 text-center`}>
-                  No public journal entries yet
-                </Text>
-              </View>
+              <EmptyState
+                icon="book-outline"
+                title="No public journal entries"
+                description="Public journal updates from this user will show here."
+              />
             )}
           </View>
         )}
       </ScrollView>
 
-      {/* Options Menu Modal */}
       <Modal
         visible={showOptionsMenu}
-        transparent={true}
+        transparent
         animationType="fade"
         onRequestClose={() => setShowOptionsMenu(false)}
       >
-        <TouchableOpacity
-          style={tw`flex-1 bg-black bg-opacity-50 justify-end`}
-          activeOpacity={1}
-          onPress={() => setShowOptionsMenu(false)}
-        >
-          <View style={tw`bg-white rounded-t-3xl p-4`}>
-            <View style={tw`items-center mb-4`}>
-              <View style={tw`w-12 h-1 bg-gray-300 rounded-full`} />
-            </View>
-            
-            {!isOwnProfile && (
+        <View style={tw`flex-1 justify-end`}>
+          <Pressable
+            style={tw`absolute inset-0 bg-black/35`}
+            onPress={() => setShowOptionsMenu(false)}
+          />
+          <View style={tw`bg-white px-4 pt-3 pb-6 rounded-t-3xl`}>
+            <View style={tw`w-12 h-1.5 bg-gray-300 rounded-full self-center mb-4`} />
+
+            {!isOwnProfile ? (
               <>
-                <TouchableOpacity
-                  style={tw`flex-row items-center py-4 border-b border-gray-200`}
-                  onPress={() => {
-                    setShowOptionsMenu(false);
-                    Alert.alert(
-                      'Block User',
-                      `Are you sure you want to block ${profileUser?.username}? You won't be able to see their posts, stories, or journal entries.`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Block',
-                          style: 'destructive',
-                          onPress: () => {
-                            Alert.alert('User Blocked', `${profileUser?.username} has been blocked.`);
-                          },
-                        },
-                      ]
-                    );
-                  }}
+                <Pressable
+                  style={tw`py-4 border-b border-gray-100`}
+                  onPress={() => void handleBlockMenuPress()}
                 >
-                  <Ionicons name="ban-outline" size={24} color="#EF4444" />
-                  <Text style={tw`text-base text-gray-900 ml-3`}>Block User</Text>
-                </TouchableOpacity>
+                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-gray-900' : 'text-red-600'}`}>
+                    {isBlocked ? 'Unblock User' : 'Block User'}
+                  </Text>
+                </Pressable>
 
-                <TouchableOpacity
-                  style={tw`flex-row items-center py-4 border-b border-gray-200`}
-                  onPress={() => {
-                    setShowOptionsMenu(false);
-                    Alert.alert(
-                      'Report User',
-                      `Why are you reporting ${profileUser?.username}?`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Spam',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
-                        },
-                        {
-                          text: 'Harassment',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
-                        },
-                        {
-                          text: 'Inappropriate Content',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
-                        },
-                        {
-                          text: 'Other',
-                          onPress: () => Alert.alert('Reported', 'Thank you for your report. We will review it.'),
-                        },
-                      ]
-                    );
-                  }}
+                <Pressable
+                  style={tw`py-4 border-b border-gray-100`}
+                  onPress={handleReportMenuPress}
                 >
-                  <Ionicons name="flag-outline" size={24} color="#F59E0B" />
-                  <Text style={tw`text-base text-gray-900 ml-3`}>Report User</Text>
-                </TouchableOpacity>
+                  <Text style={tw`text-base font-semibold text-gray-900`}>Report User</Text>
+                </Pressable>
 
-                <TouchableOpacity
-                  style={tw`flex-row items-center py-4 border-b border-gray-200`}
-                  onPress={() => {
-                    setShowOptionsMenu(false);
-                    Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
-                  }}
+                <Pressable
+                  style={tw`py-4 border-b border-gray-100`}
+                  onPress={handleMuteMenuPress}
                 >
-                  <Ionicons name="notifications-off-outline" size={24} color="#6B7280" />
-                  <Text style={tw`text-base text-gray-900 ml-3`}>Mute User</Text>
-                </TouchableOpacity>
+                  <Text style={tw`text-base font-semibold text-gray-900`}>
+                    {isMuted ? 'Unmute User' : 'Mute User'}
+                  </Text>
+                </Pressable>
               </>
-            )}
+            ) : null}
 
-            <TouchableOpacity
-              style={tw`flex-row items-center py-4 border-b border-gray-200`}
+            <Pressable
+              style={tw`py-4 border-b border-gray-100`}
               onPress={() => {
                 setShowOptionsMenu(false);
                 Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
               }}
             >
-              <Ionicons name="share-outline" size={24} color="#6B7280" />
-              <Text style={tw`text-base text-gray-900 ml-3`}>Share Profile</Text>
-            </TouchableOpacity>
+              <Text style={tw`text-base font-semibold text-gray-900`}>Share Profile</Text>
+            </Pressable>
 
-            <TouchableOpacity
-              style={tw`flex-row items-center py-4`}
+            <Pressable
+              style={tw`py-4 mt-2`}
               onPress={() => setShowOptionsMenu(false)}
             >
-              <Ionicons name="close-outline" size={24} color="#6B7280" />
-              <Text style={tw`text-base text-gray-900 ml-3`}>Cancel</Text>
-            </TouchableOpacity>
+              <Text style={tw`text-base font-semibold text-center text-gray-500`}>Cancel</Text>
+            </Pressable>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
+
     </SafeAreaView>
   );
 }

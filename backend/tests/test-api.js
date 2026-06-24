@@ -199,11 +199,14 @@ async function testSignIn() {
     password,
   });
   
-  const passed = result.ok && result.data?.success && result.data?.data?.token;
-  
+  const payload = result.data?.data;
+  const userId = payload?.user?.id || payload?.userId;
+  const passed =
+    result.ok && result.data?.success && payload?.token && userId;
+
   if (passed) {
-    authToken = result.data.data.token;
-    testUserId = result.data.data.user.id;
+    authToken = payload.token;
+    testUserId = userId;
     logTest('Sign In', true, `Token received`);
   } else {
     logTest('Sign In', false, result.data?.error?.message || result.error);

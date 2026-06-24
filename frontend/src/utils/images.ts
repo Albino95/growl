@@ -17,7 +17,7 @@ export function getAvatarUrl(userId: string, username?: string): string {
 export function getCategoryImageUrl(category: string, subcategory?: string): string {
   const categoryMap: Record<string, string> = {
     // Fitness & Health
-    fitness: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b84d4?w=800&h=600&fit=crop&q=80',
+    fitness: 'https://picsum.photos/seed/fitness/800/600',
     'losing-weight': 'https://images.unsplash.com/photo-1517836357483-507a3093906b?w=800&h=600&fit=crop&q=80',
     'gaining-weight': 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&h=600&fit=crop&q=80',
     running: 'https://images.unsplash.com/photo-1544966503-7cc5ac882d5f?w=800&h=600&fit=crop&q=80',
@@ -64,7 +64,7 @@ export function getCategoryImageUrl(category: string, subcategory?: string): str
     gardening: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800&h=600&fit=crop&q=80',
     'home-improvement': 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&h=600&fit=crop&q=80',
     
-    default: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&h=600&fit=crop&q=80',
+    default: 'https://picsum.photos/seed/default/800/600',
   };
 
   const key = subcategory || category;
@@ -81,7 +81,7 @@ export function getPostImageUrl(category: string, postId?: string): string {
     // Use category-based images with variation
     const baseUrl = getCategoryImageUrl(category);
     // Add variation based on postId
-    return `${baseUrl}&sig=${index % 100}`;
+    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}sig=${index % 100}`;
   }
   return getCategoryImageUrl(category);
 }
@@ -100,7 +100,81 @@ export function getStoryImageUrl(userId: string, storyId?: string): string {
   // Use a seed based on userId and storyId for consistent images
   const seed = storyId ? `${userId}-${storyId}` : userId;
   // Use picsum.photos for variety with consistent seeding
-  return `https://picsum.photos/seed/${seed}/800/1200`;
+  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/800/1200`;
+}
+
+/**
+ * Post image URL from API may be https, device URI, or legacy bare paths — normalize for Image source.
+ */
+export function resolvePostMediaUri(
+  raw: string | null | undefined,
+  category: string,
+  postId: string
+): string {
+  const s = (raw || '').trim();
+  if (!s) return getPostImageUrl(category, postId);
+  const lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  // Persisted blob: URLs are browser-session local and break after refresh.
+  if (lower.startsWith('blob:')) {
+    return getPostImageUrl(category, postId);
+  }
+  if (
+    lower.startsWith('file://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('data:')
+  ) {
+    return s;
+  }
+  return getPostImageUrl(category, postId);
+}
+
+/**
+ * Story API may return https URLs, device file/content URIs, or legacy placeholders (emoji / bare paths).
+ * Anything that is not a loadable remote/local URI gets a deterministic picsum fallback so UI never shows raw paths.
+ */
+export function resolveStoryDisplayUri(
+  raw: string | null | undefined,
+  userId: string,
+  storyId?: string
+): string {
+  const s = (raw || '').trim();
+  if (!s) return getStoryImageUrl(userId, storyId);
+  const lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (lower.startsWith('blob:')) {
+    return getStoryImageUrl(userId, storyId);
+  }
+  if (
+    lower.startsWith('file://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('data:')
+  ) {
+    return s;
+  }
+  return getStoryImageUrl(userId, storyId);
+}
+
+/** Avatar from metadata may be emoji or invalid — prefer remote URL or pravatar fallback */
+export function resolveAvatarUri(userId: string, username?: string, raw?: string | null): string {
+  const s = (raw || '').trim();
+  if (!s) return getAvatarUrl(userId, username);
+  const lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
+  if (lower.startsWith('blob:')) {
+    return getAvatarUrl(userId, username);
+  }
+  if (
+    lower.startsWith('file://') ||
+    lower.startsWith('content://') ||
+    lower.startsWith('ph://') ||
+    lower.startsWith('data:')
+  ) {
+    return s;
+  }
+  return getAvatarUrl(userId, username);
 }
 
 /**
@@ -115,7 +189,7 @@ export function getProductImageUrl(category: string, productId?: string): string
   if (productId) {
     const index = productId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     // Add variation parameter to get different images for same category
-    return `${baseUrl}&sig=${index % 50}`;
+    return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}sig=${index % 50}`;
   }
   return baseUrl;
 }
@@ -132,7 +206,7 @@ export function getProductImages(category: string, productId: string, count: num
     const seed = `${productId}-${i}`;
     const index = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     // Use category image with variation for each image in the array
-    images.push(`${baseUrl}&sig=${(index + i * 10) % 50}`);
+    images.push(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}sig=${(index + i * 10) % 50}`);
   }
   return images;
 }

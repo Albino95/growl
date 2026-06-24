@@ -1,18 +1,21 @@
 import React from 'react';
-import { View, TouchableOpacity, Text } from 'react-native';
+import { View, TouchableOpacity, Text, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FeedScreen from '../../../screens/Feed/FeedScreen';
+import ExploreScreen from '../../../screens/Explore/ExploreScreen';
 import JournalScreen from '../../../screens/Journal/JournalScreen';
 import ProfileScreen from '../../../screens/Profile/ProfileScreen';
 import InstructorScreen from '../../../screens/Instructor/InstructorScreen';
 import MarketplaceScreen from '../../../screens/Marketplace/MarketplaceScreen';
-import { useAuthStore } from '../../../state/useAuthStore';
 import tw from '../../../lib/tw';
+import { navigateFromRoot } from '../rootNavigation';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
+  Explore: undefined;
   Journal: undefined;
   Marketplace: undefined;
   Profile: undefined;
@@ -21,164 +24,142 @@ export type IndividualTabsParamList = {
 
 const Tab = createBottomTabNavigator<IndividualTabsParamList>();
 
-// Custom Create Post Button Component
-function CreatePostButton({ onPress }: { onPress: () => void }) {
+type TabKey = 'Feed' | 'Explore' | 'Journal' | 'Marketplace' | 'Profile';
+
+const TAB_LEFT: Array<{
+  key: TabKey;
+  label: string;
+  activeIcon: keyof typeof Ionicons.glyphMap;
+  inactiveIcon: keyof typeof Ionicons.glyphMap;
+  activeColor: string;
+}> = [
+  { key: 'Feed', label: 'Feed', activeIcon: 'home', inactiveIcon: 'home-outline', activeColor: '#059669' },
+  { key: 'Explore', label: 'Explore', activeIcon: 'compass', inactiveIcon: 'compass-outline', activeColor: '#7C3AED' },
+];
+
+const TAB_RIGHT: typeof TAB_LEFT = [
+  { key: 'Journal', label: 'Journal', activeIcon: 'book', inactiveIcon: 'book-outline', activeColor: '#059669' },
+  { key: 'Marketplace', label: 'Shop', activeIcon: 'storefront', inactiveIcon: 'storefront-outline', activeColor: '#059669' },
+  { key: 'Profile', label: 'Profile', activeIcon: 'person', inactiveIcon: 'person-outline', activeColor: '#059669' },
+];
+
+function TabButton({
+  tab,
+  isActive,
+  onPress,
+}: {
+  tab: (typeof TAB_LEFT)[number];
+  isActive: boolean;
+  onPress: () => void;
+}) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={tw`absolute -top-7 w-14 h-14 bg-green-500 rounded-full items-center justify-center shadow-lg border-4 border-white`}
-      activeOpacity={0.8}
+      style={tw`flex-1 items-center pb-1.5 min-w-0`}
+      hitSlop={{ top: 8, right: 6, bottom: 8, left: 6 }}
+      accessibilityRole="button"
+      accessibilityLabel={tab.label}
     >
-      <Ionicons name="add" size={28} color="#FFFFFF" />
+      <Ionicons
+        name={isActive ? tab.activeIcon : tab.inactiveIcon}
+        size={22}
+        color={isActive ? tab.activeColor : '#A8A29E'}
+      />
+      <Text
+        style={tw`text-xs mt-0.5 ${isActive ? 'font-semibold' : ''}`}
+        numberOfLines={1}
+      >
+        <Text style={{ color: isActive ? tab.activeColor : '#78716C' }}>{tab.label}</Text>
+      </Text>
     </TouchableOpacity>
   );
 }
 
 export default function IndividualTabs() {
-  const { user } = useAuthStore();
   const navigation = useNavigation();
-  const isInstructor = user?.isInstructor || false;
-
+  const insets = useSafeAreaInsets();
   const handleCreatePost = () => {
-    const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.navigate('Post' as never);
+    navigateFromRoot(navigation, 'Post');
   };
+
+  const fabShadow =
+    Platform.OS === 'ios'
+      ? {
+          shadowColor: '#047857',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.35,
+          shadowRadius: 6,
+        }
+      : { elevation: 8 };
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'home';
-
-          if (route.name === 'Feed') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Journal') {
-            iconName = focused ? 'book' : 'book-outline';
-          } else if (route.name === 'Marketplace') {
-            iconName = focused ? 'storefront' : 'storefront-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          } else if (route.name === 'Instructor') {
-            iconName = focused ? 'school' : 'school-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#10B981',
-        tabBarInactiveTintColor: '#9CA3AF',
-        tabBarStyle: {
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
-          paddingBottom: 8,
-          paddingTop: 8,
-          height: 70,
-          position: 'relative',
-        },
-      })}
+      screenOptions={{ headerShown: false }}
       tabBar={(props) => {
-        const routes = props.state.routes;
-        const currentIndex = props.state.index;
-        
+        const currentRoute = props.state.routes[props.state.index]?.name as TabKey;
+
         return (
-          <View style={tw`bg-white border-t border-gray-200 relative`}>
-            <View style={tw`flex-row items-center justify-around px-2 py-2`}>
-              {/* Feed */}
-              <TouchableOpacity
-                onPress={() => props.navigation.navigate('Feed')}
-                style={tw`items-center flex-1`}
-              >
-                <Ionicons
-                  name={currentIndex === 0 ? 'home' : 'home-outline'}
-                  size={24}
-                  color={currentIndex === 0 ? '#10B981' : '#9CA3AF'}
-                />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                  Feed
-                </Text>
-              </TouchableOpacity>
-
-              {/* Journal */}
-              <TouchableOpacity
-                onPress={() => props.navigation.navigate('Journal')}
-                style={tw`items-center flex-1`}
-              >
-                <Ionicons
-                  name={currentIndex === 1 ? 'book' : 'book-outline'}
-                  size={24}
-                  color={currentIndex === 1 ? '#10B981' : '#9CA3AF'}
-                />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 1 ? 'text-green-600' : 'text-gray-500'}`}>
-                  Journal
-                </Text>
-              </TouchableOpacity>
-
-              {/* Create Post Button - Centered */}
-              <View style={tw`w-20 items-center`}>
-                <CreatePostButton onPress={handleCreatePost} />
+          <View
+            style={[
+              tw`bg-white border-t border-stone-200`,
+              { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 10 : 8) },
+            ]}
+          >
+            <View style={tw`flex-row items-end pt-2.5 px-1`}>
+              <View style={tw`flex-1 flex-row`}>
+                {TAB_LEFT.map((tab) => (
+                  <TabButton
+                    key={tab.key}
+                    tab={tab}
+                    isActive={currentRoute === tab.key}
+                    onPress={() => props.navigation.navigate(tab.key)}
+                  />
+                ))}
               </View>
 
-              {/* Marketplace */}
-              <TouchableOpacity
-                onPress={() => props.navigation.navigate('Marketplace')}
-                style={tw`items-center flex-1`}
-              >
-                <Ionicons
-                  name={currentIndex === 2 ? 'storefront' : 'storefront-outline'}
-                  size={24}
-                  color={currentIndex === 2 ? '#10B981' : '#9CA3AF'}
-                />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 2 ? 'text-green-600' : 'text-gray-500'}`}>
-                  Shop
-                </Text>
-              </TouchableOpacity>
+              <View style={tw`w-[74px] items-center justify-end pb-0.5`} pointerEvents="box-none">
+                <TouchableOpacity
+                  onPress={handleCreatePost}
+                  activeOpacity={0.85}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={[
+                    tw`w-14 h-14 rounded-full bg-emerald-600 items-center justify-center border-4 border-white`,
+                    fabShadow,
+                    { marginTop: -18 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create post"
+                >
+                  <Ionicons name="add" size={30} color="#FFFFFF" />
+                </TouchableOpacity>
+                <View style={tw`h-[18px]`} />
+              </View>
 
-              {/* Profile */}
-              <TouchableOpacity
-                onPress={() => props.navigation.navigate('Profile')}
-                style={tw`items-center flex-1`}
-              >
-                <Ionicons
-                  name={currentIndex === 3 ? 'person' : 'person-outline'}
-                  size={24}
-                  color={currentIndex === 3 ? '#10B981' : '#9CA3AF'}
-                />
-                <Text style={tw`text-xs mt-1 ${currentIndex === 3 ? 'text-green-600' : 'text-gray-500'}`}>
-                  Profile
-                </Text>
-              </TouchableOpacity>
+              <View style={tw`flex-1 flex-row`}>
+                {TAB_RIGHT.map((tab) => (
+                  <TabButton
+                    key={tab.key}
+                    tab={tab}
+                    isActive={currentRoute === tab.key}
+                    onPress={() => props.navigation.navigate(tab.key)}
+                  />
+                ))}
+              </View>
             </View>
           </View>
         );
       }}
     >
-      <Tab.Screen 
-        name="Feed" 
-        component={FeedScreen}
+      <Tab.Screen name="Feed" component={FeedScreen} options={{ tabBarButton: () => null }} />
+      <Tab.Screen name="Explore" component={ExploreScreen} options={{ tabBarButton: () => null }} />
+      <Tab.Screen name="Journal" component={JournalScreen} options={{ tabBarButton: () => null }} />
+      <Tab.Screen name="Marketplace" component={MarketplaceScreen} options={{ tabBarButton: () => null }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarButton: () => null }} />
+      <Tab.Screen
+        name="Instructor"
+        component={InstructorScreen}
         options={{ tabBarButton: () => null }}
       />
-      <Tab.Screen 
-        name="Journal" 
-        component={JournalScreen}
-        options={{ tabBarButton: () => null }}
-      />
-      <Tab.Screen 
-        name="Marketplace" 
-        component={MarketplaceScreen}
-        options={{ tabBarButton: () => null }}
-      />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileScreen}
-        options={{ tabBarButton: () => null }}
-      />
-      {isInstructor && (
-        <Tab.Screen 
-          name="Instructor"
-          component={InstructorScreen}
-          options={{ tabBarButton: () => null }}
-        />
-      )}
     </Tab.Navigator>
   );
 }

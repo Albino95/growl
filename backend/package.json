@@ -6,8 +6,25 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "migrate": "wrangler d1 migrations apply growl-db",
+    "deploy:dev": "wrangler deploy --env dev",
+    "deploy:qa": "wrangler deploy --env qa",
+    "deploy:production": "wrangler deploy --env production",
+    "migrate": "wrangler d1 migrations apply growl-db --remote",
+    "migrate:dev": "wrangler d1 migrations apply growl-db --remote --env dev",
+    "migrate:qa": "wrangler d1 migrations apply growl-db --remote --env qa",
+    "migrate:production": "wrangler d1 migrations apply growl-db --remote --env production",
     "migrate:local": "wrangler d1 migrations apply growl-db --local",
+    "db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run migrate:local",
+    "seed:local": "wrangler d1 execute growl-db --local --file=scripts/seed-products-enhanced.sql",
+    "seed:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-products-enhanced.sql",
+    "seed:core:local": "wrangler d1 execute growl-db --local --file=scripts/seed-demo-core-accounts.sql",
+    "seed:core:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-demo-core-accounts.sql",
+    "seed:social:local": "wrangler d1 execute growl-db --local --file=scripts/seed-demo-social.sql",
+    "seed:social:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-demo-social.sql",
+    "fix:demo-verified:local": "wrangler d1 execute growl-db --local --file=scripts/fix-demo-email-verified.sql",
+    "fix:demo-verified:remote": "wrangler d1 execute growl-db --remote --file=scripts/fix-demo-email-verified.sql",
+    "demo:local": "npm run migrate:local && npm run seed:core:local && npm run seed:social:local",
+    "demo:remote": "npm run migrate && npm run seed:core:remote && npm run seed:social:remote && npm run fix:demo-verified:remote",
     "db:create": "wrangler d1 create growl-db",
     "login": "wrangler login",
     "type-check": "tsc --noEmit",
@@ -17,7 +34,12 @@
     "test:ui": "NODE_OPTIONS=--experimental-global-webcrypto vitest --ui",
     "test:coverage": "NODE_OPTIONS=--experimental-global-webcrypto vitest run --coverage",
     "test:integration": "node tests/test-api.js",
-    "test:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-api.js"
+    "test:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-api.js",
+    "test:social-smoke": "node tests/test-social-smoke.js",
+    "test:social-smoke:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-social-smoke.js",
+    "test:admin-business-smoke": "node tests/test-admin-business-smoke.js",
+    "test:admin-business-smoke:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-admin-business-smoke.js",
+    "seed:admin:local": "node scripts/seed-admin-user.js --local"
   },
   "keywords": [
     "cloudflare",
@@ -27,6 +49,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240208.0",
     "@types/node": "^20.11.0",

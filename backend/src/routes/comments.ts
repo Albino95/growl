@@ -9,6 +9,46 @@ const createCommentSchema = z.object({
   content: z.string().min(1, 'Comment content is required').max(1000, 'Comment too long'),
 });
 
+function parseMockPostId(postId: string): { userIdx: number; postIdx: number } | null {
+  const modern = postId.match(/^mock-explore-post-(\d+)-(\d+)$/);
+  if (modern) return { userIdx: Number(modern[1]), postIdx: Number(modern[2]) };
+  const legacy = postId.match(/^mock-explore-post-(\d+)$/);
+  if (legacy) return { userIdx: Number(legacy[1]), postIdx: 1 };
+  return null;
+}
+
+function computeMockCommentCount(userIdx: number, postIdx: number): number {
+  return 8 + ((userIdx * 7 + postIdx * 5) % 40);
+}
+
+function buildMockComments(postId: string) {
+  const parsed = parseMockPostId(postId);
+  if (!parsed) return [];
+  const { userIdx, postIdx } = parsed;
+  const legacyCountMap: Record<string, number> = {
+    'mock-explore-post-1': 29,
+    'mock-explore-post-2': 18,
+    'mock-explore-post-3': 12,
+  };
+  const count = legacyCountMap[postId] ?? computeMockCommentCount(userIdx, postIdx);
+  return Array.from({ length: count }).map((_, i) => {
+    const person = (userIdx * 17 + postIdx * 11 + i) % 500;
+    return {
+      id: `mock-comment-${userIdx}-${postIdx}-${i + 1}`,
+      post_id: postId,
+      user_id: `mock-user-${String(person + 1).padStart(3, '0')}`,
+      content: `Comment ${i + 1}: solid progress update, keep it up.`,
+      created_at: new Date(Date.now() - (i + 1) * 300000).toISOString(),
+      user: {
+        id: `mock-user-${String(person + 1).padStart(3, '0')}`,
+        username: `User ${String(person + 1).padStart(3, '0')}`,
+        avatar: `https://i.pravatar.cc/200?img=${((person + 1) % 70) + 1}`,
+        is_instructor: person % 7 === 0,
+      },
+    };
+  });
+}
+
 /**
  * GET /api/v1/feed/posts/:postId/comments
  * Get comments for a post
@@ -18,6 +58,11 @@ export async function getComments(
   env: Env,
   postId: string
 ): Promise<Response> {
+  const mockComments = buildMockComments(postId);
+  if (mockComments.length > 0) {
+    return json(mockComments);
+  }
+
   try {
     const comments = await env.DB.prepare(
       `SELECT 
@@ -92,6 +137,29 @@ export async function createComment(
   if (!validation.success) return validation.response;
 
   const { content } = validation.data;
+
+  if (parseMockPostId(postId)) {
+    const user = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
+      .bind(ctx.userId)
+      .first<{ metadata: string; is_instructor: boolean }>();
+    const userMeta = JSON.parse(user?.metadata || '{}');
+    return json(
+      {
+        id: generateId('comment'),
+        post_id: postId,
+        user_id: ctx.userId,
+        content,
+        created_at: new Date().toISOString(),
+        user: {
+          id: ctx.userId,
+          username: userMeta.username,
+          avatar: userMeta.avatar,
+          is_instructor: user?.is_instructor || false,
+        },
+      },
+      201
+    );
+  }
 
   try {
     const commentId = generateId('comment');

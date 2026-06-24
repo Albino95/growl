@@ -12,6 +12,7 @@ import { setCurrentImage, setCurrentCaption, setSelectedCategory, setPosting, re
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import CATEGORIES from '../../data/categories';
 import { createFeedPost } from '../../services/api/feed';
+import { uploadMediaApi } from '../../services/api/media';
 import { getPostImageUrl } from '../../utils/images';
 import tw from '../../lib/tw';
 
@@ -30,6 +31,42 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const { user, updateUser } = useAuth();
 
   const userCategories = user?.categories || [];
+
+  /**
+   * Web-only helper:
+   * Photos selected in browser often come as `blob:` URLs, which are temporary and break after refresh.
+   * We convert them to a compressed data URL first so the value is serializable and can be
+   * uploaded/fallback-saved safely.
+   */
+  const blobToOptimizedDataUrl = async (uri: string): Promise<string> => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const imageEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Could not decode selected image'));
+        img.src = objectUrl;
+      });
+
+      const maxDim = 1400;
+      const scale = Math.min(1, maxDim / Math.max(imageEl.width, imageEl.height));
+      const width = Math.max(1, Math.round(imageEl.width * scale));
+      const height = Math.max(1, Math.round(imageEl.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return uri;
+      ctx.drawImage(imageEl, 0, 0, width, height);
+      return canvas.toDataURL('image/jpeg', 0.8);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -113,12 +150,11 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       return;
     }
 
-    // Category is optional for stories, required for posts
-    // For now, allow posting without category (treat as story)
-    // if (!selectedCategory) {
-    //   Alert.alert('Category required', 'Please select a category for your post.');
-    //   return;
-    // }
+    // Posting is intentionally category-gated to keep feed relevance quality high.
+    if (!selectedCategory) {
+      Alert.alert('Category required', 'Please select one category before posting.');
+      return;
+    }
 
     if (isPosting) {
       return; // Prevent double posting
@@ -126,37 +162,97 @@ export default function PostScreen({ navigation }: PostScreenProps) {
 
     dispatch(setPosting(true));
     try {
-      const category = selectedCategory?.split(':')[0] || userCategories[0]?.split(':')[0] || 'mindset';
-      const subcategory = selectedCategory?.includes(':') ? selectedCategory.split(':')[1] : undefined;
-      const isRemoteImage = image.startsWith('http://') || image.startsWith('https://');
-      const imageUrl = isRemoteImage ? image : getPostImageUrl(category, `${Date.now()}`);
+      // We allow exactly one chosen category chip (radio behavior).
+      // If a path is "fitness:cardio", category is "fitness", subcategory is "cardio".
+      const category = selectedCategory.split(':')[0];
+      const subcategory = selectedCategory.includes(':') ? selectedCategory.split(':')[1] : undefined;
+      let persistableImage = image;
+      if (Platform.OS === 'web' && image.toLowerCase().startsWith('blob:')) {
+        try {
+          persistableImage = await blobToOptimizedDataUrl(image);
+        } catch (err) {
+          console.warn('[PostScreen] Could not convert blob image to persistent URL:', err);
+        }
+      }
 
-      await createFeedPost({
+      const lower = persistableImage.toLowerCase();
+      const isDirectRenderable =
+        lower.startsWith('http://') ||
+        lower.startsWith('https://') ||
+        lower.startsWith('file://') ||
+        lower.startsWith('content://') ||
+        lower.startsWith('ph://') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('data:');
+      // If we have an inline data URL, try uploading it to backend media endpoint.
+      // With R2 configured this returns a permanent URL; without R2 we gracefully fallback.
+      const shouldUpload = lower.startsWith('data:');
+      let imageUrl = isDirectRenderable
+        ? persistableImage
+        : getPostImageUrl(category, `${Date.now()}`);
+      if (shouldUpload) {
+        try {
+          imageUrl = await uploadMediaApi(persistableImage, 'post');
+        } catch (uploadErr) {
+          // Keep posting functional before R2 is configured; once R2 is enabled uploads become durable URLs.
+          console.warn('[PostScreen] Media upload unavailable, falling back to inline data URL:', uploadErr);
+          imageUrl = persistableImage;
+        }
+      }
+
+      console.log('[PostScreen] Creating post with:', { category, subcategory, imageUrl: imageUrl.substring(0, 50) + '...' });
+
+      const response = await createFeedPost({
         image_url: imageUrl,
         caption: caption || '',
         category,
         subcategory,
       });
 
+      console.log('[PostScreen] Post created successfully:', response);
+
+      // Reset posting state immediately (don't wait for alert callback)
+      dispatch(setPosting(false));
+
       // Award points for posting
       const currentPoints = user?.points || 0;
       updateUser({ points: currentPoints + 10 });
 
-      Alert.alert('Success', 'Your post has been shared!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            dispatch(setCurrentImage(null));
-            dispatch(setCurrentCaption(''));
-            dispatch(setSelectedCategory(null));
-            dispatch(setPosting(false));
-            navigation?.goBack();
+      // Clear form data
+      dispatch(setCurrentImage(null));
+      dispatch(setCurrentCaption(''));
+      dispatch(setSelectedCategory(null));
+
+      // Show success message and navigate back
+      if (Platform.OS === 'web') {
+        // On web, use a simple alert and navigate immediately
+        alert('Success! Your post has been shared!');
+        navigation?.goBack();
+      } else {
+        // On native, use Alert.alert with callback
+        Alert.alert('Success', 'Your post has been shared!', [
+          {
+            text: 'OK',
+            onPress: () => {
+              navigation?.goBack();
+            },
           },
-        },
-      ]);
-    } catch (error) {
-      console.error('Post error:', error);
-      Alert.alert('Error', 'Failed to post. Please try again.');
+        ]);
+      }
+    } catch (error: any) {
+      console.error('[PostScreen] Post error:', error);
+      const errorMessage = error?.message || error?.toString() || 'Failed to post. Please try again.';
+      console.error('[PostScreen] Error details:', {
+        message: errorMessage,
+        stack: error?.stack,
+        response: error?.response,
+      });
+      
+      if (Platform.OS === 'web') {
+        alert(`Error: ${errorMessage}`);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
       dispatch(setPosting(false));
     }
   };
@@ -297,6 +393,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
                     return (
                       <TouchableOpacity
                         key={cat}
+                        // Single-select behavior: selecting a chip replaces previous selection.
                         onPress={() => dispatch(setSelectedCategory(cat))}
                         style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                           selectedCategory === cat ? 'bg-green-600' : 'bg-gray-100'
@@ -321,7 +418,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
               <PrimaryButton
                 label={isPosting ? 'Posting...' : 'Post'}
                 onPress={handlePost}
-                disabled={!image || isPosting}
+                disabled={!image || !selectedCategory || isPosting}
               />
             </View>
           </View>

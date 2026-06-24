@@ -14,7 +14,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import tw from '../../lib/tw';
-import { getAvatarUrl, getStoryImageUrl } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri } from '../../utils/images';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -23,7 +23,7 @@ type Story = {
   userId: string;
   username: string;
   avatar: string;
-  image: string;
+  image?: string;
   createdAt: string;
   views?: number;
   hasViewed?: boolean;
@@ -200,10 +200,8 @@ export default function StoryViewerScreen() {
     );
   }
 
-  // Get story image - use actual image URL or generate one
-  const storyImageUrl = currentStory.image?.startsWith('http')
-    ? currentStory.image
-    : getStoryImageUrl(currentStory.userId, currentStory.id);
+  const storyImageUrl = resolveStoryDisplayUri(currentStory.image, currentStory.userId, currentStory.id);
+  const avatarUri = resolveAvatarUri(currentStory.userId, currentStory.username, currentStory.avatar);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-black`} edges={[]}>
@@ -268,7 +266,7 @@ export default function StoryViewerScreen() {
             style={tw`flex-row items-center flex-1`}
           >
             <Image
-              source={{ uri: currentStory.avatar }}
+              source={{ uri: avatarUri }}
               style={tw`w-10 h-10 rounded-full border-2 border-white mr-3`}
             />
             <View>

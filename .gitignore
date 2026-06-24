@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+docs/investor-pitch/.venv/
+docs/investor-pitch/generated/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,6 +7,8 @@ import { CommonActions } from '@react-navigation/native';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import CATEGORIES, { Category, Subcategory } from '../../data/categories';
 import { useAuth } from '../../store/hooks';
+import { updateProfileOnServer } from '../../services/api/profile';
+import { syncCohortFriends } from '../../services/api/friends';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import tw from '../../lib/tw';
 
@@ -19,7 +21,7 @@ interface CategoryPickScreenProps {
 export default function CategoryPickScreen({ navigation }: CategoryPickScreenProps) {
   const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] = React.useState<string | null>(null);
-  const { setOnboardingComplete } = useAuth();
+  const { setOnboardingComplete, refreshProfile } = useAuth();
 
   const toggleCategory = (categoryKey: string) => {
     setSelectedCategories((prev) => {
@@ -59,13 +61,25 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
     });
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (selectedCategories.length === 0) {
       alert('Please select at least one category to continue');
       return;
     }
+    try {
+      await updateProfileOnServer({ categories: selectedCategories });
+      await syncCohortFriends();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Could not save', msg);
+      }
+      return;
+    }
     setOnboardingComplete(selectedCategories);
-    // Navigate to Individual using CommonActions for proper navigation reset
+    await refreshProfile();
     navigation.dispatch(
       CommonActions.reset({
         index: 0,

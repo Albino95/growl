@@ -5,7 +5,7 @@ import AuthScreen from '../../screens/Auth/AuthScreen';
 import KYCScreen from '../../screens/KYC/KYCScreen';
 import CategoryPickScreen from '../../screens/Onboarding/CategoryPickScreen';
 import IndividualTabs from './tabs/IndividualTabs';
-import BusinessTabs from './tabs/BusinessTabs';
+import BusinessRootStack from './BusinessRootStack';
 import PostScreen from '../../screens/Post/PostScreen';
 import PostDetailScreen from '../../screens/Post/PostDetailScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
@@ -13,9 +13,12 @@ import ReelsScreen from '../../screens/Reels/ReelsScreen';
 import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
+import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
+import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
 import { useAppSelector } from '../../store/store';
 import FullScreenLoader from '../../components/common/FullScreenLoader';
+import { shouldShowBusinessShell } from '../../constants/businessShell';
 
 type PostDetailParam = {
   id: string;
@@ -48,6 +51,7 @@ export type RootStackParamList = {
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
+  UserOrders: undefined;
   StoryViewer: {
     stories: Array<{
       id: string;
@@ -71,18 +75,24 @@ export type RootStackParamList = {
       hasViewed?: boolean;
     }>) => void;
   };
+  CreateStory: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { token, user, hydrated } = useAppSelector((state) => state.auth);
+  const { token, user, hydrated, shouldCompleteSignupOnboarding } = useAppSelector(
+    (state) => state.auth
+  );
 
-  // Check if user needs onboarding
-  const needsOnboarding = token && user && !user.hasCompletedOnboarding;
+  // Show category picker only for users currently in the sign-up flow.
+  const needsOnboarding =
+    token &&
+    user &&
+    shouldCompleteSignupOnboarding &&
+    !user.hasCompletedOnboarding;
   
-  // Business accounts go directly to Business screen
-  const isBusinessAccount = user?.email === 'business@growl.app';
+  const isBusinessAccount = shouldShowBusinessShell(user);
   const initialRouteName = !token 
     ? 'Auth' 
     : isBusinessAccount 
@@ -104,9 +114,15 @@ export default function RootNavigator() {
           <Stack.Screen name="Individual" component={IndividualTabs} />
           <Stack.Screen name="Post" component={PostScreen} />
           <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-          <Stack.Screen name="Messages" component={MessagesScreen} />
+          <Stack.Screen 
+            name="Messages" 
+            component={MessagesScreen}
+            options={{ 
+              headerShown: false,
+              presentation: 'card',
+            }}
+          />
           <Stack.Screen name="Reels" component={ReelsScreen} />
-          <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
           <Stack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
@@ -118,13 +134,20 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name="UserOrders"
+            component={UserOrdersScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="StoryViewer"
             component={StoryViewerScreen}
             options={{ headerShown: false, presentation: 'fullScreenModal' }}
           />
+          <Stack.Screen name="CreateStory" component={CreateStoryScreen} />
         </>
       )}
-      <Stack.Screen name="Business" component={BusinessTabs} />
+      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+      <Stack.Screen name="Business" component={BusinessRootStack} />
     </Stack.Navigator>
   );
 }

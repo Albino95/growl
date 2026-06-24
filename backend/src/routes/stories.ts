@@ -5,6 +5,50 @@ import { generateId } from '../utils/id';
 import { validateRequest } from '../utils/validation';
 import { z } from 'zod';
 
+/** Development-only grouped stories fallback used in explore mode. */
+function buildMockExploreStories() {
+  const now = Date.now();
+  const groups: Array<{
+    userId: string;
+    username: string;
+    avatar: string;
+    stories: Array<{
+      id: string;
+      userId: string;
+      username: string;
+      avatar: string;
+      image: string;
+      caption: string;
+      views: number;
+      hasViewed: boolean;
+      createdAt: string;
+    }>;
+  }> = [];
+
+  for (let userIdx = 1; userIdx <= 60; userIdx += 1) {
+    const userId = `mock-user-${String(userIdx).padStart(2, '0')}`;
+    const username = `Creator ${String(userIdx).padStart(2, '0')}`;
+    const avatar = `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`;
+    const stories = Array.from({ length: 10 }).map((_, storyIdx) => {
+      const createdAt = new Date(now - (userIdx * 5 + storyIdx * 15) * 60000).toISOString();
+      return {
+        id: `mock-story-${userIdx}-${storyIdx + 1}`,
+        userId,
+        username,
+        avatar,
+        image: `https://picsum.photos/seed/mock-story-${userIdx}-${storyIdx + 1}/900/1400`,
+        caption: `Story ${storyIdx + 1} from ${username}`,
+        views: 120 + ((userIdx * 9 + storyIdx * 13) % 400),
+        hasViewed: false,
+        createdAt,
+      };
+    });
+    groups.push({ userId, username, avatar, stories });
+  }
+
+  return groups;
+}
+
 const createStorySchema = z.object({
   image_url: z.string().url('Invalid image URL'),
   caption: z.string().max(500, 'Caption too long').optional(),
@@ -15,12 +59,17 @@ const createStorySchema = z.object({
  * Get all active stories (stories from last 24 hours)
  */
 export async function getStories(request: Request, env: Env): Promise<Response> {
+  // Explore mode and mock toggles are opt-in to avoid accidental production fallback.
+  const url = new URL(request.url);
+  const isExploreMode = url.searchParams.get('mode') === 'explore';
+  const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
   const ctx = await getRequestContext(request, env);
+  const viewerId = ctx.userId || '';
   
   try {
-    // Get stories from last 24 hours, grouped by user
-    const stories = await env.DB.prepare(
-      `SELECT 
+    // Fetch only active stories and annotate each with viewer view state.
+    const storiesQuery = `
+      SELECT 
         s.*,
         u.metadata as user_metadata,
         COUNT(DISTINCT sv.user_id) as view_count,
@@ -30,10 +79,24 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
       LEFT JOIN story_views sv ON s.id = sv.story_id
       LEFT JOIN story_views sv_viewer ON s.id = sv_viewer.story_id AND sv_viewer.user_id = ?
       WHERE s.created_at > datetime('now', '-24 hours')
+      ${
+        viewerId
+          ? `AND NOT EXISTS (
+              SELECT 1
+              FROM user_relationships r
+              WHERE r.type IN ('block', 'mute')
+                AND (
+                  (r.user_id = ? AND r.target_user_id = s.user_id)
+                  OR (r.user_id = s.user_id AND r.target_user_id = ? AND r.type = 'block')
+                )
+            )`
+          : ''
+      }
       GROUP BY s.id
-      ORDER BY s.created_at DESC`
-    )
-      .bind(ctx.userId || '')
+      ORDER BY s.created_at DESC
+    `;
+    const stories = await env.DB.prepare(storiesQuery)
+      .bind(...(viewerId ? [viewerId, viewerId, viewerId] : [viewerId]))
       .all<{
         id: string;
         user_id: string;
@@ -48,7 +111,7 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
         has_viewed: number;
       }>();
 
-    // Group stories by user
+    // Story viewer consumes grouped stories by author for ring-style UI.
     const groupedStories: Record<string, any[]> = {};
     
     for (const story of stories.results || []) {
@@ -71,14 +134,24 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
       });
     }
 
+    const grouped = Object.entries(groupedStories).map(([userId, stories]) => ({
+      userId,
+      username: stories[0]?.username || 'User',
+      avatar: stories[0]?.avatar || null,
+      stories,
+    }));
+
+    if (isExploreMode && allowDevMock && grouped.length === 0) {
+      const mockGrouped = buildMockExploreStories();
+      return json({
+        stories: mockGrouped.flatMap((group) => group.stories),
+        grouped: mockGrouped,
+      });
+    }
+
     return json({
       stories: Object.values(groupedStories).flat(),
-      grouped: Object.entries(groupedStories).map(([userId, stories]) => ({
-        userId,
-        username: stories[0]?.username || 'User',
-        avatar: stories[0]?.avatar || null,
-        stories,
-      })),
+      grouped,
     });
   } catch (err) {
     console.error('[getStories] Error:', err);
@@ -95,19 +168,28 @@ export async function getUserStories(
   env: Env,
   userId: string
 ): Promise<Response> {
+  // Owners can review longer history; other viewers see only active 24h stories.
   const ctx = await getRequestContext(request, env);
-  
+
   try {
+    const viewerId = ctx.userId || '';
+    const viewingSelf = !!ctx.userId && ctx.userId === userId;
+
+    const timeClause = viewingSelf
+      ? `s.user_id = ? AND s.created_at > datetime('now', '-90 days')`
+      : `s.user_id = ? AND s.created_at > datetime('now', '-24 hours')`;
+
     const stories = await env.DB.prepare(
       `SELECT 
         s.*,
-        CASE WHEN sv.user_id IS NOT NULL THEN 1 ELSE 0 END as has_viewed
+        CASE WHEN sv.user_id IS NOT NULL THEN 1 ELSE 0 END as has_viewed,
+        (SELECT COUNT(*) FROM story_views sv2 WHERE sv2.story_id = s.id) as view_count
       FROM stories s
       LEFT JOIN story_views sv ON s.id = sv.story_id AND sv.user_id = ?
-      WHERE s.user_id = ? AND s.created_at > datetime('now', '-24 hours')
-      ORDER BY s.created_at ASC`
+      WHERE ${timeClause}
+      ORDER BY s.created_at DESC`
     )
-      .bind(ctx.userId || '', userId)
+      .bind(viewerId, userId)
       .all<{
         id: string;
         user_id: string;
@@ -116,6 +198,7 @@ export async function getUserStories(
         views: number;
         created_at: string;
         has_viewed: number;
+        view_count: number;
       }>();
 
     const user = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
@@ -132,7 +215,7 @@ export async function getUserStories(
         avatar: userMeta.avatar || null,
         image: story.image_url,
         caption: story.caption,
-        views: story.views,
+        views: typeof story.view_count === 'number' ? story.view_count : story.views,
         hasViewed: story.has_viewed === 1,
         createdAt: story.created_at,
       })),
@@ -148,6 +231,7 @@ export async function getUserStories(
  * Create a new story
  */
 export async function createStory(request: Request, env: Env): Promise<Response> {
+  // Story creation requires auth and stores an explicit expires_at timestamp.
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -197,6 +281,7 @@ export async function viewStory(
   env: Env,
   storyId: string
 ): Promise<Response> {
+  // View events are idempotent per (story, viewer) and skip self-views.
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -258,6 +343,7 @@ export async function deleteStory(
   env: Env,
   storyId: string
 ): Promise<Response> {
+  // Delete is owner-only; DB cascade handles dependent story view cleanup.
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);

@@ -14,6 +14,7 @@
     "build": "expo export --platform web --output-dir web-build && node scripts/fix-html-modules.js",
     "vercel-build": "expo export --platform web --output-dir web-build && node scripts/fix-html-modules.js",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write ."
   },
@@ -26,6 +27,7 @@
     "@reduxjs/toolkit": "^2.11.0",
     "expo": "^54.0.0",
     "expo-auth-session": "^7.0.8",
+    "expo-web-browser": "~15.0.8",
     "expo-camera": "^17.0.9",
     "expo-constants": "~18.0.10",
     "expo-crypto": "^15.0.7",
@@ -54,6 +56,7 @@
     "eslint-plugin-react": "^7.34.3",
     "eslint-plugin-react-hooks": "^4.6.0",
     "prettier": "^3.3.2",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.4"
   }
 }

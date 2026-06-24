@@ -1,8 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import SearchField from '../../components/ui/SearchField';
+import EmptyState from '../../components/ui/EmptyState';
+import { verticalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 
 type JournalEntry = {
   id: string;
@@ -47,6 +57,8 @@ export default function JournalScreen() {
   const [newEntry, setNewEntry] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [showNewEntry, setShowNewEntry] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // Sync isPublic with activeTab when opening new entry form
   const handleToggleNewEntry = () => {
@@ -61,9 +73,22 @@ export default function JournalScreen() {
     }
   }, [activeTab, showNewEntry]);
 
-  const filteredEntries = entries.filter((entry) =>
-    activeTab === 'public' ? entry.isPublic : !entry.isPublic
-  );
+  const filteredEntries = useMemo(() => {
+    const byTab = entries.filter((entry) => (activeTab === 'public' ? entry.isPublic : !entry.isPublic));
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return byTab;
+    return byTab.filter(
+      (e) =>
+        e.content.toLowerCase().includes(q) ||
+        (e.tags && e.tags.some((t) => t.toLowerCase().includes(q))) ||
+        (e.mood && e.mood.toLowerCase().includes(q))
+    );
+  }, [entries, activeTab, searchQuery]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  };
 
   const handleAddEntry = () => {
     if (!newEntry.trim()) return;
@@ -87,40 +112,34 @@ export default function JournalScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
       <View style={tw`flex-1`}>
-        {/* Header */}
-        <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200`}>
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-3xl font-bold text-green-600`}>Journal</Text>
+        <View style={tw`px-4 pt-3 pb-3 border-b border-stone-100 bg-white`}>
+          <View style={tw`flex-row items-center justify-between mb-2`}>
+            <Text style={tw`text-2xl font-bold text-emerald-700`}>Journal</Text>
             <TouchableOpacity
               onPress={handleToggleNewEntry}
-              style={tw`bg-green-600 px-4 py-2 rounded-full`}
+              style={tw`bg-emerald-600 px-4 py-2.5 rounded-full shadow-sm`}
             >
-              <Ionicons name="add" size={20} color="white" />
+              <Ionicons name={showNewEntry ? 'close' : 'add'} size={22} color="white" />
             </TouchableOpacity>
           </View>
-          <Text style={tw`text-gray-600`}>
-            Track your journey. Public entries can inspire others, private entries are for you and AI.
+          <Text style={tw`text-sm text-stone-500`}>
+            Reflect in public or private. Search filters entries by text, tags, or mood.
           </Text>
         </View>
 
-        {/* Tabs */}
-        <View style={tw`flex-row border-b border-gray-200`}>
+        <View style={tw`flex-row border-b border-stone-100 bg-white`}>
           <TouchableOpacity
             onPress={() => setActiveTab('public')}
             style={tw`flex-1 py-3 items-center border-b-2 ${
-              activeTab === 'public' ? 'border-green-600' : 'border-transparent'
+              activeTab === 'public' ? 'border-emerald-600' : 'border-transparent'
             }`}
           >
-            <Ionicons
-              name="globe"
-              size={20}
-              color={activeTab === 'public' ? '#10B981' : '#9CA3AF'}
-            />
+            <Ionicons name="globe" size={20} color={activeTab === 'public' ? '#059669' : '#A8A29E'} />
             <Text
               style={tw`text-sm mt-1 ${
-                activeTab === 'public' ? 'text-green-600 font-semibold' : 'text-gray-500'
+                activeTab === 'public' ? 'text-emerald-700 font-semibold' : 'text-stone-500'
               }`}
             >
               Public
@@ -129,17 +148,13 @@ export default function JournalScreen() {
           <TouchableOpacity
             onPress={() => setActiveTab('private')}
             style={tw`flex-1 py-3 items-center border-b-2 ${
-              activeTab === 'private' ? 'border-green-600' : 'border-transparent'
+              activeTab === 'private' ? 'border-emerald-600' : 'border-transparent'
             }`}
           >
-            <Ionicons
-              name="lock-closed"
-              size={20}
-              color={activeTab === 'private' ? '#10B981' : '#9CA3AF'}
-            />
+            <Ionicons name="lock-closed" size={20} color={activeTab === 'private' ? '#059669' : '#A8A29E'} />
             <Text
               style={tw`text-sm mt-1 ${
-                activeTab === 'private' ? 'text-green-600 font-semibold' : 'text-gray-500'
+                activeTab === 'private' ? 'text-emerald-700 font-semibold' : 'text-stone-500'
               }`}
             >
               Private
@@ -147,30 +162,20 @@ export default function JournalScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* New Entry Form */}
-        {showNewEntry && (
-          <View style={tw`p-4 border-b border-gray-200 bg-gray-50`}>
+        {showNewEntry ? (
+          <View style={tw`p-4 border-b border-stone-100 bg-stone-100/80`}>
             <TextInput
               placeholder="What's on your mind?"
               multiline
               value={newEntry}
               onChangeText={setNewEntry}
-              style={tw`border border-gray-300 rounded-xl p-3 text-base mb-3 min-h-32 bg-white`}
-              placeholderTextColor="#9CA3AF"
+              style={tw`border border-stone-200 rounded-2xl p-3 text-base mb-3 min-h-32 bg-white text-stone-900`}
+              placeholderTextColor="#A8A29E"
             />
             <View style={tw`flex-row items-center justify-between`}>
-              <TouchableOpacity
-                onPress={() => setIsPublic(!isPublic)}
-                style={tw`flex-row items-center`}
-              >
-                <Ionicons
-                  name={isPublic ? 'globe' : 'lock-closed'}
-                  size={20}
-                  color={isPublic ? '#10B981' : '#6B7280'}
-                />
-                <Text style={tw`ml-2 text-sm text-gray-700`}>
-                  {isPublic ? 'Public' : 'Private'}
-                </Text>
+              <TouchableOpacity onPress={() => setIsPublic(!isPublic)} style={tw`flex-row items-center`}>
+                <Ionicons name={isPublic ? 'globe' : 'lock-closed'} size={20} color={isPublic ? '#059669' : '#78716C'} />
+                <Text style={tw`ml-2 text-sm text-stone-700`}>{isPublic ? 'Public' : 'Private'}</Text>
               </TouchableOpacity>
               <View style={tw`flex-row gap-2`}>
                 <TouchableOpacity
@@ -178,62 +183,72 @@ export default function JournalScreen() {
                     setShowNewEntry(false);
                     setNewEntry('');
                   }}
-                  style={tw`px-4 py-2 rounded-lg bg-gray-200`}
+                  style={tw`px-4 py-2 rounded-xl bg-stone-200`}
                 >
-                  <Text style={tw`text-gray-700 font-medium`}>Cancel</Text>
+                  <Text style={tw`text-stone-700 font-medium`}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleAddEntry}
-                  style={tw`px-4 py-2 rounded-lg bg-green-600`}
-                >
+                <TouchableOpacity onPress={handleAddEntry} style={tw`px-4 py-2 rounded-xl bg-emerald-600`}>
                   <Text style={tw`text-white font-medium`}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>
-            <Text style={tw`text-xs text-gray-500 mt-2`}>
-              Date will be automatically set by the system
-            </Text>
           </View>
-        )}
+        ) : null}
 
-        {/* Entries List */}
         <FlatList
           data={filteredEntries}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`p-4`}
+          contentContainerStyle={tw`px-4 pt-3 pb-28`}
+          {...feedListPerformanceProps}
+          {...verticalScrollProps}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" colors={['#059669']} />
+          }
+          ListHeaderComponent={
+            !showNewEntry ? (
+              <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder="Search entries, tags, mood" />
+            ) : null
+          }
           renderItem={({ item }) => (
-            <View style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}>
+            <View style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}>
               <View style={tw`flex-row items-center justify-between mb-2`}>
-                <Text style={tw`text-sm font-semibold text-gray-500`}>
-                  {formatDate(item.date)}
-                </Text>
+                <Text style={tw`text-xs font-semibold text-stone-500`}>{formatDate(item.date)}</Text>
                 <View style={tw`flex-row items-center`}>
                   <Ionicons
                     name={item.isPublic ? 'globe' : 'lock-closed'}
-                    size={16}
-                    color={item.isPublic ? '#10B981' : '#6B7280'}
+                    size={15}
+                    color={item.isPublic ? '#059669' : '#78716C'}
                   />
-                  <Text style={tw`text-xs text-gray-500 ml-1`}>
-                    {item.isPublic ? 'Public' : 'Private'}
-                  </Text>
+                  <Text style={tw`text-xs text-stone-500 ml-1`}>{item.isPublic ? 'Public' : 'Private'}</Text>
                 </View>
               </View>
-              <Text style={tw`text-gray-900 leading-6`}>{item.content}</Text>
-              {item.mood && (
+              <Text style={tw`text-stone-900 leading-6`}>{item.content}</Text>
+              {item.mood ? (
                 <View style={tw`mt-2 flex-row items-center`}>
-                  <Ionicons name="happy-outline" size={16} color="#6B7280" />
-                  <Text style={tw`text-xs text-gray-500 ml-1`}>Mood: {item.mood}</Text>
+                  <Ionicons name="happy-outline" size={16} color="#78716C" />
+                  <Text style={tw`text-xs text-stone-500 ml-1`}>Mood: {item.mood}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           )}
           ListEmptyComponent={
-            <View style={tw`items-center justify-center py-12`}>
-              <Ionicons name="book-outline" size={64} color="#D1D5DB" />
-              <Text style={tw`text-gray-500 mt-4 text-center`}>
-                No {activeTab} entries yet. Start journaling to track your journey!
-              </Text>
-            </View>
+            searchQuery.trim() ? (
+              <EmptyState
+                icon="search-outline"
+                title="No matches"
+                description="Try a shorter phrase or clear search."
+                actionLabel="Clear search"
+                onAction={() => setSearchQuery('')}
+              />
+            ) : (
+              <EmptyState
+                icon="book-outline"
+                title={`No ${activeTab} entries yet`}
+                description="Tap + to capture a moment. Entries stay organized by visibility."
+                actionLabel="New entry"
+                onAction={handleToggleNewEntry}
+              />
+            )
           }
         />
       </View>

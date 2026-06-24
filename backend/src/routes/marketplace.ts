@@ -1,7 +1,7 @@
 import { Env, Product, Order } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createProductSchema, createOrderSchema } from '../utils/validation';
+import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
 
 /**
@@ -355,11 +355,12 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
   const validation = await validateRequest(request, createOrderSchema);
   if (!validation.success) return validation.response;
 
-  const { items, shipping_address } = validation.data;
+  const { items, shipping_address, metadata } = validation.data;
 
   // Validate products exist and calculate total
   let total = 0;
   const orderItems: Array<{ product_id: string; quantity: number; price: number }> = [];
+  const businessIds = new Set<string>();
 
   for (const item of items) {
     const product = await env.DB.prepare('SELECT * FROM products WHERE id = ?')
@@ -376,6 +377,7 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
 
     const itemTotal = product.price * item.quantity;
     total += itemTotal;
+    businessIds.add(product.user_id);
     orderItems.push({
       product_id: item.product_id,
       quantity: item.quantity,
@@ -385,13 +387,29 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
 
   const orderId = generateId('order');
 
+  const businessId = businessIds.size === 1 ? Array.from(businessIds)[0] : null;
+  const orderMeta = {
+    payment_method: metadata?.payment_method || 'Card',
+    source: metadata?.source || 'organic',
+    referral_instructor_id: metadata?.referral_instructor_id || null,
+    campaign_id: metadata?.campaign_id || null,
+  };
+
   try {
     // Create order
     await env.DB.prepare(
-      `INSERT INTO orders (id, user_id, status, total, shipping_address, metadata, created_at, updated_at)
-       VALUES (?, ?, 'pending', ?, ?, '{}', datetime('now'), datetime('now'))`
+      `INSERT INTO orders (id, user_id, business_id, status, total, shipping_address, metadata, payment_status, source, created_at, updated_at)
+       VALUES (?, ?, ?, 'pending', ?, ?, ?, 'paid', ?, datetime('now'), datetime('now'))`
     )
-      .bind(orderId, ctx.userId, total, JSON.stringify(shipping_address))
+      .bind(
+        orderId,
+        ctx.userId,
+        businessId,
+        total,
+        JSON.stringify(shipping_address),
+        JSON.stringify(orderMeta),
+        orderMeta.source
+      )
       .run();
 
     // Create order items and update stock
@@ -471,5 +489,101 @@ export async function getOrders(request: Request, env: Env): Promise<Response> {
   } catch (err) {
     console.error('[getOrders] Error:', err);
     return error('DATABASE_ERROR', 'Failed to fetch orders', 500);
+  }
+}
+
+/**
+ * PATCH /api/v1/marketplace/orders/:orderId/status
+ * Update order status (business users only)
+ */
+export async function updateOrderStatus(request: Request, env: Env, orderId: string): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  // Check if user is a business account
+  try {
+    const user = await env.DB.prepare('SELECT is_business FROM users WHERE id = ?')
+      .bind(ctx.userId)
+      .first<{ is_business: number }>();
+    
+    if (!user || !user.is_business) {
+      return error('FORBIDDEN', 'Only business accounts can update order status', 403);
+    }
+  } catch (err) {
+    console.error('[updateOrderStatus] Error checking user:', err);
+    return error('DATABASE_ERROR', 'Failed to verify user permissions', 500);
+  }
+
+  // Validate request body
+  const validation = await validateRequest(request, updateOrderStatusSchema);
+  if (!validation.success) {
+    return validation.response;
+  }
+  const { status } = validation.data;
+
+  try {
+    // Verify order exists and belongs to a customer of this business
+    // (Business can only update orders for products they own)
+    const order = await env.DB.prepare(
+      `SELECT o.id, o.user_id, o.status
+       FROM orders o
+       JOIN order_items oi ON o.id = oi.order_id
+       JOIN products p ON oi.product_id = p.id
+       WHERE o.id = ? AND p.user_id = ?
+       LIMIT 1`
+    )
+      .bind(orderId, ctx.userId)
+      .first<{ id: string; user_id: string; status: string }>();
+
+    if (!order) {
+      return error('NOT_FOUND', 'Order not found or you do not have permission to update it', 404);
+    }
+
+    // Update order status
+    await env.DB.prepare(
+      `UPDATE orders 
+       SET status = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+      .bind(status, orderId)
+      .run();
+
+    // Fetch updated order with items
+    const updatedOrder = await env.DB.prepare(
+      `SELECT o.*,
+       (SELECT json_group_array(json_object(
+         'id', oi.id,
+         'product_id', oi.product_id,
+         'quantity', oi.quantity,
+         'price', oi.price,
+         'product_name', p.name,
+         'product_image', p.image_url
+       ))
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = o.id) as items
+       FROM orders o
+       WHERE o.id = ?`
+    )
+      .bind(orderId)
+      .first<Order & { items: string }>();
+
+    if (!updatedOrder) {
+      return error('DATABASE_ERROR', 'Failed to fetch updated order', 500);
+    }
+
+    const formattedOrder = {
+      ...updatedOrder,
+      shipping_address: JSON.parse(updatedOrder.shipping_address || '{}'),
+      metadata: JSON.parse(updatedOrder.metadata || '{}'),
+      items: JSON.parse(updatedOrder.items || '[]'),
+    };
+
+    return json(formattedOrder);
+  } catch (err) {
+    console.error('[updateOrderStatus] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to update order status', 500);
   }
 }

@@ -65,6 +65,7 @@ export interface Order {
   status: string;
   total: number;
   shipping_address: ShippingAddress;
+  metadata?: Record<string, any>;
   items: Array<{
     id: string;
     product_id: string;
@@ -125,6 +126,16 @@ export async function createOrder(orderData: CreateOrderRequest): Promise<OrderR
  */
 export async function getOrders(): Promise<{ success: boolean; data: Order[] }> {
   return request<{ success: boolean; data: Order[] }>('/marketplace/orders');
+}
+
+/**
+ * Update order status (business only)
+ */
+export async function updateOrderStatus(orderId: string, status: string): Promise<OrderResponse> {
+  return request<OrderResponse>(`/marketplace/orders/${orderId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
 }
 
 /**

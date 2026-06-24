@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../lib/tw';
+import { verticalScrollProps } from '../../constants/scroll';
 import { getBusinessProducts, createProduct, updateProduct, deleteProduct, type Product } from '../../services/api/marketplace';
 import ProductForm from '../../components/business/ProductForm';
 import CATEGORIES from '../../data/categories';
@@ -133,10 +134,9 @@ export default function InventoryScreen() {
   const categoryName = (catId: string) => CATEGORIES.find(c => c.id === catId)?.name || catId;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-gray-50`}>
-      {/* Header */}
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-gray-200`}>
-        <Text style={tw`text-2xl font-bold text-gray-900 mb-3`}>Inventory Management</Text>
+    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+      <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
+        <Text style={tw`text-2xl font-bold text-stone-900 mb-3 tracking-tight`}>Inventory</Text>
         
         {/* Search */}
         <View style={tw`relative mb-3`}>
@@ -173,11 +173,11 @@ export default function InventoryScreen() {
               key={f}
               onPress={() => setFilter(f)}
               style={tw`px-4 py-2 rounded-full ${
-                filter === f ? 'bg-blue-600' : 'bg-gray-200'
+                filter === f ? 'bg-emerald-600' : 'bg-stone-100'
               }`}
             >
               <Text style={tw`text-sm font-semibold ${
-                filter === f ? 'text-white' : 'text-gray-700'
+                filter === f ? 'text-white' : 'text-stone-600'
               }`}>
                 {f === 'all' ? 'All' : f === 'low' ? 'Low Stock' : 'Out of Stock'}
               </Text>
@@ -189,7 +189,15 @@ export default function InventoryScreen() {
       {/* Products List */}
       <ScrollView
         style={tw`flex-1 px-4 pt-4`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        {...verticalScrollProps}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#059669"
+            colors={['#059669']}
+          />
+        }
       >
         {loading && products.length === 0 ? (
           <View style={tw`items-center justify-center py-12`}>

@@ -1,15 +1,19 @@
-/**
- * Redux hooks and selectors
- * Provides convenient hooks for accessing Redux state
- */
-
 import { useAppDispatch, useAppSelector } from './store';
-import { signIn, signInWithSSO, signOut, hydrateAuth, updateUser, setOnboardingComplete } from './slices/authSlice';
+import {
+  signIn,
+  signUp,
+  verifyEmail,
+  signInWithSSO,
+  signOut,
+  hydrateAuth,
+  refreshProfile,
+  updateUser,
+  setOnboardingComplete,
+  markSignupOnboardingRequired,
+  clearError,
+} from './slices/authSlice';
 import type { User } from './slices/authSlice';
 
-/**
- * Auth hooks - provides Zustand-like API for easier migration
- */
 export const useAuth = () => {
   const dispatch = useAppDispatch();
   const { user, token, hydrated, isLoading, error } = useAppSelector((state) => state.auth);
@@ -20,18 +24,23 @@ export const useAuth = () => {
     hydrated,
     isLoading,
     error,
+    signUp: (email: string, password: string, username?: string) =>
+      dispatch(signUp({ email, password, username })),
+    verifyEmail: (email: string, code: string) => dispatch(verifyEmail({ email, code })),
     signIn: (email: string, password: string) => dispatch(signIn({ email, password })),
-    signInWithSSO: (provider: 'google' | 'facebook', ssoToken: string) =>
-      dispatch(signInWithSSO({ provider, token: ssoToken })),
-    signOut: async () => {
-      const result = await dispatch(signOut());
-      return result;
-    },
+    signInWithSSO: (payload: {
+      provider: 'google' | 'facebook';
+      idToken?: string;
+      accessToken?: string;
+    }) => dispatch(signInWithSSO(payload)),
+    signOut: () => dispatch(signOut()),
     hydrate: () => dispatch(hydrateAuth()),
+    refreshProfile: () => dispatch(refreshProfile()),
     updateUser: (updates: Partial<User>) => dispatch(updateUser(updates)),
     setOnboardingComplete: (categories: string[]) => dispatch(setOnboardingComplete(categories)),
+    markSignupOnboardingRequired: () => dispatch(markSignupOnboardingRequired()),
+    clearError: () => dispatch(clearError()),
   };
 };
 
-// Re-export Redux hooks for convenience
 export { useAppDispatch, useAppSelector };
