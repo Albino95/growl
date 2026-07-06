@@ -1,10 +1,11 @@
 import { useCallback } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { useAuth, useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   setCurrentImage,
   setCurrentCaption,
   setSelectedCategory,
+  setAudioTrack,
   setPosting,
   resetCurrentPost,
 } from '../store/slices/postSlice';
@@ -12,6 +13,8 @@ import { createFeedPost } from '../services/api/feed';
 import { uploadMediaApi } from '../services/api/media';
 import { getPostImageUrl } from '../utils/images';
 import { triggerPressFeedback } from '../utils/interactionFeedback';
+import { alertMessage } from '../utils/confirmDialog';
+import type { PostMusicTrack } from '../constants/postMusic';
 
 async function blobToOptimizedDataUrl(uri: string): Promise<string> {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
@@ -45,12 +48,14 @@ async function blobToOptimizedDataUrl(uri: string): Promise<string> {
 
 export function useCreatePost(onSuccess?: () => void) {
   const dispatch = useAppDispatch();
-  const { image, caption, selectedCategory } = useAppSelector((state) => state.posts.currentPost);
+  const { image, caption, selectedCategory, audioTrack } = useAppSelector(
+    (state) => state.posts.currentPost
+  );
   const isPosting = useAppSelector((state) => state.posts.isPosting);
   const { user, updateUser } = useAuth();
 
   const userCategories = user?.categories || [];
-  const hasDraft = Boolean(image || caption.trim());
+  const hasDraft = Boolean(image || caption.trim() || audioTrack);
 
   const clearDraft = useCallback(() => {
     dispatch(resetCurrentPost());
@@ -58,12 +63,12 @@ export function useCreatePost(onSuccess?: () => void) {
 
   const submitPost = useCallback(async () => {
     if (!image) {
-      Alert.alert('Image required', 'Please select an image to post.');
+      alertMessage('Image required', 'Please select an image to post.');
       return false;
     }
 
     if (!selectedCategory) {
-      Alert.alert('Category required', 'Please select one category before posting.');
+      alertMessage('Category required', 'Please select one category before posting.');
       return false;
     }
 
@@ -108,11 +113,18 @@ export function useCreatePost(onSuccess?: () => void) {
         }
       }
 
+      const metadata: Record<string, unknown> = {};
+      if (audioTrack) {
+        metadata.audio_url = audioTrack.url;
+        metadata.audio_title = audioTrack.title;
+      }
+
       await createFeedPost({
         image_url: imageUrl,
         caption: caption || '',
         category,
         subcategory,
+        metadata: Object.keys(metadata).length ? metadata : undefined,
       });
 
       const currentPoints = user?.points || 0;
@@ -124,11 +136,7 @@ export function useCreatePost(onSuccess?: () => void) {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to post. Please try again.';
-      if (Platform.OS === 'web') {
-        alert(`Error: ${errorMessage}`);
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
+      alertMessage('Error', errorMessage);
       return false;
     } finally {
       dispatch(setPosting(false));
@@ -137,6 +145,7 @@ export function useCreatePost(onSuccess?: () => void) {
     image,
     caption,
     selectedCategory,
+    audioTrack,
     isPosting,
     dispatch,
     user?.points,
@@ -149,12 +158,17 @@ export function useCreatePost(onSuccess?: () => void) {
     image,
     caption,
     selectedCategory,
+    audioTrack,
     isPosting,
     userCategories,
     hasDraft,
     setImage: (uri: string | null) => dispatch(setCurrentImage(uri)),
     setCaption: (text: string) => dispatch(setCurrentCaption(text)),
     setCategory: (cat: string | null) => dispatch(setSelectedCategory(cat)),
+    setAudioTrack: (track: PostMusicTrack | null) =>
+      dispatch(
+        setAudioTrack(track ? { id: track.id, title: track.title, url: track.url } : null)
+      ),
     clearDraft,
     submitPost,
   };

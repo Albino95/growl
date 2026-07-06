@@ -21,6 +21,7 @@ interface PostState {
     image: string | null;
     caption: string;
     selectedCategory: string | null;
+    audioTrack: { id: string; title: string; url: string } | null;
   };
   isPosting: boolean;
 }
@@ -31,6 +32,7 @@ const initialState: PostState = {
     image: null,
     caption: '',
     selectedCategory: null,
+    audioTrack: null,
   },
   isPosting: false,
 };
@@ -47,6 +49,12 @@ const postSlice = createSlice({
     },
     setSelectedCategory: (state, action: PayloadAction<string | null>) => {
       state.currentPost.selectedCategory = action.payload;
+    },
+    setAudioTrack: (
+      state,
+      action: PayloadAction<{ id: string; title: string; url: string } | null>
+    ) => {
+      state.currentPost.audioTrack = action.payload;
     },
     setPosting: (state, action: PayloadAction<boolean>) => {
       state.isPosting = action.payload;
@@ -66,6 +74,7 @@ const postSlice = createSlice({
         image: null,
         caption: '',
         selectedCategory: null,
+        audioTrack: null,
       };
     },
     setPosts: (state, action: PayloadAction<Post[]>) => {
@@ -78,6 +87,7 @@ export const {
   setCurrentImage,
   setCurrentCaption,
   setSelectedCategory,
+  setAudioTrack,
   setPosting,
   addPost,
   toggleLike,

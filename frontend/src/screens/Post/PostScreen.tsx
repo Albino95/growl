@@ -1,15 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Alert, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import PhotoEditor from '../../components/ui/PhotoEditor';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { useCreatePost } from '../../hooks/useCreatePost';
+import { confirmAsync, alertMessage } from '../../utils/confirmDialog';
 import PostComposerLayout from './components/PostComposerLayout';
 import PostImageStage from './components/PostImageStage';
 import PostCaptionOverlay from './components/PostCaptionOverlay';
 import PostCategorySheet from './components/PostCategorySheet';
+import PostMusicSheet from './components/PostMusicSheet';
 import PostStickyBar from './components/PostStickyBar';
 import tw from '../../lib/tw';
 
@@ -22,6 +25,7 @@ interface PostScreenProps {
 export default function PostScreen({ navigation }: PostScreenProps) {
   const [showEditor, setShowEditor] = useState(false);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
+  const [showMusicSheet, setShowMusicSheet] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
 
@@ -29,12 +33,14 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     image,
     caption,
     selectedCategory,
+    audioTrack,
     isPosting,
     userCategories,
     hasDraft,
     setImage,
     setCaption,
     setCategory,
+    setAudioTrack,
     clearDraft,
     submitPost,
   } = useCreatePost(() => {
@@ -54,7 +60,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'We need camera roll permissions to post images.');
+      alertMessage('Permission needed', 'We need camera roll permissions to post images.');
       return;
     }
 
@@ -73,7 +79,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'We need camera permissions to take photos.');
+      alertMessage('Permission needed', 'We need camera permissions to take photos.');
       return;
     }
 
@@ -87,36 +93,31 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     }
   };
 
-  const handleRemovePhoto = () => {
-    Alert.alert('Remove Photo', 'Are you sure you want to remove this photo?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => {
-          setImage(null);
-          setCaption('');
-        },
-      },
-    ]);
+  const handleRemovePhoto = async () => {
+    const confirmed = await confirmAsync(
+      'Remove photo?',
+      'This will clear the image and caption for this draft.',
+      { confirmLabel: 'Remove', destructive: true }
+    );
+    if (!confirmed) return;
+    setImage(null);
+    setCaption('');
+    setAudioTrack(null);
   };
 
-  const handleClose = () => {
+  const handleClose = async () => {
     if (!hasDraft) {
       navigation.goBack();
       return;
     }
-    Alert.alert('Discard post?', 'Your draft will be lost.', [
-      { text: 'Keep editing', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          clearDraft();
-          navigation.goBack();
-        },
-      },
-    ]);
+    const confirmed = await confirmAsync(
+      'Discard post?',
+      'Your draft will be lost.',
+      { confirmLabel: 'Discard', destructive: true }
+    );
+    if (!confirmed) return;
+    clearDraft();
+    navigation.goBack();
   };
 
   if (showEditor && image) {
@@ -140,10 +141,12 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         image ? (
           <PostStickyBar
             selectedCategory={selectedCategory}
+            audioTrack={audioTrack}
             hasImage
             isPosting={isPosting}
             canPost={canPost}
             onOpenCategory={() => setShowCategorySheet(true)}
+            onOpenMusic={() => setShowMusicSheet(true)}
             onSubmit={submitPost}
           />
         ) : null
@@ -155,7 +158,19 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         backIcon="close"
         transparent
         light
-        style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-10`}
+        style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-20`}
+        rightAction={
+          image ? (
+            <Pressable
+              onPress={() => void handleRemovePhoto()}
+              hitSlop={8}
+              style={tw`w-10 h-10 items-center justify-center`}
+              accessibilityLabel="Remove photo"
+            >
+              <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+            </Pressable>
+          ) : undefined
+        }
       />
 
       {showSuccess && (
@@ -170,10 +185,12 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       <PostImageStage
         image={image}
         isPosting={isPosting}
+        hasMusic={Boolean(audioTrack)}
         onTakePhoto={takePhoto}
         onPickLibrary={pickImage}
         onEditPhoto={() => setShowEditor(true)}
-        onRemovePhoto={handleRemovePhoto}
+        onRemovePhoto={() => void handleRemovePhoto()}
+        onOpenMusic={() => setShowMusicSheet(true)}
       />
 
       {image && (
@@ -190,6 +207,13 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         userCategories={userCategories}
         selectedCategory={selectedCategory}
         onSelectCategory={setCategory}
+      />
+
+      <PostMusicSheet
+        visible={showMusicSheet}
+        onClose={() => setShowMusicSheet(false)}
+        selectedTrack={audioTrack}
+        onSelectTrack={setAudioTrack}
       />
     </PostComposerLayout>
   );

@@ -19,20 +19,28 @@ const initialState: FeedState = {
 
 export const fetchFeedPosts = createAsyncThunk('feed/fetchPosts', async (_, { rejectWithValue }) => {
   try {
-    const homeRes = await getFeedPosts();
-    if (!homeRes.success || !Array.isArray(homeRes.data)) {
+    const [homeRes, exploreRes] = await Promise.all([
+      getFeedPosts(),
+      getFeedPosts({ mode: 'explore' }),
+    ]);
+
+    if (!homeRes.success) {
       return rejectWithValue('Unexpected feed response');
     }
 
-    // Fallback for sparse/new accounts: show discoverable posts when home feed is empty.
-    if (homeRes.data.length === 0) {
-      const exploreRes = await getFeedPosts({ mode: 'explore' });
-      if (exploreRes.success && Array.isArray(exploreRes.data) && exploreRes.data.length > 0) {
-        return exploreRes.data;
-      }
+    const home = Array.isArray(homeRes.data) ? homeRes.data : [];
+    const explore =
+      exploreRes.success && Array.isArray(exploreRes.data) ? exploreRes.data : [];
+
+    const byId = new Map<string, FeedPost>();
+    for (const post of home) byId.set(post.id, post);
+    for (const post of explore) {
+      if (!byId.has(post.id)) byId.set(post.id, post);
     }
 
-    return homeRes.data;
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Failed to load feed';
     return rejectWithValue(message);

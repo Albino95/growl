@@ -27,6 +27,7 @@ export default function ScreenHeader({
 
   return (
     <View
+      pointerEvents="box-none"
       style={[
         tw`flex-row items-center justify-between px-4 py-3 ${
           transparent ? '' : 'border-b border-stone-200 bg-white'

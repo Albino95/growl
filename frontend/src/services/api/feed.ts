@@ -18,6 +18,8 @@ export type FeedPost = {
     username?: string;
     avatar?: string;
     isInstructor?: boolean;
+    audio_url?: string;
+    audio_title?: string;
   };
 };
 

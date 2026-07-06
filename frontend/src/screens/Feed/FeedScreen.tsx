@@ -35,6 +35,7 @@ import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } f
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { blockUser } from '../../services/api/friends';
 import tw from '../../lib/tw';
+import { alertMessage } from '../../utils/confirmDialog';
 
 type Story = {
   id: string;
@@ -67,6 +68,8 @@ type Post = {
   friendLikers?: string[];
   isFriend?: boolean;
   isOwn?: boolean;
+  audioUrl?: string;
+  audioTitle?: string;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -102,6 +105,8 @@ export default function FeedScreen({ navigation, route }: any) {
   } | null>(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -130,7 +135,31 @@ export default function FeedScreen({ navigation, route }: any) {
       friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
       isFriend: !!post.metadata?.is_friend,
       isOwn: post.user_id === user?.id,
+      audioUrl:
+        typeof post.metadata?.audio_url === 'string' ? post.metadata.audio_url : undefined,
+      audioTitle:
+        typeof post.metadata?.audio_title === 'string' ? post.metadata.audio_title : undefined,
     };
+  };
+
+  const togglePostAudio = (post: Post) => {
+    if (!post.audioUrl) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (playingAudioId === post.id) {
+        audioRef.current?.pause();
+        setPlayingAudioId(null);
+        return;
+      }
+      if (!audioRef.current) {
+        audioRef.current = new window.Audio();
+      }
+      audioRef.current.src = post.audioUrl;
+      void audioRef.current.play();
+      setPlayingAudioId(post.id);
+      audioRef.current.onended = () => setPlayingAudioId(null);
+      return;
+    }
+    alertMessage('Music preview', `Now playing: ${post.audioTitle || 'Soundtrack'}`);
   };
 
   const loadStoriesOnly = async () => {
@@ -797,6 +826,22 @@ export default function FeedScreen({ navigation, route }: any) {
                   <Text style={tw`text-stone-900 text-base`}> {item.caption}</Text>
                 </View>
 
+                {item.audioTitle ? (
+                  <Pressable
+                    onPress={() => togglePostAudio(item)}
+                    style={tw`flex-row items-center self-start bg-brand-50 border border-brand-200 rounded-full px-3 py-1.5 mb-2`}
+                  >
+                    <Ionicons
+                      name={playingAudioId === item.id ? 'pause' : 'musical-notes'}
+                      size={14}
+                      color="#059669"
+                    />
+                    <Text style={tw`text-brand-800 text-xs font-semibold ml-1.5`}>
+                      {item.audioTitle}
+                    </Text>
+                  </Pressable>
+                ) : null}
+
                 {/* CO2 Calculator */}
                 <CO2Calculator category={item.category} activityType="post" />
 
@@ -831,7 +876,9 @@ export default function FeedScreen({ navigation, route }: any) {
               description={
                 selectedCategory
                   ? 'Try a different category or clear filters to discover more posts.'
-                  : 'No posts yet. Be the first to share your growth journey.'
+                  : feedStatus === 'failed'
+                    ? 'Could not load posts. Pull down to retry.'
+                    : 'Follow friends or pull down to load community posts from the server.'
               }
               actionLabel="Create Your First Post"
               onAction={() => {

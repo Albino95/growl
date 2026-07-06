@@ -205,6 +205,15 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const scoredPosts = (posts.results || []).map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
+      let postMeta: Record<string, unknown> = {};
+      try {
+        postMeta =
+          typeof post.metadata === 'string'
+            ? JSON.parse(post.metadata || '{}')
+            : (post.metadata as Record<string, unknown>) || {};
+      } catch {
+        postMeta = {};
+      }
       const catScore = categoryRelevanceScore(categories, post.category, post.subcategory);
       const daysSincePost =
         (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
@@ -217,6 +226,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       return {
         ...post,
         metadata: {
+          ...postMeta,
           likes: post.likes_count || 0,
           comments: post.comments_count || 0,
           has_liked: Number(post.viewer_has_liked) > 0,
