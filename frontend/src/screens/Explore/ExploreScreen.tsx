@@ -225,7 +225,7 @@ export default function ExploreScreen() {
     return (
       <View
         key={person.userId}
-        style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
+        style={tw`bg-white border border-stone-200 rounded-2xl p-4 mb-3`}
       >
         <View style={tw`flex-row items-center`}>
           <TouchableOpacity
@@ -234,7 +234,7 @@ export default function ExploreScreen() {
           >
             <View
               style={tw`w-16 h-16 rounded-full p-0.5 ${
-                person.storyCount > 0 ? 'border-2 border-violet-500' : 'border border-stone-200'
+                person.storyCount > 0 ? 'border-2 border-accent-600' : 'border border-stone-200'
               }`}
             >
               {ringUri ? (
@@ -335,7 +335,7 @@ export default function ExploreScreen() {
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <View style={tw`px-5 pt-3 pb-2 border-b border-stone-100 bg-white`}>
         <Text style={tw`text-2xl font-bold text-violet-800`}>Explore</Text>
         <Text style={tw`text-sm text-stone-500 mt-1`}>{subtitle}</Text>

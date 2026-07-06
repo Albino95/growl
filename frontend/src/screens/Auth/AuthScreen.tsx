@@ -9,8 +9,9 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Screen from '../../components/ui/Screen';
+import SectionLabel from '../../components/ui/SectionLabel';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { useAuth } from '../../store/hooks';
 import { validatePasswordStrength } from '../../utils/passwordPolicy';
@@ -168,7 +169,7 @@ export default function AuthScreen() {
 
   if (step === 'verify') {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top', 'bottom']}>
+      <Screen edges={['top', 'bottom']}>
         <View style={tw`flex-1 px-5 pt-8 max-w-md w-full self-center`}>
           <Text style={tw`text-2xl font-bold text-stone-900 mb-2`}>Verify email</Text>
           <Text style={tw`text-stone-600 mb-6`}>
@@ -189,15 +190,15 @@ export default function AuthScreen() {
           />
           <PrimaryButton label="Confirm email" onPress={handleVerify} disabled={busy} loading={busy} />
           <TouchableOpacity onPress={() => setStep('auth')} style={tw`mt-6 items-center`}>
-            <Text style={tw`text-emerald-700 font-semibold`}>Back to sign in</Text>
+            <Text style={tw`text-brand-700 font-semibold`}>Back to sign in</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top', 'bottom']}>
+    <Screen edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={tw`flex-1`}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -208,7 +209,7 @@ export default function AuthScreen() {
         >
           <View style={tw`max-w-md w-full self-center`}>
             <View style={tw`items-center mb-8`}>
-              <View style={tw`w-16 h-16 rounded-2xl bg-emerald-600 items-center justify-center mb-4`}>
+              <View style={tw`w-16 h-16 rounded-2xl bg-brand-600 items-center justify-center mb-4`}>
                 <Text style={tw`text-white text-2xl font-bold`}>G</Text>
               </View>
               <Text style={tw`text-3xl font-bold text-stone-900`}>Growl</Text>
@@ -299,14 +300,12 @@ export default function AuthScreen() {
             <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)} style={tw`mt-8 items-center`}>
               <Text style={tw`text-stone-600`}>
                 {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-                <Text style={tw`text-emerald-700 font-semibold`}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
+                <Text style={tw`text-brand-700 font-semibold`}>{isSignUp ? 'Sign in' : 'Sign up'}</Text>
               </Text>
             </TouchableOpacity>
 
             <View style={tw`mt-10 pt-6 border-t border-stone-200`}>
-              <Text style={tw`text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1`}>
-                Demo accounts
-              </Text>
+              <SectionLabel variant="caps">Demo accounts</SectionLabel>
               <Text style={tw`text-xs text-stone-400 mb-3`}>
                 Password: {DEMO_ACCOUNT_PASSWORD} (seed with npm run demo:local)
               </Text>
@@ -330,6 +329,6 @@ export default function AuthScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }

@@ -130,18 +130,18 @@ export default function PostDetailScreen() {
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
       <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-200 bg-white`}>
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200 bg-white`}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-gray-900`}>Post</Text>
+          <Text style={tw`text-lg font-semibold text-stone-900`}>Post</Text>
           <TouchableOpacity>
             <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
           </TouchableOpacity>
         </View>
 
         <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
-          <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-100`}>
+          <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100`}>
             <TouchableOpacity style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
               <Image
                 source={{ uri: post.avatar }}
@@ -149,8 +149,8 @@ export default function PostDetailScreen() {
                 contentFit="cover"
               />
               <View style={tw`flex-1`}>
-                <Text style={tw`font-bold text-gray-900 text-base`}>{post.username}</Text>
-                <Text style={tw`text-xs text-gray-500`}>
+                <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
+                <Text style={tw`text-xs text-stone-500`}>
                   {post.timestamp ||
                     (post.createdAt ? new Date(post.createdAt).toLocaleDateString() : '')}
                 </Text>
@@ -158,7 +158,7 @@ export default function PostDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={tw`w-full bg-gray-50`}>
+          <View style={tw`w-full bg-stone-50`}>
             <Image
               source={{ uri: post.image }}
               style={tw`w-full h-96 bg-stone-100`}
@@ -167,7 +167,7 @@ export default function PostDetailScreen() {
             />
           </View>
 
-          <View style={tw`px-4 py-3 border-b border-gray-100`}>
+          <View style={tw`px-4 py-3 border-b border-stone-100`}>
             <View style={tw`flex-row items-center justify-between mb-3`}>
               <View style={tw`flex-row items-center`}>
                 <TouchableOpacity
@@ -190,7 +190,7 @@ export default function PostDetailScreen() {
             </View>
 
             {showReactionPicker && (
-              <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-gray-200 z-10`}>
+              <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-stone-200 z-10`}>
                 <TouchableOpacity onPress={() => void setReaction('like')} style={tw`mx-1`}>
                   <Text style={tw`text-2xl`}>👍</Text>
                 </TouchableOpacity>
@@ -209,15 +209,15 @@ export default function PostDetailScreen() {
               </View>
             )}
 
-            <Text style={tw`font-bold text-gray-900 mb-2 text-base`}>
+            <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
               {post.likes} {post.likes === 1 ? 'like' : 'likes'}
             </Text>
 
             <View style={tw`mb-2 flex-row flex-wrap`}>
               <TouchableOpacity onPress={navigateToProfile}>
-                <Text style={tw`font-bold text-gray-900 text-base`}>{post.username}</Text>
+                <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
               </TouchableOpacity>
-              <Text style={tw`text-gray-900 text-base`}> {post.caption}</Text>
+              <Text style={tw`text-stone-900 text-base`}> {post.caption}</Text>
             </View>
 
             <CO2Calculator category={post.category} activityType="post" />
@@ -236,7 +236,7 @@ export default function PostDetailScreen() {
             )}
 
             <TouchableOpacity onPress={() => setShowComments(true)} style={tw`mt-2`}>
-              <Text style={tw`text-gray-500 text-sm`}>
+              <Text style={tw`text-stone-500 text-sm`}>
                 {post.comments > 0
                   ? `View all ${post.comments} ${post.comments === 1 ? 'comment' : 'comments'}`
                   : 'Add a comment…'}

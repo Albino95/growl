@@ -179,7 +179,7 @@ export default function CheckoutScreen() {
       <SafeAreaView style={tw`flex-1 bg-white`}>
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator size="large" color="#10B981" />
-          <Text style={tw`mt-4 text-gray-600`}>Loading checkout...</Text>
+          <Text style={tw`mt-4 text-stone-600`}>Loading checkout...</Text>
         </View>
       </SafeAreaView>
     );
@@ -190,21 +190,21 @@ export default function CheckoutScreen() {
   const total = calculateTotal();
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-gray-50`}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
       {/* Header */}
-      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200`}>
+      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white border-b border-stone-200`}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
-        <Text style={tw`text-lg font-semibold text-gray-900`}>Checkout</Text>
+        <Text style={tw`text-lg font-semibold text-stone-900`}>Checkout</Text>
         <View style={tw`w-6`} />
       </View>
 
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
         {/* Order Items */}
         <View style={tw`bg-white mb-4`}>
-          <View style={tw`px-4 py-3 border-b border-gray-200`}>
-            <Text style={tw`text-lg font-semibold text-gray-900`}>Order Items</Text>
+          <View style={tw`px-4 py-3 border-b border-stone-200`}>
+            <Text style={tw`text-lg font-semibold text-stone-900`}>Order Items</Text>
           </View>
           {cartItems.map((item, index) => {
             const productImage =
@@ -216,7 +216,7 @@ export default function CheckoutScreen() {
             return (
               <View
                 key={index}
-                style={tw`px-4 py-4 border-b border-gray-100 flex-row`}
+                style={tw`px-4 py-4 border-b border-stone-100 flex-row`}
               >
                 {item.product && (
                   <>
@@ -227,18 +227,18 @@ export default function CheckoutScreen() {
                         resizeMode="cover"
                       />
                     ) : (
-                      <View style={tw`w-16 h-16 bg-gray-200 rounded-lg mr-4 items-center justify-center`}>
+                      <View style={tw`w-16 h-16 bg-stone-200 rounded-lg mr-4 items-center justify-center`}>
                         <Ionicons name="image-outline" size={24} color="#9CA3AF" />
                       </View>
                     )}
                     <View style={tw`flex-1`}>
-                      <Text style={tw`text-base font-semibold text-gray-900 mb-1`}>
+                      <Text style={tw`text-base font-semibold text-stone-900 mb-1`}>
                         {item.product.name}
                       </Text>
-                      <Text style={tw`text-sm text-gray-600 mb-2`}>
+                      <Text style={tw`text-sm text-stone-600 mb-2`}>
                         Quantity: {item.quantity}
                       </Text>
-                      <Text style={tw`text-base font-bold text-green-600`}>
+                      <Text style={tw`text-base font-bold text-brand-600`}>
                         ${(item.product.price * item.quantity).toFixed(2)}
                       </Text>
                     </View>
@@ -251,34 +251,34 @@ export default function CheckoutScreen() {
 
         {/* Shipping Address */}
         <View style={tw`bg-white mb-4`}>
-          <View style={tw`px-4 py-3 border-b border-gray-200`}>
-            <Text style={tw`text-lg font-semibold text-gray-900`}>Shipping Address</Text>
+          <View style={tw`px-4 py-3 border-b border-stone-200`}>
+            <Text style={tw`text-lg font-semibold text-stone-900`}>Shipping Address</Text>
           </View>
           <View style={tw`px-4 py-4`}>
             <TextInput
               placeholder="Full Name"
               value={shipping.name}
               onChangeText={(text) => setShipping({ ...shipping, name: text })}
-              style={tw`bg-gray-50 border border-gray-300 rounded-lg px-4 py-3 mb-3`}
+              style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-3`}
             />
             <TextInput
               placeholder="Street Address"
               value={shipping.street}
               onChangeText={(text) => setShipping({ ...shipping, street: text })}
-              style={tw`bg-gray-50 border border-gray-300 rounded-lg px-4 py-3 mb-3`}
+              style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-3`}
             />
             <View style={tw`flex-row`}>
               <TextInput
                 placeholder="City"
                 value={shipping.city}
                 onChangeText={(text) => setShipping({ ...shipping, city: text })}
-                style={tw`flex-1 bg-gray-50 border border-gray-300 rounded-lg px-4 py-3 mr-2`}
+                style={tw`flex-1 bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mr-2`}
               />
               <TextInput
                 placeholder="State"
                 value={shipping.state}
                 onChangeText={(text) => setShipping({ ...shipping, state: text })}
-                style={tw`flex-1 bg-gray-50 border border-gray-300 rounded-lg px-4 py-3 ml-2`}
+                style={tw`flex-1 bg-surface-page border border-stone-300 rounded-lg px-4 py-3 ml-2`}
               />
             </View>
             <TextInput
@@ -286,42 +286,42 @@ export default function CheckoutScreen() {
               value={shipping.zip}
               onChangeText={(text) => setShipping({ ...shipping, zip: text })}
               keyboardType="numeric"
-              style={tw`bg-gray-50 border border-gray-300 rounded-lg px-4 py-3 mt-3 mb-3`}
+              style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mt-3 mb-3`}
             />
             <TextInput
               placeholder="Country"
               value={shipping.country}
               onChangeText={(text) => setShipping({ ...shipping, country: text })}
-              style={tw`bg-gray-50 border border-gray-300 rounded-lg px-4 py-3`}
+              style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3`}
             />
           </View>
         </View>
 
         {/* Order Summary */}
         <View style={tw`bg-white mb-4`}>
-          <View style={tw`px-4 py-3 border-b border-gray-200`}>
-            <Text style={tw`text-lg font-semibold text-gray-900`}>Order Summary</Text>
+          <View style={tw`px-4 py-3 border-b border-stone-200`}>
+            <Text style={tw`text-lg font-semibold text-stone-900`}>Order Summary</Text>
           </View>
           <View style={tw`px-4 py-4`}>
             <View style={tw`flex-row justify-between mb-2`}>
-              <Text style={tw`text-gray-600`}>Subtotal</Text>
-              <Text style={tw`text-gray-900 font-medium`}>${subtotal.toFixed(2)}</Text>
+              <Text style={tw`text-stone-600`}>Subtotal</Text>
+              <Text style={tw`text-stone-900 font-medium`}>${subtotal.toFixed(2)}</Text>
             </View>
             <View style={tw`flex-row justify-between mb-2`}>
-              <Text style={tw`text-gray-600`}>Shipping</Text>
-              <Text style={tw`text-gray-900 font-medium`}>
+              <Text style={tw`text-stone-600`}>Shipping</Text>
+              <Text style={tw`text-stone-900 font-medium`}>
                 {shippingCost === 0 ? 'Free' : `$${shippingCost.toFixed(2)}`}
               </Text>
             </View>
             {shippingCost === 0 && (
-              <Text style={tw`text-sm text-green-600 mb-2`}>
+              <Text style={tw`text-sm text-brand-600 mb-2`}>
                 🎉 Free shipping on orders over $50!
               </Text>
             )}
-            <View style={tw`border-t border-gray-200 pt-3 mt-2`}>
+            <View style={tw`border-t border-stone-200 pt-3 mt-2`}>
               <View style={tw`flex-row justify-between`}>
-                <Text style={tw`text-lg font-bold text-gray-900`}>Total</Text>
-                <Text style={tw`text-lg font-bold text-green-600`}>${total.toFixed(2)}</Text>
+                <Text style={tw`text-lg font-bold text-stone-900`}>Total</Text>
+                <Text style={tw`text-lg font-bold text-brand-600`}>${total.toFixed(2)}</Text>
               </View>
             </View>
           </View>
@@ -329,11 +329,11 @@ export default function CheckoutScreen() {
       </ScrollView>
 
       {/* Place Order Button */}
-      <View style={tw`bg-white border-t border-gray-200 px-4 py-4`}>
+      <View style={tw`bg-white border-t border-stone-200 px-4 py-4`}>
         <TouchableOpacity
           onPress={handlePlaceOrder}
           disabled={processing || cartItems.length === 0}
-          style={tw`bg-green-600 rounded-lg py-4 items-center ${
+          style={tw`bg-brand-600 rounded-lg py-4 items-center ${
             processing || cartItems.length === 0 ? 'opacity-50' : ''
           }`}
         >
@@ -343,7 +343,7 @@ export default function CheckoutScreen() {
             <Text style={tw`text-white font-bold text-lg`}>Place Order</Text>
           )}
         </TouchableOpacity>
-        <Text style={tw`text-xs text-gray-500 text-center mt-2`}>
+        <Text style={tw`text-xs text-stone-500 text-center mt-2`}>
           By placing this order, you agree to our terms and conditions
         </Text>
       </View>

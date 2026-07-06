@@ -19,8 +19,8 @@ const STATUS_COLORS = {
   pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' },
   processing: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
   shipped: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-  delivered: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-  completed: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
+  delivered: { bg: 'bg-brand-100', text: 'text-brand-700', border: 'border-brand-300' },
+  completed: { bg: 'bg-brand-100', text: 'text-brand-700', border: 'border-brand-300' },
   cancelled: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' },
 };
 
@@ -69,9 +69,9 @@ export default function UserOrdersScreen() {
     .reduce((sum, o) => sum + o.total, 0);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-gray-50`}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
       {/* Header */}
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-gray-200`}>
+      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-200`}>
         <View style={tw`flex-row items-center mb-3`}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -79,14 +79,14 @@ export default function UserOrdersScreen() {
           >
             <Ionicons name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
-          <Text style={tw`text-2xl font-bold text-gray-900 flex-1`}>My Orders</Text>
+          <Text style={tw`text-2xl font-bold text-stone-900 flex-1`}>My Orders</Text>
         </View>
         
         {/* Stats */}
         <View style={tw`flex-row gap-3 mb-3`}>
-          <View style={tw`flex-1 bg-green-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-green-600 mb-1`}>Total Spent</Text>
-            <Text style={tw`text-xl font-bold text-green-900`}>${totalSpent.toFixed(2)}</Text>
+          <View style={tw`flex-1 bg-brand-50 rounded-lg p-3`}>
+            <Text style={tw`text-xs text-brand-600 mb-1`}>Total Spent</Text>
+            <Text style={tw`text-xl font-bold text-brand-900`}>${totalSpent.toFixed(2)}</Text>
           </View>
           <View style={tw`flex-1 bg-blue-50 rounded-lg p-3`}>
             <Text style={tw`text-xs text-blue-600 mb-1`}>Total Orders</Text>
@@ -106,7 +106,7 @@ export default function UserOrdersScreen() {
                 }`}
               >
                 <Text style={tw`text-sm font-semibold ${
-                  statusFilter === status ? 'text-white' : 'text-gray-700'
+                  statusFilter === status ? 'text-white' : 'text-stone-700'
                 }`}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
@@ -123,12 +123,12 @@ export default function UserOrdersScreen() {
       >
         {loading && orders.length === 0 ? (
           <View style={tw`items-center justify-center py-12`}>
-            <Text style={tw`text-gray-500`}>Loading orders...</Text>
+            <Text style={tw`text-stone-500`}>Loading orders...</Text>
           </View>
         ) : filteredOrders.length === 0 ? (
           <View style={tw`items-center justify-center py-12`}>
             <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
-            <Text style={tw`text-gray-500 mt-4 text-center`}>
+            <Text style={tw`text-stone-500 mt-4 text-center`}>
               {statusFilter === 'all' ? 'No orders yet' : `No ${statusFilter} orders`}
             </Text>
             <TouchableOpacity
@@ -149,14 +149,14 @@ export default function UserOrdersScreen() {
             return (
               <View
                 key={order.id}
-                style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100`}
+                style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-stone-100`}
               >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View>
-                    <Text style={tw`text-sm font-semibold text-gray-500`}>
+                    <Text style={tw`text-sm font-semibold text-stone-500`}>
                       Order #{order.id.slice(-8).toUpperCase()}
                     </Text>
-                    <Text style={tw`text-lg font-bold text-gray-900 mt-1`}>
+                    <Text style={tw`text-lg font-bold text-stone-900 mt-1`}>
                       ${order.total.toFixed(2)}
                     </Text>
                   </View>
@@ -167,47 +167,47 @@ export default function UserOrdersScreen() {
                   </View>
                 </View>
 
-                <View style={tw`border-t border-gray-100 pt-3 mb-3`}>
+                <View style={tw`border-t border-stone-100 pt-3 mb-3`}>
                   {order.items && order.items.length > 0 ? (
                     order.items.map((item: OrderItem, idx: number) => (
                       <View key={item.id || idx} style={tw`flex-row items-center justify-between mb-2`}>
-                        <Text style={tw`text-sm text-gray-600 flex-1`}>
+                        <Text style={tw`text-sm text-stone-600 flex-1`}>
                           {item.quantity}x {item.product_name || 'Product'}
                         </Text>
-                        <Text style={tw`text-sm font-semibold text-gray-900`}>
+                        <Text style={tw`text-sm font-semibold text-stone-900`}>
                           ${(item.quantity * item.price).toFixed(2)}
                         </Text>
                       </View>
                     ))
                   ) : (
-                    <Text style={tw`text-sm text-gray-400`}>No items</Text>
+                    <Text style={tw`text-sm text-stone-400`}>No items</Text>
                   )}
                 </View>
 
                 {shippingAddress && (
-                  <View style={tw`border-t border-gray-100 pt-3 mb-3`}>
-                    <Text style={tw`text-xs font-semibold text-gray-500 mb-1`}>Shipping Address</Text>
-                    <Text style={tw`text-sm text-gray-700`}>
+                  <View style={tw`border-t border-stone-100 pt-3 mb-3`}>
+                    <Text style={tw`text-xs font-semibold text-stone-500 mb-1`}>Shipping Address</Text>
+                    <Text style={tw`text-sm text-stone-700`}>
                       {shippingAddress.name}
                     </Text>
-                    <Text style={tw`text-sm text-gray-700`}>
+                    <Text style={tw`text-sm text-stone-700`}>
                       {shippingAddress.street}
                     </Text>
-                    <Text style={tw`text-sm text-gray-700`}>
+                    <Text style={tw`text-sm text-stone-700`}>
                       {shippingAddress.city}, {shippingAddress.state} {shippingAddress.zip}
                     </Text>
                   </View>
                 )}
 
-                <View style={tw`flex-row items-center justify-between pt-3 border-t border-gray-100`}>
+                <View style={tw`flex-row items-center justify-between pt-3 border-t border-stone-100`}>
                   <View style={tw`flex-row items-center`}>
                     <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                    <Text style={tw`text-xs text-gray-500 ml-1`}>{orderDate}</Text>
+                    <Text style={tw`text-xs text-stone-500 ml-1`}>{orderDate}</Text>
                   </View>
                   {order.status === 'shipped' && (
                     <TouchableOpacity style={tw`flex-row items-center`}>
                       <Ionicons name="car-outline" size={16} color="#6B7280" />
-                      <Text style={tw`text-xs text-gray-500 ml-1`}>Track Order</Text>
+                      <Text style={tw`text-xs text-stone-500 ml-1`}>Track Order</Text>
                     </TouchableOpacity>
                   )}
                 </View>

@@ -112,7 +112,15 @@ export default function RootNavigator() {
       {!isBusinessAccount && (
         <>
           <Stack.Screen name="Individual" component={IndividualTabs} />
-          <Stack.Screen name="Post" component={PostScreen} />
+          <Stack.Screen
+            name="Post"
+            component={PostScreen}
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
           <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           <Stack.Screen 
             name="Messages" 
@@ -143,7 +151,15 @@ export default function RootNavigator() {
             component={StoryViewerScreen}
             options={{ headerShown: false, presentation: 'fullScreenModal' }}
           />
-          <Stack.Screen name="CreateStory" component={CreateStoryScreen} />
+          <Stack.Screen
+            name="CreateStory"
+            component={CreateStoryScreen}
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
         </>
       )}
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />

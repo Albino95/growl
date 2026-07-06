@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
+import Screen from '../../components/ui/Screen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import CATEGORIES, { Category, Subcategory } from '../../data/categories';
 import { useAuth } from '../../store/hooks';
@@ -99,15 +99,15 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <Screen background="card" edges={['top', 'bottom']}>
       <View style={tw`p-6 flex-1`}>
         <View style={tw`mb-6`}>
-          <Text style={tw`text-3xl font-bold mb-2 text-green-600`}>Choose Your Growth Areas</Text>
-          <Text style={tw`text-base text-gray-600`}>
+          <Text style={tw`text-3xl font-bold mb-2 text-brand-600`}>Choose Your Growth Areas</Text>
+          <Text style={tw`text-base text-stone-600`}>
             Select up to 3 categories where you want to grow. This helps us personalize your feed.
           </Text>
-          <View style={tw`mt-3 flex-row items-center justify-between bg-green-50 rounded-xl px-4 py-3`}>
-            <Text style={tw`text-sm font-semibold text-green-800`}>
+          <View style={tw`mt-3 flex-row items-center justify-between bg-brand-50 rounded-xl px-4 py-3`}>
+            <Text style={tw`text-sm font-semibold text-brand-800`}>
               Selected: {selectedCategories.length}/3
             </Text>
             {selectedCategories.length > 0 && (
@@ -115,7 +115,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
                 onPress={() => setSelectedCategories([])}
                 style={tw`px-3 py-1 bg-white rounded-full`}
               >
-                <Text style={tw`text-xs font-semibold text-green-700`}>Clear All</Text>
+                <Text style={tw`text-xs font-semibold text-brand-700`}>Clear All</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -132,13 +132,13 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
                 <TouchableOpacity
                   onPress={() => setExpandedCategory(isExpanded ? null : category.key)}
                   style={tw`flex-row items-center justify-between p-4 rounded-2xl border-2 ${
-                    isSelected ? 'border-green-500 bg-green-50 shadow-sm' : 'border-gray-200 bg-white'
+                    isSelected ? 'border-brand-500 bg-brand-50 shadow-sm' : 'border-stone-200 bg-white'
                   }`}
                   activeOpacity={0.7}
                 >
                   <View style={tw`flex-row items-center flex-1`}>
                     <View style={tw`w-10 h-10 rounded-full ${
-                      isSelected ? 'bg-green-500' : 'bg-gray-100'
+                      isSelected ? 'bg-brand-600' : 'bg-stone-100'
                     } items-center justify-center mr-3`}>
                       <Ionicons
                         name={isExpanded ? 'chevron-down' : 'chevron-forward'}
@@ -147,42 +147,42 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
                       />
                     </View>
                     <View style={tw`flex-1`}>
-                      <Text style={tw`text-lg font-bold ${isSelected ? 'text-green-700' : 'text-gray-800'}`}>
+                      <Text style={tw`text-lg font-bold ${isSelected ? 'text-brand-700' : 'text-stone-800'}`}>
                         {category.label}
                       </Text>
                       {selectedSubs.length > 0 && (
-                        <Text style={tw`text-sm text-green-600 mt-0.5`}>
+                        <Text style={tw`text-sm text-brand-600 mt-0.5`}>
                           {selectedSubs.length} subcategor{selectedSubs.length === 1 ? 'y' : 'ies'} selected
                         </Text>
                       )}
                     </View>
                   </View>
                   {isSelected && (
-                    <View style={tw`w-8 h-8 rounded-full bg-green-500 items-center justify-center`}>
+                    <View style={tw`w-8 h-8 rounded-full bg-brand-600 items-center justify-center`}>
                       <Ionicons name="checkmark" size={20} color="#FFFFFF" />
                     </View>
                   )}
                 </TouchableOpacity>
 
                 {isExpanded && (
-                  <View style={tw`mt-2 ml-2 pl-4 border-l-2 border-green-200`}>
+                  <View style={tw`mt-2 ml-2 pl-4 border-l-2 border-brand-200`}>
                     <TouchableOpacity
                       onPress={() => toggleCategory(category.key)}
                       style={tw`mb-2 p-3 rounded-xl ${
                         selectedCategories.includes(category.key) 
-                          ? 'bg-green-100 border-2 border-green-500' 
-                          : 'bg-gray-50 border-2 border-gray-200'
+                          ? 'bg-brand-100 border-2 border-brand-500' 
+                          : 'bg-stone-50 border-2 border-stone-200'
                       }`}
                       activeOpacity={0.7}
                     >
                       <View style={tw`flex-row items-center justify-between`}>
                         <Text style={tw`text-sm font-semibold ${
-                          selectedCategories.includes(category.key) ? 'text-green-700' : 'text-gray-600'
+                          selectedCategories.includes(category.key) ? 'text-brand-700' : 'text-stone-600'
                         }`}>
                           All {category.label}
                         </Text>
                         {selectedCategories.includes(category.key) && (
-                          <View style={tw`w-5 h-5 rounded-full bg-green-500 items-center justify-center`}>
+                          <View style={tw`w-5 h-5 rounded-full bg-brand-600 items-center justify-center`}>
                             <Ionicons name="checkmark" size={14} color="#FFFFFF" />
                           </View>
                         )}
@@ -197,19 +197,19 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
                           onPress={() => toggleSubcategory(category.key, sub.key)}
                           style={tw`mb-2 p-3 rounded-xl ${
                             isSubSelected
-                              ? 'bg-green-100 border-2 border-green-500'
-                              : 'bg-gray-50 border-2 border-gray-200'
+                              ? 'bg-brand-100 border-2 border-brand-500'
+                              : 'bg-stone-50 border-2 border-stone-200'
                           }`}
                           activeOpacity={0.7}
                         >
                           <View style={tw`flex-row items-center justify-between`}>
                             <Text style={tw`text-sm ${
-                              isSubSelected ? 'text-green-700 font-semibold' : 'text-gray-600'
+                              isSubSelected ? 'text-brand-700 font-semibold' : 'text-stone-600'
                             }`}>
                               {sub.label}
                             </Text>
                             {isSubSelected && (
-                              <View style={tw`w-5 h-5 rounded-full bg-green-500 items-center justify-center`}>
+                              <View style={tw`w-5 h-5 rounded-full bg-brand-600 items-center justify-center`}>
                                 <Ionicons name="checkmark" size={14} color="#FFFFFF" />
                               </View>
                             )}
@@ -230,6 +230,6 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
           disabled={selectedCategories.length === 0}
         />
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }

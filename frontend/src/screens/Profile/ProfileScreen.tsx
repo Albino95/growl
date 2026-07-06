@@ -367,7 +367,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
       >
         {/* Header */}
-        <View style={tw`px-4 pt-4 pb-6 border-b border-gray-200`}>
+        <View style={tw`px-4 pt-4 pb-6 border-b border-stone-200`}>
           <View style={tw`flex-row items-center mb-4`}>
             <Image
               source={{ uri: getAvatarUrl(user?.id || 'default', user?.email?.split('@')[0]) }}
@@ -375,13 +375,13 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               contentFit="cover"
             />
             <View style={tw`flex-1`}>
-              <Text style={tw`text-2xl font-bold text-gray-900`}>
+              <Text style={tw`text-2xl font-bold text-stone-900`}>
                 {user?.email?.split('@')[0] || 'User'}
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
                   <Ionicons name="school" size={16} color="#10B981" />
-                  <Text style={tw`text-sm text-green-600 ml-1 font-semibold`}>Instructor</Text>
+                  <Text style={tw`text-sm text-brand-600 ml-1 font-semibold`}>Instructor</Text>
                 </View>
               )}
             </View>
@@ -402,7 +402,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             Shared growth categories connect you automatically — tap Following or Followers to see everyone.
           </Text>
 
-          <View style={tw`bg-emerald-600 rounded-2xl p-4 mb-1`}>
+          <View style={tw`bg-brand-600 rounded-2xl p-4 mb-1`}>
             <View style={tw`flex-row items-center justify-between`}>
               <View>
                 <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
@@ -411,10 +411,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Ionicons name="trophy" size={40} color="white" />
             </View>
             {!isInstructor && (
-              <View style={tw`mt-3 pt-3 border-t border-green-400`}>
+              <View style={tw`mt-3 pt-3 border-t border-brand-400`}>
                 <View style={tw`flex-row items-center justify-between`}>
                   <Text style={tw`text-white text-sm`}>Points to Instructor: {500 - points}</Text>
-                  <View style={tw`flex-1 h-2 bg-green-400 rounded-full mx-3 overflow-hidden`}>
+                  <View style={tw`flex-1 h-2 bg-brand-400 rounded-full mx-3 overflow-hidden`}>
                     <View
                       style={[tw`h-full bg-white rounded-full`, { width: `${Math.min((points / 500) * 100, 100)}%` }]}
                     />
@@ -442,9 +442,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         </View>
 
         {/* Categories with Edit */}
-        <View style={tw`px-4 py-4 border-b border-gray-200`}>
+        <View style={tw`px-4 py-4 border-b border-stone-200`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-lg font-semibold text-gray-900`}>Your Growth Areas</Text>
+            <Text style={tw`text-lg font-semibold text-stone-900`}>Your Growth Areas</Text>
             <TouchableOpacity onPress={() => setShowCategorySettings(true)}>
               <Ionicons name="create-outline" size={20} color="#10B981" />
             </TouchableOpacity>
@@ -454,23 +454,23 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               {user.categories.map((cat, index) => (
                 <View
                   key={index}
-                  style={tw`bg-green-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
+                  style={tw`bg-brand-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
                 >
-                  <Text style={tw`text-sm text-green-800 font-medium`}>{cat}</Text>
+                  <Text style={tw`text-sm text-brand-800 font-medium`}>{cat}</Text>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={tw`text-gray-500 text-sm`}>No categories selected</Text>
+            <Text style={tw`text-stone-500 text-sm`}>No categories selected</Text>
           )}
         </View>
 
         {/* Decay Timer Info */}
-        <View style={tw`px-4 py-3 bg-blue-50 border-b border-gray-200`}>
+        <View style={tw`px-4 py-3 bg-blue-50 border-b border-stone-200`}>
           <View style={tw`flex-row items-center justify-between`}>
             <View style={tw`flex-row items-center`}>
               <Ionicons name="time-outline" size={20} color="#3B82F6" />
-              <Text style={tw`text-sm text-gray-700 ml-2`}>
+              <Text style={tw`text-sm text-stone-700 ml-2`}>
                 Decay Timer: {user?.decayTimer || 7} days
               </Text>
             </View>
@@ -478,13 +478,13 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Text style={tw`text-sm text-blue-600 font-semibold`}>Change</Text>
             </TouchableOpacity>
           </View>
-          <Text style={tw`text-xs text-gray-500 mt-1`}>
+          <Text style={tw`text-xs text-stone-500 mt-1`}>
             Posts will automatically decay after this period to keep your timeline focused
           </Text>
         </View>
 
         {/* Tabs */}
-        <View style={tw`flex-row border-b border-gray-200`}>
+        <View style={tw`flex-row border-b border-stone-200`}>
           {[
             { key: 'posts', label: 'Posts', icon: 'grid' },
             { key: 'stories', label: 'Stories', icon: 'images' },
@@ -494,7 +494,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               key={tab.key}
               onPress={() => setActiveTab(tab.key as any)}
               style={tw`flex-1 py-3 items-center border-b-2 ${
-                activeTab === tab.key ? 'border-green-600' : 'border-transparent'
+                activeTab === tab.key ? 'border-brand-600' : 'border-transparent'
               }`}
             >
               <Ionicons
@@ -504,7 +504,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               />
               <Text
                 style={tw`text-xs mt-1 ${
-                  activeTab === tab.key ? 'text-green-600 font-semibold' : 'text-gray-500'
+                  activeTab === tab.key ? 'text-brand-600 font-semibold' : 'text-stone-500'
                 }`}
               >
                 {tab.label}
@@ -519,7 +519,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             {posts.map((post) => (
               <TouchableOpacity
                 key={post.id}
-                style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
+                style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
                   (rootNavigation as any).navigate('PostDetail', {
@@ -549,10 +549,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       contentFit="cover"
                     />
                     <View style={tw`flex-1`}>
-                      <Text style={tw`font-semibold text-gray-900`} numberOfLines={2}>
+                      <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
                         {post.caption}
                       </Text>
-                      <Text style={tw`text-xs text-gray-500 mt-1`}>
+                      <Text style={tw`text-xs text-stone-500 mt-1`}>
                         {new Date(post.createdAt).toLocaleDateString()}
                       </Text>
                     </View>
@@ -562,11 +562,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                   <View style={tw`flex-row items-center gap-4`}>
                     <View style={tw`flex-row items-center`}>
                       <Ionicons name="heart" size={16} color="#EF4444" />
-                      <Text style={tw`text-sm text-gray-600 ml-1`}>{post.likes}</Text>
+                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.likes}</Text>
                     </View>
                     <View style={tw`flex-row items-center`}>
                       <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                      <Text style={tw`text-sm text-gray-600 ml-1`}>{post.comments}</Text>
+                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
                     </View>
                   </View>
                   <View style={tw`flex-row items-center`}>
@@ -587,7 +587,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           <View style={tw`p-4`}>
             {stories.length === 0 ? (
               <View style={tw`items-center py-8`}>
-                <Text style={tw`text-gray-500 text-center`}>
+                <Text style={tw`text-stone-500 text-center`}>
                   No active stories yet.
                 </Text>
                 <TouchableOpacity
@@ -610,7 +610,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       onPress={() => openStoriesViewer(story.id)}
                     >
                       <View
-                        style={tw`w-20 h-20 rounded-xl bg-gray-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
+                        style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
                       >
                         <Image
                           source={{ uri: resolveStoryDisplayUri(story.image, user?.id || 'me', story.id) }}
@@ -618,8 +618,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                           contentFit="cover"
                         />
                       </View>
-                      <Text style={tw`text-xs text-gray-500`}>{story.views} views</Text>
-                      <Text style={tw`text-xs text-gray-400 mt-1`}>
+                      <Text style={tw`text-xs text-stone-500`}>{story.views} views</Text>
+                      <Text style={tw`text-xs text-stone-400 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
                     </TouchableOpacity>
@@ -639,29 +639,29 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         )}
 
         {/* Awards Section */}
-        <View style={tw`px-4 py-4 border-t border-gray-200`}>
-          <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Awards & Achievements</Text>
+        <View style={tw`px-4 py-4 border-t border-stone-200`}>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Awards & Achievements</Text>
           <View style={tw`flex-row flex-wrap`}>
             {AWARDS.map((award) => (
               <View key={award.id} style={tw`w-1/2 mb-4 pr-2`}>
                 <View
                   style={tw`bg-white border-2 rounded-xl p-4 items-center ${
                     award.unlocked
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 bg-gray-50 opacity-60'
+                      ? 'border-brand-500 bg-brand-50'
+                      : 'border-stone-200 bg-stone-50 opacity-60'
                   }`}
                 >
                   <Text style={tw`text-4xl mb-2`}>{award.icon}</Text>
                   <Text
                     style={tw`font-semibold text-center mb-1 ${
-                      award.unlocked ? 'text-gray-900' : 'text-gray-500'
+                      award.unlocked ? 'text-stone-900' : 'text-stone-500'
                     }`}
                   >
                     {award.name}
                   </Text>
                   <Text
                     style={tw`text-xs text-center ${
-                      award.unlocked ? 'text-gray-600' : 'text-gray-400'
+                      award.unlocked ? 'text-stone-600' : 'text-stone-400'
                     }`}
                   >
                     {award.description}
@@ -674,8 +674,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
         {/* Quick Actions */}
         {isInstructor && (
-          <View style={tw`px-4 py-4 border-b border-gray-200`}>
-            <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Quick Actions</Text>
+          <View style={tw`px-4 py-4 border-b border-stone-200`}>
+            <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Quick Actions</Text>
             <TouchableOpacity
               onPress={navigateToInstructor}
               style={tw`flex-row items-center justify-between py-4 bg-purple-50 rounded-xl px-4 border border-purple-200`}
@@ -685,8 +685,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                   <Ionicons name="school" size={24} color="#FFFFFF" />
                 </View>
                 <View style={tw`flex-1`}>
-                  <Text style={tw`font-bold text-gray-900 text-base`}>Instructor Hub</Text>
-                  <Text style={tw`text-sm text-gray-600`}>Manage students & courses</Text>
+                  <Text style={tw`font-bold text-stone-900 text-base`}>Instructor Hub</Text>
+                  <Text style={tw`text-sm text-stone-600`}>Manage students & courses</Text>
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#A855F7" />
@@ -696,10 +696,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
         {/* Settings */}
         <View style={tw`px-4 py-4`}>
-          <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Settings</Text>
-          <View style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Settings</Text>
+          <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-gray-900 font-medium`}>Haptics feedback</Text>
+              <Text style={tw`text-stone-900 font-medium`}>Haptics feedback</Text>
               <Text style={tw`text-xs text-stone-500 mt-0.5`}>
                 Subtle vibration on button presses (mobile only).
               </Text>
@@ -711,9 +711,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
             />
           </View>
-          <View style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}>
+          <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-gray-900 font-medium`}>Click sound</Text>
+              <Text style={tw`text-stone-900 font-medium`}>Click sound</Text>
               <Text style={tw`text-xs text-stone-500 mt-0.5`}>
                 Optional click tone where supported.
               </Text>
@@ -730,41 +730,41 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               const rootNavigation = navigation.getParent() || navigation;
               rootNavigation.navigate('UserOrders' as never);
             }}
-            style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="receipt-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-gray-900 ml-3`}>My Orders</Text>
+              <Text style={tw`text-stone-900 ml-3`}>My Orders</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => Alert.alert('Coming soon', 'Profile editing is in progress.')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="person-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-gray-900 ml-3`}>Edit Profile</Text>
+              <Text style={tw`text-stone-900 ml-3`}>Edit Profile</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => Alert.alert('Coming soon', 'Notification settings are coming soon.')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="notifications-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-gray-900 ml-3`}>Notifications</Text>
+              <Text style={tw`text-stone-900 ml-3`}>Notifications</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => Alert.alert('Coming soon', 'Help center will be available in the next update.')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-gray-200`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-gray-900 ml-3`}>Help & Support</Text>
+              <Text style={tw`text-stone-900 ml-3`}>Help & Support</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
@@ -801,8 +801,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       >
         <View style={tw`flex-1 bg-black/40 justify-center items-center`}>
           <View style={tw`w-11/12 max-w-sm bg-white rounded-2xl p-6`}>
-            <Text style={tw`text-xl font-semibold text-gray-900 mb-2`}>Sign Out</Text>
-            <Text style={tw`text-sm text-gray-600 mb-6`}>
+            <Text style={tw`text-xl font-semibold text-stone-900 mb-2`}>Sign Out</Text>
+            <Text style={tw`text-sm text-stone-600 mb-6`}>
               Are you sure you want to sign out? You will need to log in again to access your account.
             </Text>
             <View style={tw`flex-row justify-end`}>
@@ -810,7 +810,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 onPress={() => setShowSignOutModal(false)}
                 style={tw`px-4 py-2 rounded-full mr-2`}
               >
-                <Text style={tw`text-sm text-gray-600`}>Cancel</Text>
+                <Text style={tw`text-sm text-stone-600`}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSignOutConfirm}
@@ -831,19 +831,19 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         onRequestClose={() => setShowDecaySettings(false)}
       >
         <SafeAreaView style={tw`flex-1 bg-white`}>
-          <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200 flex-row items-center justify-between`}>
-            <Text style={tw`text-2xl font-bold text-gray-900`}>Decay Timer</Text>
+          <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
+            <Text style={tw`text-2xl font-bold text-stone-900`}>Decay Timer</Text>
             <TouchableOpacity onPress={() => setShowDecaySettings(false)}>
               <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>
           <ScrollView style={tw`flex-1 px-4 pt-6`}>
-            <Text style={tw`text-base text-gray-700 mb-4`}>
+            <Text style={tw`text-base text-stone-700 mb-4`}>
               Set how many days until your posts automatically decay and are removed from your timeline. 
               This helps you stay focused on current growth areas.
             </Text>
-            <View style={tw`bg-gray-50 rounded-xl p-4 mb-4`}>
-              <Text style={tw`text-sm text-gray-600 mb-2`}>Days until decay:</Text>
+            <View style={tw`bg-stone-50 rounded-xl p-4 mb-4`}>
+              <Text style={tw`text-sm text-stone-600 mb-2`}>Days until decay:</Text>
               <TextInput
                 value={decayDays.toString()}
                 onChangeText={(text) => {
@@ -851,7 +851,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                   if (num >= 1 && num <= 365) setDecayDays(num);
                 }}
                 keyboardType="numeric"
-                style={tw`bg-white border border-gray-300 rounded-lg px-4 py-3 text-2xl font-bold text-gray-900`}
+                style={tw`bg-white border border-stone-300 rounded-lg px-4 py-3 text-2xl font-bold text-stone-900`}
               />
               <View style={tw`flex-row gap-2 mt-3`}>
                 {[1, 3, 7, 14, 30, 90].map((days) => (
@@ -859,11 +859,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     key={days}
                     onPress={() => setDecayDays(days)}
                     style={tw`px-3 py-2 rounded-lg ${
-                      decayDays === days ? 'bg-green-600' : 'bg-white border border-gray-300'
+                      decayDays === days ? 'bg-brand-600' : 'bg-white border border-stone-300'
                     }`}
                   >
                     <Text style={tw`text-sm font-semibold ${
-                      decayDays === days ? 'text-white' : 'text-gray-700'
+                      decayDays === days ? 'text-white' : 'text-stone-700'
                     }`}>
                       {days}d
                     </Text>
@@ -873,7 +873,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </View>
             <TouchableOpacity
               onPress={handleSaveDecayTimer}
-              style={tw`bg-green-600 rounded-xl py-4 mb-4`}
+              style={tw`bg-brand-600 rounded-xl py-4 mb-4`}
             >
               <Text style={tw`text-white text-center font-bold text-base`}>Save Settings</Text>
             </TouchableOpacity>
@@ -928,14 +928,14 @@ function CategoryPickerModal({
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>
-      <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200 flex-row items-center justify-between`}>
-        <Text style={tw`text-2xl font-bold text-gray-900`}>Update Growth Areas</Text>
+      <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
+        <Text style={tw`text-2xl font-bold text-stone-900`}>Update Growth Areas</Text>
         <TouchableOpacity onPress={onClose}>
           <Ionicons name="close" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>
       <ScrollView style={tw`flex-1 px-4 pt-4`}>
-        <Text style={tw`text-sm text-gray-600 mb-4`}>
+        <Text style={tw`text-sm text-stone-600 mb-4`}>
           Select up to 3 categories to focus on. Selected: {selectedCategories.length}/3
         </Text>
         {CATEGORIES.map((category) => {
@@ -946,7 +946,7 @@ function CategoryPickerModal({
               key={category.key}
               onPress={() => setExpandedCategory(isExpanded ? null : category.key)}
               style={tw`flex-row items-center justify-between p-4 rounded-xl border-2 mb-3 ${
-                isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'
+                isSelected ? 'border-brand-500 bg-brand-50' : 'border-stone-200 bg-white'
               }`}
             >
               <View style={tw`flex-row items-center flex-1`}>
@@ -956,7 +956,7 @@ function CategoryPickerModal({
                   color={isSelected ? '#10B981' : '#6B7280'}
                   style={tw`mr-3`}
                 />
-                <Text style={tw`text-lg font-semibold ${isSelected ? 'text-green-700' : 'text-gray-800'}`}>
+                <Text style={tw`text-lg font-semibold ${isSelected ? 'text-brand-700' : 'text-stone-800'}`}>
                   {category.label}
                 </Text>
               </View>
@@ -968,7 +968,7 @@ function CategoryPickerModal({
         })}
         <TouchableOpacity
           onPress={() => onSave(selectedCategories)}
-          style={tw`bg-green-600 rounded-xl py-4 mb-4 mt-4`}
+          style={tw`bg-brand-600 rounded-xl py-4 mb-4 mt-4`}
         >
           <Text style={tw`text-white text-center font-bold text-base`}>Save Changes</Text>
         </TouchableOpacity>

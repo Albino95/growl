@@ -240,7 +240,7 @@ export default function MessagesScreen() {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
         {/* Chat Header */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-200 bg-white`}>
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200 bg-white`}>
           <TouchableOpacity 
             onPress={() => {
               setSelectedConversation(null);
@@ -250,7 +250,7 @@ export default function MessagesScreen() {
             <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
           <View style={tw`flex-row items-center flex-1`}>
-            <View style={tw`w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3`}>
+            <View style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center mr-3`}>
               <Image
                 source={{ uri: selectedConversation.avatar }}
                 style={tw`w-full h-full rounded-full`}
@@ -258,8 +258,8 @@ export default function MessagesScreen() {
               />
             </View>
             <View style={tw`flex-1`}>
-              <Text style={tw`font-semibold text-gray-900`}>{selectedConversation.username}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Active now</Text>
+              <Text style={tw`font-semibold text-stone-900`}>{selectedConversation.username}</Text>
+              <Text style={tw`text-xs text-stone-500`}>Active now</Text>
             </View>
           </View>
           <TouchableOpacity>
@@ -283,18 +283,18 @@ export default function MessagesScreen() {
               <View
                 style={tw`max-w-[75%] rounded-2xl px-4 py-2.5 ${
                   item.isOwn
-                    ? 'bg-green-500 rounded-tr-sm'
-                    : 'bg-gray-100 rounded-tl-sm'
+                    ? 'bg-brand-500 rounded-tr-sm'
+                    : 'bg-stone-100 rounded-tl-sm'
                 } shadow-sm`}
               >
                 {!item.isOwn && (
-                  <Text style={tw`text-xs font-semibold text-gray-700 mb-1`}>
+                  <Text style={tw`text-xs font-semibold text-stone-700 mb-1`}>
                     {item.username}
                   </Text>
                 )}
                 <Text
                   style={tw`text-base ${
-                    item.isOwn ? 'text-white' : 'text-gray-900'
+                    item.isOwn ? 'text-white' : 'text-stone-900'
                   }`}
                 >
                   {item.message}
@@ -302,7 +302,7 @@ export default function MessagesScreen() {
                 <View style={tw`flex-row items-center justify-end mt-1`}>
                   <Text
                     style={tw`text-xs ${
-                      item.isOwn ? 'text-green-100' : 'text-gray-500'
+                      item.isOwn ? 'text-brand-100' : 'text-stone-500'
                     } mr-1`}
                   >
                     {item.timestamp}
@@ -336,19 +336,19 @@ export default function MessagesScreen() {
         />
 
         {/* Message Input */}
-        <View style={tw`border-t border-gray-200 bg-white px-4 py-3`}>
+        <View style={tw`border-t border-stone-200 bg-white px-4 py-3`}>
           <View style={tw`flex-row items-end`}>
             <TouchableOpacity style={tw`mr-2 mb-1`}>
               <Ionicons name="add-circle-outline" size={28} color="#10B981" />
             </TouchableOpacity>
-            <View style={tw`flex-1 bg-gray-100 rounded-full px-4 py-2.5 max-h-24 mr-2`}>
+            <View style={tw`flex-1 bg-stone-100 rounded-full px-4 py-2.5 max-h-24 mr-2`}>
               <TextInput
                 ref={messageInputRef}
                 placeholder="Message..."
                 value={messageText}
                 onChangeText={setMessageText}
                 multiline
-                style={tw`text-base text-gray-900`}
+                style={tw`text-base text-stone-900`}
                 placeholderTextColor="#9CA3AF"
                 returnKeyType="default"
                 blurOnSubmit={false}
@@ -357,7 +357,7 @@ export default function MessagesScreen() {
             {messageText.trim() ? (
               <TouchableOpacity
                 onPress={handleSendMessage}
-                style={tw`bg-green-500 rounded-full w-10 h-10 items-center justify-center mb-1`}
+                style={tw`bg-brand-500 rounded-full w-10 h-10 items-center justify-center mb-1`}
               >
                 <Ionicons name="send" size={20} color="#FFFFFF" />
               </TouchableOpacity>
@@ -371,9 +371,9 @@ export default function MessagesScreen() {
                     messageInputRef.current?.blur();
                     Keyboard.dismiss();
                   }}
-                  style={tw`px-3 py-1.5 bg-green-100 rounded-full mb-1`}
+                  style={tw`px-3 py-1.5 bg-brand-100 rounded-full mb-1`}
                 >
-                  <Text style={tw`text-xs text-green-700 font-semibold`}>Done</Text>
+                  <Text style={tw`text-xs text-brand-700 font-semibold`}>Done</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -389,7 +389,7 @@ export default function MessagesScreen() {
     <SafeAreaView style={tw`flex-1 bg-white`}>
       <View style={tw`flex-1`}>
         {/* Header */}
-        <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200 bg-white`}>
+        <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 bg-white`}>
           <View style={tw`flex-row items-center justify-between mb-4`}>
             <View style={tw`flex-row items-center flex-1`}>
               <TouchableOpacity
@@ -407,7 +407,7 @@ export default function MessagesScreen() {
               >
                 <Ionicons name="arrow-back" size={24} color="#374151" />
               </TouchableOpacity>
-              <Text style={tw`text-3xl font-bold text-green-600`}>Messages</Text>
+              <Text style={tw`text-3xl font-bold text-brand-600`}>Messages</Text>
             </View>
             <TouchableOpacity>
               <Ionicons name="create-outline" size={28} color="#10B981" />
@@ -463,7 +463,7 @@ export default function MessagesScreen() {
                   <View style={tw`relative`}>
                     <View
                       style={tw`w-16 h-16 rounded-full border-2 ${
-                        allViewed ? 'border-gray-300' : 'border-purple-500'
+                        allViewed ? 'border-stone-300' : 'border-purple-500'
                       } items-center justify-center bg-purple-100 p-0.5`}
                     >
                       <View style={tw`w-full h-full rounded-full bg-white items-center justify-center`}>
@@ -483,21 +483,21 @@ export default function MessagesScreen() {
                       </View>
                     )}
                   </View>
-                  <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
+                  <Text style={tw`text-xs text-stone-600 mt-1 max-w-16`} numberOfLines={1}>
                     {user.username}
                   </Text>
                 </TouchableOpacity>
               );
             })}
             <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
+              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-stone-300`}
             >
               <Ionicons name="add" size={24} color="#9CA3AF" />
             </TouchableOpacity>
           </ScrollView>
 
           {/* Section Tabs */}
-          <View style={tw`flex-row border-b border-gray-200`}>
+          <View style={tw`flex-row border-b border-stone-200`}>
             {sections.map((section) => (
               <TouchableOpacity
                 key={section}
@@ -508,7 +508,7 @@ export default function MessagesScreen() {
               >
                 <Text
                   style={tw`text-sm font-medium ${
-                    activeSection === section ? 'text-green-600' : 'text-gray-500'
+                    activeSection === section ? 'text-brand-600' : 'text-stone-500'
                   }`}
                 >
                   {section}
@@ -526,10 +526,10 @@ export default function MessagesScreen() {
           renderItem={({ item }) => (
             <TouchableOpacity
               onPress={() => setSelectedConversation(item)}
-              style={tw`flex-row items-center py-4 border-b border-gray-100`}
+              style={tw`flex-row items-center py-4 border-b border-stone-100`}
             >
               <View style={tw`relative`}>
-                <View style={tw`w-14 h-14 rounded-full bg-gray-100 items-center justify-center`}>
+                <View style={tw`w-14 h-14 rounded-full bg-stone-100 items-center justify-center`}>
                   <Image
                     source={{ uri: item.avatar }}
                     style={tw`w-full h-full rounded-full`}
@@ -537,17 +537,17 @@ export default function MessagesScreen() {
                   />
                 </View>
                 {item.hasUnread && (
-                  <View style={tw`absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white`} />
+                  <View style={tw`absolute -top-1 -right-1 w-5 h-5 bg-brand-500 rounded-full border-2 border-white`} />
                 )}
               </View>
               <View style={tw`flex-1 ml-3`}>
                 <View style={tw`flex-row items-center justify-between mb-1`}>
-                  <Text style={tw`font-semibold text-gray-900`}>{item.username}</Text>
-                  <Text style={tw`text-xs text-gray-500`}>{item.timestamp}</Text>
+                  <Text style={tw`font-semibold text-stone-900`}>{item.username}</Text>
+                  <Text style={tw`text-xs text-stone-500`}>{item.timestamp}</Text>
                 </View>
                 <View style={tw`flex-row items-center`}>
                   <Text
-                    style={tw`text-sm text-gray-600 flex-1 ${item.hasUnread ? 'font-semibold' : ''}`}
+                    style={tw`text-sm text-stone-600 flex-1 ${item.hasUnread ? 'font-semibold' : ''}`}
                     numberOfLines={1}
                   >
                     {item.lastMessage}
@@ -562,7 +562,7 @@ export default function MessagesScreen() {
           ListEmptyComponent={
             <View style={tw`items-center justify-center py-12`}>
               <Ionicons name="chatbubbles-outline" size={64} color="#D1D5DB" />
-              <Text style={tw`text-gray-500 mt-4 text-center`}>
+              <Text style={tw`text-stone-500 mt-4 text-center`}>
                 No {activeSection.toLowerCase()} messages yet
               </Text>
             </View>

@@ -29,6 +29,7 @@ import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
 import Chip from '../../components/ui/Chip';
 import EmptyState from '../../components/ui/EmptyState';
+import PrimaryButton from '../../components/ui/PrimaryButton';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
@@ -404,7 +405,7 @@ export default function FeedScreen({ navigation, route }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <View style={tw`flex-1`}>
         {/* Header with Messages/Stories */}
         <View
@@ -432,14 +433,14 @@ export default function FeedScreen({ navigation, route }: any) {
             {...horizontalScrollProps}
           >
             <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full bg-green-50 border-2 border-green-200 mr-4`}
+              style={tw`items-center justify-center w-16 h-16 rounded-full bg-brand-50 border-2 border-brand-200 mr-4`}
               onPress={() => {
                 // Navigate to messages screen
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('Messages');
               }}
             >
-              <Ionicons name="chatbubbles" size={24} color="#10B981" />
+              <Ionicons name="chatbubbles" size={24} color="#059669" />
               <Text style={tw`text-[10px] text-stone-600 mt-1`}>Inbox</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -497,7 +498,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   <View style={tw`relative`}>
                     <View
                       style={tw`w-16 h-16 rounded-full border-2 ${
-                        allViewed ? 'border-gray-300' : 'border-purple-500'
+                        allViewed ? 'border-stone-300' : 'border-accent-600'
                       } items-center justify-center bg-purple-100 p-0.5`}
                     >
                       <Image
@@ -515,14 +516,14 @@ export default function FeedScreen({ navigation, route }: any) {
                       </View>
                     )}
                   </View>
-                  <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
+                  <Text style={tw`text-xs text-stone-600 mt-1 max-w-16`} numberOfLines={1}>
                     {user.username}
                   </Text>
                 </TouchableOpacity>
               );
             })}
             <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
+              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-stone-300`}
               onPress={() => {
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('CreateStory' as never);
@@ -558,18 +559,22 @@ export default function FeedScreen({ navigation, route }: any) {
 
         {/* Daily Post Reminder */}
         {!hasPostedToday && posts.length > 0 && (
-          <View style={tw`bg-yellow-50 border-b border-yellow-200 px-4 py-3`}>
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="information-circle" size={20} color="#F59E0B" />
-              <Text style={tw`text-sm text-yellow-800 ml-2 flex-1`}>
-                Post at least once today to see what others are doing!
+          <View style={tw`bg-brand-50 border-b border-brand-200 px-4 py-3`}>
+            <View style={tw`flex-row items-center gap-3`}>
+              <Ionicons name="sparkles" size={20} color="#059669" />
+              <Text style={tw`text-sm text-brand-800 flex-1`}>
+                Share your progress today to stay connected with your community.
               </Text>
-              <TouchableOpacity onPress={() => {
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Post');
-              }}>
-                <Text style={tw`text-sm font-semibold text-yellow-900`}>Post Now</Text>
-              </TouchableOpacity>
+              <View style={tw`w-24`}>
+                <PrimaryButton
+                  label="Post"
+                  variant="soft"
+                  onPress={() => {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    rootNavigation.navigate('Post');
+                  }}
+                />
+              </View>
             </View>
           </View>
         )}
@@ -619,7 +624,7 @@ export default function FeedScreen({ navigation, route }: any) {
           renderItem={({ item }) => (
             <View
               style={[
-                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-100`,
+                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-200`,
                 Platform.OS === 'ios'
                   ? {
                       shadowColor: '#0f172a',
@@ -645,8 +650,8 @@ export default function FeedScreen({ navigation, route }: any) {
                     contentFit="cover"
                   />
                   <View style={tw`flex-1`}>
-                    <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
-                    <Text style={tw`text-xs text-gray-500`}>{item.timestamp}</Text>
+                    <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
+                    <Text style={tw`text-xs text-stone-500`}>{item.timestamp}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity style={tw`p-1`} onPress={() => setPostMenuPost(item)}>
@@ -672,7 +677,7 @@ export default function FeedScreen({ navigation, route }: any) {
               )}
 
               {/* Post Image - Modern Style */}
-              <View style={tw`w-full bg-gray-50`}>
+              <View style={tw`w-full bg-stone-50`}>
                 {item.image && item.image.trim() !== '' ? (
                   <Image
                     source={{
@@ -759,7 +764,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
                 {/* Likes Count */}
                 <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
-                  <Text style={tw`font-bold text-gray-900 mb-2 text-base`}>
+                  <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
                     {item.likes} {item.likes === 1 ? 'like' : 'likes'}
                   </Text>
                 </TouchableOpacity>
@@ -787,9 +792,9 @@ export default function FeedScreen({ navigation, route }: any) {
                       rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
                     }}
                   >
-                    <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
+                    <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
                   </TouchableOpacity>
-                  <Text style={tw`text-gray-900 text-base`}> {item.caption}</Text>
+                  <Text style={tw`text-stone-900 text-base`}> {item.caption}</Text>
                 </View>
 
                 {/* CO2 Calculator */}
@@ -798,14 +803,14 @@ export default function FeedScreen({ navigation, route }: any) {
                 {/* Comments */}
                 {item.comments > 0 && (
                   <TouchableOpacity onPress={() => setSelectedPost(item)}>
-                    <Text style={tw`text-gray-500 text-sm mb-1`}>
+                    <Text style={tw`text-stone-500 text-sm mb-1`}>
                       View all {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
                     </Text>
                   </TouchableOpacity>
                 )}
                 {item.comments === 0 ? (
                   <TouchableOpacity onPress={() => setSelectedPost(item)}>
-                    <Text style={tw`text-gray-400 text-xs mb-1`}>No comments yet</Text>
+                    <Text style={tw`text-stone-400 text-xs mb-1`}>No comments yet</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -814,7 +819,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   onPress={() => setSelectedPost(item)}
                   style={tw`mt-2`}
                 >
-                  <Text style={tw`text-gray-500 text-sm`}>Add a comment...</Text>
+                  <Text style={tw`text-stone-500 text-sm`}>Add a comment...</Text>
                 </TouchableOpacity>
               </View>
             </View>
