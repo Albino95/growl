@@ -1,9 +1,9 @@
-import twrnc from 'twrnc';
+import { create } from 'twrnc';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const tailwindConfig = require('../../tailwind.config.js');
 
-const tw = twrnc.create(tailwindConfig);
+const tw = create(tailwindConfig);
 
 export const theme = {
   colors: {
