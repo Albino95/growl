@@ -36,7 +36,8 @@ const defineConfig = (): ExpoConfig => ({
   web: {
     bundler: 'metro',
     favicon: './assets/favicon.png',
-    output: 'static',
+    // SPA export for React Navigation (not Expo Router). `static` requires expo-router.
+    output: 'single',
     name: 'Growl',
     shortName: 'Growl',
     lang: 'en',
