@@ -1,8 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { NavigationContainerRef } from '@react-navigation/native';
 import AuthScreen from '../../screens/Auth/AuthScreen';
-import KYCScreen from '../../screens/KYC/KYCScreen';
 import CategoryPickScreen from '../../screens/Onboarding/CategoryPickScreen';
 import IndividualTabs from './tabs/IndividualTabs';
 import BusinessRootStack from './BusinessRootStack';
@@ -14,10 +12,14 @@ import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
+import EditProfileScreen from '../../screens/Profile/EditProfileScreen';
+import NotificationPrefsScreen from '../../screens/Profile/NotificationPrefsScreen';
+import LegalHubScreen from '../../screens/Legal/LegalHubScreen';
+import LegalDocumentScreen from '../../screens/Legal/LegalDocumentScreen';
+import DeleteAccountScreen from '../../screens/Profile/DeleteAccountScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
 import { useAppSelector } from '../../store/store';
-import FullScreenLoader from '../../components/common/FullScreenLoader';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 
 type PostDetailParam = {
@@ -40,18 +42,22 @@ type PostDetailParam = {
 
 export type RootStackParamList = {
   Auth: undefined;
-  KYC: undefined;
   Categories: undefined;
   Individual: undefined;
   Business: undefined;
   Post: undefined;
-  Messages: undefined;
+  Messages: { conversationId?: string; targetUserId?: string } | undefined;
   Reels: undefined;
   PublicProfile: { userId: string };
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
+  EditProfile: undefined;
+  NotificationPrefs: undefined;
+  Legal: undefined;
+  LegalDocument: { documentId: 'terms' | 'privacy' | 'community' | 'support' };
+  DeleteAccount: undefined;
   StoryViewer: {
     stories: Array<{
       id: string;
@@ -107,7 +113,6 @@ export default function RootNavigator() {
       initialRouteName={initialRouteName}
     >
       <Stack.Screen name="Auth" component={AuthScreen} />
-      <Stack.Screen name="KYC" component={KYCScreen} />
       <Stack.Screen name="Categories" component={CategoryPickScreen} />
       {!isBusinessAccount && (
         <>
@@ -147,6 +152,16 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name="EditProfile"
+            component={EditProfileScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="NotificationPrefs"
+            component={NotificationPrefsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="StoryViewer"
             component={StoryViewerScreen}
             options={{ headerShown: false, presentation: 'fullScreenModal' }}
@@ -163,6 +178,17 @@ export default function RootNavigator() {
         </>
       )}
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+      <Stack.Screen name="Legal" component={LegalHubScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="LegalDocument"
+        component={LegalDocumentScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DeleteAccount"
+        component={DeleteAccountScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen name="Business" component={BusinessRootStack} />
     </Stack.Navigator>
   );

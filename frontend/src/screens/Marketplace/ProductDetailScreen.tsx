@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,12 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { getProduct, Product } from '../../services/api/marketplace';
+import { getProduct, getProducts, Product } from '../../services/api/marketplace';
 import { getProductImageUrl, getProductImages } from '../../utils/images';
-import { verticalScrollProps } from '../../constants/scroll';
+import { verticalScrollProps, horizontalScrollProps } from '../../constants/scroll';
+import { rankMarketplaceProducts } from '../../utils/ranking';
+import { useAuth } from '../../store/hooks';
+import SectionLabel from '../../components/ui/SectionLabel';
 
 const { width } = Dimensions.get('window');
 
@@ -31,8 +34,10 @@ export default function ProductDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<ProductDetailRouteProp>();
   const { productId } = route.params;
+  const { user } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -50,6 +55,15 @@ export default function ProductDetailScreen() {
       const response = await getProduct(productId);
       if (response.success && response.data) {
         setProduct(response.data);
+        const catalog = await getProducts({});
+        if (catalog.success && Array.isArray(catalog.data?.products)) {
+          const ranked = rankMarketplaceProducts(catalog.data.products, user?.categories || [], {
+            userPoints: user?.points,
+          });
+          setRelatedProducts(
+            ranked.filter((p) => p.id !== productId).slice(0, 6)
+          );
+        }
       } else {
         Alert.alert('Error', 'Failed to load product');
         navigation.goBack();
@@ -280,6 +294,40 @@ export default function ProductDetailScreen() {
               Free shipping on orders over $50. Estimated delivery: 3-5 business days.
             </Text>
           </View>
+
+          {relatedProducts.length > 0 ? (
+            <View style={tw`mb-4`}>
+              <SectionLabel variant="caps">You may also like</SectionLabel>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} {...horizontalScrollProps}>
+                {relatedProducts.map((item) => {
+                  const thumb =
+                    item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() =>
+                        (navigation as { navigate: (a: string, b: object) => void }).navigate(
+                          'ProductDetail',
+                          { productId: item.id }
+                        )
+                      }
+                      style={tw`w-36 mr-3 bg-white border border-stone-100 rounded-2xl overflow-hidden`}
+                    >
+                      <Image source={{ uri: thumb }} style={tw`w-full h-40 bg-stone-100`} contentFit="cover" />
+                      <View style={tw`p-2`}>
+                        <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
+                          {item.name}
+                        </Text>
+                        <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
+                          ${item.price.toFixed(2)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 

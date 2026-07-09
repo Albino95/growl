@@ -8,6 +8,14 @@ export type ProfileUpdatePayload = {
   username?: string;
   avatar?: string;
   categories?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export type NotificationPrefs = {
+  notificationsEnabled?: boolean;
+  emailNotifications?: boolean;
+  pushNotifications?: boolean;
+  marketingEmails?: boolean;
 };
 
 export type CurrentProfile = {
@@ -19,6 +27,7 @@ export type CurrentProfile = {
   is_instructor: boolean;
   is_business: boolean;
   categories: string[];
+  notifications_prefs?: NotificationPrefs;
 };
 
 export type PublicProfileApiData = {
@@ -53,6 +62,7 @@ export async function fetchCurrentProfile(): Promise<CurrentProfile> {
   return {
     ...res.data,
     categories: Array.isArray(res.data.categories) ? res.data.categories : [],
+    notifications_prefs: res.data.notifications_prefs || {},
   };
 }
 

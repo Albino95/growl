@@ -52,7 +52,7 @@ export async function signInApi(email: string, password: string): Promise<Sessio
 }
 
 export async function signInSsoApi(payload: {
-  provider: 'google' | 'facebook';
+  provider: 'google' | 'facebook' | 'apple';
   idToken?: string;
   accessToken?: string;
 }): Promise<SessionResponse> {

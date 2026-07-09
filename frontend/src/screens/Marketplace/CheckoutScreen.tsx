@@ -8,13 +8,15 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import tw from '../../lib/tw';
-import { getProduct, createOrder, OrderItem, ShippingAddress } from '../../services/api/marketplace';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { getProduct, createCheckoutSession, getPaymentConfig, OrderItem, ShippingAddress } from '../../services/api/marketplace';
 import { getProductImageUrl } from '../../utils/images';
 import type { Product } from '../../services/api/marketplace';
 
@@ -39,6 +41,8 @@ export default function CheckoutScreen() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   // Shipping form
   const [shipping, setShipping] = useState<ShippingAddress>({
@@ -51,8 +55,20 @@ export default function CheckoutScreen() {
   });
 
   useEffect(() => {
+    loadPaymentConfig();
     loadCartItems();
   }, []);
+
+  const loadPaymentConfig = async () => {
+    try {
+      const response = await getPaymentConfig();
+      setPaymentsEnabled(response.success && response.data?.enabled === true);
+    } catch {
+      setPaymentsEnabled(false);
+    } finally {
+      setConfigLoaded(true);
+    }
+  };
 
   const loadCartItems = async () => {
     try {
@@ -123,6 +139,7 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
+    if (!paymentsEnabled) return;
     if (!validateForm()) return;
 
     // Check stock availability
@@ -142,7 +159,7 @@ export default function CheckoutScreen() {
 
     try {
       setProcessing(true);
-      const response = await createOrder({
+      const response = await createCheckoutSession({
         items: cartItems.map((item) => ({
           product_id: item.product_id,
           quantity: item.quantity,
@@ -150,31 +167,27 @@ export default function CheckoutScreen() {
         shipping_address: shipping,
       });
 
-      if (response.success) {
-        Alert.alert(
-          'Order Placed!',
-          `Your order #${response.data.id.slice(0, 8)} has been placed successfully.`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                navigation.navigate('Individual');
-                navigation.navigate('Marketplace');
-              },
-            },
-          ]
-        );
+      if (response.success && response.data?.url) {
+        const canOpen = await Linking.canOpenURL(response.data.url);
+        if (canOpen) {
+          await Linking.openURL(response.data.url);
+        } else {
+          Alert.alert(
+            'Checkout Ready',
+            'Complete your payment in the browser to finish your order.'
+          );
+        }
       } else {
-        Alert.alert('Error', 'Failed to place order. Please try again.');
+        Alert.alert('Error', 'Failed to start checkout. Please try again.');
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to place order. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to start checkout. Please try again.');
     } finally {
       setProcessing(false);
     }
   };
 
-  if (loading) {
+  if (loading || !configLoaded) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white`}>
         <View style={tw`flex-1 items-center justify-center`}>
@@ -201,6 +214,15 @@ export default function CheckoutScreen() {
       </View>
 
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
+        {!paymentsEnabled && (
+          <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex-row items-center`}>
+            <Ionicons name="time-outline" size={20} color="#D97706" style={tw`mr-2`} />
+            <Text style={tw`text-amber-800 text-sm font-medium flex-1`}>
+              Checkout opening soon — payments are not enabled yet.
+            </Text>
+          </View>
+        )}
+
         {/* Order Items */}
         <View style={tw`bg-white mb-4`}>
           <View style={tw`px-4 py-3 border-b border-stone-200`}>
@@ -332,19 +354,35 @@ export default function CheckoutScreen() {
       <View style={tw`bg-white border-t border-stone-200 px-4 py-4`}>
         <TouchableOpacity
           onPress={handlePlaceOrder}
-          disabled={processing || cartItems.length === 0}
+          disabled={processing || cartItems.length === 0 || !paymentsEnabled}
           style={tw`bg-brand-600 rounded-lg py-4 items-center ${
-            processing || cartItems.length === 0 ? 'opacity-50' : ''
+            processing || cartItems.length === 0 || !paymentsEnabled ? 'opacity-50' : ''
           }`}
         >
           {processing ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={tw`text-white font-bold text-lg`}>Place Order</Text>
+            <Text style={tw`text-white font-bold text-lg`}>
+              {paymentsEnabled ? 'Proceed to Payment' : 'Checkout Unavailable'}
+            </Text>
           )}
         </TouchableOpacity>
         <Text style={tw`text-xs text-stone-500 text-center mt-2`}>
-          By placing this order, you agree to our terms and conditions
+          By placing this order, you agree to our{' '}
+          <Text
+            style={tw`text-brand-700 underline`}
+            onPress={() => navigateFromRoot(navigation, 'LegalDocument', { documentId: 'terms' })}
+          >
+            Terms of Service
+          </Text>{' '}
+          and{' '}
+          <Text
+            style={tw`text-brand-700 underline`}
+            onPress={() => navigateFromRoot(navigation, 'LegalDocument', { documentId: 'privacy' })}
+          >
+            Privacy Policy
+          </Text>
+          .
         </Text>
       </View>
     </SafeAreaView>

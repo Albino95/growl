@@ -7,8 +7,8 @@ import {
   rankExploreRows,
   type ExploreAlgorithmPost,
   type ExploreAlgorithmProduct,
-} from './exploreAlgorithm';
-import { rankDiscoverPeople, type StoryGroup } from './discoverPeople';
+} from './ranking';
+import { rankDiscoverPeople, type StoryGroup } from './ranking';
 
 describe('exploreAlgorithm', () => {
   it('expandUserCategoryKeys adds parent segment', () => {

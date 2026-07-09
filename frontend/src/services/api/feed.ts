@@ -8,6 +8,8 @@ export type FeedPost = {
   category: string;
   subcategory?: string | null;
   created_at: string;
+  relevance_score?: number;
+  feed_section?: 'following' | 'suggested';
   metadata?: {
     likes?: number;
     comments?: number;
@@ -20,6 +22,19 @@ export type FeedPost = {
     isInstructor?: boolean;
     audio_url?: string;
     audio_title?: string;
+  };
+};
+
+export type FeedResponse = {
+  success: boolean;
+  data: FeedPost[];
+};
+
+export type ForYouFeedResponse = {
+  success: boolean;
+  data: {
+    following: FeedPost[];
+    suggested: FeedPost[];
   };
 };
 
@@ -44,16 +59,17 @@ export type FeedLiker = {
   isFriend?: boolean;
 };
 
-export type FeedResponse = {
-  success: boolean;
-  data: FeedPost[];
-};
-
 export async function getFeedPosts(options?: {
-  mode?: 'default' | 'explore';
+  mode?: 'default' | 'explore' | 'foryou' | 'home';
 }): Promise<FeedResponse> {
-  const mode = options?.mode === 'explore' ? '?mode=explore' : '';
-  return request<FeedResponse>(`/feed/feed${mode}`);
+  const mode = options?.mode;
+  const query =
+    mode === 'explore' ? '?mode=explore' : mode === 'foryou' || mode === 'home' ? '?mode=foryou' : '';
+  return request<FeedResponse>(`/feed/feed${query}`);
+}
+
+export async function getForYouFeed(): Promise<ForYouFeedResponse> {
+  return request<ForYouFeedResponse>('/feed/feed?mode=foryou');
 }
 
 export async function createFeedPost(payload: {

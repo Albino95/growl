@@ -11,6 +11,9 @@ export interface Env {
   APP_PUBLIC_URL?: string;
   GOOGLE_CLIENT_ID?: string;
   FACEBOOK_APP_ID?: string;
+  APPLE_CLIENT_ID?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 // User types

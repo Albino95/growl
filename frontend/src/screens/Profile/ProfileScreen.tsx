@@ -739,7 +739,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => Alert.alert('Coming soon', 'Profile editing is in progress.')}
+            onPress={() => navigateFromRoot(navigation, 'EditProfile')}
             style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -749,7 +749,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => Alert.alert('Coming soon', 'Notification settings are coming soon.')}
+            onPress={() => navigateFromRoot(navigation, 'NotificationPrefs')}
             style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
@@ -759,12 +759,22 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => Alert.alert('Coming soon', 'Help center will be available in the next update.')}
+            onPress={() => navigateFromRoot(navigation, 'Legal')}
             style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Help & Support</Text>
+              <Ionicons name="document-text-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-stone-900 ml-3`}>Legal & Support</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="trash-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-stone-900 ml-3`}>Delete Account</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>

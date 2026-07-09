@@ -1,8 +1,68 @@
 import { Env, Product, Order } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema } from '../utils/validation';
+import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
+
+function isPaymentsEnabled(env: Env): boolean {
+  return Boolean(env.STRIPE_SECRET_KEY?.trim());
+}
+
+/**
+ * GET /api/v1/marketplace/payment-config
+ * Returns whether Stripe checkout is configured on the server.
+ */
+export async function getPaymentConfig(_request: Request, env: Env): Promise<Response> {
+  return json({ enabled: isPaymentsEnabled(env) });
+}
+
+/**
+ * POST /api/v1/marketplace/checkout-session
+ * Creates a Stripe Checkout session (stub URL when Stripe is not configured).
+ */
+export async function createCheckoutSession(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  if (!isPaymentsEnabled(env)) {
+    return error('PAYMENTS_DISABLED', 'Marketplace payments are not available', 503);
+  }
+
+  const validation = await validateRequest(request, checkoutSessionSchema);
+  if (!validation.success) return validation.response;
+
+  const { items } = validation.data;
+
+  // Validate products exist and calculate total
+  let total = 0;
+  for (const item of items) {
+    const product = await env.DB.prepare('SELECT price, stock, name FROM products WHERE id = ?')
+      .bind(item.product_id)
+      .first<{ price: number; stock: number; name: string }>();
+
+    if (!product) {
+      return error('PRODUCT_NOT_FOUND', `Product ${item.product_id} not found`, 404);
+    }
+
+    if (product.stock < item.quantity) {
+      return error('INSUFFICIENT_STOCK', `Insufficient stock for product ${product.name}`, 400);
+    }
+
+    total += product.price * item.quantity;
+  }
+
+  const sessionId = `cs_test_${generateId('checkout')}`;
+  const url = `https://checkout.stripe.com/c/pay/${sessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0`;
+
+  return json({
+    session_id: sessionId,
+    url,
+    amount_total: total,
+    currency: 'usd',
+  });
+}
 
 /**
  * GET /api/v1/marketplace/products
@@ -352,10 +412,22 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
+  if (!isPaymentsEnabled(env)) {
+    return error('PAYMENTS_DISABLED', 'Marketplace payments are not available', 503);
+  }
+
   const validation = await validateRequest(request, createOrderSchema);
   if (!validation.success) return validation.response;
 
   const { items, shipping_address, metadata } = validation.data;
+
+  if (!metadata?.payment_confirmed) {
+    return error(
+      'PAYMENT_REQUIRED',
+      'Direct orders require confirmed payment. Complete checkout via Stripe first.',
+      403
+    );
+  }
 
   // Validate products exist and calculate total
   let total = 0;
@@ -389,7 +461,9 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
 
   const businessId = businessIds.size === 1 ? Array.from(businessIds)[0] : null;
   const orderMeta = {
-    payment_method: metadata?.payment_method || 'Card',
+    payment_method: metadata?.payment_method || 'stripe',
+    payment_confirmed: true,
+    stripe_checkout_session_id: metadata?.stripe_checkout_session_id || null,
     source: metadata?.source || 'organic',
     referral_instructor_id: metadata?.referral_instructor_id || null,
     campaign_id: metadata?.campaign_id || null,

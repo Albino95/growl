@@ -18,7 +18,7 @@ import { alertMessage } from '../../../utils/confirmDialog';
 import type { CropAspect, EditAdjustments, EditorTab, PhotoEditorProps } from './types';
 import { DEFAULT_ADJUSTMENTS } from './types';
 import { FILTER_CATEGORIES, getPresetsForCategory } from './presets';
-import { buildCssFilter, hasActiveEdits, mergeAdjustments } from './filterEngine';
+import { buildCssFilter, hasActiveEdits, mergeAdjustments, snapSliderValue } from './filterEngine';
 import {
   cropToAspect,
   exportEditedImage,
@@ -115,18 +115,26 @@ function AdjustSlider({
   max: number;
   onChange: (v: number) => void;
 }) {
+  const displayValue = snapSliderValue(value);
+
+  const handleChange = (raw: number) => {
+    const snapped = snapSliderValue(raw);
+    if (snapped !== displayValue) onChange(snapped);
+  };
+
   return (
     <View style={tw`mb-4`}>
       <View style={tw`flex-row justify-between mb-1`}>
         <Text style={tw`text-stone-300 text-sm font-medium`}>{label}</Text>
-        <Text style={tw`text-stone-500 text-sm`}>{Math.round(value)}</Text>
+        <Text style={tw`text-stone-500 text-sm`}>{displayValue}</Text>
       </View>
       <Slider
         style={tw`w-full h-8`}
         minimumValue={min}
         maximumValue={max}
-        value={value}
-        onValueChange={onChange}
+        value={displayValue}
+        onValueChange={handleChange}
+        onSlidingComplete={handleChange}
         minimumTrackTintColor="#059669"
         maximumTrackTintColor="#44403C"
         thumbTintColor="#10B981"
@@ -159,7 +167,11 @@ export default function PhotoEditor({ imageUri, onSave, onCancel }: PhotoEditorP
   );
 
   const setAdjust = useCallback((key: AdjustKey, value: number) => {
-    setManualAdjust((prev) => ({ ...prev, [key]: value }));
+    const snapped = snapSliderValue(value);
+    setManualAdjust((prev) => {
+      if (prev[key] === snapped) return prev;
+      return { ...prev, [key]: snapped };
+    });
   }, []);
 
   const resetAll = useCallback(() => {
@@ -206,19 +218,23 @@ export default function PhotoEditor({ imageUri, onSave, onCancel }: PhotoEditorP
     [workingUri]
   );
 
-  const handleApplyCrop = useCallback(async () => {
-    if (selectedCrop === 'free') return;
-    setIsProcessing(true);
-    try {
-      const next = await cropToAspect(workingUri, selectedCrop);
-      setWorkingUri(next);
-      alertMessage('Cropped', `Applied ${selectedCrop} crop.`);
-    } catch {
-      alertMessage('Error', 'Could not crop image.');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [workingUri, selectedCrop]);
+  const applyCropAspect = useCallback(
+    async (aspect: CropAspect) => {
+      setSelectedCrop(aspect);
+      if (aspect === 'free') return;
+
+      setIsProcessing(true);
+      try {
+        const next = await cropToAspect(workingUri, aspect);
+        setWorkingUri(next);
+      } catch {
+        alertMessage('Error', 'Could not crop image.');
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [workingUri]
+  );
 
   const previewStyle = filterCss !== 'none' ? ({ filter: filterCss } as object) : undefined;
   const vignetteOpacity = Math.min(0.65, effective.vignette / 70);
@@ -363,18 +379,19 @@ export default function PhotoEditor({ imageUri, onSave, onCancel }: PhotoEditorP
           {activeTab === 'crop' && (
             <View style={tw`flex-1 px-4 pt-4`}>
               <Text style={tw`text-stone-400 text-sm mb-4`}>
-                Choose an aspect ratio, then apply a centered crop.
+                Tap an aspect ratio to crop instantly. Choose Free to keep the full image.
               </Text>
-              <View style={tw`flex-row flex-wrap gap-2 mb-6`}>
+              <View style={tw`flex-row flex-wrap gap-2`}>
                 {CROP_OPTIONS.map((opt) => (
                   <Pressable
                     key={opt.id}
-                    onPress={() => setSelectedCrop(opt.id)}
+                    onPress={() => applyCropAspect(opt.id)}
+                    disabled={isProcessing}
                     style={tw`px-4 py-2.5 rounded-xl border ${
                       selectedCrop === opt.id
                         ? 'bg-brand-600 border-brand-500'
                         : 'bg-stone-800 border-stone-700'
-                    }`}
+                    } ${isProcessing ? 'opacity-60' : ''}`}
                   >
                     <Text
                       style={tw`font-semibold ${
@@ -386,15 +403,12 @@ export default function PhotoEditor({ imageUri, onSave, onCancel }: PhotoEditorP
                   </Pressable>
                 ))}
               </View>
-              <Pressable
-                onPress={handleApplyCrop}
-                disabled={selectedCrop === 'free' || isProcessing}
-                style={tw`bg-brand-600 rounded-2xl py-3.5 items-center ${
-                  selectedCrop === 'free' ? 'opacity-40' : ''
-                }`}
-              >
-                <Text style={tw`text-white font-bold`}>Apply crop</Text>
-              </Pressable>
+              {isProcessing && (
+                <View style={tw`flex-row items-center justify-center mt-6 gap-2`}>
+                  <ActivityIndicator color="#10B981" size="small" />
+                  <Text style={tw`text-stone-400 text-sm`}>Cropping…</Text>
+                </View>
+              )}
             </View>
           )}
 

@@ -1,6 +1,6 @@
 /**
- * Explore — discover people via stories & reels (not marketplace).
- * Ranking: `utils/discoverPeople.ts` + category overlap from onboarding paths.
+ * Explore — single scroll: stories, shop picks, posts grid, people, reels.
+ * Ranking: `utils/ranking/`
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -23,7 +23,9 @@ import { getFeedPosts, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { addFriend, listFriends } from '../../services/api/friends';
 import { resolveAvatarUri, resolvePostMediaUri, resolveStoryDisplayUri } from '../../utils/images';
-import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/discoverPeople';
+import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/ranking';
+import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
+import { getProducts } from '../../services/api/marketplace';
 import tw from '../../lib/tw';
 import { feedListPerformanceProps, horizontalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import SearchField from '../../components/ui/SearchField';
@@ -44,19 +46,25 @@ export default function ExploreScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [shopPicks, setShopPicks] = useState<RankedProduct[]>([]);
+  const [gridPosts, setGridPosts] = useState<FeedPost[]>([]);
 
   const userPaths = user?.categories || [];
 
   const load = useCallback(async () => {
     try {
       setLoadError(null);
-      const [feedRes, storiesRes, friends] = await Promise.all([
+      const [feedRes, storiesRes, friends, productsRes] = await Promise.all([
         getFeedPosts({ mode: 'explore' }),
         getStories({ mode: 'explore' }),
         listFriends(),
+        getProducts({}),
       ]);
       const posts = feedRes.success && Array.isArray(feedRes.data) ? feedRes.data : [];
+      const products =
+        productsRes.success && Array.isArray(productsRes.data?.products)
+          ? productsRes.data.products
+          : [];
       const fIds = new Set(friends.map((f) => f.id));
       setFriendIds(fIds);
 
@@ -75,6 +83,19 @@ export default function ExploreScreen() {
 
       setPeople(rankedPeople);
       setReels(rankedReels);
+
+      const rankedShop = rankMarketplaceProducts(products, userPaths, {
+        userPoints: user?.points,
+      });
+      setShopPicks(rankedShop.slice(0, 4));
+
+      const rankedGrid = rankExploreRows(posts, [], userPaths, {
+        friendIds: fIds,
+        applyDiversity: true,
+      })
+        .filter((r): r is { kind: 'post'; post: FeedPost; score: number } => r.kind === 'post')
+        .map((r) => r.post);
+      setGridPosts(rankedGrid.slice(0, 8));
     } catch (e) {
       console.warn('[Explore] load failed', e);
       setLoadError('Could not refresh explore content. Pull to retry.');
@@ -330,7 +351,76 @@ export default function ExploreScreen() {
           <Text style={tw`text-sm text-stone-500`}>No new story rings right now. Check reels below.</Text>
         )}
       </View>
-      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>Reels & posts to discover</Text>
+      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>Shop picks for you</Text>
+      {shopPicks.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-4`} {...horizontalScrollProps}>
+          {shopPicks.map((product) => (
+            <TouchableOpacity
+              key={product.id}
+              style={tw`w-36 mr-3 bg-white border border-stone-200 rounded-2xl overflow-hidden`}
+              onPress={() => {
+                const root = navigation.getParent?.() || navigation;
+                (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
+                  productId: product.id,
+                });
+              }}
+            >
+              <Image
+                source={{ uri: product.image_url || `https://picsum.photos/seed/${product.id}/400/500` }}
+                style={tw`w-full h-44 bg-stone-100`}
+                contentFit="cover"
+              />
+              <View style={tw`p-2`}>
+                <Text style={tw`text-xs font-semibold text-stone-900`} numberOfLines={2}>
+                  {product.name}
+                </Text>
+                <Text style={tw`text-sm font-bold text-brand-700 mt-1`}>${product.price.toFixed(2)}</Text>
+                {product.matchLabel ? (
+                  <Text style={tw`text-[10px] text-brand-600 mt-0.5`} numberOfLines={1}>
+                    {product.matchLabel}
+                  </Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Marketplace' as never)}
+          style={tw`mb-4 p-4 rounded-2xl bg-brand-50 border border-brand-100`}
+        >
+          <Text style={tw`text-sm text-brand-800 font-semibold`}>Browse the marketplace →</Text>
+        </TouchableOpacity>
+      )}
+      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>Posts for you</Text>
+      {gridPosts.length > 0 ? (
+        <View style={tw`flex-row flex-wrap justify-between mb-4`}>
+          {gridPosts.slice(0, 4).map((p) => {
+            const image = resolvePostMediaUri(p.image_url, p.category, p.id);
+            return (
+              <TouchableOpacity
+                key={p.id}
+                onPress={() => openPostDetail(p)}
+                style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200 bg-white`}
+              >
+                <Image source={{ uri: image }} style={tw`w-full h-36`} contentFit="cover" />
+                <Text style={tw`p-2 text-xs font-semibold text-stone-800`} numberOfLines={2}>
+                  {p.caption || p.metadata?.username || 'Post'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>People to follow</Text>
+      {filteredPeople.length > 0 ? (
+        filteredPeople.slice(0, 5).map(renderPersonCard)
+      ) : (
+        <Text style={tw`text-sm text-stone-500 mb-4`}>
+          Add growth paths in your profile to discover people in your cohort.
+        </Text>
+      )}
+      <Text style={tw`text-lg font-bold text-violet-900 mb-2 mt-2`}>Reels & clips</Text>
     </>
   );
 
@@ -377,12 +467,7 @@ export default function ExploreScreen() {
         <FlatList
           data={filteredReels}
           keyExtractor={(p) => p.id}
-          ListHeaderComponent={
-            <>
-              {ListHeader}
-              {filteredPeople.map(renderPersonCard)}
-            </>
-          }
+          ListHeaderComponent={ListHeader}
           renderItem={({ item: p }) => {
             const username = p.metadata?.username || 'Member';
             const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);

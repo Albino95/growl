@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform, TextInput, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
-import { resetNavigationToAuth } from '../../app/navigation/rootNavigation';
+import { resetNavigationToAuth, navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { SUPPORT_EMAIL } from '../../content/legal';
 import { getBusinessSettings, updateBusinessSettings } from '../../services/api/business';
 
 export default function BizSettings() {
@@ -205,19 +206,25 @@ export default function BizSettings() {
         {/* Support */}
         <View style={tw`bg-white px-4 py-4 mb-3 border-b border-gray-200`}>
           <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Support</Text>
-          <TouchableOpacity style={tw`flex-row items-center justify-between py-3 border-b border-gray-100`}>
+          <TouchableOpacity
+            onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+            style={tw`flex-row items-center justify-between py-3 border-b border-gray-100`}
+          >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="chatbubbles-outline" size={20} color="#6B7280" />
               <Text style={tw`text-gray-900 ml-3`}>Contact Support</Text>
             </View>
-            <Text style={tw`text-xs text-stone-500`}>support@growl.app</Text>
+            <Text style={tw`text-xs text-stone-500`}>{SUPPORT_EMAIL}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={tw`flex-row items-center justify-between py-3`}>
+          <TouchableOpacity
+            onPress={() => navigateFromRoot(navigation, 'Legal')}
+            style={tw`flex-row items-center justify-between py-3`}
+          >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="document-text-outline" size={20} color="#6B7280" />
               <Text style={tw`text-gray-900 ml-3`}>Terms & Policies</Text>
             </View>
-            <Text style={tw`text-xs text-stone-500`}>growl.app/legal</Text>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
 

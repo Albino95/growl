@@ -3,17 +3,23 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import jpeg from 'jpeg-js';
 import type { CropAspect } from './types';
 import type { EditAdjustments } from './types';
+import { isAdjustmentsNeutral, sanitizeAdjustments } from './filterEngine';
 
-function getImageSize(uri: string): Promise<{ width: number; height: number }> {
+async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
+  if (typeof document !== 'undefined') {
+    const img = await loadHtmlImage(uri);
+    return { width: img.width, height: img.height };
+  }
   return new Promise((resolve, reject) => {
     Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
   });
 }
 
-export async function cropToAspect(uri: string, aspect: CropAspect): Promise<string> {
-  if (aspect === 'free') return uri;
-
-  const { width, height } = await getImageSize(uri);
+function computeCropRect(
+  width: number,
+  height: number,
+  aspect: CropAspect
+): { originX: number; originY: number; cropW: number; cropH: number } {
   const [wR, hR] = aspect.split(':').map(Number);
   const targetRatio = wR / hR;
   const currentRatio = width / height;
@@ -27,8 +33,37 @@ export async function cropToAspect(uri: string, aspect: CropAspect): Promise<str
     cropH = Math.round(width / targetRatio);
   }
 
-  const originX = Math.round((width - cropW) / 2);
-  const originY = Math.round((height - cropH) / 2);
+  return {
+    originX: Math.round((width - cropW) / 2),
+    originY: Math.round((height - cropH) / 2),
+    cropW,
+    cropH,
+  };
+}
+
+async function cropToAspectWeb(uri: string, aspect: CropAspect): Promise<string> {
+  const img = await loadHtmlImage(uri);
+  const { originX, originY, cropW, cropH } = computeCropRect(img.width, img.height, aspect);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cropW;
+  canvas.height = cropH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return uri;
+
+  ctx.drawImage(img, originX, originY, cropW, cropH, 0, 0, cropW, cropH);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
+export async function cropToAspect(uri: string, aspect: CropAspect): Promise<string> {
+  if (aspect === 'free') return uri;
+
+  if (typeof document !== 'undefined') {
+    return cropToAspectWeb(uri, aspect);
+  }
+
+  const { width, height } = await getImageDimensions(uri);
+  const { originX, originY, cropW, cropH } = computeCropRect(width, height, aspect);
 
   const result = await ImageManipulator.manipulateAsync(
     uri,
@@ -67,6 +102,15 @@ export async function flipImage(
 }
 
 async function loadHtmlImage(uri: string): Promise<HTMLImageElement> {
+  if (uri.startsWith('data:') || uri.startsWith('blob:')) {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Could not load image'));
+      img.src = uri;
+    });
+  }
+
   const res = await fetch(uri);
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -84,15 +128,18 @@ async function loadHtmlImage(uri: string): Promise<HTMLImageElement> {
 }
 
 function applyPixelAdjustments(buffer: PixelBuffer, adj: EditAdjustments) {
+  if (isAdjustmentsNeutral(adj)) return;
+
+  const a = sanitizeAdjustments(adj);
   const { data: px } = buffer;
-  const exposure = 1 + adj.exposure / 85 + adj.brightness / 170;
-  const contrast = 1 + adj.contrast / 85;
-  const satFactor = 1 + adj.saturation / 85;
-  const warmth = adj.warmth / 100;
-  const tint = adj.tint / 100;
-  const fade = adj.fade / 100;
-  const grayMix = adj.grayscale / 100;
-  const sepiaMix = adj.sepia / 100;
+  const exposure = 1 + (a.exposure !== 0 ? a.exposure / 85 : 0) + (a.brightness !== 0 ? a.brightness / 170 : 0);
+  const contrast = 1 + (a.contrast !== 0 ? a.contrast / 85 : 0);
+  const satFactor = a.saturation !== 0 ? 1 + a.saturation / 85 : 1;
+  const warmth = a.warmth !== 0 ? a.warmth / 100 : 0;
+  const tint = a.tint !== 0 ? a.tint / 100 : 0;
+  const fade = a.fade !== 0 ? a.fade / 100 : 0;
+  const grayMix = a.grayscale !== 0 ? a.grayscale / 100 : 0;
+  const sepiaMix = a.sepia !== 0 ? a.sepia / 100 : 0;
 
   for (let i = 0; i < px.length; i += 4) {
     let r = px[i];
@@ -284,10 +331,11 @@ async function exportViaJpegJs(uri: string, adjustments: EditAdjustments): Promi
 type PixelBuffer = { data: Uint8ClampedArray; width: number; height: number };
 
 function processPixelBuffer(buffer: PixelBuffer, adjustments: EditAdjustments) {
-  applyPixelAdjustments(buffer, adjustments);
-  applySharpen(buffer, adjustments.sharpen);
-  applyVignette(buffer, adjustments.vignette);
-  applyGrain(buffer, adjustments.grain);
+  const adj = sanitizeAdjustments(adjustments);
+  applyPixelAdjustments(buffer, adj);
+  applySharpen(buffer, adj.sharpen);
+  applyVignette(buffer, adj.vignette);
+  applyGrain(buffer, adj.grain);
 }
 
 export { rotateImage as rotateImageFile, flipImage as flipImageFile, cropToAspect as cropToAspectFile };

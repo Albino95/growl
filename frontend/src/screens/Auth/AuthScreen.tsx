@@ -21,7 +21,9 @@ import {
   signInWithGooglePrompt,
   signInWithFacebookPrompt,
 } from '../../services/auth/oauth';
+import { isAppleSignInAvailable, signInWithApplePrompt } from '../../services/auth/apple';
 import { DEMO_ACCOUNTS, DEMO_ACCOUNT_PASSWORD } from '../../constants/demoAccounts';
+import { featureFlags } from '../../constants/featureFlags';
 import tw from '../../lib/tw';
 
 function notify(title: string, message?: string) {
@@ -167,6 +169,21 @@ export default function AuthScreen() {
     }
   };
 
+  const handleApple = async () => {
+    setLocalLoading(true);
+    try {
+      const idToken = await signInWithApplePrompt();
+      await signInWithSSO({ provider: 'apple', idToken }).unwrap();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed';
+      if (!msg.toLowerCase().includes('cancel')) {
+        notify('Apple sign-in', msg);
+      }
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
   if (step === 'verify') {
     return (
       <Screen edges={['top', 'bottom']}>
@@ -175,7 +192,7 @@ export default function AuthScreen() {
           <Text style={tw`text-stone-600 mb-6`}>
             Enter the 6-digit code sent to {email.trim().toLowerCase()}.
           </Text>
-          {devCodeHint ? (
+          {featureFlags.showDevVerificationHint && devCodeHint ? (
             <Text style={tw`text-xs text-amber-800 bg-amber-50 p-3 rounded-xl mb-4`}>
               Dev code: {devCodeHint}
             </Text>
@@ -279,6 +296,17 @@ export default function AuthScreen() {
               <View style={tw`flex-1 h-px bg-stone-200`} />
             </View>
 
+            {isAppleSignInAvailable() ? (
+              <TouchableOpacity
+                onPress={() => void handleApple()}
+                disabled={busy}
+                style={tw`flex-row items-center justify-center border border-stone-200 rounded-2xl p-3.5 bg-black mb-3`}
+              >
+                <Ionicons name="logo-apple" size={22} color="#FFFFFF" style={tw`mr-2`} />
+                <Text style={tw`text-base font-medium text-white`}>Continue with Apple</Text>
+              </TouchableOpacity>
+            ) : null}
+
             <TouchableOpacity
               onPress={() => void handleGoogle()}
               disabled={busy}
@@ -304,28 +332,30 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
 
-            <View style={tw`mt-10 pt-6 border-t border-stone-200`}>
-              <SectionLabel variant="caps">Demo accounts</SectionLabel>
-              <Text style={tw`text-xs text-stone-400 mb-3`}>
-                Password: {DEMO_ACCOUNT_PASSWORD} (seed with npm run demo:local)
-              </Text>
-              <View style={tw`gap-2`}>
-                {DEMO_ACCOUNTS.map((demo) => (
-                  <TouchableOpacity
-                    key={demo.email}
-                    onPress={() => void fillDemoAndSignIn(demo.email)}
-                    disabled={busy}
-                    style={tw`flex-row items-center border border-stone-200 rounded-xl px-3 py-2.5 bg-stone-50`}
-                  >
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`text-sm font-semibold text-stone-800`}>{demo.label}</Text>
-                      <Text style={tw`text-xs text-stone-500`}>{demo.email}</Text>
-                    </View>
-                    <Ionicons name="log-in-outline" size={20} color="#059669" />
-                  </TouchableOpacity>
-                ))}
+            {featureFlags.showDemoAccounts ? (
+              <View style={tw`mt-10 pt-6 border-t border-stone-200`}>
+                <SectionLabel variant="caps">Demo accounts</SectionLabel>
+                <Text style={tw`text-xs text-stone-400 mb-3`}>
+                  Password: {DEMO_ACCOUNT_PASSWORD} (seed with npm run demo:local)
+                </Text>
+                <View style={tw`gap-2`}>
+                  {DEMO_ACCOUNTS.map((demo) => (
+                    <TouchableOpacity
+                      key={demo.email}
+                      onPress={() => void fillDemoAndSignIn(demo.email)}
+                      disabled={busy}
+                      style={tw`flex-row items-center border border-stone-200 rounded-xl px-3 py-2.5 bg-stone-50`}
+                    >
+                      <View style={tw`flex-1`}>
+                        <Text style={tw`text-sm font-semibold text-stone-800`}>{demo.label}</Text>
+                        <Text style={tw`text-xs text-stone-500`}>{demo.email}</Text>
+                      </View>
+                      <Ionicons name="log-in-outline" size={20} color="#059669" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

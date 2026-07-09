@@ -7,6 +7,7 @@ import photoEditorSlice from './slices/photoEditorSlice';
 import storiesSlice from './slices/storiesSlice';
 import marketplaceSlice from './slices/marketplaceSlice';
 import feedSlice from './slices/feedSlice';
+import journalSlice from './slices/journalSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     stories: storiesSlice,
     marketplace: marketplaceSlice,
     feed: feedSlice,
+    journal: journalSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -89,6 +89,7 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     is_instructor: ctx.user.is_instructor,
     is_business: ctx.user.is_business,
     categories,
+    notifications_prefs: metadata.notifications_prefs || {},
     cohort_friends_linked: cohortFriendsLinked,
     created_at: ctx.user.created_at,
   });

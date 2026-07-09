@@ -543,40 +543,68 @@ export async function unmuteUser(
   }
 }
 
-/** Submits a user report for moderation review with a required reason. */
-export async function reportUser(request: Request, env: Env): Promise<Response> {
+/** Submits a content or user report for moderation review with a required reason. */
+export async function reportContent(request: Request, env: Env): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
-  let body: { targetUserId?: string; reason?: string };
+  let body: { targetId?: string; targetType?: string; targetUserId?: string; reason?: string };
   try {
     body = await request.json();
   } catch {
     return error('VALIDATION_ERROR', 'Invalid JSON body', 400);
   }
-  const targetUserId = typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+
+  const targetType = (body.targetType || 'user').trim();
+  const targetId =
+    (typeof body.targetId === 'string' ? body.targetId.trim() : '') ||
+    (typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '');
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-  if (!targetUserId || !reason) {
-    return error('VALIDATION_ERROR', 'targetUserId and reason are required', 400);
+
+  if (!targetId || !reason) {
+    return error('VALIDATION_ERROR', 'targetId and reason are required', 400);
   }
-  if (targetUserId === ctx.userId) {
-    return error('VALIDATION_ERROR', 'Cannot report yourself', 400);
+  if (!['user', 'post', 'journal'].includes(targetType)) {
+    return error('VALIDATION_ERROR', 'targetType must be user, post, or journal', 400);
   }
-  const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(targetUserId).first();
-  if (!target) {
-    return error('NOT_FOUND', 'User not found', 404);
+
+  if (targetType === 'user') {
+    if (targetId === ctx.userId) {
+      return error('VALIDATION_ERROR', 'Cannot report yourself', 400);
+    }
+    const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(targetId).first();
+    if (!target) {
+      return error('NOT_FOUND', 'User not found', 404);
+    }
+  } else {
+    const post = await env.DB.prepare('SELECT id, user_id FROM posts WHERE id = ?').bind(targetId).first<{
+      id: string;
+      user_id: string;
+    }>();
+    if (!post) {
+      return error('NOT_FOUND', 'Post not found', 404);
+    }
+    if (post.user_id === ctx.userId) {
+      return error('VALIDATION_ERROR', 'Cannot report your own post', 400);
+    }
   }
+
   try {
     await env.DB.prepare(
       `INSERT INTO reports (id, reporter_id, target_id, target_type, reason, status, created_at)
-       VALUES (?, ?, ?, 'user', ?, 'pending', datetime('now'))`
+       VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))`
     )
-      .bind(generateId('report'), ctx.userId, targetUserId, reason)
+      .bind(generateId('report'), ctx.userId, targetId, targetType, reason)
       .run();
     return json({ ok: true });
   } catch (err) {
-    console.error('[reportUser]', err);
+    console.error('[reportContent]', err);
     return error('DATABASE_ERROR', 'Could not submit report', 500);
   }
+}
+
+/** @deprecated Use reportContent — kept for backward compatibility */
+export async function reportUser(request: Request, env: Env): Promise<Response> {
+  return reportContent(request, env);
 }

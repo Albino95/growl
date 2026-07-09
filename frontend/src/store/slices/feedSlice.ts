@@ -1,16 +1,27 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { getFeedPosts, type FeedPost } from '../../services/api/feed';
+import { getForYouFeed, type FeedPost } from '../../services/api/feed';
 
 export type FeedLoadStatus = 'idle' | 'loading' | 'succeeded' | 'failed';
 
+export type FeedSection = 'following' | 'suggested';
+
+export type FeedPostWithSection = FeedPost & {
+  relevance_score?: number;
+  feed_section?: FeedSection;
+};
+
 interface FeedState {
-  items: FeedPost[];
+  following: FeedPostWithSection[];
+  suggested: FeedPostWithSection[];
+  items: FeedPostWithSection[];
   status: FeedLoadStatus;
   error: string | null;
   lastFetchedAt: string | null;
 }
 
 const initialState: FeedState = {
+  following: [],
+  suggested: [],
   items: [],
   status: 'idle',
   error: null,
@@ -19,28 +30,13 @@ const initialState: FeedState = {
 
 export const fetchFeedPosts = createAsyncThunk('feed/fetchPosts', async (_, { rejectWithValue }) => {
   try {
-    const [homeRes, exploreRes] = await Promise.all([
-      getFeedPosts(),
-      getFeedPosts({ mode: 'explore' }),
-    ]);
-
-    if (!homeRes.success) {
+    const res = await getForYouFeed();
+    if (!res.success || !res.data) {
       return rejectWithValue('Unexpected feed response');
     }
-
-    const home = Array.isArray(homeRes.data) ? homeRes.data : [];
-    const explore =
-      exploreRes.success && Array.isArray(exploreRes.data) ? exploreRes.data : [];
-
-    const byId = new Map<string, FeedPost>();
-    for (const post of home) byId.set(post.id, post);
-    for (const post of explore) {
-      if (!byId.has(post.id)) byId.set(post.id, post);
-    }
-
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    const following = Array.isArray(res.data.following) ? res.data.following : [];
+    const suggested = Array.isArray(res.data.suggested) ? res.data.suggested : [];
+    return { following, suggested };
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Failed to load feed';
     return rejectWithValue(message);
@@ -52,6 +48,8 @@ const feedSlice = createSlice({
   initialState,
   reducers: {
     clearFeed: (state) => {
+      state.following = [];
+      state.suggested = [];
       state.items = [];
       state.status = 'idle';
       state.error = null;
@@ -66,7 +64,9 @@ const feedSlice = createSlice({
       })
       .addCase(fetchFeedPosts.fulfilled, (state, action) => {
         state.status = 'succeeded';
-        state.items = action.payload;
+        state.following = action.payload.following;
+        state.suggested = action.payload.suggested;
+        state.items = [...action.payload.following, ...action.payload.suggested];
         state.lastFetchedAt = new Date().toISOString();
       })
       .addCase(fetchFeedPosts.rejected, (state, action) => {

@@ -108,6 +108,37 @@ This is set in:
 2. Set it using: `npx wrangler secret put JWT_SECRET`
 3. Never commit production secrets to version control
 
+## Stripe (Marketplace Payments)
+
+Marketplace checkout is gated on the server by `STRIPE_SECRET_KEY`. When unset, `GET /marketplace/payment-config` returns `{ enabled: false }` and order/checkout endpoints respond with `503`.
+
+### Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `STRIPE_SECRET_KEY` | For live checkout | Stripe secret API key (`sk_test_…` or `sk_live_…`). Enables payment-config, checkout-session, and order creation. |
+| `STRIPE_WEBHOOK_SECRET` | For webhook verification | Stripe signing secret (`whsec_…`) for checkout completion webhooks (future sprint). |
+
+### Local / development
+
+Leave `STRIPE_SECRET_KEY` unset to keep checkout disabled. The app shows a "Checkout opening soon" banner and does not create orders.
+
+### Production setup
+
+```bash
+cd backend
+npx wrangler secret put STRIPE_SECRET_KEY
+npx wrangler secret put STRIPE_WEBHOOK_SECRET
+```
+
+Do not add Stripe keys to `wrangler.toml` `[vars]` — use Wrangler secrets only.
+
+### API behavior
+
+- `GET /api/v1/marketplace/payment-config` — `{ enabled: boolean }`
+- `POST /api/v1/marketplace/checkout-session` — returns Stripe checkout URL (stub session when key is set but full SDK integration is pending)
+- `POST /api/v1/marketplace/orders` — requires `metadata.payment_confirmed: true`; returns `503` when payments disabled
+
 ## Quick Reference Commands
 
 ```bash

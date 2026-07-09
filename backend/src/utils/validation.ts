@@ -45,13 +45,14 @@ export const verifyEmailSchema = z.object({
 
 export const ssoSchema = z
   .object({
-    provider: z.enum(['google', 'facebook']),
+    provider: z.enum(['google', 'facebook', 'apple']),
     idToken: z.string().min(10).optional(),
     accessToken: z.string().min(10).optional(),
   })
   .refine(
-    (d) => (d.provider === 'google' ? !!d.idToken : !!d.accessToken),
-    { message: 'Google requires idToken; Facebook requires accessToken', path: ['idToken'] }
+    (d) =>
+      d.provider === 'facebook' ? !!d.accessToken : !!d.idToken,
+    { message: 'Google and Apple require idToken; Facebook requires accessToken', path: ['idToken'] }
   );
 
 export const createPostSchema = z.object({
@@ -115,11 +116,32 @@ export const createOrderSchema = z.object({
   metadata: z
     .object({
       payment_method: z.string().optional(),
+      payment_confirmed: z.boolean().optional(),
+      stripe_checkout_session_id: z.string().optional(),
       source: z.enum(['organic', 'campaign', 'partnership']).optional(),
       referral_instructor_id: z.string().optional(),
       campaign_id: z.string().optional(),
     })
     .optional(),
+});
+
+export const checkoutSessionSchema = z.object({
+  items: z.array(
+    z.object({
+      product_id: z.string(),
+      quantity: z.number().int().positive(),
+    })
+  ),
+  shipping_address: z.object({
+    name: z.string().min(1),
+    street: z.string().min(1),
+    city: z.string().min(1),
+    state: z.string().min(1),
+    zip: z.string().min(1),
+    country: z.string().min(1),
+  }),
+  success_url: z.string().url().optional(),
+  cancel_url: z.string().url().optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -256,6 +278,48 @@ export const updateBusinessAccountSchema = z.object({
   verificationStatus: z.enum(['pending', 'verified', 'rejected']).optional(),
   notes: z.string().max(2000).optional(),
   deactivate: z.boolean().optional(),
+});
+
+const journalMoodSchema = z
+  .enum([
+    'happy',
+    'excited',
+    'calm',
+    'sad',
+    'anxious',
+    'grateful',
+    'proud',
+    'tired',
+    'motivated',
+    'peaceful',
+    'determined',
+  ])
+  .optional();
+
+export const createJournalEntrySchema = z.object({
+  title: z.string().max(200).optional(),
+  content: z.string().min(1, 'Content is required').max(5000, 'Content too long'),
+  mood: journalMoodSchema,
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  is_public: z.boolean().optional().default(false),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const updateJournalEntrySchema = z.object({
+  title: z.string().max(200).nullable().optional(),
+  content: z.string().min(1).max(5000).optional(),
+  mood: journalMoodSchema.nullable(),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  is_public: z.boolean().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const createConversationSchema = z.object({
+  targetUserId: z.string().min(1, 'targetUserId is required'),
+});
+
+export const sendMessageSchema = z.object({
+  body: z.string().min(1, 'Message cannot be empty').max(4000, 'Message too long'),
 });
 
 /**

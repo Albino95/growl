@@ -32,6 +32,8 @@ import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
+import { getUserPublicJournalEntries } from '../../services/api/journal';
+import { createConversation } from '../../services/api/messages';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import EmptyState from '../../components/ui/EmptyState';
 
@@ -112,53 +114,18 @@ async function fetchUserStories(userId: string): Promise<Story[]> {
   return list.map(mapStoryItemToStory);
 }
 
-// Mock function to fetch public journal entries
+// Fetch public journal entries from API
 async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]> {
-  // Temporary mock until public journal backend endpoint is wired.
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const mockJournalEntries: Record<string, JournalEntry[]> = {
-    'u1': [
-      {
-        id: '1',
-        date: '2024-01-15',
-        content: 'Had a great workout today! Feeling motivated and strong.',
-        isPublic: true,
-        mood: 'excited',
-        tags: ['fitness', 'progress'],
-      },
-      {
-        id: '2',
-        date: '2024-01-13',
-        content: 'Completed my first week of consistent practice. Proud of the progress!',
-        isPublic: true,
-        mood: 'proud',
-        tags: ['milestone'],
-      },
-    ],
-    'u2': [
-      {
-        id: '3',
-        date: '2024-01-14',
-        content: 'Practiced piano for 2 hours. The progress is slow but steady. Every day counts!',
-        isPublic: true,
-        mood: 'determined',
-        tags: ['art', 'music'],
-      },
-    ],
-    'u3': [
-      {
-        id: '4',
-        date: '2024-01-15',
-        content: 'Morning meditation session complete. Starting the day with clarity and peace.',
-        isPublic: true,
-        mood: 'peaceful',
-        tags: ['mindset'],
-      },
-    ],
-  };
-  
-  return mockJournalEntries[userId] || [];
+  const res = await getUserPublicJournalEntries(userId);
+  if (!res.success || !res.data?.entries) return [];
+  return res.data.entries.map((e) => ({
+    id: e.id,
+    date: e.created_at.slice(0, 10),
+    content: e.content,
+    isPublic: e.isPublic,
+    mood: e.mood ?? undefined,
+    tags: e.tags,
+  }));
 }
 
 export default function PublicProfileScreen() {
@@ -181,6 +148,7 @@ export default function PublicProfileScreen() {
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [messageBusy, setMessageBusy] = useState(false);
 
   const isOwnProfile = currentUser?.id === userId;
 
@@ -505,6 +473,24 @@ export default function PublicProfileScreen() {
     setShowOptionsMenu(true);
   };
 
+  const onMessageFriend = async () => {
+    if (!friendConnected || messageBusy || isOwnProfile) return;
+    setMessageBusy(true);
+    try {
+      const res = await createConversation(userId);
+      const rootNavigation = navigation.getParent() || navigation;
+      (rootNavigation as any).navigate('Messages', {
+        conversationId: res.data.conversation.id,
+        targetUserId: userId,
+      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not open conversation';
+      notify('Error', msg);
+    } finally {
+      setMessageBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 bg-stone-50`}>
@@ -598,52 +584,71 @@ export default function PublicProfileScreen() {
           </View>
 
           {!isOwnProfile && currentUser?.id ? (
-            <TouchableOpacity
-              onPress={() => void onToggleFriend()}
-              disabled={friendBusy}
-              style={tw`mb-4 py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
-                friendConnected || friendRequestSent
-                  ? 'bg-stone-100 border border-stone-200'
-                  : friendRequestReceived
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-600'
-              } ${friendBusy ? 'opacity-60' : ''}`}
-            >
-              {friendBusy ? (
-                <ActivityIndicator
-                  color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
-                />
-              ) : (
-                <Ionicons
-                  name={
-                    friendConnected
-                      ? 'checkmark-circle'
-                      : friendRequestSent
-                        ? 'time'
-                        : friendRequestReceived
-                          ? 'mail-open'
-                          : 'person-add'
-                  }
-                  size={20}
-                  color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
-                />
-              )}
-              <Text
-                style={tw`font-semibold text-base ${
-                  friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
-                }`}
+            <View style={tw`gap-3 mb-4`}>
+              <TouchableOpacity
+                onPress={() => void onToggleFriend()}
+                disabled={friendBusy}
+                style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
+                  friendConnected || friendRequestSent
+                    ? 'bg-stone-100 border border-stone-200'
+                    : friendRequestReceived
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-600'
+                } ${friendBusy ? 'opacity-60' : ''}`}
               >
-                {friendBusy
-                  ? 'Updating…'
-                  : friendConnected
-                    ? 'Friends'
-                    : friendRequestSent
-                      ? 'Requested'
-                      : friendRequestReceived
-                        ? 'Accept Request'
-                        : 'Add Friend'}
-              </Text>
-            </TouchableOpacity>
+                {friendBusy ? (
+                  <ActivityIndicator
+                    color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
+                  />
+                ) : (
+                  <Ionicons
+                    name={
+                      friendConnected
+                        ? 'checkmark-circle'
+                        : friendRequestSent
+                          ? 'time'
+                          : friendRequestReceived
+                            ? 'mail-open'
+                            : 'person-add'
+                    }
+                    size={20}
+                    color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
+                  />
+                )}
+                <Text
+                  style={tw`font-semibold text-base ${
+                    friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
+                  }`}
+                >
+                  {friendBusy
+                    ? 'Updating…'
+                    : friendConnected
+                      ? 'Friends'
+                      : friendRequestSent
+                        ? 'Requested'
+                        : friendRequestReceived
+                          ? 'Accept Request'
+                          : 'Add Friend'}
+                </Text>
+              </TouchableOpacity>
+
+              {friendConnected ? (
+                <TouchableOpacity
+                  onPress={() => void onMessageFriend()}
+                  disabled={messageBusy}
+                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 bg-brand-500 ${
+                    messageBusy ? 'opacity-60' : ''
+                  }`}
+                >
+                  {messageBusy ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+                  )}
+                  <Text style={tw`font-semibold text-base text-white`}>Message</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : null}
 
           <View style={tw`bg-emerald-600 rounded-2xl p-4`}>

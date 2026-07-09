@@ -110,9 +110,10 @@ function buildMockExplorePosts() {
  * Get personalized feed for user
  */
 export async function getFeed(request: Request, env: Env): Promise<Response> {
-  // Query flags are used to switch between home feed and explore behavior.
   const url = new URL(request.url);
-  const isExploreMode = url.searchParams.get('mode') === 'explore';
+  const feedMode = url.searchParams.get('mode') || 'home';
+  const isExploreMode = feedMode === 'explore';
+  const isForYouMode = feedMode === 'foryou' || feedMode === 'home';
   const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
@@ -268,14 +269,53 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
+  const formatPost = (post: (typeof scoredPosts)[number]) => {
+    const { relevanceScore, isOwn, isFriend, ...rest } = post;
+    return {
+      ...rest,
+      relevance_score: relevanceScore ?? 0,
+      feed_section: isOwn || isFriend ? 'following' : 'suggested',
+    };
+  };
+
+  if (isForYouMode && !isExploreMode) {
+    let following = personalizedPosts.filter((p) => p.isOwn || p.isFriend);
+    let suggested = scoredPosts
+      .filter((p) => !p.isOwn && !p.isFriend)
+      .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+
+    const MIN_SUGGESTED = 5;
+    if (categories.length > 0 && suggested.length < MIN_SUGGESTED) {
+      const seen = new Set(suggested.map((p) => p.id));
+      for (const post of scoredPosts.filter((p) => !p.isOwn && !p.isFriend)) {
+        if (seen.has(post.id)) continue;
+        suggested.push(post);
+        seen.add(post.id);
+        if (suggested.length >= MIN_SUGGESTED) break;
+      }
+    }
+
+    if (following.length === 0 && suggested.length === 0 && personalizedPosts.length > 0) {
+      suggested = personalizedPosts.filter((p) => !p.isOwn);
+    }
+
+    following = following.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+    suggested = suggested.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+
+    return json(
+      {
+        following: following.map(formatPost),
+        suggested: suggested.map(formatPost),
+      },
+      200
+    );
+  }
+
   if (isExploreMode && allowDevMock && personalizedPosts.length === 0) {
     return json(buildMockExplorePosts(), 200);
   }
 
-  return json(
-    personalizedPosts.map(({ relevanceScore, isOwn, isFriend, ...rest }) => rest),
-    200
-  );
+  return json(personalizedPosts.map(formatPost), 200);
 }
 
 /**
