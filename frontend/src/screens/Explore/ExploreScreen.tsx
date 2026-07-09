@@ -46,6 +46,7 @@ export default function ExploreScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [shopPicks, setShopPicks] = useState<RankedProduct[]>([]);
   const [gridPosts, setGridPosts] = useState<FeedPost[]>([]);
 
