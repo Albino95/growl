@@ -44,6 +44,19 @@ export default function LegalHubScreen() {
           ))}
         </View>
 
+        <View style={tw`bg-white rounded-xl overflow-hidden mt-4`}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('DeleteAccount')}
+            style={tw`flex-row items-center justify-between px-4 py-4 border-b border-stone-100`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+              <Text style={tw`text-red-700 font-semibold ml-3`}>Delete account</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#DC2626" />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
           style={tw`mt-6 flex-row items-center justify-center py-3`}

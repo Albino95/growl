@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import CATEGORIES from '../../data/categories';
 import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
@@ -32,6 +31,14 @@ import ConnectionsListSheet, {
   type ConnectionsSheetMode,
 } from '../../components/profile/ConnectionsListSheet';
 import EmptyState from '../../components/ui/EmptyState';
+import GrowthAreasPicker from '../../components/profile/GrowthAreasPicker';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import {
+  claimInstructor,
+  getInstructorEligibility,
+  type InstructorEligibility,
+} from '../../services/api/instructor';
 import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 
 type Award = {
@@ -138,7 +145,7 @@ function mapStoryToProfileStory(s: StoryItem): Story {
 }
 
 export default function ProfileScreen({ navigation: navProp }: any) {
-  const { user, signOut, updateUser } = useAuth();
+  const { user, signOut, updateUser, refreshProfile } = useAuth();
   const navigation = navProp || useNavigation();
   const points = user?.points || 0;
   const isInstructor = user?.isInstructor || false;
@@ -148,6 +155,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [showClaimWelcome, setShowClaimWelcome] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
@@ -155,26 +163,30 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
+  const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
   const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
   const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
   const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
   const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
 
-  /** Loads posts, stories, and cohort connections in one synchronized refresh cycle. */
+  /** Loads posts, stories, cohort connections, and instructor eligibility. */
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, cohort] = await Promise.all([
+      const [postList, storyList, cohort, elig] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
         syncCohortFriends(),
+        getInstructorEligibility().catch(() => null),
       ]);
       const decay = user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
       setFollowing(cohort.following);
       setFollowers(cohort.followers);
+      if (elig) setEligibility(elig);
     } catch (e) {
       console.warn('[ProfileScreen] load profile content', e);
     } finally {
@@ -244,61 +256,28 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
   /** Navigates to instructor area with defensive fallbacks for nested navigation states. */
   const navigateToInstructor = () => {
+    navigation.navigate('Instructor' as never);
+  };
+
+  const onClaimInstructor = async () => {
+    if (claimBusy || !eligibility?.canClaim) return;
+    const ok = await confirmAsync(
+      'Switch to Instructor Account?',
+      'Peers in your growth areas endorsed you. Claiming unlocks the Instructor hub. You can keep posting as usual.',
+      { confirmLabel: 'Claim instructor', destructive: false }
+    );
+    if (!ok) return;
+    setClaimBusy(true);
     try {
-      console.log('[ProfileScreen] Navigating to Instructor hub...');
-      
-      // Get the tab navigator (navigation prop should be the Tab navigator)
-      const tabNavigator = navigation;
-      
-      if (!tabNavigator) {
-        console.error('[ProfileScreen] No navigation object available');
-        return;
-      }
-      
-      // Check available routes
-      const state = tabNavigator.getState?.();
-      const routes = state?.routes || [];
-      const routeNames = routes.map((r: any) => r.name);
-      console.log('[ProfileScreen] Available routes:', routeNames);
-      
-      // Check if Instructor route exists
-      const hasInstructorRoute = routeNames.includes('Instructor');
-      console.log('[ProfileScreen] Instructor route exists:', hasInstructorRoute);
-      
-      if (hasInstructorRoute) {
-        // Use CommonActions to navigate (already imported)
-        tabNavigator.dispatch(
-          CommonActions.navigate({
-            name: 'Instructor',
-          })
-        );
-        console.log('[ProfileScreen] Navigation dispatched successfully');
-      } else {
-        console.error('[ProfileScreen] Instructor route not found in available routes');
-        console.log('[ProfileScreen] User isInstructor:', user?.isInstructor);
-        // Try fallback: navigate via root navigator with nested route
-        const rootNavigation = tabNavigator.getParent?.();
-        if (rootNavigation) {
-          console.log('[ProfileScreen] Attempting root navigation to Individual/Instructor...');
-          try {
-            (rootNavigation as any).navigate('Individual', { screen: 'Instructor' });
-          } catch (navError) {
-            console.error('[ProfileScreen] Root navigation failed:', navError);
-            // Last resort: try direct navigate
-            (tabNavigator as any).navigate('Instructor');
-          }
-        } else {
-          // Last resort: try direct navigate
-          console.log('[ProfileScreen] Attempting direct navigate as last resort...');
-          (tabNavigator as any).navigate('Instructor');
-        }
-      }
-    } catch (error) {
-      console.error('[ProfileScreen] Error navigating to Instructor:', error);
-      console.error('[ProfileScreen] Error details:', {
-        message: (error as Error)?.message,
-        stack: (error as Error)?.stack,
-      });
+      const result = await claimInstructor();
+      updateUser({ isInstructor: true });
+      await refreshProfile();
+      setEligibility(result);
+      setShowClaimWelcome(true);
+    } catch (e) {
+      alertMessage('Could not claim', e instanceof Error ? e.message : 'Try again later');
+    } finally {
+      setClaimBusy(false);
     }
   };
 
@@ -319,10 +298,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       setFollowing(cohort.following);
       setFollowers(cohort.followers);
       setShowCategorySettings(false);
-      Alert.alert('Success', 'Growth areas updated!');
+      alertMessage('Success', 'Growth areas updated!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not update growth areas';
-      Alert.alert('Error', msg);
+      alertMessage('Error', msg);
     }
   };
 
@@ -364,7 +343,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     <SafeAreaView style={tw`flex-1 bg-stone-50`}>
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+        contentContainerStyle={{
+          paddingBottom: Platform.OS === 'web' ? 160 : TAB_SCREEN_BOTTOM_PADDING,
+        }}
       >
         {/* Header */}
         <View style={tw`px-4 pt-4 pb-6 border-b border-stone-200`}>
@@ -410,32 +391,80 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               </View>
               <Ionicons name="trophy" size={40} color="white" />
             </View>
-            {!isInstructor && (
-              <View style={tw`mt-3 pt-3 border-t border-brand-400`}>
-                <View style={tw`flex-row items-center justify-between`}>
-                  <Text style={tw`text-white text-sm`}>Points to Instructor: {500 - points}</Text>
-                  <View style={tw`flex-1 h-2 bg-brand-400 rounded-full mx-3 overflow-hidden`}>
-                    <View
-                      style={[tw`h-full bg-white rounded-full`, { width: `${Math.min((points / 500) * 100, 100)}%` }]}
-                    />
-                  </View>
+          </View>
+
+          {!isInstructor && eligibility ? (
+            <View style={tw`mt-4 bg-white border border-brand-200 rounded-2xl p-4`}>
+              <Text style={tw`text-base font-bold text-stone-900 mb-1`}>Become an instructor</Text>
+              <Text style={tw`text-sm text-stone-600 mb-3`}>
+                Earn endorsements from people in your growth areas, then claim your instructor account.
+              </Text>
+              <View style={tw`mb-2`}>
+                <Text style={tw`text-xs text-stone-500 mb-1`}>
+                  Endorsements {eligibility.endorsementsReceived}/{eligibility.endorsementsNeeded}
+                </Text>
+                <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
+                  <View
+                    style={[
+                      tw`h-full bg-brand-600 rounded-full`,
+                      {
+                        width: `${Math.min(
+                          (eligibility.endorsementsReceived / eligibility.endorsementsNeeded) * 100,
+                          100
+                        )}%`,
+                      },
+                    ]}
+                  />
                 </View>
               </View>
-            )}
-          </View>
+              <View style={tw`mb-3`}>
+                <Text style={tw`text-xs text-stone-500 mb-1`}>
+                  Posts {eligibility.postCount}/{eligibility.postsNeeded}
+                </Text>
+                <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
+                  <View
+                    style={[
+                      tw`h-full bg-violet-500 rounded-full`,
+                      {
+                        width: `${Math.min(
+                          (eligibility.postCount / Math.max(eligibility.postsNeeded, 1)) * 100,
+                          100
+                        )}%`,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+              {eligibility.canClaim ? (
+                <TouchableOpacity
+                  onPress={() => void onClaimInstructor()}
+                  disabled={claimBusy}
+                  style={tw`bg-brand-600 rounded-xl py-3 items-center ${claimBusy ? 'opacity-60' : ''}`}
+                >
+                  <Text style={tw`text-white font-bold`}>
+                    {claimBusy ? 'Claiming…' : 'Switch to Instructor Account'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={tw`text-xs text-stone-500`}>
+                  Keep posting and ask peers in your categories to endorse you.
+                </Text>
+              )}
+            </View>
+          ) : null}
 
           {/* Instructor Access Card */}
           {isInstructor && (
             <View style={tw`mt-4`}>
               <TouchableOpacity
                 onPress={navigateToInstructor}
-                style={tw`bg-purple-500 rounded-xl p-4 shadow-md`}
+                style={tw`bg-emerald-700 rounded-xl p-4`}
               >
                 <View style={tw`flex-row items-center mb-2`}>
                   <Ionicons name="school" size={24} color="#FFFFFF" />
-                  <Text style={tw`text-white font-bold text-lg ml-2`}>Instructor</Text>
+                  <Text style={tw`text-white font-bold text-lg ml-2`}>Instructor hub</Text>
                 </View>
-                <Text style={tw`text-white text-xs opacity-90`}>Teach & mentor</Text>
+                <Text style={tw`text-white text-xs opacity-90`}>Teach & mentor your community</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -456,7 +485,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                   key={index}
                   style={tw`bg-brand-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
                 >
-                  <Text style={tw`text-sm text-brand-800 font-medium`}>{cat}</Text>
+                  <Text style={tw`text-sm text-brand-800 font-medium`}>{getCategoryLabel(cat)}</Text>
                 </View>
               ))}
             </View>
@@ -481,6 +510,44 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           <Text style={tw`text-xs text-stone-500 mt-1`}>
             Posts will automatically decay after this period to keep your timeline focused
           </Text>
+        </View>
+
+        {/* Account & privacy — visible without scrolling past posts/awards */}
+        <View style={tw`px-4 py-4 border-b border-stone-200 bg-white`}>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Account & privacy</Text>
+          <TouchableOpacity
+            onPress={() => navigateFromRoot(navigation, 'EditProfile')}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="person-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-stone-900 ml-3`}>Edit profile</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigateFromRoot(navigation, 'Legal')}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="shield-checkmark-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-stone-900 ml-3`}>Legal & support</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
+            style={tw`flex-row items-center justify-between py-3 mt-1 rounded-xl bg-red-50 px-3 -mx-1 border border-red-100`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+              <View style={tw`ml-3`}>
+                <Text style={tw`text-red-700 font-semibold`}>Delete account</Text>
+                <Text style={tw`text-xs text-red-600/80 mt-0.5`}>Export data or permanently delete</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#DC2626" />
+          </TouchableOpacity>
         </View>
 
         {/* Tabs */}
@@ -904,37 +971,49 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           onClose={() => setShowCategorySettings(false)}
         />
       </Modal>
+
+      <Modal
+        visible={showClaimWelcome}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowClaimWelcome(false)}
+      >
+        <View style={tw`flex-1 bg-black/40 justify-center items-center px-6`}>
+          <View style={tw`w-full max-w-sm bg-white rounded-2xl p-6`}>
+            <Text style={tw`text-xl font-bold text-stone-900 mb-2`}>You’re an instructor</Text>
+            <Text style={tw`text-sm text-stone-600 mb-6`}>
+              Your community endorsed you. Open the Instructor hub anytime from Profile.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setShowClaimWelcome(false);
+                navigateToInstructor();
+              }}
+              style={tw`bg-brand-600 rounded-xl py-3 items-center mb-3`}
+            >
+              <Text style={tw`text-white font-bold`}>Open Instructor hub</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowClaimWelcome(false)} style={tw`py-2 items-center`}>
+              <Text style={tw`text-stone-600 font-semibold`}>Skip for now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// Category Picker Modal Component
-/** Modal for selecting up to three growth categories and returning the final selection. */
-function CategoryPickerModal({ 
-  currentCategories, 
-  onSave, 
-  onClose 
-}: { 
-  currentCategories: string[]; 
-  onSave: (categories: string[]) => void; 
+/** Modal shell around GrowthAreasPicker for editing growth areas from Profile. */
+function CategoryPickerModal({
+  currentCategories,
+  onSave,
+  onClose,
+}: {
+  currentCategories: string[];
+  onSave: (categories: string[]) => void;
   onClose: () => void;
 }) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(currentCategories);
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-
-  /** Toggles category selection while enforcing the 3-category maximum. */
-  const toggleCategory = (categoryKey: string) => {
-    setSelectedCategories((prev) => {
-      if (prev.includes(categoryKey)) {
-        return prev.filter((k) => k !== categoryKey);
-      } else if (prev.length < 3) {
-        return [...prev, categoryKey];
-      } else {
-        Alert.alert('Limit Reached', 'You can select a maximum of 3 categories');
-        return prev;
-      }
-    });
-  };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>
@@ -944,45 +1023,18 @@ function CategoryPickerModal({
           <Ionicons name="close" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>
-      <ScrollView style={tw`flex-1 px-4 pt-4`}>
-        <Text style={tw`text-sm text-stone-600 mb-4`}>
-          Select up to 3 categories to focus on. Selected: {selectedCategories.length}/3
+      <View style={tw`flex-1 px-4 pt-4`}>
+        <Text style={tw`text-sm text-stone-600 mb-3`}>
+          Expand a category and pick sub-areas. Max 3 growth areas.
         </Text>
-        {CATEGORIES.map((category) => {
-          const isSelected = selectedCategories.includes(category.key);
-          const isExpanded = expandedCategory === category.key;
-          return (
-            <TouchableOpacity
-              key={category.key}
-              onPress={() => setExpandedCategory(isExpanded ? null : category.key)}
-              style={tw`flex-row items-center justify-between p-4 rounded-xl border-2 mb-3 ${
-                isSelected ? 'border-brand-500 bg-brand-50' : 'border-stone-200 bg-white'
-              }`}
-            >
-              <View style={tw`flex-row items-center flex-1`}>
-                <Ionicons
-                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-                  size={20}
-                  color={isSelected ? '#10B981' : '#6B7280'}
-                  style={tw`mr-3`}
-                />
-                <Text style={tw`text-lg font-semibold ${isSelected ? 'text-brand-700' : 'text-stone-800'}`}>
-                  {category.label}
-                </Text>
-              </View>
-              {isSelected && (
-                <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-              )}
-            </TouchableOpacity>
-          );
-        })}
+        <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
         <TouchableOpacity
           onPress={() => onSave(selectedCategories)}
           style={tw`bg-brand-600 rounded-xl py-4 mb-4 mt-4`}
         >
           <Text style={tw`text-white text-center font-bold text-base`}>Save Changes</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }

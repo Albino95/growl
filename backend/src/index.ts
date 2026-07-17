@@ -226,6 +226,20 @@ export default {
         }
       }
 
+      const endorsementStatusMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/candidates/([^/]+)/endorsement-status$`)
+      );
+      if (endorsementStatusMatch && request.method === 'GET') {
+        return instructorRoutes.getEndorsementStatus(request, env, endorsementStatusMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/instructor/eligibility` && request.method === 'GET') {
+        return instructorRoutes.getEligibility(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/claim` && request.method === 'POST') {
+        return instructorRoutes.claimInstructor(request, env);
+      }
+
       const instructorMatch = path.match(new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)$`));
       if (instructorMatch) {
         const instructorId = instructorMatch[1];

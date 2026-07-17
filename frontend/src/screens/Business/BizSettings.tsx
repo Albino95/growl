@@ -218,13 +218,23 @@ export default function BizSettings() {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigateFromRoot(navigation, 'Legal')}
-            style={tw`flex-row items-center justify-between py-3`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-gray-100`}
           >
             <View style={tw`flex-row items-center`}>
               <Ionicons name="document-text-outline" size={20} color="#6B7280" />
               <Text style={tw`text-gray-900 ml-3`}>Terms & Policies</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
+            style={tw`flex-row items-center justify-between py-3`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+              <Text style={tw`text-red-700 ml-3 font-semibold`}>Delete account</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#DC2626" />
           </TouchableOpacity>
         </View>
 

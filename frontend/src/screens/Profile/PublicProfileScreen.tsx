@@ -34,8 +34,14 @@ import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '.
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 import { getUserPublicJournalEntries } from '../../services/api/journal';
 import { createConversation } from '../../services/api/messages';
+import {
+  endorseCandidate,
+  getEndorsementStatus,
+  type EndorsementStatus,
+} from '../../services/api/instructor';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import EmptyState from '../../components/ui/EmptyState';
+import { alertMessage } from '../../utils/confirmDialog';
 
 type Post = {
   id: string;
@@ -149,6 +155,8 @@ export default function PublicProfileScreen() {
   const [isBlocked, setIsBlocked] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [messageBusy, setMessageBusy] = useState(false);
+  const [endorseStatus, setEndorseStatus] = useState<EndorsementStatus | null>(null);
+  const [endorseBusy, setEndorseBusy] = useState(false);
 
   const isOwnProfile = currentUser?.id === userId;
 
@@ -179,6 +187,47 @@ export default function PublicProfileScreen() {
       cancelled = true;
     };
   }, [userId, currentUser?.id, isOwnProfile]);
+
+  useEffect(() => {
+    if (isOwnProfile || !currentUser?.id) {
+      setEndorseStatus(null);
+      return;
+    }
+    let cancelled = false;
+    getEndorsementStatus(userId)
+      .then((s) => {
+        if (!cancelled) setEndorseStatus(s);
+      })
+      .catch(() => {
+        if (!cancelled) setEndorseStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUser?.id, isOwnProfile]);
+
+  const onEndorse = async () => {
+    if (endorseBusy || !endorseStatus?.canEndorse) return;
+    setEndorseBusy(true);
+    try {
+      const result = await endorseCandidate(userId);
+      setEndorseStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              canEndorse: false,
+              alreadyEndorsed: true,
+              endorsementCount: result.endorsementCount,
+            }
+          : prev
+      );
+      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement.`);
+    } catch (e) {
+      alertMessage('Could not endorse', e instanceof Error ? e.message : 'Try again later');
+    } finally {
+      setEndorseBusy(false);
+    }
+  };
 
   /** Handles friend request send/cancel/accept and remove-friend actions. */
   const onToggleFriend = async () => {
@@ -648,6 +697,51 @@ export default function PublicProfileScreen() {
                   <Text style={tw`font-semibold text-base text-white`}>Message</Text>
                 </TouchableOpacity>
               ) : null}
+
+              {endorseStatus ? (
+                <TouchableOpacity
+                  onPress={() => void onEndorse()}
+                  disabled={!endorseStatus.canEndorse || endorseBusy}
+                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
+                    endorseStatus.alreadyEndorsed
+                      ? 'bg-violet-50 border border-violet-200'
+                      : endorseStatus.canEndorse
+                        ? 'bg-violet-600'
+                        : 'bg-stone-100 border border-stone-200'
+                  } ${endorseBusy ? 'opacity-60' : ''}`}
+                >
+                  {endorseBusy ? (
+                    <ActivityIndicator color={endorseStatus.canEndorse ? '#fff' : '#57534E'} />
+                  ) : (
+                    <Ionicons
+                      name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
+                      size={20}
+                      color={
+                        endorseStatus.alreadyEndorsed
+                          ? '#7C3AED'
+                          : endorseStatus.canEndorse
+                            ? '#fff'
+                            : '#78716C'
+                      }
+                    />
+                  )}
+                  <Text
+                    style={tw`font-semibold text-base ${
+                      endorseStatus.alreadyEndorsed
+                        ? 'text-violet-700'
+                        : endorseStatus.canEndorse
+                          ? 'text-white'
+                          : 'text-stone-500'
+                    }`}
+                  >
+                    {endorseStatus.alreadyEndorsed
+                      ? 'Endorsed'
+                      : endorseStatus.canEndorse
+                        ? 'Endorse as instructor'
+                        : 'No shared growth area'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
 
@@ -659,18 +753,13 @@ export default function PublicProfileScreen() {
               </View>
               <Ionicons name="trophy" size={40} color="white" />
             </View>
-            {!profileUser.isInstructor && (
+            {!profileUser.isInstructor && endorseStatus ? (
               <View style={tw`mt-3 pt-3 border-t border-emerald-400/60`}>
-                <View style={tw`flex-row items-center justify-between`}>
-                  <Text style={tw`text-white text-sm`}>Points to Instructor: {500 - profileUser.points}</Text>
-                  <View style={tw`flex-1 h-2 bg-green-400 rounded-full mx-3 overflow-hidden`}>
-                    <View
-                      style={[tw`h-full bg-white rounded-full`, { width: `${Math.min((profileUser.points / 500) * 100, 100)}%` }]}
-                    />
-                  </View>
-                </View>
+                <Text style={tw`text-white text-sm`}>
+                  Instructor endorsements: {endorseStatus.endorsementCount}
+                </Text>
               </View>
-            )}
+            ) : null}
           </View>
         </View>
 
