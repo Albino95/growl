@@ -205,16 +205,25 @@ export default function FeedScreen({ navigation, route }: any) {
     }
   };
 
-  useEffect(() => {
-    dispatch(fetchFeedPosts());
-    loadStoriesOnly();
-  }, [dispatch]);
-
   useFocusEffect(
     useCallback(() => {
-      dispatch(fetchFeedPosts());
+      // First paint may need a loading state; polling stays silent.
+      void dispatch(fetchFeedPosts());
+      void loadStoriesOnly();
+
+      // Lightweight live refresh while the Feed tab is focused (WebSocket-like freshness without DOs).
+      const pollId = setInterval(() => {
+        void dispatch(fetchFeedPosts({ force: true, silent: true }));
+      }, 25_000);
+
+      return () => clearInterval(pollId);
     }, [dispatch])
   );
+
+  useEffect(() => {
+    // Stories warm-up; feed is owned by focus effect to avoid duplicate fetches.
+    void loadStoriesOnly();
+  }, []);
 
   useEffect(() => {
     if (feedStatus !== 'succeeded') return;
@@ -257,12 +266,6 @@ export default function FeedScreen({ navigation, route }: any) {
     });
     
     const result = Array.from(grouped.values());
-    console.log('[FeedScreen] Grouped stories:', {
-      totalStories: stories.length,
-      groupedCount: result.length,
-      groupedUsers: result.map(g => ({ userId: g.user.userId, username: g.user.username, count: g.stories.length })),
-    });
-    
     return result;
   }, [stories]);
 
@@ -285,7 +288,7 @@ export default function FeedScreen({ navigation, route }: any) {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await dispatch(fetchFeedPosts()).unwrap();
+      await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
       // Keep existing posts; Redux records error state.
     }
@@ -297,7 +300,7 @@ export default function FeedScreen({ navigation, route }: any) {
     if (retryingFeed) return;
     setRetryingFeed(true);
     try {
-      await dispatch(fetchFeedPosts()).unwrap();
+      await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
       // Keep banner visible; store already captures the latest error.
     } finally {
@@ -377,7 +380,7 @@ export default function FeedScreen({ navigation, route }: any) {
         )
       );
     } catch {
-      void dispatch(fetchFeedPosts());
+      void dispatch(fetchFeedPosts({ force: true, silent: true }));
     }
   };
 
@@ -971,7 +974,7 @@ export default function FeedScreen({ navigation, route }: any) {
                     post.id === selectedPost.id ? { ...post, comments: count } : post
                   )
                 );
-                void dispatch(fetchFeedPosts());
+                void dispatch(fetchFeedPosts({ force: true, silent: true }));
               }}
             />
           </Modal>

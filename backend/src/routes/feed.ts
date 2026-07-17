@@ -185,7 +185,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   query += `
     GROUP BY p.id
     ORDER BY p.engagement_score DESC, p.created_at DESC
-    LIMIT 100
+    LIMIT 40
   `;
 
   const posts = await env.DB.prepare(query)

@@ -171,9 +171,34 @@ export const updatePartnershipRequestSchema = z.object({
 
 export const updateBusinessSettingsSchema = z.object({
   business_name: z.string().min(1).max(120).optional(),
-  logo_url: z.string().url().optional(),
+  logo_url: z.union([z.string().url(), z.literal('')]).optional(),
   analytics_prefs: z.record(z.any()).optional(),
   notifications_prefs: z.record(z.any()).optional(),
+});
+
+export const updatePartnershipSchema = z.object({
+  status: z.enum(['active', 'paused', 'ended']),
+});
+
+export const createCampaignSchema = z.object({
+  name: z.string().min(1).max(120),
+  type: z.enum(['promotion', 'sponsored', 'influencer']),
+  budget: z.number().positive(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  product_ids: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const updateCampaignSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  type: z.enum(['promotion', 'sponsored', 'influencer']).optional(),
+  budget: z.number().positive().optional(),
+  status: z.enum(['active', 'paused', 'completed']).optional(),
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
+  product_ids: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
 });
 
 export const adminLoginSchema = z.object({

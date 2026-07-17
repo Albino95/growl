@@ -6,8 +6,10 @@ import { request } from './http';
 import type { Product, Order } from './marketplace';
 export type { Order };
 
+export type BusinessPeriod = 'today' | 'week' | 'month';
+
 export interface DashboardKPIs {
-  period?: 'today' | 'week' | 'month';
+  period?: BusinessPeriod;
   total_products: number;
   total_stock: number;
   inventory_value?: number;
@@ -18,6 +20,13 @@ export interface DashboardKPIs {
   gross_revenue?: number;
   net_revenue?: number;
   refunds?: number;
+  aov?: number;
+  units_sold?: number;
+  refund_rate?: number;
+  low_stock_count?: number;
+  out_of_stock_count?: number;
+  low_stock_threshold?: number;
+  action_items_count?: number;
   active_partners?: number;
   pending_partner_requests?: number;
   deltas?: {
@@ -32,6 +41,21 @@ export interface DashboardResponse {
   data: {
     kpis: DashboardKPIs;
   };
+}
+
+export interface TimeseriesPoint {
+  day: string;
+  orders: number;
+  revenue: number;
+}
+
+export interface OrderFunnel {
+  pending: number;
+  processing: number;
+  shipped: number;
+  delivered: number;
+  completed: number;
+  cancelled: number;
 }
 
 export interface PartnershipRecord {
@@ -77,23 +101,36 @@ export interface BusinessSettings {
   notifications_prefs: Record<string, unknown>;
 }
 
-/**
- * Get business dashboard KPIs
- */
-export async function getDashboard(period: 'today' | 'week' | 'month' = 'week'): Promise<DashboardResponse> {
+export type MarketingCampaign = {
+  id: string;
+  business_id: string;
+  name: string;
+  type: 'promotion' | 'sponsored' | 'influencer';
+  budget: number;
+  spent: number;
+  status: 'active' | 'paused' | 'completed';
+  start_date?: string | null;
+  end_date?: string | null;
+  product_ids?: string[];
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BusinessProduct = Product & { units_sold?: number };
+
+export async function getDashboard(period: BusinessPeriod = 'week'): Promise<DashboardResponse> {
   return request<DashboardResponse>(`/business/dashboard?period=${period}`);
 }
 
-/**
- * Get business products
- */
-export async function getBusinessProducts(): Promise<{ success: boolean; data: { products: Product[] } }> {
-  return request<{ success: boolean; data: { products: Product[] } }>('/business/products');
+export async function getBusinessProducts(
+  period: BusinessPeriod = 'month'
+): Promise<{ success: boolean; data: { products: BusinessProduct[] } }> {
+  return request<{ success: boolean; data: { products: BusinessProduct[] } }>(
+    `/business/products?period=${period}`
+  );
 }
 
-/**
- * Get business orders
- */
 export async function getBusinessOrders(): Promise<{ success: boolean; data: Order[] }> {
   return request<{ success: boolean; data: Order[] }>('/business/orders');
 }
@@ -102,32 +139,73 @@ export async function getBusinessOrderDetail(orderId: string): Promise<{ success
   return request<{ success: boolean; data: Order }>(`/business/orders/${encodeURIComponent(orderId)}`);
 }
 
-export async function getBusinessTimeseries(period: 'today' | 'week' | 'month' = 'week'): Promise<{
+export async function getBusinessTimeseries(period: BusinessPeriod = 'week'): Promise<{
   success: boolean;
-  data: { period: string; series: Array<{ day: string; orders: number; revenue: number }> };
+  data: { period: string; series: TimeseriesPoint[] };
 }> {
-  return request<{ success: boolean; data: { period: string; series: Array<{ day: string; orders: number; revenue: number }> } }>(
+  return request<{ success: boolean; data: { period: string; series: TimeseriesPoint[] } }>(
     `/business/analytics/timeseries?period=${period}`
   );
 }
 
-export async function getBusinessTopProducts(period: 'today' | 'week' | 'month' = 'month'): Promise<{
+export async function getBusinessFunnel(period: BusinessPeriod = 'week'): Promise<{
   success: boolean;
-  data: { period: string; products: Array<{ id: string; name: string; image_url?: string; units_sold: number; revenue: number }> };
+  data: { period: string; funnel: OrderFunnel };
+}> {
+  return request<{ success: boolean; data: { period: string; funnel: OrderFunnel } }>(
+    `/business/analytics/funnel?period=${period}`
+  );
+}
+
+export async function getBusinessTopProducts(period: BusinessPeriod = 'month'): Promise<{
+  success: boolean;
+  data: {
+    period: string;
+    products: Array<{ id: string; name: string; image_url?: string; units_sold: number; revenue: number }>;
+  };
 }> {
   return request<{
     success: boolean;
-    data: { period: string; products: Array<{ id: string; name: string; image_url?: string; units_sold: number; revenue: number }> };
+    data: {
+      period: string;
+      products: Array<{ id: string; name: string; image_url?: string; units_sold: number; revenue: number }>;
+    };
   }>(`/business/analytics/top-products?period=${period}`);
 }
 
 export async function getPartnershipPerformance(): Promise<{
   success: boolean;
-  data: { partnerships: Array<{ id: string; instructor_id: string; instructor_name: string; instructor_avatar?: string | null; categories: string[]; partnership_type: string; commission_rate?: number | null; fixed_fee?: number | null; status: string; attributed_revenue: number }> };
+  data: {
+    partnerships: Array<{
+      id: string;
+      instructor_id: string;
+      instructor_name: string;
+      instructor_avatar?: string | null;
+      categories: string[];
+      partnership_type: string;
+      commission_rate?: number | null;
+      fixed_fee?: number | null;
+      status: string;
+      attributed_revenue: number;
+    }>;
+  };
 }> {
   return request<{
     success: boolean;
-    data: { partnerships: Array<{ id: string; instructor_id: string; instructor_name: string; instructor_avatar?: string | null; categories: string[]; partnership_type: string; commission_rate?: number | null; fixed_fee?: number | null; status: string; attributed_revenue: number }> };
+    data: {
+      partnerships: Array<{
+        id: string;
+        instructor_id: string;
+        instructor_name: string;
+        instructor_avatar?: string | null;
+        categories: string[];
+        partnership_type: string;
+        commission_rate?: number | null;
+        fixed_fee?: number | null;
+        status: string;
+        attributed_revenue: number;
+      }>;
+    };
   }>('/business/analytics/partnerships');
 }
 
@@ -145,7 +223,9 @@ export async function getPartnershipDiscover(): Promise<{
   success: boolean;
   data: { instructors: DiscoverInstructor[] };
 }> {
-  return request<{ success: boolean; data: { instructors: DiscoverInstructor[] } }>('/business/partnerships/discover');
+  return request<{ success: boolean; data: { instructors: DiscoverInstructor[] } }>(
+    '/business/partnerships/discover'
+  );
 }
 
 export async function createPartnershipRequest(payload: {
@@ -168,8 +248,21 @@ export async function updatePartnershipRequest(
   return request<{ success: boolean; data: { ok: boolean } }>(
     `/business/partnerships/requests/${encodeURIComponent(requestId)}`,
     {
-    method: 'PATCH',
-    body: JSON.stringify({ status }),
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }
+  );
+}
+
+export async function updatePartnershipStatus(
+  partnershipId: string,
+  status: 'active' | 'paused' | 'ended'
+): Promise<{ success: boolean; data: { ok: boolean } }> {
+  return request<{ success: boolean; data: { ok: boolean } }>(
+    `/business/partnerships/${encodeURIComponent(partnershipId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     }
   );
 }
@@ -178,9 +271,52 @@ export async function getBusinessSettings(): Promise<{ success: boolean; data: B
   return request<{ success: boolean; data: BusinessSettings }>('/business/settings');
 }
 
-export async function updateBusinessSettings(payload: Partial<BusinessSettings>): Promise<{ success: boolean; data: { ok: boolean } }> {
+export async function updateBusinessSettings(
+  payload: Partial<BusinessSettings>
+): Promise<{ success: boolean; data: { ok: boolean } }> {
   return request<{ success: boolean; data: { ok: boolean } }>('/business/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+}
+
+export async function listCampaigns(): Promise<{ success: boolean; data: { campaigns: MarketingCampaign[] } }> {
+  return request<{ success: boolean; data: { campaigns: MarketingCampaign[] } }>('/business/campaigns');
+}
+
+export async function createCampaign(payload: {
+  name: string;
+  type: MarketingCampaign['type'];
+  budget: number;
+  start_date?: string;
+  end_date?: string;
+  product_ids?: string[];
+  metadata?: Record<string, unknown>;
+}): Promise<{ success: boolean; data: MarketingCampaign }> {
+  return request<{ success: boolean; data: MarketingCampaign }>('/business/campaigns', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCampaign(
+  campaignId: string,
+  payload: Partial<{
+    name: string;
+    type: MarketingCampaign['type'];
+    budget: number;
+    status: MarketingCampaign['status'];
+    start_date: string | null;
+    end_date: string | null;
+    product_ids: string[];
+    metadata: Record<string, unknown>;
+  }>
+): Promise<{ success: boolean; data: MarketingCampaign }> {
+  return request<{ success: boolean; data: MarketingCampaign }>(
+    `/business/campaigns/${encodeURIComponent(campaignId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
 }

@@ -126,16 +126,19 @@ export default function MarketplaceScreen() {
 
   const priceTiers = useMemo(() => [25, 50, 100, 250], []);
 
+  /** Always show catalog parents; put the user's growth areas first when present. */
   const categories = useMemo(() => {
-    const cats = new Set<string>();
+    const userParents = new Set<string>();
     user?.categories?.forEach((cat: string) => {
-      if (cat.includes(':')) {
-        cats.add(cat.split(':')[0]);
-      } else {
-        cats.add(cat);
-      }
+      if (cat.includes(':')) userParents.add(cat.split(':')[0]);
+      else if (cat) userParents.add(cat);
     });
-    return Array.from(cats);
+    const catalog = CATEGORIES.map((c) => c.key);
+    const prioritized = [
+      ...catalog.filter((k) => userParents.has(k)),
+      ...catalog.filter((k) => !userParents.has(k)),
+    ];
+    return prioritized;
   }, [user?.categories]);
 
   return (
@@ -167,28 +170,29 @@ export default function MarketplaceScreen() {
           </Text>
         </View>
 
-        {categories.length > 0 ? (
-          <ScrollView
-            horizontal
-            style={tw`border-b border-stone-100 bg-white`}
-            contentContainerStyle={tw`px-4 py-3`}
-            {...horizontalScrollProps}
+        <ScrollView
+          horizontal
+          style={tw`border-b border-stone-100 bg-white`}
+          contentContainerStyle={tw`px-4 py-3`}
+          {...horizontalScrollProps}
+        >
+          <TouchableOpacity
+            onPress={() => handleCategoryChange(null)}
+            style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
+              selectedCategory === null ? 'bg-emerald-600' : 'bg-stone-100'
+            }`}
           >
-            <TouchableOpacity
-              onPress={() => handleCategoryChange(null)}
-              style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
-                selectedCategory === null ? 'bg-emerald-600' : 'bg-stone-100'
+            <Text
+              style={tw`font-semibold text-[15px] ${
+                selectedCategory === null ? 'text-white' : 'text-stone-600'
               }`}
             >
-              <Text
-                style={tw`font-semibold text-[15px] ${
-                  selectedCategory === null ? 'text-white' : 'text-stone-600'
-                }`}
-              >
-                All
-              </Text>
-            </TouchableOpacity>
-            {categories.map((cat) => (
+              All
+            </Text>
+          </TouchableOpacity>
+          {categories.map((cat) => {
+            const label = CATEGORIES.find((c) => c.key === cat)?.label || cat;
+            return (
               <TouchableOpacity
                 key={cat}
                 onPress={() => handleCategoryChange(cat)}
@@ -201,12 +205,12 @@ export default function MarketplaceScreen() {
                     selectedCategory === cat ? 'text-white' : 'text-stone-600'
                   }`}
                 >
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  {label}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
+            );
+          })}
+        </ScrollView>
 
         {selectedCategory && subcategoryOptions.length > 0 ? (
           <ScrollView

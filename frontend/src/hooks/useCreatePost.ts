@@ -14,6 +14,7 @@ import { uploadMediaApi } from '../services/api/media';
 import { getPostImageUrl } from '../utils/images';
 import { triggerPressFeedback } from '../utils/interactionFeedback';
 import { alertMessage } from '../utils/confirmDialog';
+import { prependFeedPost } from '../store/slices/feedSlice';
 import type { PostMusicTrack } from '../constants/postMusic';
 
 async function blobToOptimizedDataUrl(uri: string): Promise<string> {
@@ -119,13 +120,31 @@ export function useCreatePost(onSuccess?: () => void) {
         metadata.audio_title = audioTrack.title;
       }
 
-      await createFeedPost({
+      const created = await createFeedPost({
         image_url: imageUrl,
         caption: caption || '',
         category,
         subcategory,
         metadata: Object.keys(metadata).length ? metadata : undefined,
       });
+
+      if (created?.data) {
+        dispatch(
+          prependFeedPost({
+            ...created.data,
+            feed_section: 'following',
+            metadata: {
+              ...(created.data.metadata || {}),
+              ...metadata,
+              username: user?.username || 'You',
+              avatar: user?.avatar,
+              likes: 0,
+              comments: 0,
+              has_liked: false,
+            },
+          })
+        );
+      }
 
       const currentPoints = user?.points || 0;
       updateUser({ points: currentPoints + 10 });
@@ -149,6 +168,8 @@ export function useCreatePost(onSuccess?: () => void) {
     isPosting,
     dispatch,
     user?.points,
+    user?.username,
+    user?.avatar,
     updateUser,
     clearDraft,
     onSuccess,

@@ -19,7 +19,7 @@ import type { FeedPost } from '../../services/api/feed';
 import type { Order } from '../../services/api/marketplace';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchFeedPosts } from '../../store/slices/feedSlice';
-import { horizontalScrollProps, verticalScrollProps } from '../../constants/scroll';
+import { verticalScrollProps } from '../../constants/scroll';
 
 type Campaign = {
   id: string;
@@ -228,25 +228,24 @@ export default function MarketingScreen() {
         <Text style={tw`text-2xl font-bold tracking-tight text-stone-900 mb-1`}>Marketing Center</Text>
         <Text style={tw`text-sm text-stone-500 mb-3`}>Campaigns, community signal, and store performance</Text>
 
-        <ScrollView horizontal style={tw`-mx-4 px-4`} {...horizontalScrollProps}>
-          <View style={tw`flex-row bg-stone-100 rounded-xl p-1`}>
-            {(['campaigns', 'posts', 'create', 'analytics'] as const).map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={tw`flex-1 py-2.5 px-3 rounded-lg ${activeTab === tab ? 'bg-white' : ''}`}
+        <View style={tw`flex-row bg-stone-100 rounded-xl p-1`}>
+          {(['campaigns', 'posts', 'create', 'analytics'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab)}
+              style={tw`flex-1 py-2.5 px-1 rounded-lg ${activeTab === tab ? 'bg-white' : ''}`}
+            >
+              <Text
+                style={tw`text-center text-xs font-semibold ${
+                  activeTab === tab ? 'text-emerald-700' : 'text-stone-500'
+                }`}
+                numberOfLines={1}
               >
-                <Text
-                  style={tw`text-center text-sm font-semibold ${
-                    activeTab === tab ? 'text-emerald-700' : 'text-stone-500'
-                  }`}
-                >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {activeTab === 'campaigns' && (

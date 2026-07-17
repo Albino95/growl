@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
-import { Modal } from 'react-native';
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
+import { Platform } from 'react-native';
 import tw from '../../lib/tw';
 import CATEGORIES from '../../data/categories';
 import { uploadMediaApi } from '../../services/api/media';
+import StickyFooter from '../ui/StickyFooter';
+import { alertMessage } from '../../utils/confirmDialog';
 
 interface ProductFormProps {
   visible: boolean;
@@ -16,10 +18,10 @@ interface ProductFormProps {
     name: string;
     description?: string;
     category: string;
-    subcategory?: string;
+    subcategory?: string | null;
     price: number;
     stock: number;
-    image_url?: string;
+    image_url?: string | null;
   } | null;
   onClose: () => void;
   onSubmit: (data: {
@@ -34,17 +36,18 @@ interface ProductFormProps {
 }
 
 export default function ProductForm({ visible, product, onClose, onSubmit }: ProductFormProps) {
-  const [name, setName] = useState(product?.name || '');
-  const [description, setDescription] = useState(product?.description || '');
-  const [category, setCategory] = useState(product?.category || '');
-  const [subcategory, setSubcategory] = useState(product?.subcategory || '');
-  const [price, setPrice] = useState(product?.price?.toString() || '');
-  const [stock, setStock] = useState(product?.stock?.toString() || '');
-  const [imageUrl, setImageUrl] = useState(product?.image_url || '');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [subcategory, setSubcategory] = useState('');
+  const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!visible) return;
     setName(product?.name || '');
     setDescription(product?.description || '');
     setCategory(product?.category || '');
@@ -52,251 +55,237 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     setPrice(product?.price?.toString() || '');
     setStock(product?.stock?.toString() || '');
     setImageUrl(product?.image_url || '');
+    setUploadNotice(null);
   }, [product, visible]);
 
-  const blobToOptimizedDataUrl = async (uri: string): Promise<string> => {
+  const selectedCategoryData = CATEGORIES.find((c) => c.key === category);
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      alertMessage('Permission needed', 'Camera roll access is required for product images.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setImageUrl(result.assets[0].uri);
+      setUploadNotice(null);
+    }
+  };
+
+  const blobToDataUrl = async (uri: string): Promise<string> => {
     const res = await fetch(uri);
     const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Could not read selected image'));
+      reader.onerror = () => reject(new Error('Could not read image'));
       reader.onload = () => resolve(String(reader.result || ''));
       reader.readAsDataURL(blob);
     });
   };
 
-  const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'We need camera roll permissions to add product images.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-      allowsMultipleSelection: false,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImageUrl(result.assets[0].uri);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!name.trim()) {
-      Alert.alert('Validation Error', 'Product name is required');
+      alertMessage('Missing name', 'Product name is required');
       return;
     }
     if (!category) {
-      Alert.alert('Validation Error', 'Please select a category');
+      alertMessage('Missing category', 'Select a category');
       return;
     }
     if (!price || parseFloat(price) <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid price');
+      alertMessage('Invalid price', 'Enter a valid price');
       return;
     }
-    if (!stock || parseInt(stock) < 0) {
-      Alert.alert('Validation Error', 'Please enter a valid stock quantity');
+    if (stock === '' || parseInt(stock, 10) < 0) {
+      alertMessage('Invalid stock', 'Enter a valid stock quantity');
       return;
     }
 
     setIsSubmitting(true);
+    setUploadNotice(null);
     try {
       let persistableImageUrl = imageUrl || undefined;
       const lower = (persistableImageUrl || '').toLowerCase();
       if (persistableImageUrl && !lower.startsWith('http')) {
         let dataUrl = persistableImageUrl;
         if (Platform.OS === 'web' && lower.startsWith('blob:')) {
-          dataUrl = await blobToOptimizedDataUrl(persistableImageUrl);
+          dataUrl = await blobToDataUrl(persistableImageUrl);
         }
         if (dataUrl.toLowerCase().startsWith('data:')) {
-          persistableImageUrl = await uploadMediaApi(dataUrl, 'product');
+          try {
+            persistableImageUrl = await uploadMediaApi(dataUrl, 'product');
+          } catch {
+            setUploadNotice('Image upload unavailable (media storage offline). Saving product without hosted image.');
+            persistableImageUrl = undefined;
+          }
         }
       }
       await onSubmit({
         name: name.trim(),
         description: description.trim() || undefined,
         category,
-        subcategory: subcategory.trim() || undefined,
+        subcategory: subcategory || undefined,
         price: parseFloat(price),
-        stock: parseInt(stock),
+        stock: parseInt(stock, 10),
         image_url: persistableImageUrl,
       });
-      // Reset form
-      setName('');
-      setDescription('');
-      setCategory('');
-      setSubcategory('');
-      setPrice('');
-      setStock('');
-      setImageUrl('');
       onClose();
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save product');
+    } catch (error: unknown) {
+      alertMessage('Error', error instanceof Error ? error.message : 'Failed to save product');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const selectedCategoryData = CATEGORIES.find((c) => c.id === category);
-
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={tw`flex-1 bg-white`}>
-        {/* Header */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-gray-200`}>
-          <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={28} color="#6B7280" />
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200`}>
+          <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={28} color="#78716C" />
           </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-gray-900`}>
-            {product ? 'Edit Product' : 'Add New Product'}
+          <Text style={tw`text-lg font-semibold text-stone-900`}>
+            {product ? 'Edit product' : 'Add product'}
           </Text>
           <View style={tw`w-7`} />
         </View>
 
-        <ScrollView style={tw`flex-1 px-4 pt-4`} showsVerticalScrollIndicator={false}>
-          {/* Image */}
+        <ScrollView style={tw`flex-1 px-4 pt-4`} keyboardShouldPersistTaps="handled">
           <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Product Image</Text>
+            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Product image</Text>
             {imageUrl ? (
               <View style={tw`relative`}>
-                <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-lg`} contentFit="cover" />
+                <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-xl`} contentFit="cover" />
                 <TouchableOpacity
                   style={tw`absolute top-2 right-2 bg-red-500 rounded-full p-2`}
                   onPress={() => setImageUrl('')}
                 >
-                  <Ionicons name="close" size={20} color="#FFFFFF" />
+                  <Ionicons name="close" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
-                style={tw`w-full h-48 bg-gray-100 rounded-lg items-center justify-center border-2 border-dashed border-gray-300`}
-                onPress={handlePickImage}
+                style={tw`w-full h-40 bg-stone-50 rounded-xl items-center justify-center border-2 border-dashed border-stone-300`}
+                onPress={() => void handlePickImage()}
               >
-                <Ionicons name="image-outline" size={48} color="#9CA3AF" />
-                <Text style={tw`text-gray-500 mt-2`}>Tap to add image</Text>
+                <Ionicons name="image-outline" size={40} color="#A8A29E" />
+                <Text style={tw`text-stone-500 mt-2`}>Tap to add image</Text>
               </TouchableOpacity>
             )}
+            {uploadNotice ? <Text style={tw`text-xs text-amber-700 mt-2`}>{uploadNotice}</Text> : null}
           </View>
 
-          {/* Name */}
           <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Product Name *</Text>
+            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Name *</Text>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Enter product name"
-              style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base`}
-              placeholderTextColor="#9CA3AF"
+              placeholder="Product name"
+              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base`}
+              placeholderTextColor="#A8A29E"
             />
           </View>
 
-          {/* Description */}
           <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Description</Text>
+            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Description</Text>
             <TextInput
               value={description}
               onChangeText={setDescription}
-              placeholder="Enter product description"
+              placeholder="Optional description"
               multiline
-              numberOfLines={4}
-              style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base min-h-24`}
-              placeholderTextColor="#9CA3AF"
+              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base min-h-24`}
+              placeholderTextColor="#A8A29E"
               textAlignVertical="top"
             />
           </View>
 
-          {/* Category */}
           <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Category *</Text>
-            <TouchableOpacity
-              style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex-row items-center justify-between`}
-              onPress={() => setShowCategoryPicker(!showCategoryPicker)}
-            >
-              <Text style={tw`text-base ${category ? 'text-gray-900' : 'text-gray-400'}`}>
-                {selectedCategoryData?.name || 'Select category'}
-              </Text>
-              <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-            {showCategoryPicker && (
-              <View style={tw`mt-2 bg-white border border-gray-200 rounded-lg max-h-48`}>
-                <ScrollView nestedScrollEnabled>
-                  {CATEGORIES.map((cat) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={tw`px-4 py-3 border-b border-gray-100 ${
-                        category === cat.id ? 'bg-blue-50' : ''
-                      }`}
-                      onPress={() => {
-                        setCategory(cat.id);
-                        setShowCategoryPicker(false);
-                      }}
-                    >
-                      <Text style={tw`text-base ${category === cat.id ? 'text-blue-600 font-semibold' : 'text-gray-900'}`}>
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
+            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Category *</Text>
+            <View style={tw`flex-row flex-wrap gap-2`}>
+              {CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat.key}
+                  onPress={() => {
+                    setCategory(cat.key);
+                    setSubcategory('');
+                  }}
+                  style={tw`px-3 py-2 rounded-full ${category === cat.key ? 'bg-emerald-600' : 'bg-stone-100'}`}
+                >
+                  <Text style={tw`text-sm font-semibold ${category === cat.key ? 'text-white' : 'text-stone-700'}`}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
-          {/* Subcategory */}
-          {selectedCategoryData?.subcategories && selectedCategoryData.subcategories.length > 0 && (
+          {selectedCategoryData?.subcategories?.length ? (
             <View style={tw`mb-4`}>
-              <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Subcategory</Text>
-              <TextInput
-                value={subcategory}
-                onChangeText={setSubcategory}
-                placeholder="Enter subcategory (optional)"
-                style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base`}
-                placeholderTextColor="#9CA3AF"
-              />
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Subcategory</Text>
+              <View style={tw`flex-row flex-wrap gap-2`}>
+                {selectedCategoryData.subcategories.map((sub) => (
+                  <TouchableOpacity
+                    key={sub.key}
+                    onPress={() => setSubcategory(sub.key)}
+                    style={tw`px-3 py-2 rounded-full ${
+                      subcategory === sub.key ? 'bg-emerald-600' : 'bg-stone-100'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-semibold ${
+                        subcategory === sub.key ? 'text-white' : 'text-stone-700'
+                      }`}
+                    >
+                      {sub.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          )}
+          ) : null}
 
-          {/* Price and Stock */}
-          <View style={tw`flex-row gap-3 mb-4`}>
+          <View style={tw`flex-row gap-3 mb-8`}>
             <View style={tw`flex-1`}>
-              <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Price ($) *</Text>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Price ($) *</Text>
               <TextInput
                 value={price}
                 onChangeText={setPrice}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base`}
-                placeholderTextColor="#9CA3AF"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base`}
+                placeholderTextColor="#A8A29E"
               />
             </View>
             <View style={tw`flex-1`}>
-              <Text style={tw`text-sm font-semibold text-gray-700 mb-2`}>Stock *</Text>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Stock *</Text>
               <TextInput
                 value={stock}
                 onChangeText={setStock}
                 placeholder="0"
                 keyboardType="number-pad"
-                style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base`}
-                placeholderTextColor="#9CA3AF"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base`}
+                placeholderTextColor="#A8A29E"
               />
             </View>
           </View>
+        </ScrollView>
 
-          {/* Submit Button */}
+        <StickyFooter>
           <TouchableOpacity
-            style={tw`bg-blue-600 rounded-xl py-4 items-center justify-center mb-6 ${
-              isSubmitting ? 'opacity-50' : ''
-            }`}
-            onPress={handleSubmit}
+            style={tw`bg-emerald-600 rounded-xl py-4 items-center ${isSubmitting ? 'opacity-50' : ''}`}
+            onPress={() => void handleSubmit()}
             disabled={isSubmitting}
           >
             <Text style={tw`text-white font-bold text-base`}>
-              {isSubmitting ? 'Saving...' : product ? 'Update Product' : 'Create Product'}
+              {isSubmitting ? 'Saving…' : product ? 'Save changes' : 'Create product'}
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </StickyFooter>
       </SafeAreaView>
     </Modal>
   );

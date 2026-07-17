@@ -7,6 +7,9 @@ import {
   createPartnershipRequestSchema,
   updatePartnershipRequestSchema,
   updateBusinessSettingsSchema,
+  updatePartnershipSchema,
+  createCampaignSchema,
+  updateCampaignSchema,
 } from '../utils/validation';
 
 type BusinessContext = { userId: string };
@@ -116,53 +119,83 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
   const bounds = getPeriodBounds(period);
 
   try {
-    const [productsResult, nowOverview, prevOverview, recentOrders, partnerStats] = await Promise.all([
-      env.DB.prepare(
-        `SELECT
-          COUNT(*) AS count,
-          COALESCE(SUM(stock), 0) AS total_stock,
-          COALESCE(SUM(stock * price), 0) AS inventory_value
-        FROM products WHERE user_id = ?`
-      )
-        .bind(auth.userId)
-        .first<{ count: number; total_stock: number; inventory_value: number }>(),
-      fetchOrderOverview(env, auth.userId, bounds.start, bounds.end),
-      fetchOrderOverview(env, auth.userId, bounds.prevStart, bounds.prevEnd),
-      env.DB.prepare(
-        `SELECT DISTINCT o.*,
-          (SELECT json_group_array(json_object(
-            'id', oi.id,
-            'product_id', oi.product_id,
-            'quantity', oi.quantity,
-            'price', oi.price,
-            'product_name', p.name,
-            'product_image', p.image_url
-          ))
-          FROM order_items oi
+    const settingsRow = await env.DB.prepare(
+      'SELECT analytics_prefs FROM business_settings WHERE business_id = ?'
+    )
+      .bind(auth.userId)
+      .first<{ analytics_prefs: string | null }>();
+    const analyticsPrefs = safeParse<Record<string, unknown>>(settingsRow?.analytics_prefs, {});
+    const lowStockThreshold = Math.max(
+      1,
+      Number(analyticsPrefs.low_stock_threshold ?? 10) || 10
+    );
+
+    const [productsResult, stockCounts, unitsSoldRow, nowOverview, prevOverview, recentOrders, partnerStats] =
+      await Promise.all([
+        env.DB.prepare(
+          `SELECT
+            COUNT(*) AS count,
+            COALESCE(SUM(stock), 0) AS total_stock,
+            COALESCE(SUM(stock * price), 0) AS inventory_value
+          FROM products WHERE user_id = ?`
+        )
+          .bind(auth.userId)
+          .first<{ count: number; total_stock: number; inventory_value: number }>(),
+        env.DB.prepare(
+          `SELECT
+            COALESCE(SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END), 0) AS out_of_stock_count,
+            COALESCE(SUM(CASE WHEN stock > 0 AND stock < ? THEN 1 ELSE 0 END), 0) AS low_stock_count
+          FROM products WHERE user_id = ?`
+        )
+          .bind(lowStockThreshold, auth.userId)
+          .first<{ out_of_stock_count: number; low_stock_count: number }>(),
+        env.DB.prepare(
+          `SELECT COALESCE(SUM(oi.quantity), 0) AS units_sold
+           FROM order_items oi
+           JOIN products p ON p.id = oi.product_id
+           JOIN orders o ON o.id = oi.order_id
+           WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+             AND o.status IN ('completed', 'delivered', 'shipped', 'processing')`
+        )
+          .bind(auth.userId, bounds.start, bounds.end)
+          .first<{ units_sold: number }>(),
+        fetchOrderOverview(env, auth.userId, bounds.start, bounds.end),
+        fetchOrderOverview(env, auth.userId, bounds.prevStart, bounds.prevEnd),
+        env.DB.prepare(
+          `SELECT DISTINCT o.*,
+            (SELECT json_group_array(json_object(
+              'id', oi.id,
+              'product_id', oi.product_id,
+              'quantity', oi.quantity,
+              'price', oi.price,
+              'product_name', p.name,
+              'product_image', p.image_url
+            ))
+            FROM order_items oi
+            JOIN products p ON p.id = oi.product_id
+            WHERE oi.order_id = o.id AND p.user_id = ?) AS items
+          FROM orders o
+          JOIN order_items oi ON oi.order_id = o.id
           JOIN products p ON p.id = oi.product_id
-          WHERE oi.order_id = o.id AND p.user_id = ?) AS items
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.id
-        JOIN products p ON p.id = oi.product_id
-        WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
-        ORDER BY o.created_at DESC
-        LIMIT 20`
-      )
-        .bind(auth.userId, auth.userId, bounds.start, bounds.end)
-        .all<Order & { items: string }>(),
-      env.DB.prepare(
-        `SELECT
-          COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0) AS active_partners,
-          COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_requests
-        FROM (
-          SELECT status FROM partnerships WHERE business_id = ?
-          UNION ALL
-          SELECT status FROM partnership_requests WHERE business_id = ?
-        )`
-      )
-        .bind(auth.userId, auth.userId)
-        .first<{ active_partners: number; pending_requests: number }>(),
-    ]);
+          WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+          ORDER BY o.created_at DESC
+          LIMIT 20`
+        )
+          .bind(auth.userId, auth.userId, bounds.start, bounds.end)
+          .all<Order & { items: string }>(),
+        env.DB.prepare(
+          `SELECT
+            COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0) AS active_partners,
+            COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_requests
+          FROM (
+            SELECT status FROM partnerships WHERE business_id = ?
+            UNION ALL
+            SELECT status FROM partnership_requests WHERE business_id = ?
+          )`
+        )
+          .bind(auth.userId, auth.userId)
+          .first<{ active_partners: number; pending_requests: number }>(),
+      ]);
 
     const grossRevenue = Number(nowOverview?.gross_revenue || 0);
     const refunds = Number(nowOverview?.refunds || 0);
@@ -173,6 +206,15 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
     );
     const totalOrders = Number(nowOverview?.total_orders || 0);
     const prevOrders = Number(prevOverview?.total_orders || 0);
+    const completedOrders = Number(nowOverview?.completed_orders || 0);
+    const pendingOrders = Number(nowOverview?.pending_orders || 0);
+    const lowStockCount = Number(stockCounts?.low_stock_count || 0);
+    const outOfStockCount = Number(stockCounts?.out_of_stock_count || 0);
+    const pendingPartnerRequests = Number(partnerStats?.pending_requests || 0);
+    const aov = completedOrders > 0 ? Number((netRevenue / completedOrders).toFixed(2)) : 0;
+    const refundRate =
+      grossRevenue > 0 ? Number(((refunds / grossRevenue) * 100).toFixed(2)) : 0;
+    const actionItemsCount = pendingOrders + lowStockCount + pendingPartnerRequests;
 
     return json({
       kpis: {
@@ -181,14 +223,21 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
         total_stock: Number(productsResult?.total_stock || 0),
         inventory_value: Number(productsResult?.inventory_value || 0),
         total_orders: totalOrders,
-        pending_orders: Number(nowOverview?.pending_orders || 0),
-        completed_orders: Number(nowOverview?.completed_orders || 0),
+        pending_orders: pendingOrders,
+        completed_orders: completedOrders,
         total_revenue: grossRevenue,
         gross_revenue: grossRevenue,
         refunds,
         net_revenue: netRevenue,
+        aov,
+        units_sold: Number(unitsSoldRow?.units_sold || 0),
+        refund_rate: refundRate,
+        low_stock_count: lowStockCount,
+        out_of_stock_count: outOfStockCount,
+        low_stock_threshold: lowStockThreshold,
+        action_items_count: actionItemsCount,
         active_partners: Number(partnerStats?.active_partners || 0),
-        pending_partner_requests: Number(partnerStats?.pending_requests || 0),
+        pending_partner_requests: pendingPartnerRequests,
         deltas: {
           orders_pct: deltaPct(totalOrders, prevOrders),
           net_revenue_pct: deltaPct(netRevenue, prevNetRevenue),
@@ -241,6 +290,61 @@ export async function getAnalyticsTimeseries(request: Request, env: Env): Promis
   } catch (err) {
     console.error('[getAnalyticsTimeseries] Error:', err);
     return error('DATABASE_ERROR', 'Failed to load timeseries', 500);
+  }
+}
+
+/**
+ * GET /api/v1/business/analytics/funnel
+ */
+export async function getAnalyticsFunnel(request: Request, env: Env): Promise<Response> {
+  const auth = await requireBusiness(request, env);
+  if (auth instanceof Response) return auth;
+
+  const url = new URL(request.url);
+  const period = (url.searchParams.get('period') as Period) || 'week';
+  const bounds = getPeriodBounds(period);
+  try {
+    const row = await env.DB.prepare(
+      `WITH business_orders AS (
+        SELECT DISTINCT o.id, o.status
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        JOIN products p ON p.id = oi.product_id
+        WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+      )
+      SELECT
+        COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+        COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0) AS processing,
+        COALESCE(SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END), 0) AS shipped,
+        COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered,
+        COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+        COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
+      FROM business_orders`
+    )
+      .bind(auth.userId, bounds.start, bounds.end)
+      .first<{
+        pending: number;
+        processing: number;
+        shipped: number;
+        delivered: number;
+        completed: number;
+        cancelled: number;
+      }>();
+
+    return json({
+      period,
+      funnel: {
+        pending: Number(row?.pending || 0),
+        processing: Number(row?.processing || 0),
+        shipped: Number(row?.shipped || 0),
+        delivered: Number(row?.delivered || 0),
+        completed: Number(row?.completed || 0),
+        cancelled: Number(row?.cancelled || 0),
+      },
+    });
+  } catch (err) {
+    console.error('[getAnalyticsFunnel] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to load order funnel', 500);
   }
 }
 
@@ -351,15 +455,30 @@ export async function getPartnershipPerformance(request: Request, env: Env): Pro
 export async function getBusinessProducts(request: Request, env: Env): Promise<Response> {
   const auth = await requireBusiness(request, env);
   if (auth instanceof Response) return auth;
+  const url = new URL(request.url);
+  const period = (url.searchParams.get('period') as Period) || 'month';
+  const bounds = getPeriodBounds(period);
   try {
     const products = await env.DB.prepare(
-      'SELECT * FROM products WHERE user_id = ? ORDER BY created_at DESC'
+      `SELECT p.*,
+        COALESCE((
+          SELECT SUM(oi.quantity)
+          FROM order_items oi
+          JOIN orders o ON o.id = oi.order_id
+          WHERE oi.product_id = p.id
+            AND o.created_at >= ? AND o.created_at < ?
+            AND o.status IN ('completed', 'delivered', 'shipped', 'processing')
+        ), 0) AS units_sold
+       FROM products p
+       WHERE p.user_id = ?
+       ORDER BY p.created_at DESC`
     )
-      .bind(auth.userId)
-      .all<Product>();
+      .bind(bounds.start, bounds.end, auth.userId)
+      .all<Product & { units_sold: number }>();
 
     const formattedProducts = (products.results || []).map((product) => ({
       ...product,
+      units_sold: Number(product.units_sold || 0),
       images: safeParse(product.images || '[]', []),
       metadata: safeParse(product.metadata, {}),
     }));
@@ -738,6 +857,24 @@ export async function updateBusinessSettings(request: Request, env: Env): Promis
   if (!validation.success) return validation.response;
   const body = validation.data;
   try {
+    const existing = await env.DB.prepare(
+      `SELECT analytics_prefs, notifications_prefs, business_name, logo_url FROM business_settings WHERE business_id = ?`
+    )
+      .bind(auth.userId)
+      .first<{
+        analytics_prefs: string;
+        notifications_prefs: string;
+        business_name: string | null;
+        logo_url: string | null;
+      }>();
+    const mergedAnalytics = {
+      ...safeParse(existing?.analytics_prefs, {}),
+      ...(body.analytics_prefs || {}),
+    };
+    const mergedNotifications = {
+      ...safeParse(existing?.notifications_prefs, {}),
+      ...(body.notifications_prefs || {}),
+    };
     await env.DB.prepare(
       `INSERT INTO business_settings
       (business_id, business_name, logo_url, analytics_prefs, notifications_prefs, created_at, updated_at)
@@ -751,15 +888,200 @@ export async function updateBusinessSettings(request: Request, env: Env): Promis
     )
       .bind(
         auth.userId,
-        body.business_name || null,
-        body.logo_url || null,
-        JSON.stringify(body.analytics_prefs || {}),
-        JSON.stringify(body.notifications_prefs || {})
+        body.business_name ?? existing?.business_name ?? null,
+        body.logo_url !== undefined
+          ? body.logo_url || null
+          : existing?.logo_url ?? null,
+        JSON.stringify(mergedAnalytics),
+        JSON.stringify(mergedNotifications)
       )
       .run();
     return json({ ok: true });
   } catch (err) {
     console.error('[updateBusinessSettings] Error:', err);
     return error('DATABASE_ERROR', 'Failed to update settings', 500);
+  }
+}
+
+/**
+ * PATCH /api/v1/business/partnerships/:id
+ * Pause / end / reactivate an active partnership.
+ */
+export async function updatePartnership(
+  request: Request,
+  env: Env,
+  partnershipId: string
+): Promise<Response> {
+  const auth = await requireBusiness(request, env);
+  if (auth instanceof Response) return auth;
+  const validation = await validateRequest(request, updatePartnershipSchema);
+  if (!validation.success) return validation.response;
+  const { status } = validation.data;
+  try {
+    const existing = await env.DB.prepare(
+      `SELECT id FROM partnerships WHERE id = ? AND business_id = ?`
+    )
+      .bind(partnershipId, auth.userId)
+      .first<{ id: string }>();
+    if (!existing) return error('NOT_FOUND', 'Partnership not found', 404);
+    await env.DB.prepare(
+      `UPDATE partnerships SET status = ?, updated_at = datetime('now') WHERE id = ?`
+    )
+      .bind(status, partnershipId)
+      .run();
+    return json({ ok: true });
+  } catch (err) {
+    console.error('[updatePartnership] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to update partnership', 500);
+  }
+}
+
+/**
+ * GET /api/v1/business/campaigns
+ */
+export async function listCampaigns(request: Request, env: Env): Promise<Response> {
+  const auth = await requireBusiness(request, env);
+  if (auth instanceof Response) return auth;
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT * FROM marketing_campaigns WHERE business_id = ? ORDER BY created_at DESC`
+    )
+      .bind(auth.userId)
+      .all<{
+        id: string;
+        business_id: string;
+        name: string;
+        type: string;
+        budget: number;
+        spent: number;
+        status: string;
+        start_date: string | null;
+        end_date: string | null;
+        product_ids: string;
+        metadata: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+
+    return json({
+      campaigns: (rows.results || []).map((c) => ({
+        ...c,
+        product_ids: safeParse(c.product_ids, []),
+        metadata: safeParse(c.metadata, {}),
+      })),
+    });
+  } catch (err) {
+    console.error('[listCampaigns] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to list campaigns', 500);
+  }
+}
+
+/**
+ * POST /api/v1/business/campaigns
+ */
+export async function createCampaign(request: Request, env: Env): Promise<Response> {
+  const auth = await requireBusiness(request, env);
+  if (auth instanceof Response) return auth;
+  const validation = await validateRequest(request, createCampaignSchema);
+  if (!validation.success) return validation.response;
+  const body = validation.data;
+  const id = generateId('campaign');
+  try {
+    await env.DB.prepare(
+      `INSERT INTO marketing_campaigns
+      (id, business_id, name, type, budget, spent, status, start_date, end_date, product_ids, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, 'active', ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+      .bind(
+        id,
+        auth.userId,
+        body.name,
+        body.type,
+        body.budget,
+        body.start_date || null,
+        body.end_date || null,
+        JSON.stringify(body.product_ids || []),
+        JSON.stringify(body.metadata || {})
+      )
+      .run();
+    const row = await env.DB.prepare(`SELECT * FROM marketing_campaigns WHERE id = ?`)
+      .bind(id)
+      .first();
+    return json(
+      {
+        ...row,
+        product_ids: safeParse((row as { product_ids?: string })?.product_ids, []),
+        metadata: safeParse((row as { metadata?: string })?.metadata, {}),
+      },
+      201
+    );
+  } catch (err) {
+    console.error('[createCampaign] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to create campaign', 500);
+  }
+}
+
+/**
+ * PATCH /api/v1/business/campaigns/:id
+ */
+export async function updateCampaign(
+  request: Request,
+  env: Env,
+  campaignId: string
+): Promise<Response> {
+  const auth = await requireBusiness(request, env);
+  if (auth instanceof Response) return auth;
+  const validation = await validateRequest(request, updateCampaignSchema);
+  if (!validation.success) return validation.response;
+  const body = validation.data;
+  try {
+    const existing = await env.DB.prepare(
+      `SELECT * FROM marketing_campaigns WHERE id = ? AND business_id = ?`
+    )
+      .bind(campaignId, auth.userId)
+      .first<{
+        id: string;
+        name: string;
+        type: string;
+        budget: number;
+        status: string;
+        start_date: string | null;
+        end_date: string | null;
+        product_ids: string;
+        metadata: string;
+      }>();
+    if (!existing) return error('NOT_FOUND', 'Campaign not found', 404);
+
+    await env.DB.prepare(
+      `UPDATE marketing_campaigns SET
+        name = ?, type = ?, budget = ?, status = ?,
+        start_date = ?, end_date = ?, product_ids = ?, metadata = ?,
+        updated_at = datetime('now')
+       WHERE id = ?`
+    )
+      .bind(
+        body.name ?? existing.name,
+        body.type ?? existing.type,
+        body.budget ?? existing.budget,
+        body.status ?? existing.status,
+        body.start_date !== undefined ? body.start_date : existing.start_date,
+        body.end_date !== undefined ? body.end_date : existing.end_date,
+        JSON.stringify(body.product_ids ?? safeParse(existing.product_ids, [])),
+        JSON.stringify(body.metadata ?? safeParse(existing.metadata, {})),
+        campaignId
+      )
+      .run();
+
+    const row = await env.DB.prepare(`SELECT * FROM marketing_campaigns WHERE id = ?`)
+      .bind(campaignId)
+      .first();
+    return json({
+      ...row,
+      product_ids: safeParse((row as { product_ids?: string })?.product_ids, []),
+      metadata: safeParse((row as { metadata?: string })?.metadata, {}),
+    });
+  } catch (err) {
+    console.error('[updateCampaign] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to update campaign', 500);
   }
 }

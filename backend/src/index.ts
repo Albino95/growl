@@ -284,11 +284,35 @@ export default {
       if (path === `${apiPrefix}/business/analytics/timeseries` && request.method === 'GET') {
         return businessRoutes.getAnalyticsTimeseries(request, env);
       }
+      if (path === `${apiPrefix}/business/analytics/funnel` && request.method === 'GET') {
+        return businessRoutes.getAnalyticsFunnel(request, env);
+      }
       if (path === `${apiPrefix}/business/analytics/top-products` && request.method === 'GET') {
         return businessRoutes.getTopProducts(request, env);
       }
       if (path === `${apiPrefix}/business/analytics/partnerships` && request.method === 'GET') {
         return businessRoutes.getPartnershipPerformance(request, env);
+      }
+      const partnershipUpdateMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/partnerships/([^/]+)$`)
+      );
+      if (
+        partnershipUpdateMatch &&
+        request.method === 'PATCH' &&
+        partnershipUpdateMatch[1] !== 'requests' &&
+        partnershipUpdateMatch[1] !== 'discover'
+      ) {
+        return businessRoutes.updatePartnership(request, env, partnershipUpdateMatch[1]);
+      }
+      if (path === `${apiPrefix}/business/campaigns` && request.method === 'GET') {
+        return businessRoutes.listCampaigns(request, env);
+      }
+      if (path === `${apiPrefix}/business/campaigns` && request.method === 'POST') {
+        return businessRoutes.createCampaign(request, env);
+      }
+      const campaignMatch = path.match(new RegExp(`^${apiPrefix}/business/campaigns/([^/]+)$`));
+      if (campaignMatch && request.method === 'PATCH') {
+        return businessRoutes.updateCampaign(request, env, campaignMatch[1]);
       }
       if (path === `${apiPrefix}/business/settings` && request.method === 'GET') {
         return businessRoutes.getBusinessSettings(request, env);

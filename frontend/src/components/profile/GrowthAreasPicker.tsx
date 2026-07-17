@@ -66,7 +66,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
     value.includes(category.key) || getSelectedSubcategories(category).length > 0;
 
   return (
-    <View style={tw`flex-1`}>
+    <View style={[tw`flex-1`, { minHeight: 0 }]}>
       {showCountBanner ? (
         <View style={tw`mb-3 flex-row items-center justify-between bg-brand-50 rounded-xl px-4 py-3`}>
           <Text style={tw`text-sm font-semibold text-brand-800`}>
@@ -80,7 +80,13 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
         </View>
       ) : null}
 
-      <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={[tw`flex-1`, { minHeight: 0 }]}
+        contentContainerStyle={tw`pb-4`}
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+      >
         {CATEGORIES.map((category) => {
           const isSelected = isCategorySelected(category);
           const isExpanded = expandedCategory === category.key;

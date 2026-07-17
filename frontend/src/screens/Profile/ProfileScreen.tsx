@@ -291,12 +291,20 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
   /** Persists category updates, then re-syncs cohort-based friend graph. */
   const handleUpdateCategories = async (selectedCategories: string[]) => {
+    if (selectedCategories.length === 0) {
+      alertMessage('Select at least one', 'Pick at least one growth area before saving.');
+      return;
+    }
     try {
       await updateProfileOnServer({ categories: selectedCategories });
       updateUser({ categories: selectedCategories });
-      const cohort = await syncCohortFriends();
-      setFollowing(cohort.following);
-      setFollowers(cohort.followers);
+      try {
+        const cohort = await syncCohortFriends();
+        setFollowing(cohort.following);
+        setFollowers(cohort.followers);
+      } catch (cohortErr) {
+        console.warn('[ProfileScreen] cohort sync after category update', cohortErr);
+      }
       setShowCategorySettings(false);
       alertMessage('Success', 'Growth areas updated!');
     } catch (err: unknown) {
@@ -1010,29 +1018,51 @@ function CategoryPickerModal({
   onClose,
 }: {
   currentCategories: string[];
-  onSave: (categories: string[]) => void;
+  onSave: (categories: string[]) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(currentCategories);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(selectedCategories);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>
       <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
         <Text style={tw`text-2xl font-bold text-stone-900`}>Update Growth Areas</Text>
-        <TouchableOpacity onPress={onClose}>
+        <TouchableOpacity onPress={onClose} disabled={saving} hitSlop={12}>
           <Ionicons name="close" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>
-      <View style={tw`flex-1 px-4 pt-4`}>
+
+      <View style={[tw`flex-1 px-4 pt-4`, { minHeight: 0 }]}>
         <Text style={tw`text-sm text-stone-600 mb-3`}>
-          Expand a category and pick sub-areas. Max 3 growth areas.
+          Expand a category and pick sub-areas (e.g. Fitness → Cardio). Max 3 growth areas.
         </Text>
-        <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
+        <View style={[tw`flex-1`, { minHeight: 0 }]}>
+          <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
+        </View>
+      </View>
+
+      <View style={tw`px-4 pt-3 pb-6 border-t border-stone-200 bg-white`}>
         <TouchableOpacity
-          onPress={() => onSave(selectedCategories)}
-          style={tw`bg-brand-600 rounded-xl py-4 mb-4 mt-4`}
+          onPress={() => void handleSave()}
+          disabled={saving || selectedCategories.length === 0}
+          style={tw`bg-brand-600 rounded-xl py-4 items-center ${
+            saving || selectedCategories.length === 0 ? 'opacity-50' : ''
+          }`}
         >
-          <Text style={tw`text-white text-center font-bold text-base`}>Save Changes</Text>
+          <Text style={tw`text-white text-center font-bold text-base`}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

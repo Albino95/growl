@@ -10,75 +10,75 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
-import { getDashboard, getBusinessTopProducts, type DashboardKPIs } from '../../services/api/business';
 import { verticalScrollProps } from '../../constants/scroll';
-import { startOfBusinessPeriod, bucketOrdersByDay } from '../../utils/businessMetrics';
+import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { fetchBusinessGrow } from '../../store/slices/businessSlice';
+import PeriodToggle from '../../components/business/PeriodToggle';
+import KpiCard from '../../components/business/KpiCard';
+import SectionLabel from '../../components/ui/SectionLabel';
+import type { OrderFunnel } from '../../services/api/business';
+
+const FUNNEL_STEPS: Array<{ key: keyof OrderFunnel; label: string; color: string }> = [
+  { key: 'pending', label: 'Pending', color: '#F59E0B' },
+  { key: 'processing', label: 'Processing', color: '#3B82F6' },
+  { key: 'shipped', label: 'Shipped', color: '#8B5CF6' },
+  { key: 'delivered', label: 'Delivered', color: '#059669' },
+  { key: 'completed', label: 'Completed', color: '#047857' },
+  { key: 'cancelled', label: 'Cancelled', color: '#EF4444' },
+];
 
 export default function KpiScreen() {
-  const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [period, setPeriod] = useState<'today' | 'week' | 'month'>('week');
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [topProducts, setTopProducts] = useState<Array<{ id: string; name: string; units_sold: number; revenue: number }>>([]);
+  const dispatch = useAppDispatch();
+  const {
+    period,
+    setPeriod,
+    kpis,
+    timeseries,
+    funnel,
+    topProducts,
+    status,
+    error,
+    loading,
+    refresh,
+  } = useBusinessDashboard();
 
-  const load = useCallback(async (selected: 'today' | 'week' | 'month') => {
-    try {
-      setLoading(true);
-      setLoadError(null);
-      const [res, top] = await Promise.all([getDashboard(selected), getBusinessTopProducts(selected)]);
-      if (res.success && res.data?.kpis) {
-        setKpis(res.data.kpis);
-      }
-      if (top.success && top.data?.products) {
-        setTopProducts(top.data.products);
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load analytics';
-      setLoadError(msg);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const partnershipPerformance = useAppSelector((s) => s.business.partnershipPerformance);
+  const growStatus = useAppSelector((s) => s.business.growStatus);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    void load(period);
-  }, [load, period]);
+    if (partnershipPerformance.length === 0) {
+      void dispatch(fetchBusinessGrow());
+    }
+  }, [dispatch, partnershipPerformance.length]);
 
-  const orders = kpis?.recent_orders ?? [];
-  const filteredOrders = useMemo(() => {
-    const t0 = startOfBusinessPeriod(period);
-    return orders.filter((o) => new Date(o.created_at).getTime() >= t0);
-  }, [orders, period]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refresh({ force: true }), dispatch(fetchBusinessGrow()).unwrap()]);
+    } catch {
+      // errors surface in slice state
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh, dispatch]);
 
-  const orderBars = useMemo(() => bucketOrdersByDay(orders, 7), [orders]);
-  const maxBar = Math.max(1, ...orderBars.map((b) => b.count));
+  const maxSeries = Math.max(1, ...timeseries.map((p) => p.revenue || 0));
+  const maxFunnel = Math.max(1, ...(funnel ? Object.values(funnel) : [1]));
 
-  const revenueInPeriod = useMemo(
-    () => filteredOrders.reduce((s, o) => s + Number(o.total || 0), 0),
-    [filteredOrders]
-  );
+  const net = kpis?.net_revenue ?? kpis?.total_revenue ?? 0;
+  const gross = kpis?.gross_revenue ?? kpis?.total_revenue ?? 0;
+  const refunds = kpis?.refunds ?? 0;
+  const refundRate = kpis?.refund_rate ?? 0;
+  const aov = kpis?.aov ?? 0;
+  const unitsSold = kpis?.units_sold ?? 0;
 
-  const monetizationLevers = useMemo(
-    () => [
-      {
-        title: 'Raise basket size',
-        body: 'Bundle complementary SKUs and surface them after checkout intent in the marketplace.',
-        icon: 'cart' as const,
-      },
-      {
-        title: 'Convert feed attention',
-        body: 'Tie category-based posts to your SKUs — sponsored placements become high-intent traffic.',
-        icon: 'megaphone' as const,
-      },
-      {
-        title: 'Instructor-led demand',
-        body: 'Partnerships turn trusted voices into recurring cohorts that rebuy consumables on-platform.',
-        icon: 'people' as const,
-      },
-    ],
-    []
+  const showBasketTip = aov > 0 && aov < 25;
+
+  const sortedPartners = useMemo(
+    () => [...partnershipPerformance].sort((a, b) => b.attributed_revenue - a.attributed_revenue),
+    [partnershipPerformance]
   );
 
   if (loading && !kpis) {
@@ -94,142 +94,190 @@ export default function KpiScreen() {
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['bottom']}>
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`px-4 pt-2 pb-10`}
+        contentContainerStyle={tw`px-4 pt-3 pb-10`}
         {...verticalScrollProps}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              load(period);
-            }}
+            onRefresh={onRefresh}
             tintColor="#059669"
             colors={['#059669']}
           />
         }
       >
-        <Text style={tw`text-sm text-stone-500 mb-3`}>
-          Signals from your live dashboard — use this view to prioritize revenue experiments.
-        </Text>
-        {loadError ? (
+        {error ? (
           <View style={tw`mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200`}>
-            <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
-          </View>
-        ) : null}
-
-        <View style={tw`flex-row bg-stone-200/80 rounded-xl p-1 mb-4`}>
-          {(['today', 'week', 'month'] as const).map((p) => (
-            <TouchableOpacity
-              key={p}
-              onPress={() => setPeriod(p)}
-              style={tw`flex-1 py-2 rounded-lg ${period === p ? 'bg-white shadow-sm' : ''}`}
-            >
-              <Text
-                style={tw`text-center text-sm font-semibold ${
-                  period === p ? 'text-emerald-700' : 'text-stone-500'
-                }`}
-              >
-                {p === 'today' ? 'Today' : p === 'week' ? '7 days' : '30 days'}
-              </Text>
+            <Text style={tw`text-sm text-red-700 mb-2`}>{error}</Text>
+            <TouchableOpacity onPress={() => void refresh({ force: true })}>
+              <Text style={tw`text-sm font-semibold text-red-800`}>Retry</Text>
             </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={tw`flex-row flex-wrap -mx-2 mb-4`}>
-          <View style={tw`w-1/2 px-2 mb-3`}>
-            <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
-              <Text style={tw`text-xs text-stone-500 mb-1`}>Orders ({period})</Text>
-              <Text style={tw`text-2xl font-bold text-stone-900`}>{filteredOrders.length}</Text>
-            </View>
-          </View>
-          <View style={tw`w-1/2 px-2 mb-3`}>
-            <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
-              <Text style={tw`text-xs text-stone-500 mb-1`}>Revenue ({period})</Text>
-              <Text style={tw`text-2xl font-bold text-emerald-700`}>
-                ${revenueInPeriod.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={tw`bg-white rounded-2xl p-4 mb-4 border border-stone-100`}>
-          <Text style={tw`text-base font-bold text-stone-900 mb-1`}>Order volume (last 7 days)</Text>
-          <Text style={tw`text-xs text-stone-500 mb-4`}>Based on recent orders returned from your dashboard API</Text>
-          <View style={tw`flex-row items-end justify-between h-36 px-1`}>
-            {orderBars.map((b) => {
-              const h = Math.max(6, Math.round((b.count / maxBar) * 120));
-              return (
-                <View key={b.label} style={tw`flex-1 items-center mx-0.5`}>
-                  <View style={[tw`w-full rounded-t-md bg-emerald-500`, { height: h }]} />
-                  <Text style={tw`text-[10px] text-stone-400 mt-2`} numberOfLines={1}>
-                    {b.label}
-                  </Text>
-                  <Text style={tw`text-xs font-semibold text-stone-700`}>{b.count}</Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {kpis ? (
-          <View style={tw`bg-white rounded-2xl p-4 mb-4 border border-stone-100`}>
-            <Text style={tw`text-base font-bold text-stone-900 mb-3`}>Store snapshot</Text>
-            <View style={tw`flex-row flex-wrap`}>
-              <View style={tw`w-1/2 mb-3`}>
-                <Text style={tw`text-xs text-stone-500`}>Catalog</Text>
-                <Text style={tw`text-lg font-semibold text-stone-900`}>{kpis.total_products} products</Text>
-              </View>
-              <View style={tw`w-1/2 mb-3`}>
-                <Text style={tw`text-xs text-stone-500`}>Stock units</Text>
-                <Text style={tw`text-lg font-semibold text-stone-900`}>{kpis.total_stock ?? 0}</Text>
-              </View>
-              <View style={tw`w-1/2 mb-3`}>
-                <Text style={tw`text-xs text-stone-500`}>Pending orders</Text>
-                <Text style={tw`text-lg font-semibold text-amber-700`}>{kpis.pending_orders}</Text>
-              </View>
-              <View style={tw`w-1/2 mb-3`}>
-                <Text style={tw`text-xs text-stone-500`}>Lifetime revenue</Text>
-                <Text style={tw`text-lg font-semibold text-emerald-700`}>
-                  ${kpis.total_revenue.toFixed(2)}
-                </Text>
-              </View>
-            </View>
           </View>
         ) : null}
 
-        {topProducts.length > 0 ? (
-          <View style={tw`bg-white rounded-2xl p-4 mb-4 border border-stone-100`}>
-            <Text style={tw`text-base font-bold text-stone-900 mb-3`}>Top products ({period})</Text>
-            {topProducts.map((p) => (
-              <View key={p.id} style={tw`flex-row items-center justify-between py-2 border-b border-stone-100 last:border-b-0`}>
-                <View style={tw`flex-1 pr-2`}>
-                  <Text style={tw`text-sm font-medium text-stone-900`} numberOfLines={1}>{p.name}</Text>
-                  <Text style={tw`text-xs text-stone-500`}>{p.units_sold} units sold</Text>
-                </View>
-                <Text style={tw`text-sm font-semibold text-emerald-700`}>${Number(p.revenue).toFixed(2)}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        <View style={tw`mb-4`}>
+          <PeriodToggle value={period} onChange={setPeriod} />
+        </View>
 
-        <Text style={tw`text-lg font-bold text-stone-900 mb-2`}>Monetization levers</Text>
-        <Text style={tw`text-sm text-stone-500 mb-3`}>
-          Actions that compound GMV and take-rate as the marketplace matures.
-        </Text>
-        {monetizationLevers.map((m) => (
-          <View
-            key={m.title}
-            style={tw`flex-row bg-white rounded-2xl p-4 mb-3 border border-stone-100`}
-          >
-            <View style={tw`w-11 h-11 rounded-full bg-emerald-50 items-center justify-center mr-3`}>
-              <Ionicons name={m.icon} size={22} color="#059669" />
+        {showBasketTip ? (
+          <View style={tw`flex-row bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4`}>
+            <View style={tw`w-10 h-10 rounded-full bg-emerald-100 items-center justify-center mr-3`}>
+              <Ionicons name="bulb-outline" size={22} color="#059669" />
             </View>
             <View style={tw`flex-1`}>
-              <Text style={tw`font-semibold text-stone-900 mb-1`}>{m.title}</Text>
-              <Text style={tw`text-sm text-stone-600 leading-5`}>{m.body}</Text>
+              <Text style={tw`font-semibold text-emerald-900 mb-1`}>Raise basket size</Text>
+              <Text style={tw`text-sm text-emerald-800 leading-5`}>
+                Bundle complementary SKUs — your AOV is ${aov.toFixed(2)}, below the $25 target.
+              </Text>
             </View>
           </View>
-        ))}
+        ) : null}
+
+        <SectionLabel>Revenue</SectionLabel>
+        <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
+          <KpiCard label="Net revenue" value={`$${Number(net).toFixed(2)}`} icon="cash-outline" />
+          <KpiCard label="Gross revenue" value={`$${Number(gross).toFixed(2)}`} icon="trending-up-outline" />
+          <KpiCard label="Refunds" value={`$${Number(refunds).toFixed(2)}`} icon="return-down-back-outline" trend="down" />
+          <KpiCard label="Refund rate" value={`${Number(refundRate).toFixed(1)}%`} icon="stats-chart-outline" />
+          <KpiCard label="AOV" value={`$${Number(aov).toFixed(2)}`} icon="cart-outline" />
+          <KpiCard label="Units sold" value={String(unitsSold)} icon="cube-outline" />
+        </View>
+
+        <SectionLabel>Order rhythm</SectionLabel>
+        <View style={tw`bg-white rounded-2xl p-4 mb-5 border border-stone-100`}>
+          {timeseries.length === 0 ? (
+            <Text style={tw`text-sm text-stone-500`}>No revenue data in this period yet.</Text>
+          ) : (
+            <>
+              <Text style={tw`text-xs text-stone-400 mb-3`}>Daily revenue ({period})</Text>
+              <View style={tw`flex-row items-end justify-between h-32`}>
+                {timeseries.map((p) => {
+                  const h = Math.max(6, Math.round(((p.revenue || 0) / maxSeries) * 112));
+                  const label = (p.day || '').slice(5) || p.day;
+                  return (
+                    <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
+                      <View style={[tw`w-full rounded-t-md bg-emerald-500`, { height: h }]} />
+                      <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
+                        {label}
+                      </Text>
+                      <Text style={tw`text-[10px] font-semibold text-stone-600`}>
+                        ${(p.revenue || 0).toFixed(0)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+
+        <SectionLabel>Order funnel</SectionLabel>
+        <View style={tw`bg-white rounded-2xl p-4 mb-5 border border-stone-100`}>
+          {!funnel ? (
+            <Text style={tw`text-sm text-stone-500`}>No funnel data for this period.</Text>
+          ) : (
+            FUNNEL_STEPS.map(({ key, label, color }) => {
+              const count = funnel[key] ?? 0;
+              const pct = Math.round((count / maxFunnel) * 100);
+              return (
+                <View key={key} style={tw`mb-3 last:mb-0`}>
+                  <View style={tw`flex-row justify-between mb-1`}>
+                    <Text style={tw`text-sm text-stone-700`}>{label}</Text>
+                    <Text style={tw`text-sm font-semibold text-stone-900`}>{count}</Text>
+                  </View>
+                  <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
+                    <View
+                      style={[
+                        tw`h-full rounded-full`,
+                        { width: `${pct}%`, backgroundColor: color },
+                      ]}
+                    />
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <SectionLabel>Top products</SectionLabel>
+        <View style={tw`bg-white rounded-2xl p-4 mb-5 border border-stone-100`}>
+          {topProducts.length === 0 ? (
+            <Text style={tw`text-sm text-stone-500`}>No product sales in this period.</Text>
+          ) : (
+            topProducts.map((p, idx) => (
+              <View
+                key={p.id}
+                style={tw`flex-row items-center py-2.5 ${idx < topProducts.length - 1 ? 'border-b border-stone-100' : ''}`}
+              >
+                <Text style={tw`w-6 text-sm font-bold text-stone-400`}>{idx + 1}</Text>
+                <View style={tw`flex-1 pr-2`}>
+                  <Text style={tw`text-sm font-medium text-stone-900`} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                  <Text style={tw`text-xs text-stone-500`}>{p.units_sold} units</Text>
+                </View>
+                <Text style={tw`text-sm font-semibold text-emerald-700`}>
+                  ${Number(p.revenue).toFixed(2)}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+
+        <SectionLabel>Inventory</SectionLabel>
+        <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
+          <KpiCard
+            label="Inventory value"
+            value={`$${Number(kpis?.inventory_value ?? 0).toFixed(2)}`}
+            icon="layers-outline"
+          />
+          <KpiCard
+            label="Low stock SKUs"
+            value={String(kpis?.low_stock_count ?? 0)}
+            icon="alert-circle-outline"
+            trend={(kpis?.low_stock_count ?? 0) > 0 ? 'down' : 'neutral'}
+          />
+          <KpiCard
+            label="Out of stock"
+            value={String(kpis?.out_of_stock_count ?? 0)}
+            icon="close-circle-outline"
+            trend={(kpis?.out_of_stock_count ?? 0) > 0 ? 'down' : 'neutral'}
+          />
+        </View>
+
+        <SectionLabel>Partnerships</SectionLabel>
+        <View style={tw`bg-white rounded-2xl p-4 mb-4 border border-stone-100`}>
+          {growStatus === 'loading' && sortedPartners.length === 0 ? (
+            <ActivityIndicator color="#059669" />
+          ) : sortedPartners.length === 0 ? (
+            <Text style={tw`text-sm text-stone-500`}>No partnership performance data yet.</Text>
+          ) : (
+            sortedPartners.map((p, idx) => (
+              <View
+                key={p.id}
+                style={tw`flex-row items-center py-2.5 ${idx < sortedPartners.length - 1 ? 'border-b border-stone-100' : ''}`}
+              >
+                <View style={tw`w-9 h-9 rounded-full bg-stone-100 items-center justify-center mr-3`}>
+                  <Text style={tw`text-lg`}>{p.instructor_avatar || '👤'}</Text>
+                </View>
+                <View style={tw`flex-1 pr-2`}>
+                  <Text style={tw`text-sm font-medium text-stone-900`} numberOfLines={1}>
+                    {p.instructor_name}
+                  </Text>
+                  <Text style={tw`text-xs text-stone-500 capitalize`}>
+                    {p.status} · {p.commission_rate ?? 0}%
+                  </Text>
+                </View>
+                <Text style={tw`text-sm font-semibold text-emerald-700`}>
+                  ${p.attributed_revenue.toFixed(2)}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+
+        {status === 'loading' && kpis ? (
+          <Text style={tw`text-center text-xs text-stone-400`}>Refreshing…</Text>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
