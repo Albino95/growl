@@ -1,30 +1,34 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   RefreshControl,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { verticalScrollProps } from '../../constants/scroll';
+import { feedListPerformanceProps } from '../../constants/scroll';
 import { createProduct, updateProduct, deleteProduct } from '../../services/api/marketplace';
 import ProductForm from '../../components/business/ProductForm';
 import StockBadge from '../../components/business/StockBadge';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
+import BusinessStatStrip from '../../components/business/BusinessStatStrip';
+import SkeletonCard from '../../components/ui/SkeletonCard';
 import CATEGORIES from '../../data/categories';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchBusinessProducts, setCatalogFilter } from '../../store/slices/businessSlice';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
+import type { BusinessProduct } from '../../services/api/business';
 
 export default function InventoryScreen() {
   const route = useRoute<RouteProp<BusinessTabsParamList, 'Catalog'>>();
+  const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
   const products = useAppSelector((s) => s.business.products);
   const catalogFilter = useAppSelector((s) => s.business.catalogFilter);
@@ -44,8 +48,9 @@ export default function InventoryScreen() {
     if (route.params?.openForm) {
       setEditingProduct(null);
       setShowProductForm(true);
+      navigation.setParams({ openForm: undefined });
     }
-  }, [route.params?.openForm]);
+  }, [route.params?.openForm, navigation]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -101,8 +106,56 @@ export default function InventoryScreen() {
 
   const totalValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
   const lowStockCount = products.filter((p) => p.stock > 0 && p.stock < threshold).length;
-  const categoryName = (catId: string) => CATEGORIES.find((c) => c.key === catId)?.label || catId;
+  const categoryName = useCallback(
+    (catId: string) => CATEGORIES.find((c) => c.key === catId)?.label || catId,
+    []
+  );
   const loading = productsStatus === 'loading' && products.length === 0;
+
+  const renderProduct = ({ item: product }: { item: BusinessProduct }) => {
+    const sku = `PRD-${product.id.slice(-6).toUpperCase()}`;
+    return (
+      <View style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}>
+        <View style={tw`flex-row items-start`}>
+          {product.image_url ? (
+            <Image source={{ uri: product.image_url }} style={tw`w-16 h-16 rounded-lg mr-3`} contentFit="cover" />
+          ) : (
+            <View style={tw`w-16 h-16 rounded-lg mr-3 bg-stone-100 items-center justify-center`}>
+              <Ionicons name="image-outline" size={24} color="#A8A29E" />
+            </View>
+          )}
+          <View style={tw`flex-1`}>
+            <View style={tw`flex-row items-start justify-between`}>
+              <Text style={tw`text-lg font-bold text-stone-900 flex-1 pr-2`}>{product.name}</Text>
+              <StockBadge stock={product.stock} threshold={threshold} />
+            </View>
+            <Text style={tw`text-sm text-stone-500 mt-1`}>
+              {sku} · {categoryName(product.category)}
+              {product.units_sold != null ? ` · ${product.units_sold} sold` : ''}
+            </Text>
+            <Text style={tw`text-xl font-bold text-stone-900 mt-2`}>${product.price.toFixed(2)}</Text>
+          </View>
+        </View>
+        <View style={tw`flex-row gap-2 mt-3`}>
+          <TouchableOpacity
+            style={tw`flex-1 py-2.5 bg-emerald-600 rounded-xl items-center`}
+            onPress={() => {
+              setEditingProduct(product);
+              setShowProductForm(true);
+            }}
+          >
+            <Text style={tw`text-white font-semibold`}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={tw`px-4 py-2.5 bg-red-50 rounded-xl items-center justify-center`}
+            onPress={() => void handleDeleteProduct(product)}
+          >
+            <Ionicons name="trash-outline" size={18} color="#DC2626" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
@@ -118,21 +171,14 @@ export default function InventoryScreen() {
             placeholderTextColor="#9CA3AF"
           />
         </View>
-        <View style={tw`flex-row gap-3 mb-3`}>
-          <View style={tw`flex-1 bg-emerald-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-emerald-700 mb-1`}>Products</Text>
-            <Text style={tw`text-xl font-bold text-emerald-900`}>{products.length}</Text>
-          </View>
-          <View style={tw`flex-1 bg-amber-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-amber-700 mb-1`}>Low stock</Text>
-            <Text style={tw`text-xl font-bold text-amber-900`}>{lowStockCount}</Text>
-          </View>
-          <View style={tw`flex-1 bg-stone-100 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-stone-600 mb-1`}>Value</Text>
-            <Text style={tw`text-xl font-bold text-stone-900`}>${totalValue.toFixed(0)}</Text>
-          </View>
-        </View>
-        <View style={tw`flex-row gap-2`}>
+        <BusinessStatStrip
+          items={[
+            { label: 'Products', value: String(products.length), tone: 'emerald' },
+            { label: 'Low stock', value: String(lowStockCount), tone: 'amber' },
+            { label: 'Value', value: `$${totalValue.toFixed(0)}`, tone: 'stone' },
+          ]}
+        />
+        <View style={tw`flex-row gap-2 mt-3`}>
           {(['all', 'low', 'out'] as const).map((f) => (
             <TouchableOpacity
               key={f}
@@ -147,73 +193,39 @@ export default function InventoryScreen() {
         </View>
       </View>
 
-      <ScrollView
-        style={tw`flex-1 px-4 pt-4`}
-        {...verticalScrollProps}
+      <FlatList
+        style={tw`flex-1`}
+        data={filteredProducts}
+        keyExtractor={(item) => item.id}
+        renderItem={renderProduct}
+        contentContainerStyle={[
+          tw`px-4 pt-4 pb-10`,
+          filteredProducts.length === 0 ? tw`flex-grow` : null,
+        ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" colors={['#059669']} />
         }
-      >
-        {loading ? (
-          <Text style={tw`text-stone-500 text-center py-12`}>Loading catalog…</Text>
-        ) : filteredProducts.length === 0 ? (
-          <BusinessEmptyState
-            icon="cube-outline"
-            title={searchQuery ? 'No matches' : 'No products yet'}
-            description={searchQuery ? 'Try a different search.' : 'Add your first product to start selling.'}
-            actionLabel="Add product"
-            onAction={() => {
-              setEditingProduct(null);
-              setShowProductForm(true);
-            }}
-          />
-        ) : (
-          filteredProducts.map((product) => {
-            const sku = `PRD-${product.id.slice(-6).toUpperCase()}`;
-            return (
-              <View key={product.id} style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}>
-                <View style={tw`flex-row items-start`}>
-                  {product.image_url ? (
-                    <Image source={{ uri: product.image_url }} style={tw`w-16 h-16 rounded-lg mr-3`} contentFit="cover" />
-                  ) : (
-                    <View style={tw`w-16 h-16 rounded-lg mr-3 bg-stone-100 items-center justify-center`}>
-                      <Ionicons name="image-outline" size={24} color="#A8A29E" />
-                    </View>
-                  )}
-                  <View style={tw`flex-1`}>
-                    <View style={tw`flex-row items-start justify-between`}>
-                      <Text style={tw`text-lg font-bold text-stone-900 flex-1 pr-2`}>{product.name}</Text>
-                      <StockBadge stock={product.stock} threshold={threshold} />
-                    </View>
-                    <Text style={tw`text-sm text-stone-500 mt-1`}>
-                      {sku} · {categoryName(product.category)}
-                      {product.units_sold != null ? ` · ${product.units_sold} sold` : ''}
-                    </Text>
-                    <Text style={tw`text-xl font-bold text-stone-900 mt-2`}>${product.price.toFixed(2)}</Text>
-                  </View>
-                </View>
-                <View style={tw`flex-row gap-2 mt-3`}>
-                  <TouchableOpacity
-                    style={tw`flex-1 py-2.5 bg-emerald-600 rounded-xl items-center`}
-                    onPress={() => {
-                      setEditingProduct(product);
-                      setShowProductForm(true);
-                    }}
-                  >
-                    <Text style={tw`text-white font-semibold`}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={tw`px-4 py-2.5 bg-red-50 rounded-xl items-center justify-center`}
-                    onPress={() => void handleDeleteProduct(product)}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
+        {...feedListPerformanceProps}
+        ListEmptyComponent={
+          loading ? (
+            <View>
+              <SkeletonCard variant="product" />
+              <SkeletonCard variant="product" />
+            </View>
+          ) : (
+            <BusinessEmptyState
+              icon="cube-outline"
+              title={searchQuery ? 'No matches' : 'No products yet'}
+              description={searchQuery ? 'Try a different search.' : 'Add your first product to start selling.'}
+              actionLabel="Add product"
+              onAction={() => {
+                setEditingProduct(null);
+                setShowProductForm(true);
+              }}
+            />
+          )
+        }
+      />
 
       <View style={tw`px-4 pb-4 pt-2 bg-white border-t border-stone-200`}>
         <TouchableOpacity

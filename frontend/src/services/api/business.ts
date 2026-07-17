@@ -2,9 +2,52 @@
  * Business API service
  */
 
+import Constants from 'expo-constants';
+import { getSecureItem } from '../storage/secureStore';
+import { getToken } from '../storage/tokenManager';
+import { messageFromApiError } from './apiErrors';
 import { request } from './http';
 import type { Product, Order } from './marketplace';
 export type { Order };
+
+const BASE_URL: string =
+  (Constants?.expoConfig?.extra?.API_BASE_URL as string) ||
+  'https://growl-backend.albino-ndreu.workers.dev/api/v1';
+
+async function authHeaders(): Promise<Record<string, string>> {
+  let token: string | null = getToken();
+  if (!token) {
+    try {
+      token = await getSecureItem('auth_token');
+      if (token) {
+        const { setToken } = await import('../storage/tokenManager');
+        setToken(token);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+async function fetchRawText(path: string): Promise<string> {
+  const url = `${BASE_URL}${path}`;
+  const headers = await authHeaders();
+  const res = await fetch(url, { headers });
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const data = JSON.parse(text) as { success?: boolean; error?: { message?: string } };
+      throw new Error(messageFromApiError(data, res.status));
+    } catch (e: unknown) {
+      if (e instanceof Error) throw e;
+      throw new Error(text || 'Request failed');
+    }
+  }
+  return text;
+}
 
 export type BusinessPeriod = 'today' | 'week' | 'month';
 
@@ -319,4 +362,136 @@ export async function updateCampaign(
       body: JSON.stringify(payload),
     }
   );
+}
+
+export type BusinessCustomer = {
+  user_id: string;
+  email: string;
+  username: string;
+  avatar?: string | null;
+  order_count: number;
+  total_spent: number;
+  last_order_at: string;
+};
+
+export type BusinessNotification = {
+  id: string;
+  business_id: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  ref_type?: string | null;
+  ref_id?: string | null;
+  read_at?: string | null;
+  read: boolean;
+  created_at: string;
+};
+
+export type PromoCode = {
+  id: string;
+  business_id: string;
+  code: string;
+  type: 'percent' | 'fixed';
+  value: number;
+  max_uses?: number | null;
+  uses: number;
+  active: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OrderFulfillmentPayload = {
+  tracking_number?: string;
+  carrier?: string;
+  label_url?: string;
+};
+
+export async function getBusinessCustomers(): Promise<{ customers: BusinessCustomer[] }> {
+  return request<{ customers: BusinessCustomer[] }>('/business/customers');
+}
+
+export async function updateOrderFulfillment(
+  orderId: string,
+  payload: OrderFulfillmentPayload
+): Promise<{ ok: boolean; metadata: Record<string, unknown> }> {
+  return request<{ ok: boolean; metadata: Record<string, unknown> }>(
+    `/business/orders/${encodeURIComponent(orderId)}/fulfillment`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function requestOrderRefund(
+  orderId: string,
+  payload: { reason: string; amount?: number }
+): Promise<{ ok: boolean; metadata: Record<string, unknown> }> {
+  return request<{ ok: boolean; metadata: Record<string, unknown> }>(
+    `/business/orders/${encodeURIComponent(orderId)}/refund-request`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function exportOrdersCsv(period: BusinessPeriod = 'month'): Promise<string> {
+  return fetchRawText(`/business/export/orders?period=${period}`);
+}
+
+export async function exportProductsCsv(): Promise<string> {
+  return fetchRawText('/business/export/products');
+}
+
+export async function getBusinessNotifications(
+  limit = 50
+): Promise<{ notifications: BusinessNotification[] }> {
+  return request<{ notifications: BusinessNotification[] }>(
+    `/business/notifications?limit=${limit}`
+  );
+}
+
+export async function markBusinessNotificationRead(
+  notificationId: string
+): Promise<{ ok: boolean; read_at: string }> {
+  return request<{ ok: boolean; read_at: string }>(
+    `/business/notifications/${encodeURIComponent(notificationId)}/read`,
+    { method: 'PATCH' }
+  );
+}
+
+export async function listPromoCodes(): Promise<{ promo_codes: PromoCode[] }> {
+  return request<{ promo_codes: PromoCode[] }>('/business/promo-codes');
+}
+
+export async function createPromoCode(payload: {
+  code: string;
+  type: 'percent' | 'fixed';
+  value: number;
+  max_uses?: number;
+}): Promise<PromoCode> {
+  return request<PromoCode>('/business/promo-codes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updatePromoCode(
+  promoId: string,
+  payload: Partial<{
+    active: boolean;
+    max_uses: number | null;
+    starts_at: string | null;
+    ends_at: string | null;
+    metadata: Record<string, unknown>;
+  }>
+): Promise<PromoCode> {
+  return request<PromoCode>(`/business/promo-codes/${encodeURIComponent(promoId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
 }

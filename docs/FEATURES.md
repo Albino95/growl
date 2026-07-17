@@ -76,6 +76,7 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 | Feature | Notes |
 |--------|--------|
 | Business tabs | Dashboard KPIs, inventory CRUD (D1), orders, marketing feed hooks, partnerships UI, settings (sign-out fixes, partnership shortcut). |
+| Business hub (extended) | Customers list (LTV, order count), in-app notifications inbox, order fulfillment (tracking/carrier/label), refund requests, promo codes (Community), CSV export (orders/products), payouts stub, low-stock Catalog tab badge. |
 | Instructor hub | Students/courses scaffolding from profile quick actions. |
 | Instructor voting | Backend instructor votes table + routes. |
 | Partnerships (UI) | Mock instructors + discover tab; wired navigation/alerts; future backend under `/business/partnerships`. |

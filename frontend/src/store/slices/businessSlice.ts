@@ -11,6 +11,9 @@ import {
   getPartnershipPerformance,
   getBusinessSettings,
   listCampaigns,
+  getBusinessCustomers,
+  getBusinessNotifications,
+  listPromoCodes,
   type BusinessPeriod,
   type DashboardKPIs,
   type TimeseriesPoint,
@@ -21,6 +24,9 @@ import {
   type DiscoverInstructor,
   type BusinessSettings,
   type MarketingCampaign,
+  type BusinessCustomer,
+  type BusinessNotification,
+  type PromoCode,
 } from '../../services/api/business';
 import type { Order } from '../../services/api/marketplace';
 
@@ -61,6 +67,10 @@ interface BusinessState {
   partnershipPerformance: PartnerPerf[];
   settings: BusinessSettings | null;
   campaigns: MarketingCampaign[];
+  customers: BusinessCustomer[];
+  notifications: BusinessNotification[];
+  promoCodes: PromoCode[];
+  unreadNotificationCount: number;
   status: BusinessLoadStatus;
   productsStatus: BusinessLoadStatus;
   ordersStatus: BusinessLoadStatus;
@@ -85,6 +95,10 @@ const initialState: BusinessState = {
   partnershipPerformance: [],
   settings: null,
   campaigns: [],
+  customers: [],
+  notifications: [],
+  promoCodes: [],
+  unreadNotificationCount: 0,
   status: 'idle',
   productsStatus: 'idle',
   ordersStatus: 'idle',
@@ -200,6 +214,42 @@ export const fetchBusinessSettings = createAsyncThunk(
   }
 );
 
+export const fetchCustomers = createAsyncThunk(
+  'business/fetchCustomers',
+  async (_: void, { rejectWithValue }) => {
+    try {
+      const res = await getBusinessCustomers();
+      return res.customers || [];
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load customers');
+    }
+  }
+);
+
+export const fetchNotifications = createAsyncThunk(
+  'business/fetchNotifications',
+  async (_: void, { rejectWithValue }) => {
+    try {
+      const res = await getBusinessNotifications();
+      return res.notifications || [];
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load notifications');
+    }
+  }
+);
+
+export const fetchPromoCodes = createAsyncThunk(
+  'business/fetchPromoCodes',
+  async (_: void, { rejectWithValue }) => {
+    try {
+      const res = await listPromoCodes();
+      return res.promo_codes || [];
+    } catch (e: unknown) {
+      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load promo codes');
+    }
+  }
+);
+
 const businessSlice = createSlice({
   name: 'business',
   initialState,
@@ -225,6 +275,13 @@ const businessSlice = createSlice({
     },
     setCampaigns: (state, action: PayloadAction<MarketingCampaign[]>) => {
       state.campaigns = action.payload;
+    },
+    markNotificationReadLocal: (state, action: PayloadAction<string>) => {
+      const id = action.payload;
+      state.notifications = state.notifications.map((n) =>
+        n.id === id ? { ...n, read: true, read_at: n.read_at || new Date().toISOString() } : n
+      );
+      state.unreadNotificationCount = state.notifications.filter((n) => !n.read).length;
     },
     clearBusiness: () => initialState,
   },
@@ -284,6 +341,16 @@ const businessSlice = createSlice({
       })
       .addCase(fetchBusinessSettings.fulfilled, (state, action) => {
         state.settings = action.payload;
+      })
+      .addCase(fetchCustomers.fulfilled, (state, action) => {
+        state.customers = action.payload;
+      })
+      .addCase(fetchNotifications.fulfilled, (state, action) => {
+        state.notifications = action.payload;
+        state.unreadNotificationCount = action.payload.filter((n) => !n.read).length;
+      })
+      .addCase(fetchPromoCodes.fulfilled, (state, action) => {
+        state.promoCodes = action.payload;
       });
   },
 });
@@ -294,6 +361,7 @@ export const {
   setOrdersFilter,
   patchLocalOrderStatus,
   setCampaigns,
+  markNotificationReadLocal,
   clearBusiness,
 } = businessSlice.actions;
 

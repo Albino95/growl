@@ -245,6 +245,7 @@ There is no dedicated E2E suite in-repo yet; rely on the backend integration scr
 - Feed: load, pull-to-refresh, like, open comments.
 - Marketplace: list, product detail, cart/checkout path you support.
 - Business: dashboard, inventory, orders (business account).
+- Business hub: customers screen, notifications badge on Home, fulfillment + refund on order detail, promo codes under Grow → Community, CSV export from Settings or Analytics.
 - Instructors: list and detail if applicable.
 
 ---

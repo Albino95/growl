@@ -14,6 +14,9 @@ import { verticalScrollProps } from '../../constants/scroll';
 import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchBusinessGrow } from '../../store/slices/businessSlice';
+import { exportOrdersCsv } from '../../services/api/business';
+import { downloadCsv } from '../../utils/csvDownload';
+import { alertMessage } from '../../utils/confirmDialog';
 import PeriodToggle from '../../components/business/PeriodToggle';
 import KpiCard from '../../components/business/KpiCard';
 import SectionLabel from '../../components/ui/SectionLabel';
@@ -46,6 +49,7 @@ export default function KpiScreen() {
   const partnershipPerformance = useAppSelector((s) => s.business.partnershipPerformance);
   const growStatus = useAppSelector((s) => s.business.growStatus);
   const [refreshing, setRefreshing] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   useEffect(() => {
     if (partnershipPerformance.length === 0) {
@@ -63,6 +67,18 @@ export default function KpiScreen() {
       setRefreshing(false);
     }
   }, [refresh, dispatch]);
+
+  const handleExportOrders = async () => {
+    try {
+      setExportBusy(true);
+      const csv = await exportOrdersCsv(period);
+      await downloadCsv(`orders-${period}.csv`, csv);
+    } catch (e: unknown) {
+      alertMessage('Export failed', e instanceof Error ? e.message : 'Could not export orders');
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   const maxSeries = Math.max(1, ...timeseries.map((p) => p.revenue || 0));
   const maxFunnel = Math.max(1, ...(funnel ? Object.values(funnel) : [1]));
@@ -114,8 +130,20 @@ export default function KpiScreen() {
           </View>
         ) : null}
 
-        <View style={tw`mb-4`}>
-          <PeriodToggle value={period} onChange={setPeriod} />
+        <View style={tw`flex-row items-center justify-between mb-4`}>
+          <View style={tw`flex-1 mr-3`}>
+            <PeriodToggle value={period} onChange={setPeriod} />
+          </View>
+          <TouchableOpacity
+            onPress={() => void handleExportOrders()}
+            disabled={exportBusy}
+            style={tw`px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 flex-row items-center ${exportBusy ? 'opacity-60' : ''}`}
+          >
+            <Ionicons name="download-outline" size={16} color="#059669" />
+            <Text style={tw`text-xs font-semibold text-emerald-800 ml-1`}>
+              {exportBusy ? 'Exporting…' : 'Export orders'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {showBasketTip ? (

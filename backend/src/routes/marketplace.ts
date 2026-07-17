@@ -3,6 +3,7 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
+import { createBusinessNotification } from './business';
 
 function isPaymentsEnabled(env: Env): boolean {
   return Boolean(env.STRIPE_SECRET_KEY?.trim());
@@ -419,7 +420,7 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
   const validation = await validateRequest(request, createOrderSchema);
   if (!validation.success) return validation.response;
 
-  const { items, shipping_address, metadata } = validation.data;
+  const { items, shipping_address, metadata, promo_code } = validation.data;
 
   if (!metadata?.payment_confirmed) {
     return error(
@@ -457,10 +458,67 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
     });
   }
 
+  let promoRecord: {
+    id: string;
+    business_id: string;
+    code: string;
+    type: 'percent' | 'fixed';
+    value: number;
+    max_uses: number | null;
+    uses: number;
+    active: number;
+    starts_at: string | null;
+    ends_at: string | null;
+  } | null = null;
+  let discountAmount = 0;
+
+  if (promo_code) {
+    if (businessIds.size !== 1) {
+      return error(
+        'INVALID_PROMO',
+        'Promo codes can only be applied to orders from a single seller',
+        400
+      );
+    }
+
+    const businessId = Array.from(businessIds)[0];
+    const normalizedCode = promo_code.trim().toUpperCase();
+    const nowIso = new Date().toISOString();
+
+    promoRecord = await env.DB.prepare(
+      `SELECT * FROM promo_codes
+       WHERE business_id = ? AND code = ? AND active = 1
+       LIMIT 1`
+    )
+      .bind(businessId, normalizedCode)
+      .first();
+
+    if (!promoRecord) {
+      return error('INVALID_PROMO', 'Promo code is invalid or inactive', 400);
+    }
+
+    if (promoRecord.starts_at && promoRecord.starts_at > nowIso) {
+      return error('INVALID_PROMO', 'Promo code is not active yet', 400);
+    }
+    if (promoRecord.ends_at && promoRecord.ends_at < nowIso) {
+      return error('INVALID_PROMO', 'Promo code has expired', 400);
+    }
+    if (promoRecord.max_uses != null && promoRecord.uses >= promoRecord.max_uses) {
+      return error('INVALID_PROMO', 'Promo code has reached its usage limit', 400);
+    }
+
+    if (promoRecord.type === 'percent') {
+      discountAmount = Number(((total * promoRecord.value) / 100).toFixed(2));
+    } else {
+      discountAmount = Math.min(total, promoRecord.value);
+    }
+    total = Math.max(0, Number((total - discountAmount).toFixed(2)));
+  }
+
   const orderId = generateId('order');
 
   const businessId = businessIds.size === 1 ? Array.from(businessIds)[0] : null;
-  const orderMeta = {
+  const orderMeta: Record<string, unknown> = {
     payment_method: metadata?.payment_method || 'stripe',
     payment_confirmed: true,
     stripe_checkout_session_id: metadata?.stripe_checkout_session_id || null,
@@ -468,6 +526,14 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
     referral_instructor_id: metadata?.referral_instructor_id || null,
     campaign_id: metadata?.campaign_id || null,
   };
+
+  if (promoRecord) {
+    orderMeta.promo_code = promoRecord.code;
+    orderMeta.promo_code_id = promoRecord.id;
+    orderMeta.promo_discount = discountAmount;
+    orderMeta.promo_type = promoRecord.type;
+    orderMeta.promo_value = promoRecord.value;
+  }
 
   try {
     // Create order
@@ -500,6 +566,25 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
       await env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ?')
         .bind(item.quantity, item.product_id)
         .run();
+    }
+
+    if (promoRecord) {
+      await env.DB.prepare(
+        `UPDATE promo_codes SET uses = uses + 1, updated_at = datetime('now') WHERE id = ?`
+      )
+        .bind(promoRecord.id)
+        .run();
+    }
+
+    for (const sellerId of businessIds) {
+      await createBusinessNotification(
+        env,
+        sellerId,
+        'new_order',
+        'New order received',
+        `Order ${orderId} for $${total.toFixed(2)}`,
+        { ref_type: 'order', ref_id: orderId }
+      );
     }
 
     return json(

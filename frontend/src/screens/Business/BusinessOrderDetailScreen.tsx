@@ -1,15 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  TextInput,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
-import { getBusinessOrderDetail, type Order } from '../../services/api/business';
+import {
+  getBusinessOrderDetail,
+  updateOrderFulfillment,
+  requestOrderRefund,
+  type Order,
+} from '../../services/api/business';
 import { updateOrderStatus } from '../../services/api/marketplace';
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { copyToClipboard } from '../../utils/csvDownload';
 import { createConversation } from '../../services/api/messages';
-import { useAuth } from '../../store/hooks';
+import { useAuth, useAppDispatch } from '../../store/hooks';
+import { fetchBusinessSettings } from '../../store/slices/businessSlice';
+import { parseShippingAddress, safeParseJson } from '../../utils/safeJson';
 
 type BusinessOrderDetailParams = {
   BusinessOrderDetail: { orderId: string };
@@ -25,20 +40,41 @@ const NEXT: Record<string, string | null> = {
   completed: null,
 };
 
+type OrderMetadata = {
+  payment_method?: string;
+  note?: string;
+  tracking_number?: string;
+  carrier?: string;
+  label_url?: string;
+  refund_requested_at?: string;
+};
+
 export default function BusinessOrderDetailScreen() {
   const route = useRoute<RouteProp<BusinessOrderDetailParams, 'BusinessOrderDetail'>>();
   const navigation = useNavigation<any>();
+  const dispatch = useAppDispatch();
   const { user } = useAuth();
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [carrier, setCarrier] = useState('');
+  const [labelUrl, setLabelUrl] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [defaultShippingNote, setDefaultShippingNote] = useState('');
 
   const load = async () => {
     try {
       setLoading(true);
       const res = await getBusinessOrderDetail(orderId);
-      if (res.success && res.data) setOrder(res.data);
+      if (res.success && res.data) {
+        setOrder(res.data);
+        const meta = safeParseJson<OrderMetadata>(res.data.metadata, {});
+        setTrackingNumber(meta.tracking_number || '');
+        setCarrier(meta.carrier || '');
+        setLabelUrl(meta.label_url || '');
+      }
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not load order');
     } finally {
@@ -48,20 +84,93 @@ export default function BusinessOrderDetailScreen() {
 
   useEffect(() => {
     void load();
-  }, [orderId]);
+    void dispatch(fetchBusinessSettings())
+      .unwrap()
+      .then((settings) => {
+        const analytics = (settings.analytics_prefs || {}) as Record<string, unknown>;
+        setDefaultShippingNote(String(analytics.default_shipping_note ?? ''));
+      })
+      .catch(() => {});
+  }, [orderId, dispatch]);
+
+  const saveFulfillment = async () => {
+    if (!order) return;
+    setBusy(true);
+    try {
+      const res = await updateOrderFulfillment(order.id, {
+        tracking_number: trackingNumber.trim() || undefined,
+        carrier: carrier.trim() || undefined,
+        label_url: labelUrl.trim() || undefined,
+      });
+      if (res.ok) {
+        setOrder({ ...order, metadata: { ...safeParseJson(order.metadata, {}), ...res.metadata } });
+        alertMessage('Saved', 'Fulfillment details updated.');
+      }
+    } catch (e: unknown) {
+      alertMessage('Error', e instanceof Error ? e.message : 'Could not save fulfillment');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const advance = async () => {
     if (!order) return;
     const next = NEXT[order.status || 'pending'];
     if (!next) return;
-    const ok = await confirmAsync('Update status', `Mark order as ${next}?`);
-    if (!ok) return;
+
+    if (next === 'shipped' && !trackingNumber.trim()) {
+      const shipAnyway = await confirmAsync(
+        'Ship without tracking?',
+        'No tracking number added yet. Mark as shipped anyway? You can add tracking later in Fulfillment.',
+        { confirmLabel: 'Ship anyway', cancelLabel: 'Add tracking first' }
+      );
+      if (!shipAnyway) return;
+    } else {
+      const ok = await confirmAsync('Update status', `Mark order as ${next}?`);
+      if (!ok) return;
+    }
+
     setBusy(true);
     try {
+      if (next === 'shipped' && trackingNumber.trim()) {
+        await updateOrderFulfillment(order.id, {
+          tracking_number: trackingNumber.trim(),
+          carrier: carrier.trim() || undefined,
+          label_url: labelUrl.trim() || undefined,
+        });
+      }
       const res = await updateOrderStatus(order.id, next);
       if (res.success && res.data) setOrder(res.data);
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRefundRequest = async () => {
+    if (!order) return;
+    const reason = refundReason.trim();
+    if (!reason) {
+      alertMessage('Reason required', 'Enter a reason for the refund request.');
+      return;
+    }
+    const ok = await confirmAsync(
+      'Request refund',
+      `Submit a refund request for $${Number(order.total).toFixed(2)}? Platform support will review.`,
+      { confirmLabel: 'Submit', destructive: true }
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await requestOrderRefund(order.id, { reason });
+      if (res.ok) {
+        setOrder({ ...order, metadata: { ...safeParseJson(order.metadata, {}), ...res.metadata } });
+        alertMessage('Submitted', 'Refund request sent for review.');
+        setRefundReason('');
+      }
+    } catch (e: unknown) {
+      alertMessage('Error', e instanceof Error ? e.message : 'Could not submit refund request');
     } finally {
       setBusy(false);
     }
@@ -108,10 +217,11 @@ export default function BusinessOrderDetailScreen() {
     );
   }
 
-  const metadata = order.metadata || {};
-  const shipping = order.shipping_address as Record<string, string> | undefined;
+  const metadata = safeParseJson<OrderMetadata>(order.metadata, {});
+  const shipping = parseShippingAddress(order.shipping_address);
   const statusIdx = TIMELINE.indexOf((order.status as (typeof TIMELINE)[number]) || 'pending');
   const next = NEXT[order.status || 'pending'];
+  const refundPending = Boolean(metadata.refund_requested_at);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['bottom']}>
@@ -124,11 +234,14 @@ export default function BusinessOrderDetailScreen() {
             <OrderStatusPill status={order.status || 'pending'} />
           </View>
           <Text style={tw`text-sm text-stone-500`}>
-            Payment: {(metadata as { payment_method?: string }).payment_method || 'Card'}
+            Payment: {metadata.payment_method || 'Card'}
           </Text>
           <Text style={tw`text-2xl font-bold text-emerald-700 mt-2`}>
             ${Number(order.total).toFixed(2)}
           </Text>
+          {refundPending ? (
+            <Text style={tw`text-xs text-amber-700 mt-2 font-semibold`}>Refund request pending review</Text>
+          ) : null}
         </View>
 
         <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-3`}>
@@ -160,12 +273,63 @@ export default function BusinessOrderDetailScreen() {
               .filter(Boolean)
               .join(', ') || 'No address'}
           </Text>
-          {(metadata as { note?: string }).note ? (
-            <Text style={tw`text-sm text-stone-500 mt-3 italic`}>
-              Note: {(metadata as { note?: string }).note}
-            </Text>
+          {metadata.note ? (
+            <Text style={tw`text-sm text-stone-500 mt-3 italic`}>Note: {metadata.note}</Text>
           ) : null}
         </View>
+
+        <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-3`}>
+          <Text style={tw`text-base font-semibold text-stone-900 mb-3`}>Fulfillment</Text>
+          <Text style={tw`text-sm text-stone-600 mb-1`}>Tracking number</Text>
+          <TextInput
+            value={trackingNumber}
+            onChangeText={setTrackingNumber}
+            placeholder="1Z999..."
+            placeholderTextColor="#A8A29E"
+            autoCapitalize="characters"
+            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+          />
+          <Text style={tw`text-sm text-stone-600 mb-1`}>Carrier</Text>
+          <TextInput
+            value={carrier}
+            onChangeText={setCarrier}
+            placeholder="USPS, UPS, FedEx…"
+            placeholderTextColor="#A8A29E"
+            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+          />
+          <Text style={tw`text-sm text-stone-600 mb-1`}>Label URL</Text>
+          <TextInput
+            value={labelUrl}
+            onChangeText={setLabelUrl}
+            placeholder="https://..."
+            placeholderTextColor="#A8A29E"
+            autoCapitalize="none"
+            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+          />
+          <TouchableOpacity
+            style={tw`bg-emerald-600 rounded-xl py-3 items-center ${busy ? 'opacity-50' : ''}`}
+            disabled={busy}
+            onPress={() => void saveFulfillment()}
+          >
+            <Text style={tw`text-white font-bold`}>Save fulfillment</Text>
+          </TouchableOpacity>
+        </View>
+
+        {defaultShippingNote ? (
+          <View style={tw`bg-emerald-50 rounded-2xl p-4 border border-emerald-100 mb-3`}>
+            <View style={tw`flex-row items-center justify-between mb-2`}>
+              <Text style={tw`text-sm font-semibold text-emerald-900`}>Default shipping note</Text>
+              <TouchableOpacity
+                onPress={() => void copyToClipboard(defaultShippingNote, 'Shipping note')}
+                style={tw`flex-row items-center px-2 py-1 bg-white rounded-lg border border-emerald-200`}
+              >
+                <Ionicons name="copy-outline" size={14} color="#059669" />
+                <Text style={tw`text-xs font-semibold text-emerald-700 ml-1`}>Copy</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={tw`text-sm text-emerald-800 leading-5`}>{defaultShippingNote}</Text>
+          </View>
+        ) : null}
 
         <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-4`}>
           <Text style={tw`text-base font-semibold text-stone-900 mb-2`}>Items</Text>
@@ -195,6 +359,29 @@ export default function BusinessOrderDetailScreen() {
           >
             <Text style={tw`text-white font-bold`}>Mark as {next}</Text>
           </TouchableOpacity>
+        ) : null}
+
+        {!refundPending && order.status !== 'cancelled' ? (
+          <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-3`}>
+            <Text style={tw`text-base font-semibold text-stone-900 mb-2`}>Refund request</Text>
+            <TextInput
+              value={refundReason}
+              onChangeText={setRefundReason}
+              placeholder="Reason for refund…"
+              placeholderTextColor="#A8A29E"
+              multiline
+              numberOfLines={2}
+              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900 min-h-[64px]`}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={tw`bg-red-50 border border-red-200 rounded-xl py-3 items-center ${busy ? 'opacity-50' : ''}`}
+              disabled={busy}
+              onPress={() => void submitRefundRequest()}
+            >
+              <Text style={tw`text-red-700 font-bold`}>Request refund</Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
 
         <TouchableOpacity

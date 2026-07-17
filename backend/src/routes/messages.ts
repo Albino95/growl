@@ -51,6 +51,29 @@ function parseUserMeta(raw: string | undefined) {
   }
 }
 
+async function canMessagePeer(
+  env: Env,
+  userId: string,
+  peerId: string,
+  user?: { is_business?: boolean | number } | null
+): Promise<boolean> {
+  if (await areFriends(env, userId, peerId)) return true;
+  if (!user?.is_business) return false;
+
+  const orderLink = await env.DB.prepare(
+    `SELECT o.id
+     FROM orders o
+     JOIN order_items oi ON oi.order_id = o.id
+     JOIN products p ON p.id = oi.product_id
+     WHERE o.user_id = ? AND p.user_id = ?
+     LIMIT 1`
+  )
+    .bind(peerId, userId)
+    .first<{ id: string }>();
+
+  return !!orderLink;
+}
+
 /**
  * GET /api/v1/messages/conversations
  * Friend-only conversations for the authenticated user.
@@ -76,7 +99,7 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
     const conversations = [];
     for (const row of rows.results || []) {
       const peerId = peerIdFor(row, ctx.userId);
-      if (!(await areFriends(env, ctx.userId, peerId))) continue;
+      if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) continue;
 
       const peer = await env.DB.prepare('SELECT id, metadata FROM users WHERE id = ?')
         .bind(peerId)
@@ -133,7 +156,8 @@ export async function createConversation(request: Request, env: Env): Promise<Re
     return error('NOT_FOUND', 'User not found', 404);
   }
 
-  if (!(await areFriends(env, ctx.userId, targetUserId))) {
+  let canMessage = await canMessagePeer(env, ctx.userId, targetUserId, ctx.user);
+  if (!canMessage) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
 
@@ -201,7 +225,7 @@ export async function getMessages(
   }
 
   const peerId = peerIdFor(conversation, ctx.userId);
-  if (!(await areFriends(env, ctx.userId, peerId))) {
+  if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
 
@@ -256,7 +280,7 @@ export async function sendMessage(
   }
 
   const peerId = peerIdFor(conversation, ctx.userId);
-  if (!(await areFriends(env, ctx.userId, peerId))) {
+  if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
 

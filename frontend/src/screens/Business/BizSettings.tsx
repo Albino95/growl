@@ -11,41 +11,75 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import tw from '../../lib/tw';
 import { resetNavigationToAuth, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { SUPPORT_EMAIL } from '../../content/legal';
-import { updateBusinessSettings } from '../../services/api/business';
+import {
+  updateBusinessSettings,
+  exportOrdersCsv,
+  exportProductsCsv,
+} from '../../services/api/business';
+import { uploadMediaApi } from '../../services/api/media';
 import { fetchBusinessSettings } from '../../store/slices/businessSlice';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { downloadCsv } from '../../utils/csvDownload';
 import { verticalScrollProps } from '../../constants/scroll';
 
 const EMERALD = '#059669';
+
+async function uriToDataUrl(uri: string): Promise<string> {
+  const lower = uri.toLowerCase();
+  if (lower.startsWith('data:')) return uri;
+
+  const res = await fetch(uri);
+  const blob = await res.blob();
+
+  if (typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read image'));
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 =
+    typeof btoa === 'function' ? btoa(binary) : Buffer.from(bytes).toString('base64');
+  const mime = blob.type || (lower.includes('.png') ? 'image/png' : 'image/jpeg');
+  return `data:${mime};base64,${base64}`;
+}
 
 export default function BizSettings() {
   const { user, signOut } = useAuth();
   const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
   const savedSettings = useAppSelector((s) => s.business.settings);
+  const period = useAppSelector((s) => s.business.period);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exportBusy, setExportBusy] = useState<'orders' | 'products' | null>(null);
   const [businessName, setBusinessName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [pushNotifications, setPushNotifications] = useState(true);
+  const [logoLocalUri, setLogoLocalUri] = useState<string | null>(null);
+  const [inAppAlerts, setInAppAlerts] = useState(true);
   const [lowStockThreshold, setLowStockThreshold] = useState('10');
   const [defaultShippingNote, setDefaultShippingNote] = useState('');
 
   const applySettings = useCallback((data: NonNullable<typeof savedSettings>) => {
     setBusinessName(data.business_name || '');
     setLogoUrl(data.logo_url || '');
+    setLogoLocalUri(null);
     const notif = (data.notifications_prefs || {}) as Record<string, unknown>;
-    setNotificationsEnabled(Boolean(notif.notificationsEnabled ?? true));
-    setEmailNotifications(Boolean(notif.emailNotifications ?? true));
-    setPushNotifications(Boolean(notif.pushNotifications ?? true));
+    setInAppAlerts(Boolean(notif.inAppAlerts ?? notif.notificationsEnabled ?? true));
     const analytics = (data.analytics_prefs || {}) as Record<string, unknown>;
     setLowStockThreshold(String(analytics.low_stock_threshold ?? 10));
     setDefaultShippingNote(String(analytics.default_shipping_note ?? ''));
@@ -71,6 +105,23 @@ export default function BizSettings() {
     void load();
   }, [dispatch, savedSettings, applySettings]);
 
+  const pickLogo = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      alertMessage('Permission needed', 'Photo library access is required for your logo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setLogoLocalUri(result.assets[0].uri);
+    }
+  };
+
   const saveSettings = async () => {
     const threshold = Number(lowStockThreshold);
     if (!Number.isFinite(threshold) || threshold < 0) {
@@ -79,25 +130,59 @@ export default function BizSettings() {
     }
     try {
       setSaving(true);
+      let persistableLogo = logoUrl.trim() || undefined;
+      const localUri = logoLocalUri;
+      if (localUri) {
+        const lower = localUri.toLowerCase();
+        const needsUpload = !lower.startsWith('http://') && !lower.startsWith('https://');
+        if (needsUpload) {
+          const dataUrl = await uriToDataUrl(localUri);
+          persistableLogo = await uploadMediaApi(dataUrl, 'product');
+        } else {
+          persistableLogo = localUri;
+        }
+      }
+
       await updateBusinessSettings({
         business_name: businessName.trim() || undefined,
-        logo_url: logoUrl.trim() || undefined,
-        notifications_prefs: {
-          notificationsEnabled,
-          emailNotifications,
-          pushNotifications,
-        },
+        logo_url: persistableLogo,
+        notifications_prefs: { inAppAlerts, notificationsEnabled: inAppAlerts },
         analytics_prefs: {
           low_stock_threshold: threshold,
           default_shipping_note: defaultShippingNote.trim(),
         },
       });
       await dispatch(fetchBusinessSettings()).unwrap();
+      setLogoLocalUri(null);
       alertMessage('Saved', 'Business settings updated.');
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not save settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExportOrders = async () => {
+    try {
+      setExportBusy('orders');
+      const csv = await exportOrdersCsv(period);
+      await downloadCsv(`orders-${period}.csv`, csv);
+    } catch (e: unknown) {
+      alertMessage('Export failed', e instanceof Error ? e.message : 'Could not export orders');
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const handleExportProducts = async () => {
+    try {
+      setExportBusy('products');
+      const csv = await exportProductsCsv();
+      await downloadCsv('products.csv', csv);
+    } catch (e: unknown) {
+      alertMessage('Export failed', e instanceof Error ? e.message : 'Could not export products');
+    } finally {
+      setExportBusy(null);
     }
   };
 
@@ -115,10 +200,13 @@ export default function BizSettings() {
   };
 
   const openStorefrontPreview = () => {
-    alertMessage('Storefront', 'Marketplace shows your products to shoppers.');
+    const tabNav = navigation.getParent?.()?.getParent?.() || navigation.getParent?.() || navigation;
+    tabNav.navigate('BusinessMain', { screen: 'Catalog' });
   };
 
   const stackNav = navigation.getParent?.() || navigation;
+  const logoPreview = logoLocalUri || logoUrl || null;
+  const net = useAppSelector((s) => s.business.kpis?.net_revenue ?? s.business.kpis?.total_revenue ?? 0);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['bottom']}>
@@ -135,7 +223,7 @@ export default function BizSettings() {
         </View>
 
         <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Business information</Text>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Business</Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Business name</Text>
           <TextInput
             value={businessName}
@@ -144,15 +232,22 @@ export default function BizSettings() {
             placeholder="My Business"
             placeholderTextColor="#A8A29E"
           />
-          <Text style={tw`text-sm text-stone-600 mb-1`}>Logo URL</Text>
-          <TextInput
-            value={logoUrl}
-            onChangeText={setLogoUrl}
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
-            placeholder="https://..."
-            placeholderTextColor="#A8A29E"
-            autoCapitalize="none"
-          />
+          <Text style={tw`text-sm text-stone-600 mb-2`}>Logo</Text>
+          <View style={tw`flex-row items-center mb-3`}>
+            {logoPreview ? (
+              <Image source={{ uri: logoPreview }} style={tw`w-16 h-16 rounded-xl mr-3`} contentFit="cover" />
+            ) : (
+              <View style={tw`w-16 h-16 rounded-xl mr-3 bg-stone-100 items-center justify-center`}>
+                <Ionicons name="storefront-outline" size={28} color="#A8A29E" />
+              </View>
+            )}
+            <TouchableOpacity
+              onPress={() => void pickLogo()}
+              style={tw`px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl`}
+            >
+              <Text style={tw`text-sm font-semibold text-emerald-800`}>Choose image</Text>
+            </TouchableOpacity>
+          </View>
           <View style={tw`flex-row items-center py-2`}>
             <Ionicons name="mail-outline" size={20} color="#78716C" />
             <Text style={tw`text-stone-600 ml-3`}>{user?.email}</Text>
@@ -160,32 +255,7 @@ export default function BizSettings() {
         </View>
 
         <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Notifications</Text>
-          {[
-            { label: 'Push notifications', value: notificationsEnabled, onChange: setNotificationsEnabled, icon: 'notifications-outline' as const },
-            { label: 'Email notifications', value: emailNotifications, onChange: setEmailNotifications, icon: 'mail-outline' as const },
-            { label: 'Marketing updates', value: pushNotifications, onChange: setPushNotifications, icon: 'megaphone-outline' as const },
-          ].map((row, idx, arr) => (
-            <View
-              key={row.label}
-              style={tw`flex-row items-center justify-between py-3 ${idx < arr.length - 1 ? 'border-b border-stone-100' : ''}`}
-            >
-              <View style={tw`flex-row items-center flex-1 pr-3`}>
-                <Ionicons name={row.icon} size={20} color="#78716C" />
-                <Text style={tw`text-stone-900 ml-3`}>{row.label}</Text>
-              </View>
-              <Switch
-                value={row.value}
-                onValueChange={row.onChange}
-                trackColor={{ false: '#D6D3D1', true: EMERALD }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          ))}
-        </View>
-
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Analytics preferences</Text>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Ops</Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Low stock threshold (units)</Text>
           <TextInput
             value={lowStockThreshold}
@@ -209,16 +279,83 @@ export default function BizSettings() {
         </View>
 
         <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Notifications</Text>
+          <View style={tw`flex-row items-center justify-between py-3`}>
+            <View style={tw`flex-row items-center flex-1 pr-3`}>
+              <Ionicons name="notifications-outline" size={20} color="#78716C" />
+              <Text style={tw`text-stone-900 ml-3`}>In-app alerts</Text>
+            </View>
+            <Switch
+              value={inAppAlerts}
+              onValueChange={setInAppAlerts}
+              trackColor={{ false: '#D6D3D1', true: EMERALD }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Payouts</Text>
+          <View style={tw`bg-stone-50 rounded-xl p-4 border border-stone-100`}>
+            <View style={tw`flex-row gap-3 mb-2`}>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-xs text-stone-500`}>Available</Text>
+                <Text style={tw`text-lg font-bold text-emerald-700`}>${(net * 0.92).toFixed(2)}</Text>
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-xs text-stone-500`}>Fee pending</Text>
+                <Text style={tw`text-lg font-bold text-amber-700`}>${(net * 0.08).toFixed(2)}</Text>
+              </View>
+            </View>
+            <Text style={tw`text-xs text-stone-500`}>Payouts via platform — Coming soon</Text>
+          </View>
+        </View>
+
+        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Export</Text>
+          <TouchableOpacity
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100 ${exportBusy ? 'opacity-60' : ''}`}
+            disabled={!!exportBusy}
+            onPress={() => void handleExportOrders()}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="download-outline" size={20} color="#78716C" />
+              <Text style={tw`text-stone-900 ml-3`}>Export orders (CSV)</Text>
+            </View>
+            {exportBusy === 'orders' ? (
+              <ActivityIndicator size="small" color={EMERALD} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={tw`flex-row items-center justify-between py-3 ${exportBusy ? 'opacity-60' : ''}`}
+            disabled={!!exportBusy}
+            onPress={() => void handleExportProducts()}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="download-outline" size={20} color="#78716C" />
+              <Text style={tw`text-stone-900 ml-3`}>Export products (CSV)</Text>
+            </View>
+            {exportBusy === 'products' ? (
+              <ActivityIndicator size="small" color={EMERALD} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
           <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Storefront</Text>
           <TouchableOpacity
-            style={tw`flex-row items-center justify-between py-3 border border-emerald-200 bg-emerald-50 rounded-xl px-3`}
+            style={tw`flex-row items-center justify-between py-3 border border-emerald-200 bg-emerald-50 rounded-xl px-3 mb-3`}
             onPress={openStorefrontPreview}
           >
             <View style={tw`flex-row items-center flex-1`}>
               <Ionicons name="storefront-outline" size={22} color={EMERALD} />
               <View style={tw`ml-3 flex-1`}>
-                <Text style={tw`font-semibold text-emerald-900`}>Preview storefront</Text>
-                <Text style={tw`text-xs text-emerald-700 mt-0.5`}>How shoppers see your products</Text>
+                <Text style={tw`font-semibold text-emerald-900`}>Your products</Text>
+                <Text style={tw`text-xs text-emerald-700 mt-0.5`}>Preview catalog tab</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color={EMERALD} />
@@ -227,6 +364,16 @@ export default function BizSettings() {
 
         <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
           <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Shortcuts</Text>
+          <TouchableOpacity
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+            onPress={() => stackNav.navigate('BusinessCustomers')}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="people-outline" size={20} color="#78716C" />
+              <Text style={tw`text-stone-900 ml-3`}>Customers</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+          </TouchableOpacity>
           <TouchableOpacity
             style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
             onPress={() => stackNav.navigate('BusinessMessages')}

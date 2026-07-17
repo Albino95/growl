@@ -4,6 +4,7 @@ import BusinessTabs from './tabs/BusinessTabs';
 import KpiScreen from '../../screens/Business/KpiScreen';
 import BusinessOrderDetailScreen from '../../screens/Business/BusinessOrderDetailScreen';
 import BizSettings from '../../screens/Business/BizSettings';
+import CustomersScreen from '../../screens/Business/CustomersScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
 import PostScreen from '../../screens/Post/PostScreen';
 
@@ -12,6 +13,7 @@ export type BusinessStackParamList = {
   BusinessAnalytics: undefined;
   BusinessOrderDetail: { orderId: string };
   BusinessSettings: undefined;
+  BusinessCustomers: undefined;
   BusinessMessages: { conversationId?: string; targetUserId?: string } | undefined;
   BusinessCreatePost: undefined;
 };
@@ -48,6 +50,16 @@ export default function BusinessRootStack() {
         options={{
           headerShown: true,
           title: 'Settings',
+          headerBackTitle: 'Back',
+          headerTintColor: '#059669',
+        }}
+      />
+      <Stack.Screen
+        name="BusinessCustomers"
+        component={CustomersScreen}
+        options={{
+          headerShown: true,
+          title: 'Customers',
           headerBackTitle: 'Back',
           headerTintColor: '#059669',
         }}

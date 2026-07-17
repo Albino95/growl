@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { Platform } from 'react-native';
 import tw from '../../lib/tw';
 import CATEGORIES from '../../data/categories';
 import { uploadMediaApi } from '../../services/api/media';
 import StickyFooter from '../ui/StickyFooter';
-import { alertMessage } from '../../utils/confirmDialog';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 
 interface ProductFormProps {
   visible: boolean;
@@ -33,6 +32,45 @@ interface ProductFormProps {
     stock: number;
     image_url?: string;
   }) => Promise<void>;
+}
+
+/** Convert local/blob image URIs to a data URL for media upload. */
+async function uriToDataUrl(uri: string): Promise<string> {
+  const lower = uri.toLowerCase();
+  if (lower.startsWith('data:')) return uri;
+
+  const res = await fetch(uri);
+  const blob = await res.blob();
+
+  if (Platform.OS === 'web' && typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read image'));
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // React Native: prefer FileReader if present, else arrayBuffer → base64
+  if (typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read image'));
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 =
+    typeof btoa === 'function'
+      ? btoa(binary)
+      : Buffer.from(bytes).toString('base64');
+  const mime = blob.type || (lower.includes('.png') ? 'image/png' : 'image/jpeg');
+  return `data:${mime};base64,${base64}`;
 }
 
 export default function ProductForm({ visible, product, onClose, onSubmit }: ProductFormProps) {
@@ -77,17 +115,6 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     }
   };
 
-  const blobToDataUrl = async (uri: string): Promise<string> => {
-    const res = await fetch(uri);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Could not read image'));
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.readAsDataURL(blob);
-    });
-  };
-
   const handleSubmit = async () => {
     if (!name.trim()) {
       alertMessage('Missing name', 'Product name is required');
@@ -111,20 +138,33 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     try {
       let persistableImageUrl = imageUrl || undefined;
       const lower = (persistableImageUrl || '').toLowerCase();
-      if (persistableImageUrl && !lower.startsWith('http')) {
-        let dataUrl = persistableImageUrl;
-        if (Platform.OS === 'web' && lower.startsWith('blob:')) {
-          dataUrl = await blobToDataUrl(persistableImageUrl);
-        }
-        if (dataUrl.toLowerCase().startsWith('data:')) {
-          try {
-            persistableImageUrl = await uploadMediaApi(dataUrl, 'product');
-          } catch {
-            setUploadNotice('Image upload unavailable (media storage offline). Saving product without hosted image.');
-            persistableImageUrl = undefined;
+      const needsUpload =
+        !!persistableImageUrl &&
+        !lower.startsWith('http://') &&
+        !lower.startsWith('https://');
+
+      if (needsUpload && persistableImageUrl) {
+        try {
+          const dataUrl = await uriToDataUrl(persistableImageUrl);
+          persistableImageUrl = await uploadMediaApi(dataUrl, 'product');
+        } catch (uploadErr: unknown) {
+          const msg =
+            uploadErr instanceof Error ? uploadErr.message : 'Image upload failed';
+          const saveWithout = await confirmAsync(
+            'Image upload failed',
+            `${msg}\n\nSave this product without an image?`,
+            { confirmLabel: 'Save without image' }
+          );
+          if (!saveWithout) {
+            setUploadNotice('Fix media storage (R2) or try another image.');
+            setIsSubmitting(false);
+            return;
           }
+          setUploadNotice('Saved without hosted image.');
+          persistableImageUrl = undefined;
         }
       }
+
       await onSubmit({
         name: name.trim(),
         description: description.trim() || undefined,

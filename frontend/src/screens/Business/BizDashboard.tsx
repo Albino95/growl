@@ -6,20 +6,27 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
-import { setCatalogFilter, setOrdersFilter } from '../../store/slices/businessSlice';
-import { useAppDispatch } from '../../store/hooks';
+import {
+  setCatalogFilter,
+  setOrdersFilter,
+  fetchNotifications,
+  markNotificationReadLocal,
+} from '../../store/slices/businessSlice';
+import { markBusinessNotificationRead } from '../../services/api/business';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { verticalScrollProps } from '../../constants/scroll';
+import BusinessScreen from '../../components/business/BusinessScreen';
 import KpiCard from '../../components/business/KpiCard';
 import PeriodToggle from '../../components/business/PeriodToggle';
 import ActionInbox, { type ActionInboxItem } from '../../components/business/ActionInbox';
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import SectionLabel from '../../components/ui/SectionLabel';
+import { parseShippingAddress } from '../../utils/safeJson';
 
 function formatTimeAgo(dateString: string) {
   const date = new Date(dateString);
@@ -36,6 +43,8 @@ function formatTimeAgo(dateString: string) {
 export default function BizDashboard() {
   const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
+  const notifications = useAppSelector((s) => s.business.notifications);
+  const unreadCount = useAppSelector((s) => s.business.unreadNotificationCount);
   const { period, setPeriod, kpis, timeseries, status, error, loading, refresh } =
     useBusinessDashboard();
   const [refreshing, setRefreshing] = useState(false);
@@ -44,19 +53,52 @@ export default function BizDashboard() {
 
   const openAnalytics = () => stackNav.navigate('BusinessAnalytics');
   const openSettings = () => stackNav.navigate('BusinessSettings');
+  const openCustomers = () => stackNav.navigate('BusinessCustomers');
+
+  useFocusEffect(
+    useCallback(() => {
+      void dispatch(fetchNotifications());
+    }, [dispatch])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh({ force: true });
+      await Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refresh, dispatch]);
+
+  const handleNotificationPress = useCallback(
+    (id: string, refType?: string | null, refId?: string | null) => {
+      dispatch(markNotificationReadLocal(id));
+      void markBusinessNotificationRead(id).catch(() => {});
+      if (refType === 'order' && refId) {
+        stackNav.navigate('BusinessOrderDetail', { orderId: refId });
+      }
+    },
+    [dispatch, stackNav]
+  );
 
   const inboxItems: ActionInboxItem[] = useMemo(() => {
-    if (!kpis) return [];
     const items: ActionInboxItem[] = [];
+
+    notifications
+      .filter((n) => !n.read)
+      .slice(0, 5)
+      .forEach((n) => {
+        items.push({
+          id: `notif-${n.id}`,
+          title: n.title,
+          subtitle: n.body || undefined,
+          icon: 'notifications-outline',
+          tone: 'blue',
+          onPress: () => handleNotificationPress(n.id, n.ref_type, n.ref_id),
+        });
+      });
+
+    if (!kpis) return items;
     if ((kpis.pending_orders || 0) > 0) {
       items.push({
         id: 'pending-orders',
@@ -94,15 +136,30 @@ export default function BizDashboard() {
       });
     }
     return items;
-  }, [kpis, navigation, dispatch]);
+  }, [kpis, navigation, dispatch, notifications, handleNotificationPress]);
 
   const maxSeries = Math.max(1, ...timeseries.map((p) => p.orders || 0));
   const recent = (kpis?.recent_orders || []).slice(0, 5);
   const net = kpis?.net_revenue ?? kpis?.total_revenue ?? 0;
   const aov = kpis?.aov ?? 0;
+  const availablePayout = net * 0.92;
+  const feePending = net * 0.08;
+
+  const notificationBadge =
+    unreadCount > 0 ? (
+      <View style={tw`mr-2 min-w-[22px] h-[22px] rounded-full bg-red-500 items-center justify-center px-1`}>
+        <Text style={tw`text-[11px] font-bold text-white`}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+      </View>
+    ) : null;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <BusinessScreen
+      title="Home"
+      subtitle="What needs attention & how the store is doing"
+      onAnalytics={openAnalytics}
+      onSettings={openSettings}
+      headerRight={notificationBadge}
+    >
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={tw`pb-10`}
@@ -116,27 +173,7 @@ export default function BizDashboard() {
           />
         }
       >
-        <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-100`}>
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <View style={tw`flex-1 pr-2`}>
-              <Text style={tw`text-2xl font-bold tracking-tight text-stone-900`}>Home</Text>
-              <Text style={tw`text-sm text-stone-500 mt-1`}>What needs attention & how the store is doing</Text>
-            </View>
-            <View style={tw`flex-row`}>
-              <TouchableOpacity
-                onPress={openAnalytics}
-                style={tw`w-11 h-11 rounded-full bg-emerald-50 items-center justify-center border border-emerald-100 mr-2`}
-              >
-                <Ionicons name="analytics-outline" size={22} color="#059669" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={openSettings}
-                style={tw`w-11 h-11 rounded-full bg-stone-100 items-center justify-center`}
-              >
-                <Ionicons name="settings-outline" size={22} color="#57534E" />
-              </TouchableOpacity>
-            </View>
-          </View>
+        <View style={tw`bg-white px-4 pb-3 border-b border-stone-100`}>
           <PeriodToggle value={period} onChange={setPeriod} />
         </View>
 
@@ -202,6 +239,23 @@ export default function BizDashboard() {
         </View>
 
         <View style={tw`px-4 pt-5`}>
+          <SectionLabel>Payouts</SectionLabel>
+          <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
+            <View style={tw`flex-row gap-3 mb-3`}>
+              <View style={tw`flex-1 bg-emerald-50 rounded-xl p-3`}>
+                <Text style={tw`text-xs text-emerald-700`}>Available</Text>
+                <Text style={tw`text-lg font-bold text-emerald-900`}>${availablePayout.toFixed(2)}</Text>
+              </View>
+              <View style={tw`flex-1 bg-amber-50 rounded-xl p-3`}>
+                <Text style={tw`text-xs text-amber-700`}>Fee pending</Text>
+                <Text style={tw`text-lg font-bold text-amber-900`}>${feePending.toFixed(2)}</Text>
+              </View>
+            </View>
+            <Text style={tw`text-xs text-stone-500`}>Payouts via platform — Coming soon</Text>
+          </View>
+        </View>
+
+        <View style={tw`px-4 pt-5`}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
             <Text style={tw`text-lg font-bold text-stone-900`}>Order rhythm</Text>
             <TouchableOpacity onPress={openAnalytics}>
@@ -245,10 +299,7 @@ export default function BizDashboard() {
               </View>
             ) : (
               recent.map((order) => {
-                const shipping =
-                  typeof order.shipping_address === 'string'
-                    ? JSON.parse(order.shipping_address)
-                    : order.shipping_address;
+                const shipping = parseShippingAddress(order.shipping_address);
                 return (
                   <TouchableOpacity
                     key={order.id}
@@ -301,6 +352,13 @@ export default function BizDashboard() {
                 onPress: () => navigation.navigate('Orders'),
               },
               {
+                label: 'Customers',
+                icon: 'people' as const,
+                color: '#7C3AED',
+                bg: 'bg-violet-50',
+                onPress: openCustomers,
+              },
+              {
                 label: 'Discover',
                 icon: 'people' as const,
                 color: '#EA580C',
@@ -331,6 +389,6 @@ export default function BizDashboard() {
           <Text style={tw`text-center text-xs text-stone-400 mt-2`}>Refreshing…</Text>
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </BusinessScreen>
   );
 }

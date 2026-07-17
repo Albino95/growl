@@ -18,16 +18,19 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import tw from '../../lib/tw';
 import { verticalScrollProps } from '../../constants/scroll';
 import { useAppDispatch, useAppSelector, useAuth } from '../../store/hooks';
-import { fetchBusinessGrow } from '../../store/slices/businessSlice';
+import { fetchBusinessGrow, fetchPromoCodes } from '../../store/slices/businessSlice';
 import {
   createPartnershipRequest,
   updatePartnershipRequest,
   updatePartnershipStatus,
   createCampaign,
   updateCampaign,
+  createPromoCode,
+  updatePromoCode,
   type PartnershipRecord,
   type DiscoverInstructor,
   type MarketingCampaign,
+  type PromoCode,
 } from '../../services/api/business';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -37,7 +40,7 @@ import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTa
 
 type MainSegment = 'partners' | 'community';
 type PartnerTab = 'partners' | 'discover';
-type CommunityTab = 'posts' | 'campaigns' | 'create';
+type CommunityTab = 'posts' | 'campaigns' | 'promos' | 'create';
 
 function formatTimeAgo(dateString: string) {
   const date = new Date(dateString);
@@ -68,6 +71,7 @@ export default function GrowScreen() {
   const discoverInstructors = useAppSelector((s) => s.business.discoverInstructors);
   const partnershipPerformance = useAppSelector((s) => s.business.partnershipPerformance);
   const campaigns = useAppSelector((s) => s.business.campaigns);
+  const promoCodes = useAppSelector((s) => s.business.promoCodes);
   const growStatus = useAppSelector((s) => s.business.growStatus);
 
   const [mainSegment, setMainSegment] = useState<MainSegment>(route.params?.segment ?? 'partners');
@@ -92,6 +96,13 @@ export default function GrowScreen() {
     endDate: '',
   });
   const [campaignBusy, setCampaignBusy] = useState(false);
+  const [promoForm, setPromoForm] = useState({
+    code: '',
+    type: 'percent' as PromoCode['type'],
+    value: '',
+    maxUses: '',
+  });
+  const [promoBusy, setPromoBusy] = useState(false);
 
   const stackNav = navigation.getParent?.() || navigation;
   const loading = growStatus === 'loading' && partnerships.length === 0 && discoverInstructors.length === 0;
@@ -139,6 +150,12 @@ export default function GrowScreen() {
       void loadPosts();
     }
   }, [mainSegment, communityTab, user?.id, loadPosts]);
+
+  useEffect(() => {
+    if (mainSegment === 'community' && communityTab === 'promos') {
+      void dispatch(fetchPromoCodes());
+    }
+  }, [mainSegment, communityTab, dispatch]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -252,6 +269,57 @@ export default function GrowScreen() {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not create campaign');
     } finally {
       setCampaignBusy(false);
+    }
+  };
+
+  const handleCreatePromo = async () => {
+    const code = promoForm.code.trim();
+    const value = Number(promoForm.value);
+    const maxUses = promoForm.maxUses.trim() ? Number(promoForm.maxUses) : undefined;
+    if (!code) {
+      alertMessage('Missing code', 'Enter a promo code.');
+      return;
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      alertMessage('Invalid value', 'Enter a valid discount value.');
+      return;
+    }
+    if (promoForm.type === 'percent' && value > 100) {
+      alertMessage('Invalid percent', 'Percent discount cannot exceed 100.');
+      return;
+    }
+    try {
+      setPromoBusy(true);
+      await createPromoCode({
+        code,
+        type: promoForm.type,
+        value,
+        max_uses: maxUses,
+      });
+      alertMessage('Created', `Promo code ${code.toUpperCase()} is active.`);
+      setPromoForm({ code: '', type: 'percent', value: '', maxUses: '' });
+      await dispatch(fetchPromoCodes()).unwrap();
+    } catch (e: unknown) {
+      alertMessage('Error', e instanceof Error ? e.message : 'Could not create promo code');
+    } finally {
+      setPromoBusy(false);
+    }
+  };
+
+  const handleDeactivatePromo = async (promo: PromoCode) => {
+    const ok = await confirmAsync('Deactivate code', `Deactivate ${promo.code}?`, {
+      confirmLabel: 'Deactivate',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      setBusyId(promo.id);
+      await updatePromoCode(promo.id, { active: false });
+      await dispatch(fetchPromoCodes()).unwrap();
+    } catch (e: unknown) {
+      alertMessage('Error', e instanceof Error ? e.message : 'Could not update promo code');
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -501,7 +569,7 @@ export default function GrowScreen() {
   const renderCommunitySegment = () => (
     <View style={tw`flex-1`}>
       <View style={tw`flex-row bg-stone-100 rounded-xl p-1 mx-4 mt-3 mb-2`}>
-        {(['posts', 'campaigns', 'create'] as const).map((tab) => (
+        {(['posts', 'campaigns', 'promos', 'create'] as const).map((tab) => (
           <TouchableOpacity
             key={tab}
             onPress={() => setCommunityTab(tab)}
@@ -513,7 +581,7 @@ export default function GrowScreen() {
               }`}
               numberOfLines={1}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'promos' ? 'Promos' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -632,20 +700,9 @@ export default function GrowScreen() {
                       </View>
                     </View>
                   </View>
-                  <View style={tw`flex-row justify-between mb-2`}>
-                    <Text style={tw`text-xs text-stone-500`}>Budget</Text>
-                    <Text style={tw`text-sm font-semibold text-stone-900`}>
-                      ${campaign.spent.toFixed(0)} / ${campaign.budget.toFixed(0)}
-                    </Text>
-                  </View>
-                  <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden mb-3`}>
-                    <View
-                      style={[
-                        tw`h-full bg-emerald-500 rounded-full`,
-                        { width: `${Math.min(100, (campaign.spent / Math.max(campaign.budget, 1)) * 100)}%` },
-                      ]}
-                    />
-                  </View>
+                  <Text style={tw`text-sm font-semibold text-stone-900 mb-3`}>
+                    Budget ${campaign.budget.toFixed(0)}
+                  </Text>
                   {campaign.end_date ? (
                     <Text style={tw`text-xs text-stone-400 mb-3`}>
                       Ends {new Date(campaign.end_date).toLocaleDateString()}
@@ -688,6 +745,120 @@ export default function GrowScreen() {
                       </>
                     ) : null}
                   </View>
+                </View>
+              ))
+            )}
+          </>
+        ) : null}
+
+        {communityTab === 'promos' ? (
+          <>
+            <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-4`}>
+              <Text style={tw`text-base font-bold text-stone-900 mb-3`}>New promo code</Text>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Code</Text>
+              <TextInput
+                value={promoForm.code}
+                onChangeText={(code) => setPromoForm((p) => ({ ...p, code }))}
+                placeholder="SUMMER20"
+                placeholderTextColor="#A8A29E"
+                autoCapitalize="characters"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+              />
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Type</Text>
+              <View style={tw`flex-row mb-3`}>
+                {(['percent', 'fixed'] as const).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => setPromoForm((p) => ({ ...p, type }))}
+                    style={tw`px-3 py-2 rounded-full mr-2 ${
+                      promoForm.type === type ? 'bg-emerald-600' : 'bg-stone-100'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-xs font-semibold capitalize ${
+                        promoForm.type === type ? 'text-white' : 'text-stone-700'
+                      }`}
+                    >
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>
+                Value {promoForm.type === 'percent' ? '(%)' : '(USD)'}
+              </Text>
+              <TextInput
+                value={promoForm.value}
+                onChangeText={(value) => setPromoForm((p) => ({ ...p, value }))}
+                placeholder={promoForm.type === 'percent' ? '20' : '10'}
+                placeholderTextColor="#A8A29E"
+                keyboardType="numeric"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+              />
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Max uses (optional)</Text>
+              <TextInput
+                value={promoForm.maxUses}
+                onChangeText={(maxUses) => setPromoForm((p) => ({ ...p, maxUses }))}
+                placeholder="100"
+                placeholderTextColor="#A8A29E"
+                keyboardType="numeric"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-4 text-stone-900`}
+              />
+              <TouchableOpacity
+                style={tw`bg-emerald-600 rounded-xl py-3 items-center ${promoBusy ? 'opacity-60' : ''}`}
+                disabled={promoBusy}
+                onPress={() => void handleCreatePromo()}
+              >
+                <Text style={tw`text-white font-bold`}>{promoBusy ? 'Creating…' : 'Create promo code'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {promoCodes.length === 0 ? (
+              <BusinessEmptyState
+                icon="pricetag-outline"
+                title="No promo codes yet"
+                description="Create discount codes for your community."
+              />
+            ) : (
+              promoCodes.map((promo) => (
+                <View
+                  key={promo.id}
+                  style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}
+                >
+                  <View style={tw`flex-row items-start justify-between mb-2`}>
+                    <View style={tw`flex-1 pr-2`}>
+                      <Text style={tw`text-base font-bold text-stone-900`}>{promo.code}</Text>
+                      <Text style={tw`text-sm text-stone-600 mt-1`}>
+                        {promo.type === 'percent' ? `${promo.value}% off` : `$${promo.value.toFixed(2)} off`}
+                        {promo.max_uses != null ? ` · max ${promo.max_uses} uses` : ''}
+                      </Text>
+                      <Text style={tw`text-xs text-stone-400 mt-1`}>
+                        Used {promo.uses} time{promo.uses === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                    <View
+                      style={tw`px-2 py-0.5 rounded-full ${
+                        promo.active ? 'bg-emerald-100' : 'bg-stone-100'
+                      }`}
+                    >
+                      <Text
+                        style={tw`text-xs font-semibold ${
+                          promo.active ? 'text-emerald-800' : 'text-stone-600'
+                        }`}
+                      >
+                        {promo.active ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
+                  </View>
+                  {promo.active ? (
+                    <TouchableOpacity
+                      style={tw`px-3 py-2 bg-red-50 rounded-lg self-start`}
+                      disabled={busyId === promo.id}
+                      onPress={() => void handleDeactivatePromo(promo)}
+                    >
+                      <Text style={tw`text-xs font-semibold text-red-700`}>Deactivate</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ))
             )}

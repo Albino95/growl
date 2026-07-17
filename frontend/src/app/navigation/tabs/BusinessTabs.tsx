@@ -5,17 +5,20 @@ import BizDashboard from '../../../screens/Business/BizDashboard';
 import InventoryScreen from '../../../screens/Business/InventoryScreen';
 import OrdersScreen from '../../../screens/Business/OrdersScreen';
 import GrowScreen from '../../../screens/Business/GrowScreen';
+import { useAppSelector } from '../../../store/hooks';
 
 export type BusinessTabsParamList = {
   Home: undefined;
   Catalog: { openForm?: boolean } | undefined;
-  Orders: undefined;
+  Orders: { search?: string } | undefined;
   Grow: { segment?: 'partners' | 'community' } | undefined;
 };
 
 const Tab = createBottomTabNavigator<BusinessTabsParamList>();
 
 export default function BusinessTabs() {
+  const lowStockCount = useAppSelector((s) => s.business.kpis?.low_stock_count ?? 0);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -40,7 +43,14 @@ export default function BusinessTabs() {
       })}
     >
       <Tab.Screen name="Home" component={BizDashboard} options={{ tabBarLabel: 'Home' }} />
-      <Tab.Screen name="Catalog" component={InventoryScreen} options={{ tabBarLabel: 'Catalog' }} />
+      <Tab.Screen
+        name="Catalog"
+        component={InventoryScreen}
+        options={{
+          tabBarLabel: 'Catalog',
+          tabBarBadge: lowStockCount > 0 ? lowStockCount : undefined,
+        }}
+      />
       <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarLabel: 'Orders' }} />
       <Tab.Screen name="Grow" component={GrowScreen} options={{ tabBarLabel: 'Grow' }} />
     </Tab.Navigator>

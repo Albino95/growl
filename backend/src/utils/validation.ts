@@ -113,6 +113,7 @@ export const createOrderSchema = z.object({
     zip: z.string().min(1),
     country: z.string().min(1),
   }),
+  promo_code: z.string().min(1).max(64).optional(),
   metadata: z
     .object({
       payment_method: z.string().optional(),
@@ -199,6 +200,39 @@ export const updateCampaignSchema = z.object({
   end_date: z.string().nullable().optional(),
   product_ids: z.array(z.string()).optional(),
   metadata: z.record(z.any()).optional(),
+});
+
+export const updateOrderFulfillmentSchema = z
+  .object({
+    tracking_number: z.string().min(1).max(120).optional(),
+    carrier: z.string().min(1).max(120).optional(),
+    label_url: z.string().url().optional(),
+  })
+  .refine((data) => !!(data.tracking_number || data.carrier || data.label_url), {
+    message: 'At least one fulfillment field is required',
+  });
+
+export const createPromoCodeSchema = z.object({
+  code: z.string().min(1).max(64),
+  type: z.enum(['percent', 'fixed']),
+  value: z.number().positive(),
+  max_uses: z.number().int().positive().optional(),
+  starts_at: z.string().optional(),
+  ends_at: z.string().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const updatePromoCodeSchema = z.object({
+  active: z.boolean().optional(),
+  max_uses: z.number().int().positive().nullable().optional(),
+  starts_at: z.string().nullable().optional(),
+  ends_at: z.string().nullable().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const refundRequestSchema = z.object({
+  reason: z.string().min(1).max(1000),
+  amount: z.number().positive().optional(),
 });
 
 export const adminLoginSchema = z.object({

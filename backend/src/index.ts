@@ -262,6 +262,48 @@ export default {
       if (path === `${apiPrefix}/business/orders` && request.method === 'GET') {
         return businessRoutes.getBusinessOrders(request, env);
       }
+      if (path === `${apiPrefix}/business/customers` && request.method === 'GET') {
+        return businessRoutes.getCustomers(request, env);
+      }
+      if (path === `${apiPrefix}/business/export/orders` && request.method === 'GET') {
+        return businessRoutes.exportOrdersCsv(request, env);
+      }
+      if (path === `${apiPrefix}/business/export/products` && request.method === 'GET') {
+        return businessRoutes.exportProductsCsv(request, env);
+      }
+      if (path === `${apiPrefix}/business/notifications` && request.method === 'GET') {
+        return businessRoutes.listNotifications(request, env);
+      }
+      const businessNotificationReadMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/notifications/([^/]+)/read$`)
+      );
+      if (businessNotificationReadMatch && request.method === 'PATCH') {
+        return businessRoutes.markNotificationRead(request, env, businessNotificationReadMatch[1]);
+      }
+      if (path === `${apiPrefix}/business/promo-codes` && request.method === 'GET') {
+        return businessRoutes.listPromoCodes(request, env);
+      }
+      if (path === `${apiPrefix}/business/promo-codes` && request.method === 'POST') {
+        return businessRoutes.createPromoCode(request, env);
+      }
+      const businessPromoMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/promo-codes/([^/]+)$`)
+      );
+      if (businessPromoMatch && request.method === 'PATCH') {
+        return businessRoutes.updatePromoCode(request, env, businessPromoMatch[1]);
+      }
+      const businessOrderFulfillmentMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/orders/([^/]+)/fulfillment$`)
+      );
+      if (businessOrderFulfillmentMatch && request.method === 'PATCH') {
+        return businessRoutes.updateOrderFulfillment(request, env, businessOrderFulfillmentMatch[1]);
+      }
+      const businessOrderRefundMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/orders/([^/]+)/refund-request$`)
+      );
+      if (businessOrderRefundMatch && request.method === 'POST') {
+        return businessRoutes.requestOrderRefund(request, env, businessOrderRefundMatch[1]);
+      }
       const businessOrderDetailMatch = path.match(new RegExp(`^${apiPrefix}/business/orders/([^/]+)$`));
       if (businessOrderDetailMatch && request.method === 'GET') {
         return businessRoutes.getBusinessOrderDetail(request, env, businessOrderDetailMatch[1]);
