@@ -43,6 +43,26 @@ export const verifyEmailSchema = z.object({
   code: z.string().min(6, 'Enter your verification code').max(64),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().email('Invalid email address'),
+    code: z.string().min(6, 'Enter your reset code').max(64),
+    password: strongPasswordSchema.optional(),
+    passwordHash: clientPasswordHashSchema.optional(),
+  })
+  .refine((data) => !!data.password || !!data.passwordHash, {
+    message: 'password or passwordHash is required',
+    path: ['password'],
+  });
+
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(20, 'refreshToken is required'),
+});
+
 export const ssoSchema = z
   .object({
     provider: z.enum(['google', 'facebook', 'apple']),

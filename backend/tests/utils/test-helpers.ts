@@ -26,7 +26,8 @@ export function createMockEnv(): Env {
     ENVIRONMENT: 'test',
     JWT_SECRET: 'test-secret-key',
     API_VERSION: 'v1',
-  };
+    ALLOW_TEST_AUTH_BYPASS: 'true',
+  } as Env;
 }
 
 /**

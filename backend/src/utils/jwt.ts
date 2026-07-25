@@ -1,5 +1,5 @@
 /**
- * Signed JWT access tokens (HMAC-SHA256). Requires JWT_SECRET in production.
+ * Signed JWT access tokens (HMAC-SHA256). Requires JWT_SECRET (secret / .dev.vars).
  */
 
 type JwtPayload = {
@@ -7,6 +7,20 @@ type JwtPayload = {
   iat: number;
   exp: number;
 };
+
+/** Access token lifetime: 1 hour */
+export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+
+/** Refresh token lifetime: 30 days */
+export const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+function requireSecret(env: { JWT_SECRET?: string }): string {
+  const secret = env.JWT_SECRET?.trim();
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+  return secret;
+}
 
 function base64UrlEncode(data: Uint8Array | string): string {
   if (typeof data === 'string') {
@@ -47,8 +61,12 @@ async function hmacVerify(message: string, signature: string, secret: string): P
   return crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(message));
 }
 
-export async function signAccessToken(userId: string, env: { JWT_SECRET?: string }, ttlSeconds = 604800): Promise<string> {
-  const secret = env.JWT_SECRET || 'dev-secret-key-change-in-production';
+export async function signAccessToken(
+  userId: string,
+  env: { JWT_SECRET?: string },
+  ttlSeconds = ACCESS_TOKEN_TTL_SECONDS
+): Promise<string> {
+  const secret = requireSecret(env);
   const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
   const payload: JwtPayload = { userId, iat: now, exp: now + ttlSeconds };
@@ -62,7 +80,12 @@ export async function verifyAccessToken(
   token: string,
   env: { JWT_SECRET?: string }
 ): Promise<{ userId: string } | null> {
-  const secret = env.JWT_SECRET || 'dev-secret-key-change-in-production';
+  let secret: string;
+  try {
+    secret = requireSecret(env);
+  } catch {
+    return null;
+  }
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [header, body, signature] = parts;
@@ -77,4 +100,18 @@ export async function verifyAccessToken(
   } catch {
     return null;
   }
+}
+
+/** Opaque refresh token (random). Store only the hash in D1. */
+export function generateRefreshToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return base64UrlEncode(bytes);
+}
+
+export async function hashRefreshToken(token: string): Promise<string> {
+  const data = new TextEncoder().encode(token);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }

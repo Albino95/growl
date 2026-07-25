@@ -10,24 +10,30 @@
     "deploy:qa": "wrangler deploy --env qa",
     "deploy:production": "wrangler deploy --env production",
     "migrate": "wrangler d1 migrations apply growl-db --remote",
-    "migrate:dev": "wrangler d1 migrations apply growl-db --remote --env dev",
-    "migrate:qa": "wrangler d1 migrations apply growl-db --remote --env qa",
-    "migrate:production": "wrangler d1 migrations apply growl-db --remote --env production",
+    "migrate:dev": "wrangler d1 migrations apply growl-db-dev --remote --env dev",
+    "migrate:qa": "wrangler d1 migrations apply growl-db-qa --remote --env qa",
+    "migrate:production": "wrangler d1 migrations apply growl-db-prod --remote --env production",
     "migrate:local": "wrangler d1 migrations apply growl-db --local",
     "db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run migrate:local",
     "seed:local": "wrangler d1 execute growl-db --local --file=scripts/seed-products-enhanced.sql",
     "seed:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-products-enhanced.sql",
     "seed:core:local": "wrangler d1 execute growl-db --local --file=scripts/seed-demo-core-accounts.sql",
     "seed:core:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-demo-core-accounts.sql",
+    "seed:core:dev": "wrangler d1 execute growl-db-dev --remote --env dev --file=scripts/seed-demo-core-accounts.sql",
+    "seed:core:qa": "wrangler d1 execute growl-db-qa --remote --env qa --file=scripts/seed-demo-core-accounts.sql",
     "seed:social:local": "wrangler d1 execute growl-db --local --file=scripts/seed-demo-social.sql",
     "seed:social:remote": "wrangler d1 execute growl-db --remote --file=scripts/seed-demo-social.sql",
     "seed:social:dense:local": "node scripts/generate-dense-social-seed.js && wrangler d1 execute growl-db --local --file=scripts/seed-demo-social-dense.sql",
     "seed:social:dense:remote": "node scripts/generate-dense-social-seed.js && wrangler d1 execute growl-db --remote --file=scripts/seed-demo-social-dense.sql",
+    "seed:review:qa": "wrangler d1 execute growl-db-qa --remote --env qa --file=scripts/seed-app-review-account.sql",
     "fix:demo-verified:local": "wrangler d1 execute growl-db --local --file=scripts/fix-demo-email-verified.sql",
     "fix:demo-verified:remote": "wrangler d1 execute growl-db --remote --file=scripts/fix-demo-email-verified.sql",
     "demo:local": "npm run migrate:local && npm run seed:core:local && npm run seed:social:local && npm run seed:social:dense:local",
     "demo:remote": "npm run migrate && npm run seed:core:remote && npm run seed:social:remote && npm run seed:social:dense:remote && npm run fix:demo-verified:remote",
+    "demo:dev": "npm run migrate:dev && npm run seed:core:dev",
+    "demo:qa": "npm run migrate:qa && npm run seed:core:qa && npm run seed:review:qa",
     "db:create": "wrangler d1 create growl-db",
+    "db:create:envs": "wrangler d1 create growl-db-dev && wrangler d1 create growl-db-qa && wrangler d1 create growl-db-prod",
     "login": "wrangler login",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
@@ -60,10 +66,9 @@
     "@vitest/ui": "^2.1.0",
     "typescript": "^5.3.3",
     "vitest": "^2.1.0",
-    "wrangler": "^3.114.16"
+    "wrangler": "^3.114.17"
   },
   "dependencies": {
-    "zod": "^3.22.4",
-    "node-fetch": "^2.7.0"
+    "zod": "^3.22.4"
   }
 }

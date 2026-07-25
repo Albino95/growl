@@ -9,7 +9,8 @@ export async function getUserIdFromRequest(request: Request, env: any): Promise<
 
   const token = authHeader.substring(7);
 
-  if (env?.ENVIRONMENT === 'test') {
+  // Vitest / local unit tests only — never enabled for remote envs (dev/qa/production).
+  if (env?.ENVIRONMENT === 'test' && env?.ALLOW_TEST_AUTH_BYPASS === 'true') {
     return 'test-user';
   }
 

@@ -127,7 +127,8 @@ export default function ReelsScreen() {
 
         <SafeAreaView style={tw`absolute top-0 left-0 right-0`} edges={['top']}>
           <View style={tw`flex-row items-center justify-between px-4 pt-2`}>
-            <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
+            <Text style={tw`text-white font-bold text-lg`}>Clips</Text>
+            <Text style={tw`text-white/70 text-xs`}>Full-screen photo posts</Text>
             <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
               <Ionicons name="close" size={28} color="#FFFFFF" />
             </TouchableOpacity>

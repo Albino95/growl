@@ -16,7 +16,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint . --ext .ts,.tsx",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "eas:build:dev": "eas build --profile development",
+    "eas:build:qa": "eas build --profile preview",
+    "eas:build:prod": "eas build --profile production"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -25,6 +28,7 @@
     "@react-navigation/native": "7.1.18",
     "@react-navigation/native-stack": "7.3.28",
     "@reduxjs/toolkit": "^2.11.0",
+    "@sentry/react-native": "^6.22.0",
     "expo": "^54.0.0",
     "expo-apple-authentication": "~8.0.7",
     "expo-auth-session": "^7.0.8",

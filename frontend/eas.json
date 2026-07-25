@@ -7,18 +7,38 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "ios": { "simulator": true }
+      "ios": { "simulator": true },
+      "env": {
+        "APP_ENV": "development",
+        "API_BASE_URL": "https://growl-backend-dev.albino-ndreu.workers.dev/api/v1",
+        "SHOW_DEMO_ACCOUNTS": "true",
+        "SHOW_DEV_TOOLS": "true",
+        "ENABLE_KYC": "false",
+        "ENABLE_PUSH_PREFS": "false"
+      }
     },
     "preview": {
       "distribution": "internal",
       "ios": { "simulator": false },
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "env": {
+        "APP_ENV": "qa",
+        "API_BASE_URL": "https://growl-backend-qa.albino-ndreu.workers.dev/api/v1",
+        "SHOW_DEMO_ACCOUNTS": "true",
+        "SHOW_DEV_TOOLS": "true",
+        "ENABLE_KYC": "false",
+        "ENABLE_PUSH_PREFS": "false"
+      }
     },
     "production": {
       "autoIncrement": true,
       "env": {
+        "APP_ENV": "production",
+        "API_BASE_URL": "https://growl-backend-production.albino-ndreu.workers.dev/api/v1",
         "SHOW_DEMO_ACCOUNTS": "false",
-        "SHOW_DEV_TOOLS": "false"
+        "SHOW_DEV_TOOLS": "false",
+        "ENABLE_KYC": "false",
+        "ENABLE_PUSH_PREFS": "false"
       }
     }
   },

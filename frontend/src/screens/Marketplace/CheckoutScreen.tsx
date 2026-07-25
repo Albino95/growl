@@ -171,6 +171,10 @@ export default function CheckoutScreen() {
         const canOpen = await Linking.canOpenURL(response.data.url);
         if (canOpen) {
           await Linking.openURL(response.data.url);
+          Alert.alert(
+            'Complete payment',
+            'Finish checkout in the browser. After payment you will land on the success page; return to the app to see your order.'
+          );
         } else {
           Alert.alert(
             'Checkout Ready',

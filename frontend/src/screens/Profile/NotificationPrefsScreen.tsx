@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { featureFlags } from '../../constants/featureFlags';
 import {
   fetchCurrentProfile,
   updateProfileOnServer,
@@ -26,7 +27,7 @@ export default function NotificationPrefsScreen() {
   const [prefs, setPrefs] = useState<NotificationPrefs>({
     notificationsEnabled: true,
     emailNotifications: true,
-    pushNotifications: true,
+    pushNotifications: false,
     marketingEmails: false,
   });
 
@@ -39,7 +40,9 @@ export default function NotificationPrefsScreen() {
         setPrefs({
           notificationsEnabled: Boolean(stored.notificationsEnabled ?? true),
           emailNotifications: Boolean(stored.emailNotifications ?? true),
-          pushNotifications: Boolean(stored.pushNotifications ?? true),
+          pushNotifications: featureFlags.enablePushPrefs
+            ? Boolean(stored.pushNotifications ?? false)
+            : false,
           marketingEmails: Boolean(stored.marketingEmails ?? false),
         });
       } catch (e: unknown) {
@@ -105,13 +108,22 @@ export default function NotificationPrefsScreen() {
               onToggle={() => toggle('emailNotifications')}
               disabled={!prefs.notificationsEnabled}
             />
-            <PrefRow
-              title="Push notifications"
-              description="Real-time alerts on your device"
-              value={!!prefs.pushNotifications}
-              onToggle={() => toggle('pushNotifications')}
-              disabled={!prefs.notificationsEnabled}
-            />
+            {featureFlags.enablePushPrefs ? (
+              <PrefRow
+                title="Push notifications"
+                description="Real-time alerts on your device"
+                value={!!prefs.pushNotifications}
+                onToggle={() => toggle('pushNotifications')}
+                disabled={!prefs.notificationsEnabled}
+              />
+            ) : (
+              <View style={tw`px-4 py-4 border-b border-stone-100`}>
+                <Text style={tw`text-stone-900 font-medium`}>Push notifications</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Coming soon — device push is not enabled in this build. Email alerts still work.
+                </Text>
+              </View>
+            )}
             <PrefRow
               title="Marketing emails"
               description="Product news and growth tips"

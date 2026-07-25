@@ -44,12 +44,20 @@ async function hmacVerify(message: string, signature: string, secret: string): P
   return crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(message));
 }
 
+function requireSecret(env: { JWT_SECRET?: string }): string {
+  const secret = env.JWT_SECRET?.trim();
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+  return secret;
+}
+
 export async function signAdminToken(
   adminId: string,
   env: { JWT_SECRET?: string },
   ttlSeconds = 28800
 ): Promise<string> {
-  const secret = env.JWT_SECRET || 'dev-secret-key-change-in-production';
+  const secret = requireSecret(env);
   const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
   const payload: AdminJwtPayload = { adminId, type: 'admin', iat: now, exp: now + ttlSeconds };
@@ -63,7 +71,12 @@ export async function verifyAdminToken(
   token: string,
   env: { JWT_SECRET?: string }
 ): Promise<{ adminId: string } | null> {
-  const secret = env.JWT_SECRET || 'dev-secret-key-change-in-production';
+  let secret: string;
+  try {
+    secret = requireSecret(env);
+  } catch {
+    return null;
+  }
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [header, body, signature] = parts;

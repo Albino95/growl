@@ -3,50 +3,94 @@ main = "src/index.ts"
 compatibility_date = "2024-01-15"
 compatibility_flags = ["nodejs_compat"]
 
-# Stable port for local integration tests (`npm run test:local`)
+# Local wrangler dev (port used by npm run test:local)
 [dev]
 port = 8787
 
-# D1 Database
+# ---------------------------------------------------------------------------
+# Default / local bindings (used by `wrangler dev` without --env)
+# Replace IDs when cutting over to the company Cloudflare account.
+# Secrets (JWT_SECRET, RESEND_*, STRIPE_*, OAuth) live in `.dev.vars` locally
+# and `wrangler secret put --env <env>` remotely — never in [vars].
+# ---------------------------------------------------------------------------
 [[d1_databases]]
 binding = "DB"
 database_name = "growl-db"
 database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
 
-# KV Namespace for caching
 [[kv_namespaces]]
 binding = "KV"
 id = "acb4474069c041bd838e3c2f6de54257"
 preview_id = "536de44686804dfaa0f27e5a523b596e"
 
-# R2 bucket for media storage.
-# Temporarily disabled: Cloudflare account needs R2 enabled + bucket `growl-media`
-# created before this binding can be restored. Deploy fails with code 10085/10042 otherwise.
+# Uncomment after R2 is enabled and buckets exist (see DEPLOY_NEW_CLOUDFLARE_ACCOUNT.md).
 # [[r2_buckets]]
 # binding = "R2"
 # bucket_name = "growl-media"
 # preview_bucket_name = "growl-media-preview"
 
-# Environment variables
 [vars]
 ENVIRONMENT = "development"
-JWT_SECRET = "dev-secret-key-change-in-production"
 API_VERSION = "v1"
+# Comma-separated. Empty / * = allow all (local only). Production must set an allowlist.
+CORS_ORIGINS = "*"
 
-# Production environment
-[env.production]
-vars = { ENVIRONMENT = "production" }
+# ---------------------------------------------------------------------------
+# Remote envs: isolated D1 / KV / R2 per environment.
+# Until company-account cutover, IDs below still point at the current personal
+# resources — replace with growl-db-dev|qa|prod IDs after `wrangler d1 create`.
+# Dropped legacy `staging` — use qa for pre-release.
+# ---------------------------------------------------------------------------
 
-# Development environment (remote cloud env, separate from local)
 [env.dev]
-vars = { ENVIRONMENT = "development" }
+name = "growl-backend-dev"
+vars = { ENVIRONMENT = "development", API_VERSION = "v1", CORS_ORIGINS = "*" }
 
-# QA environment
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "growl-db-dev"
+database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+
+[[env.dev.kv_namespaces]]
+binding = "KV"
+id = "acb4474069c041bd838e3c2f6de54257"
+preview_id = "536de44686804dfaa0f27e5a523b596e"
+
+# [[env.dev.r2_buckets]]
+# binding = "R2"
+# bucket_name = "growl-media-dev"
+
 [env.qa]
-vars = { ENVIRONMENT = "qa" }
+name = "growl-backend-qa"
+vars = { ENVIRONMENT = "qa", API_VERSION = "v1", CORS_ORIGINS = "*" }
 
-# Staging environment (legacy)
-[env.staging]
-vars = { ENVIRONMENT = "staging" }
+[[env.qa.d1_databases]]
+binding = "DB"
+database_name = "growl-db-qa"
+database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
 
+[[env.qa.kv_namespaces]]
+binding = "KV"
+id = "acb4474069c041bd838e3c2f6de54257"
+preview_id = "536de44686804dfaa0f27e5a523b596e"
 
+# [[env.qa.r2_buckets]]
+# binding = "R2"
+# bucket_name = "growl-media-qa"
+
+[env.production]
+name = "growl-backend-production"
+vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https://growl.app,https://www.growl.app,https://admin.growl.app" }
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "growl-db-prod"
+database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+
+[[env.production.kv_namespaces]]
+binding = "KV"
+id = "acb4474069c041bd838e3c2f6de54257"
+
+# [[env.production.r2_buckets]]
+# binding = "R2"
+# bucket_name = "growl-media-prod"

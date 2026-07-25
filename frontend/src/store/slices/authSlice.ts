@@ -6,7 +6,8 @@ import {
   signUpApi,
   verifyEmailApi,
   signInSsoApi,
-  type SessionResponse,
+  signOutApi,
+  refreshSessionApi,
 } from '../../services/api/auth';
 import { fetchCurrentProfile } from '../../services/api/profile';
 
@@ -31,22 +32,20 @@ interface AuthState {
 }
 
 const TOKEN_KEY = 'auth_token';
+const REFRESH_KEY = 'auth_refresh_token';
 
-function sessionToUser(res: SessionResponse, email?: string): User {
-  const categories = res.categories || [];
-  return {
-    id: res.userId,
-    email: email || res.email,
-    isInstructor: res.isInstructor || false,
-    isBusiness: res.isBusiness === true,
-    hasCompletedOnboarding: res.hasCompletedOnboarding ?? categories.length > 0,
-    categories,
-  };
-}
-
-async function persistSession(token: string) {
+async function persistSession(token: string, refreshToken?: string) {
   await setSecureItem(TOKEN_KEY, token);
   setToken(token);
+  if (refreshToken) {
+    await setSecureItem(REFRESH_KEY, refreshToken);
+  }
+}
+
+async function clearSessionStorage() {
+  await deleteSecureItem(TOKEN_KEY);
+  await deleteSecureItem(REFRESH_KEY);
+  clearToken();
 }
 
 async function loadUserFromApi(email?: string): Promise<User> {
@@ -64,18 +63,36 @@ async function loadUserFromApi(email?: string): Promise<User> {
 
 export const hydrateAuth = createAsyncThunk('auth/hydrate', async (_, { rejectWithValue }) => {
   try {
-    const token = await getSecureItem(TOKEN_KEY);
-    if (!token) {
+    let token = await getSecureItem(TOKEN_KEY);
+    const refreshToken = await getSecureItem(REFRESH_KEY);
+
+    if (!token && !refreshToken) {
       clearToken();
       return { token: null, user: null };
     }
-    setToken(token);
-    const user = await loadUserFromApi();
-    return { token, user };
+
+    if (token) {
+      setToken(token);
+      try {
+        const user = await loadUserFromApi();
+        return { token, user };
+      } catch {
+        // Access token may be expired — try refresh below
+      }
+    }
+
+    if (refreshToken) {
+      const res = await refreshSessionApi(refreshToken);
+      await persistSession(res.token, res.refreshToken);
+      const user = await loadUserFromApi();
+      return { token: res.token, user };
+    }
+
+    await clearSessionStorage();
+    return rejectWithValue('Session expired. Please sign in again.');
   } catch (error) {
     console.error('[Auth] hydrate failed:', error);
-    await deleteSecureItem(TOKEN_KEY);
-    clearToken();
+    await clearSessionStorage();
     return rejectWithValue('Session expired. Please sign in again.');
   }
 });
@@ -111,7 +128,7 @@ export const signIn = createAsyncThunk(
   async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
       const res = await signInApi(email.trim(), password);
-      await persistSession(res.token);
+      await persistSession(res.token, res.refreshToken);
       const user = await loadUserFromApi(email.trim());
       return { token: res.token, user };
     } catch (e: unknown) {
@@ -128,7 +145,7 @@ export const signInWithSSO = createAsyncThunk(
   ) => {
     try {
       const res = await signInSsoApi(payload);
-      await persistSession(res.token);
+      await persistSession(res.token, res.refreshToken);
       const user = await loadUserFromApi();
       return { token: res.token, user };
     } catch (e: unknown) {
@@ -148,11 +165,12 @@ export const refreshProfile = createAsyncThunk('auth/refreshProfile', async (_, 
 
 export const signOut = createAsyncThunk('auth/signOut', async (_, { rejectWithValue }) => {
   try {
-    await deleteSecureItem(TOKEN_KEY);
-    clearToken();
+    const refreshToken = await getSecureItem(REFRESH_KEY);
+    await signOutApi(refreshToken);
+    await clearSessionStorage();
     return { success: true };
   } catch (error: unknown) {
-    clearToken();
+    await clearSessionStorage();
     return rejectWithValue(error instanceof Error ? error.message : 'Sign out failed');
   }
 });

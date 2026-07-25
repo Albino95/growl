@@ -1,5 +1,5 @@
 import { Env } from './types';
-import { cors, error, json } from './utils/response';
+import { attachCors, cors, error, json } from './utils/response';
 import * as authRoutes from './routes/auth';
 import * as feedRoutes from './routes/feed';
 import * as commentRoutes from './routes/comments';
@@ -26,9 +26,15 @@ import * as adminDashboardRoutes from './routes/admin/dashboard';
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const response = await handleRequest(request, env);
+    return attachCors(request, env, response);
+  },
+};
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return cors();
+      return cors(request, env);
     }
 
     const url = new URL(request.url);
@@ -51,6 +57,9 @@ export default {
             signIn: `${apiPrefix}/auth/sign-in`,
             signOut: `${apiPrefix}/auth/sign-out`,
             sso: `${apiPrefix}/auth/sso`,
+            refresh: `${apiPrefix}/auth/refresh`,
+            forgotPassword: `${apiPrefix}/auth/forgot-password`,
+            resetPassword: `${apiPrefix}/auth/reset-password`,
           },
           feed: {
             getFeed: `${apiPrefix}/feed/feed`,
@@ -62,6 +71,7 @@ export default {
             orders: `${apiPrefix}/marketplace/orders`,
             paymentConfig: `${apiPrefix}/marketplace/payment-config`,
             checkoutSession: `${apiPrefix}/marketplace/checkout-session`,
+            webhook: `${apiPrefix}/marketplace/webhook`,
           },
           profile: `${apiPrefix}/profile`,
           publicProfileByUserId: `${apiPrefix}/profile/user/:userId`,
@@ -101,6 +111,12 @@ export default {
       }
       if (path === `${apiPrefix}/auth/refresh` && request.method === 'POST') {
         return authRoutes.refresh(request, env);
+      }
+      if (path === `${apiPrefix}/auth/forgot-password` && request.method === 'POST') {
+        return authRoutes.forgotPassword(request, env);
+      }
+      if (path === `${apiPrefix}/auth/reset-password` && request.method === 'POST') {
+        return authRoutes.resetPassword(request, env);
       }
 
       // Feed routes
@@ -185,6 +201,9 @@ export default {
       }
       if (path === `${apiPrefix}/marketplace/checkout-session` && request.method === 'POST') {
         return marketplaceRoutes.createCheckoutSession(request, env);
+      }
+      if (path === `${apiPrefix}/marketplace/webhook` && request.method === 'POST') {
+        return marketplaceRoutes.handleStripeWebhook(request, env);
       }
 
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'GET') {
@@ -646,6 +665,7 @@ export default {
       if (path === `${apiPrefix}/health` && request.method === 'GET') {
         let dbStatus = 'not configured';
         let kvStatus = 'not configured';
+        let r2Status = 'not configured';
         
         // Test database connection
         if (env.DB) {
@@ -669,12 +689,25 @@ export default {
           }
         }
 
+        if (env.R2) {
+          try {
+            await env.R2.head('health-check');
+            r2Status = 'connected';
+          } catch {
+            // head may 404 — binding still works
+            r2Status = 'connected';
+          }
+        }
+
         return json({
           status: 'ok',
           timestamp: new Date().toISOString(),
           environment: env.ENVIRONMENT,
           database: dbStatus,
           kv: kvStatus,
+          r2: r2Status,
+          jwtConfigured: Boolean(env.JWT_SECRET?.trim()),
+          paymentsEnabled: Boolean(env.STRIPE_SECRET_KEY?.trim()),
         });
       }
 
@@ -689,7 +722,6 @@ export default {
         env.ENVIRONMENT === 'development' ? String(err) : undefined
       );
     }
-  },
-};
+}
 
 

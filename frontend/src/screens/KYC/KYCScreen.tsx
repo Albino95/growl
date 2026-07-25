@@ -1,22 +1,32 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import PrimaryButton from '../../components/ui/PrimaryButton';
-import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
+import { featureFlags } from '../../constants/featureFlags';
 
+/**
+ * KYC is gated off until a real provider is integrated.
+ * enable via ENABLE_KYC=true on an EAS profile (never for production store builds).
+ */
 export default function KYCScreen() {
-  const { signIn } = useAuth();
-  const handleEnter = async () => { await signIn('demo@growl.app', 'password'); };
-  return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <View style={tw`flex-1 items-center justify-center p-6`}>
-        <Text style={tw`text-xl font-semibold mb-2`}>KYC</Text>
-        <Text style={tw`text-base text-gray-600 text-center mb-6`}>
-          Pretend we verified your identity. Continue to enter the app.
+  if (!featureFlags.enableKYC) {
+    return (
+      <View style={tw`flex-1 items-center justify-center p-6 bg-white`}>
+        <Text style={tw`text-xl font-semibold mb-2`}>Identity verification</Text>
+        <Text style={tw`text-stone-600 text-center`}>
+          KYC is not available in this build. Contact support if you were asked to verify your
+          identity.
         </Text>
-        <PrimaryButton label="Enter App" onPress={handleEnter} />
       </View>
-    </SafeAreaView>
+    );
+  }
+
+  return (
+    <View style={tw`flex-1 items-center justify-center p-6 bg-white`}>
+      <Text style={tw`text-xl font-semibold mb-2`}>KYC</Text>
+      <Text style={tw`text-stone-600 text-center`}>
+        Identity verification provider integration is pending. This screen is only enabled for
+        internal QA builds.
+      </Text>
+    </View>
   );
 }

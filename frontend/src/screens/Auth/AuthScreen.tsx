@@ -24,6 +24,10 @@ import {
 import { isAppleSignInAvailable, signInWithApplePrompt } from '../../services/auth/apple';
 import { DEMO_ACCOUNTS, DEMO_ACCOUNT_PASSWORD } from '../../constants/demoAccounts';
 import { featureFlags } from '../../constants/featureFlags';
+import {
+  forgotPasswordApi,
+  resetPasswordApi,
+} from '../../services/api/auth';
 import tw from '../../lib/tw';
 
 function notify(title: string, message?: string) {
@@ -34,7 +38,7 @@ function notify(title: string, message?: string) {
   }
 }
 
-type Step = 'auth' | 'verify';
+type Step = 'auth' | 'verify' | 'forgot' | 'reset';
 
 const PASSWORD_RULES = [
   { key: 'len', label: '12+ characters', test: (p: string) => p.length >= 12 },
@@ -50,7 +54,9 @@ export default function AuthScreen() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState('');
+  const [resetCode, setResetCode] = useState('');
   const [devCodeHint, setDevCodeHint] = useState<string | null>(null);
+  const [devResetHint, setDevResetHint] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -193,6 +199,58 @@ export default function AuthScreen() {
     }
   };
 
+  const handleForgotRequest = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setEmailError('Email is required.');
+      notify('Email required', 'Enter the email for your account.');
+      return;
+    }
+    setLocalLoading(true);
+    try {
+      const result = await forgotPasswordApi(trimmedEmail);
+      setDevResetHint(result.devResetCode ?? null);
+      setStep('reset');
+      notify('Check your email', result.message);
+    } catch (e: unknown) {
+      notify('Reset failed', e instanceof Error ? e.message : 'Could not start password reset');
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!resetCode.trim()) {
+      notify('Code required', 'Enter the reset code from your email.');
+      return;
+    }
+    const pwCheck = validatePasswordStrength(password);
+    if (!pwCheck.ok) {
+      setPasswordError(pwCheck.message);
+      notify('Weak password', pwCheck.message);
+      return;
+    }
+    setLocalLoading(true);
+    try {
+      await resetPasswordApi({
+        email: trimmedEmail,
+        code: resetCode.trim(),
+        password,
+      });
+      notify('Password updated', 'Sign in with your new password.');
+      setStep('auth');
+      setIsSignUp(false);
+      setResetCode('');
+      setPassword('');
+      setDevResetHint(null);
+    } catch (e: unknown) {
+      notify('Reset failed', e instanceof Error ? e.message : 'Invalid code or password');
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
   const BrandHero = ({ subtitle }: { subtitle: string }) => (
     <View style={tw`mb-8 overflow-hidden rounded-3xl`}>
       <View style={tw`bg-brand-700 px-6 pt-10 pb-8`}>
@@ -205,6 +263,103 @@ export default function AuthScreen() {
       <View style={tw`h-1.5 bg-brand-500`} />
     </View>
   );
+
+  if (step === 'forgot') {
+    return (
+      <Screen edges={['top', 'bottom']} background="page">
+        <ScrollView contentContainerStyle={tw`flex-grow px-5 pt-4 pb-10`}>
+          <View style={tw`max-w-md w-full self-center`}>
+            <BrandHero subtitle="We'll email you a code to reset your password." />
+            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 ml-1`}>Email</Text>
+            <TextInput
+              placeholder="you@example.com"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              value={email}
+              onChangeText={setEmail}
+              style={tw`border border-stone-200 bg-white rounded-2xl py-3.5 px-4 text-base text-stone-900 mb-5`}
+              placeholderTextColor="#A8A29E"
+              accessibilityLabel="Email for password reset"
+            />
+            <PrimaryButton
+              label="Send reset code"
+              onPress={handleForgotRequest}
+              disabled={busy}
+              loading={busy}
+            />
+            <TouchableOpacity onPress={() => setStep('auth')} style={tw`mt-6 items-center`}>
+              <Text style={tw`text-brand-700 font-semibold`}>Back to sign in</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </Screen>
+    );
+  }
+
+  if (step === 'reset') {
+    return (
+      <Screen edges={['top', 'bottom']} background="page">
+        <ScrollView contentContainerStyle={tw`flex-grow px-5 pt-4 pb-10`}>
+          <View style={tw`max-w-md w-full self-center`}>
+            <BrandHero subtitle="Enter the code from your email and choose a new password." />
+            {featureFlags.showDevVerificationHint && devResetHint ? (
+              <Text style={tw`text-xs text-amber-900 bg-amber-50 border border-amber-100 p-3 rounded-2xl mb-4`}>
+                Dev reset code: {devResetHint}
+              </Text>
+            ) : null}
+            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 ml-1`}>Reset code</Text>
+            <TextInput
+              placeholder="123456"
+              keyboardType="number-pad"
+              value={resetCode}
+              onChangeText={setResetCode}
+              maxLength={6}
+              style={tw`border border-stone-200 bg-white rounded-2xl py-4 px-4 text-center text-2xl tracking-widest mb-4 text-stone-900`}
+              placeholderTextColor="#A8A29E"
+              accessibilityLabel="Password reset code"
+            />
+            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 ml-1`}>New password</Text>
+            <TextInput
+              placeholder="Create a strong password"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              autoComplete="password-new"
+              style={tw`border border-stone-200 bg-white rounded-2xl py-3.5 px-4 text-base text-stone-900 mb-3`}
+              placeholderTextColor="#A8A29E"
+              accessibilityLabel="New password"
+            />
+            {password.length > 0 ? (
+              <View style={tw`mb-4 bg-white border border-stone-100 rounded-2xl p-3`}>
+                {passwordRuleStatus.map((rule) => (
+                  <View key={rule.key} style={tw`flex-row items-center py-1`}>
+                    <Ionicons
+                      name={rule.ok ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={16}
+                      color={rule.ok ? '#059669' : '#A8A29E'}
+                    />
+                    <Text style={tw`ml-2 text-xs ${rule.ok ? 'text-brand-700' : 'text-stone-500'}`}>
+                      {rule.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <PrimaryButton
+              label="Update password"
+              onPress={handleResetPassword}
+              disabled={busy}
+              loading={busy}
+            />
+            <TouchableOpacity onPress={() => setStep('forgot')} style={tw`mt-6 items-center`}>
+              <Text style={tw`text-brand-700 font-semibold`}>Resend code</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </Screen>
+    );
+  }
 
   if (step === 'verify') {
     return (
@@ -360,7 +515,14 @@ export default function AuthScreen() {
                 server.
               </Text>
             ) : (
-              <View style={tw`h-3`} />
+              <TouchableOpacity
+                onPress={() => setStep('forgot')}
+                style={tw`self-end mb-3 mt-1`}
+                accessibilityRole="button"
+                accessibilityLabel="Forgot password"
+              >
+                <Text style={tw`text-sm font-semibold text-brand-700`}>Forgot password?</Text>
+              </TouchableOpacity>
             )}
 
             <PrimaryButton
