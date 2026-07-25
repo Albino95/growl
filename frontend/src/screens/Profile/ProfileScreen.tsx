@@ -22,7 +22,7 @@ import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
-import { updateProfileOnServer } from '../../services/api/profile';
+import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
@@ -165,6 +165,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
+  const [profileMeta, setProfileMeta] = useState<{
+    username?: string;
+    avatar?: string;
+    bio?: string | null;
+    status?: string | null;
+  }>({});
   const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
   const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
   const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
@@ -175,11 +181,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, cohort, elig] = await Promise.all([
+      const [postList, storyList, cohort, elig, me] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
         syncCohortFriends(),
         getInstructorEligibility().catch(() => null),
+        fetchCurrentProfile().catch(() => null),
       ]);
       const decay = user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
@@ -187,6 +194,14 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       setFollowing(cohort.following);
       setFollowers(cohort.followers);
       if (elig) setEligibility(elig);
+      if (me) {
+        setProfileMeta({
+          username: me.username,
+          avatar: me.avatar,
+          bio: me.bio,
+          status: me.status,
+        });
+      }
     } catch (e) {
       console.warn('[ProfileScreen] load profile content', e);
     } finally {
@@ -359,13 +374,19 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         <View style={tw`px-4 pt-4 pb-6 border-b border-stone-200`}>
           <View style={tw`flex-row items-center mb-4`}>
             <Image
-              source={{ uri: getAvatarUrl(user?.id || 'default', user?.email?.split('@')[0]) }}
+              source={{
+                uri: resolveAvatarUri(
+                  user?.id || 'default',
+                  profileMeta.username || user?.email?.split('@')[0],
+                  profileMeta.avatar
+                ),
+              }}
               style={tw`w-20 h-20 rounded-full mr-4`}
               contentFit="cover"
             />
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {user?.email?.split('@')[0] || 'User'}
+                {profileMeta.username || user?.email?.split('@')[0] || 'User'}
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
@@ -378,6 +399,13 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Ionicons name="settings-outline" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>
+
+          {profileMeta.status ? (
+            <Text style={tw`text-sm text-stone-800 mb-1 leading-5`}>{profileMeta.status}</Text>
+          ) : null}
+          {profileMeta.bio ? (
+            <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileMeta.bio}</Text>
+          ) : null}
 
           <ProfileStatsRow
             postsCount={posts.length}

@@ -617,6 +617,13 @@ export default function PublicProfileScreen() {
             </View>
           </View>
 
+          {profileUser.status ? (
+            <Text style={tw`text-sm text-stone-800 mb-2 leading-5`}>{profileUser.status}</Text>
+          ) : null}
+          {profileUser.bio ? (
+            <Text style={tw`text-sm text-stone-500 mb-4 leading-5`}>{profileUser.bio}</Text>
+          ) : null}
+
           <View style={tw`flex-row justify-around mb-4 py-2`}>
             <View style={tw`items-center`}>
               <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.postsCount}</Text>

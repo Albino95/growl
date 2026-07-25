@@ -171,6 +171,86 @@ export async function getBusinessAccount(
   });
 }
 
+/**
+ * GET /api/v1/admin/business/accounts/:id/overview
+ */
+export async function getBusinessAccountOverview(
+  request: Request,
+  env: Env,
+  userId: string
+): Promise<Response> {
+  const ctx = await requireAdmin(request, env, 'business.read');
+  if (ctx instanceof Response) return ctx;
+
+  const user = await env.DB.prepare(
+    `SELECT u.id, u.email, u.is_business, u.created_at
+     FROM users u WHERE u.id = ? AND u.is_business = 1`
+  )
+    .bind(userId)
+    .first<{ id: string; email: string; is_business: number; created_at: string }>();
+  if (!user) return error('NOT_FOUND', 'Business account not found', 404);
+
+  const profile = await env.DB.prepare(`SELECT * FROM business_profiles WHERE user_id = ?`)
+    .bind(userId)
+    .first<Record<string, unknown>>();
+
+  const settings = await env.DB.prepare(
+    `SELECT analytics_prefs FROM business_settings WHERE business_id = ?`
+  )
+    .bind(userId)
+    .first<{ analytics_prefs: string | null }>();
+  const prefs = parseJson<Record<string, unknown>>(settings?.analytics_prefs, {});
+  const lowStockThreshold = Math.max(1, Number(prefs.low_stock_threshold ?? 10) || 10);
+
+  const [products, gmv, orders30d, lowStock] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) as c FROM products WHERE user_id = ?`)
+      .bind(userId)
+      .first<{ c: number }>(),
+    env.DB.prepare(
+      `SELECT COALESCE(SUM(total), 0) as t FROM (
+         SELECT DISTINCT o.id, o.total
+         FROM orders o
+         JOIN order_items oi ON oi.order_id = o.id
+         JOIN products p ON p.id = oi.product_id
+         WHERE p.user_id = ? AND o.created_at >= datetime('now', '-30 days')
+           AND o.status IN ('completed', 'delivered', 'shipped', 'processing')
+       )`
+    )
+      .bind(userId)
+      .first<{ t: number }>(),
+    env.DB.prepare(
+      `SELECT COUNT(DISTINCT o.id) as c
+       FROM orders o
+       JOIN order_items oi ON oi.order_id = o.id
+       JOIN products p ON p.id = oi.product_id
+       WHERE p.user_id = ? AND o.created_at >= datetime('now', '-30 days')`
+    )
+      .bind(userId)
+      .first<{ c: number }>(),
+    env.DB.prepare(
+      `SELECT COALESCE(SUM(CASE WHEN stock > 0 AND stock < ? THEN 1 ELSE 0 END), 0) as low,
+              COALESCE(SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END), 0) as out
+       FROM products WHERE user_id = ?`
+    )
+      .bind(lowStockThreshold, userId)
+      .first<{ low: number; out: number }>(),
+  ]);
+
+  return json({
+    user,
+    profile,
+    overview: {
+      product_count: products?.c || 0,
+      gmv_30d: gmv?.t || 0,
+      orders_30d: orders30d?.c || 0,
+      low_stock_count: lowStock?.low || 0,
+      out_of_stock_count: lowStock?.out || 0,
+      low_stock_threshold: lowStockThreshold,
+      verification_status: (profile?.verification_status as string) || 'pending',
+    },
+  });
+}
+
 export async function updateBusinessAccount(
   request: Request,
   env: Env,

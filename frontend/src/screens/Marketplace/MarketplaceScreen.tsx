@@ -22,9 +22,11 @@ import EmptyState from '../../components/ui/EmptyState';
 import SearchField from '../../components/ui/SearchField';
 import SectionLabel from '../../components/ui/SectionLabel';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import MarketplaceCategoryBar from '../../components/marketplace/MarketplaceCategoryBar';
 import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import CATEGORIES from '../../data/categories';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
@@ -45,13 +47,12 @@ export default function MarketplaceScreen() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  /** Search hits the API; category chips filter the loaded catalog client-side. */
   const fetchParams = useMemo(
     () => ({
-      category: selectedCategory ?? undefined,
-      subcategory: selectedSubcategory ?? undefined,
       search: debouncedSearch || undefined,
     }),
-    [selectedCategory, selectedSubcategory, debouncedSearch]
+    [debouncedSearch]
   );
 
   useEffect(() => {
@@ -59,7 +60,6 @@ export default function MarketplaceScreen() {
   }, [dispatch, fetchParams]);
 
   const onRefresh = async () => {
-    console.log('[Marketplace] Pull to refresh triggered');
     setRefreshing(true);
     await dispatch(fetchProducts(fetchParams));
     setRefreshing(false);
@@ -70,11 +70,28 @@ export default function MarketplaceScreen() {
     dispatch(setSelectedCategory(category));
   };
 
-  const subcategoryOptions = useMemo(() => {
-    if (!selectedCategory) return [];
-    const cat = CATEGORIES.find((c) => c.key === selectedCategory);
-    return cat?.subcategories || [];
-  }, [selectedCategory]);
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of products) {
+      const parent = (p.category || '').split(':')[0];
+      if (!parent) continue;
+      counts[parent] = (counts[parent] || 0) + 1;
+    }
+    return counts;
+  }, [products]);
+
+  const subcategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!selectedCategory) return counts;
+    for (const p of products) {
+      const parent = (p.category || '').split(':')[0];
+      if (parent !== selectedCategory) continue;
+      const sub = (p.subcategory || '').toLowerCase();
+      if (!sub) continue;
+      counts[sub] = (counts[sub] || 0) + 1;
+    }
+    return counts;
+  }, [products, selectedCategory]);
 
   const recommendedProducts = useMemo(() => {
     const userCategories = user?.categories || [];
@@ -83,17 +100,15 @@ export default function MarketplaceScreen() {
     });
 
     let filtered = selectedCategory
-      ? ranked.filter(
-          (p) => p.category === selectedCategory || p.category.includes(selectedCategory.split(':')[0])
-        )
+      ? ranked.filter((p) => {
+          const parent = (p.category || '').split(':')[0];
+          return parent === selectedCategory;
+        })
       : ranked;
 
     if (selectedSubcategory) {
       filtered = filtered.filter(
-        (p) =>
-          (p.subcategory || '').toLowerCase() === selectedSubcategory.toLowerCase() ||
-          `${p.category}:${p.subcategory || ''}`.toLowerCase() ===
-            `${selectedCategory || ''}:${selectedSubcategory}`.toLowerCase()
+        (p) => (p.subcategory || '').toLowerCase() === selectedSubcategory.toLowerCase()
       );
     }
 
@@ -106,7 +121,6 @@ export default function MarketplaceScreen() {
   );
 
   const searchFiltered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     let list = recommendedProducts;
     if (inStockOnly) {
       list = list.filter((p) => p.stock > 0);
@@ -114,15 +128,8 @@ export default function MarketplaceScreen() {
     if (maxPrice != null) {
       list = list.filter((p) => p.price <= maxPrice);
     }
-    if (!q) return list;
-    return list.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        p.category.toLowerCase().includes(q) ||
-        !!(p.subcategory && p.subcategory.toLowerCase().includes(q))
-    );
-  }, [recommendedProducts, searchQuery, inStockOnly, maxPrice]);
+    return list;
+  }, [recommendedProducts, inStockOnly, maxPrice]);
 
   const priceTiers = useMemo(() => [25, 50, 100, 250], []);
 
@@ -134,23 +141,38 @@ export default function MarketplaceScreen() {
       else if (cat) userParents.add(cat);
     });
     const catalog = CATEGORIES.map((c) => c.key);
-    const prioritized = [
+    return [
       ...catalog.filter((k) => userParents.has(k)),
       ...catalog.filter((k) => !userParents.has(k)),
     ];
-    return prioritized;
   }, [user?.categories]);
+
+  const clearCategoryFilters = () => {
+    setSelectedSubcategory(null);
+    dispatch(setSelectedCategory(null));
+  };
+
+  const emptyDescription = (() => {
+    if (selectedCategory && selectedSubcategory) {
+      return `Nothing in ${getCategoryLabel(`${selectedCategory}:${selectedSubcategory}`)} yet. Try another subcategory or clear the filter.`;
+    }
+    if (selectedCategory) {
+      return `No products in ${getCategoryLabel(selectedCategory)} yet. Clear the category or check back soon.`;
+    }
+    return 'When sellers publish SKUs, they’ll appear here ranked for your growth path.';
+  })();
 
   return (
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
       <View style={tw`flex-1`}>
         <View style={tw`px-5 pt-3 pb-3 border-b border-stone-100 bg-white`}>
           <View style={tw`flex-row items-center justify-between mb-1`}>
-            <Text style={tw`text-2xl font-bold tracking-tight text-emerald-700`}>Marketplace</Text>
+            <Text style={tw`text-2xl font-bold tracking-tight text-emerald-700`}>Shop</Text>
             <View style={tw`flex-row items-center`}>
               <TouchableOpacity
                 onPress={() => setFilterOpen(true)}
                 style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center mr-2`}
+                accessibilityLabel="Open filters"
               >
                 <Ionicons name="options-outline" size={22} color="#059669" />
               </TouchableOpacity>
@@ -160,94 +182,27 @@ export default function MarketplaceScreen() {
                   rootNavigation.navigate('UserOrders' as never);
                 }}
                 style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center`}
+                accessibilityLabel="Your orders"
               >
                 <Ionicons name="receipt-outline" size={22} color="#059669" />
               </TouchableOpacity>
             </View>
           </View>
           <Text style={tw`text-sm text-stone-500`}>
-            Keyword search hits the catalog API; category pills filter locally and sync with your interests.
+            Browse by growth path — chips stay pinned so you can filter without losing the catalog.
           </Text>
         </View>
 
-        <ScrollView
-          horizontal
-          style={tw`border-b border-stone-100 bg-white`}
-          contentContainerStyle={tw`px-4 py-3`}
-          {...horizontalScrollProps}
-        >
-          <TouchableOpacity
-            onPress={() => handleCategoryChange(null)}
-            style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
-              selectedCategory === null ? 'bg-emerald-600' : 'bg-stone-100'
-            }`}
-          >
-            <Text
-              style={tw`font-semibold text-[15px] ${
-                selectedCategory === null ? 'text-white' : 'text-stone-600'
-              }`}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-          {categories.map((cat) => {
-            const label = CATEGORIES.find((c) => c.key === cat)?.label || cat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => handleCategoryChange(cat)}
-                style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
-                  selectedCategory === cat ? 'bg-emerald-600' : 'bg-stone-100'
-                }`}
-              >
-                <Text
-                  style={tw`font-semibold text-[15px] ${
-                    selectedCategory === cat ? 'text-white' : 'text-stone-600'
-                  }`}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {selectedCategory && subcategoryOptions.length > 0 ? (
-          <ScrollView
-            horizontal
-            style={tw`border-b border-stone-100 bg-white`}
-            contentContainerStyle={tw`px-4 py-2`}
-            {...horizontalScrollProps}
-          >
-            <TouchableOpacity
-              onPress={() => setSelectedSubcategory(null)}
-              style={tw`px-4 py-2 rounded-full mr-2 min-h-[38px] items-center justify-center ${selectedSubcategory === null ? 'bg-emerald-100' : 'bg-stone-100'}`}
-            >
-              <Text
-                style={tw`text-sm font-semibold ${selectedSubcategory === null ? 'text-emerald-800' : 'text-stone-600'}`}
-              >
-                All in category
-              </Text>
-            </TouchableOpacity>
-            {subcategoryOptions.map((sub) => (
-              <TouchableOpacity
-                key={sub.key}
-                onPress={() => setSelectedSubcategory(sub.key)}
-                style={tw`px-4 py-2 rounded-full mr-2 min-h-[38px] items-center justify-center ${
-                  selectedSubcategory === sub.key ? 'bg-emerald-600' : 'bg-stone-100'
-                }`}
-              >
-                <Text
-                  style={tw`text-sm font-semibold ${
-                    selectedSubcategory === sub.key ? 'text-white' : 'text-stone-600'
-                  }`}
-                >
-                  {sub.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
+        <MarketplaceCategoryBar
+          categoryKeys={categories}
+          selectedCategory={selectedCategory}
+          selectedSubcategory={selectedSubcategory}
+          counts={categoryCounts}
+          subcategoryCounts={subcategoryCounts}
+          totalCount={products.length}
+          onSelectCategory={handleCategoryChange}
+          onSelectSubcategory={setSelectedSubcategory}
+        />
 
         {isLoading && products.length === 0 ? (
           <View style={tw`flex-1 px-4 pt-3`}>
@@ -274,7 +229,7 @@ export default function MarketplaceScreen() {
                 <View style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
                   <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
                   <Text style={tw`text-emerald-100 text-sm mt-1`}>
-                    Products ranked by your interests, journal tags, and community picks.
+                    Products ranked by your interests and community picks.
                   </Text>
                 </View>
                 <SearchField
@@ -303,6 +258,7 @@ export default function MarketplaceScreen() {
                       horizontal
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={tw`pt-2 pb-1`}
+                      style={{ flexGrow: 0 }}
                       {...horizontalScrollProps}
                     >
                       {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
@@ -349,7 +305,15 @@ export default function MarketplaceScreen() {
                     </ScrollView>
                   </View>
                 ) : null}
-                <SectionLabel variant="caps">All products</SectionLabel>
+                <SectionLabel variant="caps">
+                  {selectedCategory
+                    ? getCategoryLabel(
+                        selectedSubcategory
+                          ? `${selectedCategory}:${selectedSubcategory}`
+                          : selectedCategory
+                      )
+                    : 'All products'}
+                </SectionLabel>
               </>
             }
             renderItem={({ item }) => {
@@ -433,11 +397,19 @@ export default function MarketplaceScreen() {
                   actionLabel="Clear search"
                   onAction={() => setSearchQuery('')}
                 />
+              ) : selectedCategory ? (
+                <EmptyState
+                  icon="filter-outline"
+                  title="No products in this path"
+                  description={emptyDescription}
+                  actionLabel="Clear category"
+                  onAction={clearCategoryFilters}
+                />
               ) : (
                 <EmptyState
                   icon="storefront-outline"
                   title="No products yet"
-                  description="When sellers publish SKUs, they’ll appear here with smart ranking for your journey."
+                  description={emptyDescription}
                 />
               )
             }

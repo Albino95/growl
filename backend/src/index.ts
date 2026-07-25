@@ -290,6 +290,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (path === `${apiPrefix}/business/export/products` && request.method === 'GET') {
         return businessRoutes.exportProductsCsv(request, env);
       }
+      if (path === `${apiPrefix}/business/export/sales` && request.method === 'GET') {
+        return businessRoutes.exportSalesCsv(request, env);
+      }
       if (path === `${apiPrefix}/business/notifications` && request.method === 'GET') {
         return businessRoutes.listNotifications(request, env);
       }
@@ -626,6 +629,16 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
       if (path === `${apiPrefix}/admin/business/accounts` && request.method === 'POST') {
         return adminBusinessRoutes.createBusinessAccount(request, env);
+      }
+      const adminBusinessOverviewMatch = path.match(
+        new RegExp(`^${apiPrefix}/admin/business/accounts/([^/]+)/overview$`)
+      );
+      if (adminBusinessOverviewMatch && request.method === 'GET') {
+        return adminBusinessRoutes.getBusinessAccountOverview(
+          request,
+          env,
+          adminBusinessOverviewMatch[1]
+        );
       }
       const adminBusinessAccountMatch = path.match(
         new RegExp(`^${apiPrefix}/admin/business/accounts/([^/]+)$`)

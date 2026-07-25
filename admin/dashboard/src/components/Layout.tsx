@@ -66,7 +66,9 @@ export function Layout() {
               G
             </div>
             <div>
-              <p className="font-semibold text-white">Growl Admin</p>
+              <p className="font-semibold text-white">
+                Grow<span className="text-emerald-400">!</span> Admin
+              </p>
               <p className="text-xs text-slate-400">Trust & Safety</p>
             </div>
           </div>

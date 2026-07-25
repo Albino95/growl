@@ -37,12 +37,16 @@ For local development, see `backend/README.md` or `GETTING_STARTED.md`.
 ## Project Structure
 
 ```
-growl_rn_ts_twrnc_sdk54_v5/
-├── frontend/          # React Native mobile app
-├── backend/           # Cloudflare Workers backend
-├── admin/             # Admin dashboard documentation
-└── config/            # Configuration & environment variables
+growl/
+├── frontend/     # Expo / React Native app
+├── backend/      # Cloudflare Workers API
+├── landing/      # Marketing site (Next.js → Vercel)
+├── admin/        # Admin dashboard
+├── config/
+└── docs/
 ```
+
+Marketing landing: see [landing/README.md](./landing/README.md) (**Grow!** site).
 
 ## Features
 
@@ -62,15 +66,20 @@ growl_rn_ts_twrnc_sdk54_v5/
 - React Navigation
 - Zustand & Redux Toolkit
 
-### Backend (Planned)
+### Backend
 - Cloudflare Workers
 - Cloudflare D1 (SQLite)
 - Cloudflare R2 (Object Storage)
-- Cloudflare Auth
+
+### Landing
+- Next.js App Router
+- React Three Fiber
+- Vercel
 
 ## Documentation
 
 - **Frontend**: See `frontend/README.md`
 - **Backend**: See `backend/BACKEND_ARCHITECTURE.md`
+- **Landing**: See `landing/README.md`
 - **Admin**: See `admin/ADMIN_DASHBOARD_NOTES.md`
 

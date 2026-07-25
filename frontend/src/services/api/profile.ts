@@ -23,6 +23,8 @@ export type CurrentProfile = {
   email: string;
   username?: string;
   avatar?: string;
+  bio?: string | null;
+  status?: string | null;
   points: number;
   is_instructor: boolean;
   is_business: boolean;
@@ -34,6 +36,8 @@ export type PublicProfileApiData = {
   id: string;
   username: string | null;
   avatar: string | null;
+  bio?: string | null;
+  status?: string | null;
   points: number;
   is_instructor: boolean;
   is_business: boolean;
@@ -46,6 +50,8 @@ export type PublicProfileSummary = {
   id: string;
   username: string;
   avatar: string;
+  bio?: string;
+  status?: string;
   points: number;
   isInstructor: boolean;
   categories: string[];
@@ -78,6 +84,8 @@ export async function getPublicProfile(userId: string): Promise<PublicProfileSum
     id: d.id,
     username: (d.username && d.username.trim()) || 'User',
     avatar: d.avatar ?? '',
+    bio: d.bio?.trim() || undefined,
+    status: d.status?.trim() || undefined,
     points: d.points,
     isInstructor: !!d.is_instructor,
     categories: Array.isArray(d.categories) ? d.categories : [],

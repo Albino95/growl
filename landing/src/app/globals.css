@@ -1,0 +1,58 @@
+@import 'tailwindcss';
+
+:root {
+  --brand: #059669;
+  --brand-deep: #047857;
+  --brand-dark: #064e3b;
+  --brand-glow: #34d399;
+  --stone-ink: #1c1917;
+  --stone-muted: #57534e;
+  --stone-soft: #a8a29e;
+  --surface: #f8fafc;
+  --surface-deep: #0c1f17;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  color: var(--stone-ink);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 35%, white);
+  color: var(--stone-ink);
+}
+
+.font-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+.hero-mesh {
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(52, 211, 153, 0.35), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 20% 70%, rgba(5, 150, 105, 0.45), transparent 50%),
+    radial-gradient(ellipse 100% 80% at 50% 100%, rgba(6, 78, 59, 0.9), transparent 45%),
+    linear-gradient(165deg, #064e3b 0%, #0c1f17 45%, #022c22 100%);
+}
