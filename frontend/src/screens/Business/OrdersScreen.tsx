@@ -1,189 +1,202 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { horizontalScrollProps, verticalScrollProps } from '../../constants/scroll';
-import { getBusinessOrders, type Order } from '../../services/api/business';
+import {
+  feedListPerformanceProps,
+  horizontalScrollProps,
+  TAB_SCREEN_BOTTOM_PADDING,
+} from '../../constants/scroll';
 import { updateOrderStatus } from '../../services/api/marketplace';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { fetchBusinessOrders, patchLocalOrderStatus, setOrdersFilter } from '../../store/slices/businessSlice';
+import OrderStatusPill from '../../components/business/OrderStatusPill';
+import BusinessEmptyState from '../../components/business/BusinessEmptyState';
+import BusinessStatStrip from '../../components/business/BusinessStatStrip';
+import SearchField from '../../components/ui/SearchField';
+import SkeletonCard from '../../components/ui/SkeletonCard';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { parseShippingAddress, safeParseJson } from '../../utils/safeJson';
+import type { Order } from '../../services/api/business';
+import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 
-type OrderItem = {
-  id: string;
-  product_id: string;
-  quantity: number;
-  price: number;
-  product_name?: string;
-  product_image?: string;
-};
-
-type BusinessOrder = Order & {
-  orderNumber: string;
-  customer: string;
-  paymentMethod: string;
-};
-
-const STATUS_COLORS = {
-  pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' },
-  processing: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-  shipped: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-  delivered: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-  completed: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-  cancelled: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' },
+const NEXT_STATUS: Record<string, string | null> = {
+  pending: 'processing',
+  processing: 'shipped',
+  shipped: 'delivered',
+  delivered: 'completed',
+  completed: null,
+  cancelled: null,
 };
 
 export default function OrdersScreen() {
   const navigation = useNavigation<any>();
-  const [orders, setOrders] = useState<BusinessOrder[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
+  const route = useRoute<RouteProp<BusinessTabsParamList, 'Orders'>>();
+  const dispatch = useAppDispatch();
+  const orders = useAppSelector((s) => s.business.orders);
+  const statusFilter = useAppSelector((s) => s.business.ordersFilter);
+  const ordersStatus = useAppSelector((s) => s.business.ordersStatus);
   const [refreshing, setRefreshing] = useState(false);
-
-  const loadOrders = async () => {
-    try {
-      setLoading(true);
-      const response = await getBusinessOrders();
-      if (response.success && response.data) {
-        const businessOrders: BusinessOrder[] = response.data.map((order) => {
-          const shippingAddress = typeof order.shipping_address === 'string' 
-            ? JSON.parse(order.shipping_address) 
-            : order.shipping_address;
-          
-          return {
-            ...order,
-            orderNumber: `ORD-${order.id.slice(-8).toUpperCase()}`,
-            customer: shippingAddress?.name || 'Unknown Customer',
-            paymentMethod: order.metadata?.payment_method || 'Card',
-            items: order.items || [],
-          };
-        });
-        setOrders(businessOrders);
-      }
-    } catch (error: any) {
-      console.error('[OrdersScreen] Error loading orders:', error);
-      if (Platform.OS === 'web') {
-        alert(error.message || 'Failed to load orders');
-      } else {
-        Alert.alert('Error', error.message || 'Failed to load orders');
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState(route.params?.search || '');
 
   useEffect(() => {
-    loadOrders();
-  }, []);
+    void dispatch(fetchBusinessOrders());
+  }, [dispatch]);
 
-  const handleRefresh = () => {
+  useEffect(() => {
+    if (route.params?.search) setSearchQuery(route.params.search);
+  }, [route.params?.search]);
+
+  const handleRefresh = async () => {
     setRefreshing(true);
-    loadOrders();
+    await dispatch(fetchBusinessOrders());
+    setRefreshing(false);
   };
 
-  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+  const advanceStatus = async (orderId: string, current: string) => {
+    const next = NEXT_STATUS[current];
+    if (!next) return;
+    const ok = await confirmAsync('Update status', `Mark this order as ${next}?`, {
+      confirmLabel: `Mark ${next}`,
+    });
+    if (!ok) return;
+    setAdvancingId(orderId);
     try {
-      const response = await updateOrderStatus(orderId, newStatus);
+      const response = await updateOrderStatus(orderId, next);
       if (response.success && response.data) {
-        // Update the order in local state
-        setOrders(prevOrders =>
-          prevOrders.map(order =>
-            order.id === orderId
-              ? { ...order, status: response.data.status }
-              : order
-          )
-        );
-        if (Platform.OS === 'web') {
-          alert(`Order status updated to ${newStatus}`);
-        } else {
-          Alert.alert('Success', `Order status updated to ${newStatus}`);
-        }
+        dispatch(patchLocalOrderStatus({ orderId, status: response.data.status }));
       }
-    } catch (error: any) {
-      console.error('[OrdersScreen] Error updating order status:', error);
-      if (Platform.OS === 'web') {
-        alert(error.message || 'Failed to update order status');
+    } catch (e: unknown) {
+      alertMessage('Error', e instanceof Error ? e.message : 'Failed to update status');
+    } finally {
+      setAdvancingId(null);
+    }
+  };
+
+  const filteredOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let list = orders;
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'pending') {
+        list = list.filter((o) => o.status === 'pending' || o.status === 'processing');
       } else {
-        Alert.alert('Error', error.message || 'Failed to update order status');
+        list = list.filter((o) => o.status === statusFilter);
       }
     }
-  };
-
-  const showStatusMenu = (order: BusinessOrder) => {
-    const statusOptions = ['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'];
-    const availableStatuses = statusOptions.filter(s => s !== order.status);
-
-    if (availableStatuses.length === 0) {
-      return;
-    }
-
-    if (Platform.OS === 'web') {
-      // For web, show a simple prompt
-      const status = prompt(`Update order status:\n${availableStatuses.join(', ')}`);
-      if (status && availableStatuses.includes(status)) {
-        handleStatusUpdate(order.id, status);
-      }
-    } else {
-      // For native, show action sheet
-      Alert.alert(
-        'Update Order Status',
-        `Current: ${order.status}\n\nSelect new status:`,
-        [
-          ...availableStatuses.map(status => ({
-            text: status.charAt(0).toUpperCase() + status.slice(1),
-            onPress: () => handleStatusUpdate(order.id, status),
-          })),
-          { text: 'Cancel', style: 'cancel' },
-        ]
+    if (!q) return list;
+    return list.filter((o) => {
+      const shipping = parseShippingAddress(o.shipping_address);
+      const customer = (shipping?.name || '').toLowerCase();
+      const idTail = o.id.slice(-8).toLowerCase();
+      return (
+        o.id.toLowerCase().includes(q) ||
+        idTail.includes(q) ||
+        customer.includes(q) ||
+        (o.user_id || '').toLowerCase().includes(q)
       );
-    }
-  };
-
-  const filteredOrders = statusFilter === 'all' 
-    ? orders 
-    : orders.filter(o => o.status === statusFilter);
+    });
+  }, [orders, statusFilter, searchQuery]);
 
   const totalRevenue = orders
-    .filter(o => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + o.total, 0);
-  const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
+    .filter((o) => o.status !== 'cancelled')
+    .reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const pendingCount = orders.filter((o) => o.status === 'pending' || o.status === 'processing').length;
+  const loading = ordersStatus === 'loading' && orders.length === 0;
+
+  const renderOrder = ({ item: order }: { item: Order }) => {
+    const shipping = parseShippingAddress(order.shipping_address);
+    const customer = shipping?.name || 'Customer';
+    const next = NEXT_STATUS[order.status || 'pending'];
+    const itemCount = order.items?.length || 0;
+    const meta = safeParseJson<{ tracking_number?: string; carrier?: string }>(order.metadata, {});
+    const trackingLine =
+      meta.tracking_number
+        ? `${meta.carrier ? `${meta.carrier}: ` : ''}${meta.tracking_number}`
+        : null;
+
+    return (
+      <View style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })
+          }
+        >
+          <View style={tw`flex-row items-start justify-between mb-2`}>
+            <View style={tw`flex-1 pr-2`}>
+              <Text style={tw`text-xs text-stone-400 font-semibold`}>
+                ORD-{order.id.slice(-8).toUpperCase()}
+              </Text>
+              <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>{customer}</Text>
+              <Text style={tw`text-sm text-stone-500 mt-1`}>
+                {itemCount} item{itemCount === 1 ? '' : 's'} ·{' '}
+                {new Date(order.created_at).toLocaleDateString()}
+              </Text>
+              {trackingLine ? (
+                <Text style={tw`text-xs text-emerald-700 mt-1 font-medium`} numberOfLines={1}>
+                  {trackingLine}
+                </Text>
+              ) : null}
+            </View>
+            <View style={tw`items-end`}>
+              <Text style={tw`text-xl font-bold text-stone-900`}>
+                ${Number(order.total || 0).toFixed(2)}
+              </Text>
+              <View style={tw`mt-1`}>
+                <OrderStatusPill status={order.status || 'pending'} />
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+        {next ? (
+          <TouchableOpacity
+            style={tw`mt-2 bg-emerald-600 rounded-xl py-3 items-center ${
+              advancingId === order.id ? 'opacity-50' : ''
+            }`}
+            disabled={advancingId === order.id}
+            onPress={() => void advanceStatus(order.id, order.status || 'pending')}
+          >
+            <Text style={tw`text-white font-semibold`}>
+              {advancingId === order.id ? 'Updating…' : `Mark ${next}`}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
       <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
         <Text style={tw`text-2xl font-bold text-stone-900 mb-3 tracking-tight`}>Orders</Text>
-        
-        {/* Stats */}
-        <View style={tw`flex-row gap-3 mb-3`}>
-          <View style={tw`flex-1 bg-green-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-green-600 mb-1`}>Total Revenue</Text>
-            <Text style={tw`text-xl font-bold text-green-900`}>${totalRevenue.toFixed(2)}</Text>
-          </View>
-          <View style={tw`flex-1 bg-orange-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-orange-600 mb-1`}>Pending</Text>
-            <Text style={tw`text-xl font-bold text-orange-900`}>{pendingOrders}</Text>
-          </View>
-          <View style={tw`flex-1 bg-blue-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-blue-600 mb-1`}>Total Orders</Text>
-            <Text style={tw`text-xl font-bold text-blue-900`}>{orders.length}</Text>
-          </View>
+        <BusinessStatStrip
+          items={[
+            { label: 'All-time revenue', value: `$${totalRevenue.toFixed(2)}`, tone: 'emerald' },
+            { label: 'To fulfill', value: String(pendingCount), tone: 'amber' },
+            { label: 'Total', value: String(orders.length), tone: 'stone' },
+          ]}
+        />
+        <View style={tw`mt-3`}>
+          <SearchField
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search customer or order ID…"
+          />
         </View>
-
-        {/* Status Filters */}
-        <ScrollView horizontal style={tw`-mx-4 px-4`} {...horizontalScrollProps}>
-          <View style={tw`flex-row gap-2`}>
+        <ScrollView horizontal {...horizontalScrollProps} showsHorizontalScrollIndicator={false}>
+          <View style={tw`flex-row gap-2 pr-4`}>
             {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
               <TouchableOpacity
                 key={status}
-                onPress={() => setStatusFilter(status)}
-                style={tw`px-4 py-2 rounded-full ${
-                  statusFilter === status ? 'bg-emerald-600' : 'bg-stone-100'
-                }`}
+                onPress={() => dispatch(setOrdersFilter(status))}
+                style={tw`px-4 py-2 rounded-full ${statusFilter === status ? 'bg-emerald-600' : 'bg-stone-100'}`}
               >
-                <Text style={tw`text-sm font-semibold ${
-                  statusFilter === status ? 'text-white' : 'text-stone-600'
-                }`}>
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                <Text
+                  style={tw`text-sm font-semibold ${statusFilter === status ? 'text-white' : 'text-stone-600'}`}
+                >
+                  {status === 'pending' ? 'To fulfill' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -191,93 +204,41 @@ export default function OrdersScreen() {
         </ScrollView>
       </View>
 
-      {/* Orders List */}
-      <ScrollView
-        style={tw`flex-1 px-4 pt-4`}
-        {...verticalScrollProps}
+      <FlatList
+        style={tw`flex-1`}
+        data={filteredOrders}
+        keyExtractor={(item) => item.id}
+        renderItem={renderOrder}
+        contentContainerStyle={[
+          tw`px-4 pt-4`,
+          filteredOrders.length === 0 ? tw`flex-grow` : null,
+          { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
+        ]}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor="#059669"
-            colors={['#059669']}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" colors={['#059669']} />
         }
-      >
-        {loading && orders.length === 0 ? (
-          <View style={tw`items-center justify-center py-12`}>
-            <Text style={tw`text-gray-500`}>Loading orders...</Text>
-          </View>
-        ) : filteredOrders.length === 0 ? (
-          <View style={tw`items-center justify-center py-12`}>
-            <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
-            <Text style={tw`text-gray-500 mt-4 text-center`}>
-              {statusFilter === 'all' ? 'No orders yet' : `No ${statusFilter} orders`}
-            </Text>
-          </View>
-        ) : (
-          filteredOrders.map((order) => {
-            const statusStyle = STATUS_COLORS[order.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
-            const orderDate = new Date(order.created_at).toLocaleDateString();
-            
-            return (
-              <TouchableOpacity
-                key={order.id}
-                style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100`}
-                activeOpacity={0.85}
-                onPress={() => navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })}
-              >
-                <View style={tw`flex-row items-center justify-between mb-3`}>
-                  <View>
-                    <Text style={tw`text-sm font-semibold text-gray-500`}>{order.orderNumber}</Text>
-                    <Text style={tw`text-lg font-bold text-gray-900 mt-1`}>{order.customer}</Text>
-                  </View>
-                  <View style={tw`items-end`}>
-                    <TouchableOpacity
-                      onPress={() => showStatusMenu(order)}
-                      style={tw`px-3 py-1.5 rounded-full ${statusStyle.bg} border ${statusStyle.border} mb-2 flex-row items-center`}
-                    >
-                      <Text style={tw`text-xs font-semibold ${statusStyle.text}`}>
-                        {order.status.toUpperCase()}
-                      </Text>
-                      <Ionicons name="chevron-down" size={12} style={tw`ml-1 ${statusStyle.text}`} />
-                    </TouchableOpacity>
-                    <Text style={tw`text-xl font-bold text-gray-900`}>${order.total.toFixed(2)}</Text>
-                  </View>
-                </View>
-
-                <View style={tw`border-t border-gray-100 pt-3`}>
-                  {order.items && order.items.length > 0 ? (
-                    order.items.map((item: OrderItem, idx: number) => (
-                      <View key={item.id || idx} style={tw`flex-row items-center justify-between mb-2`}>
-                        <Text style={tw`text-sm text-gray-600 flex-1`}>
-                          {item.quantity}x {item.product_name || 'Product'}
-                        </Text>
-                        <Text style={tw`text-sm font-semibold text-gray-900`}>
-                          ${(item.quantity * item.price).toFixed(2)}
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={tw`text-sm text-gray-400`}>No items</Text>
-                  )}
-                </View>
-
-                <View style={tw`flex-row items-center justify-between mt-3 pt-3 border-t border-gray-100`}>
-                  <View style={tw`flex-row items-center`}>
-                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                    <Text style={tw`text-xs text-gray-500 ml-1`}>{orderDate}</Text>
-                  </View>
-                  <View style={tw`flex-row items-center`}>
-                    <Ionicons name="card-outline" size={16} color="#6B7280" />
-                    <Text style={tw`text-xs text-gray-500 ml-1`}>{order.paymentMethod}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+        {...feedListPerformanceProps}
+        ListEmptyComponent={
+          loading ? (
+            <View>
+              <SkeletonCard variant="product" />
+              <SkeletonCard variant="product" />
+            </View>
+          ) : (
+            <BusinessEmptyState
+              icon="receipt-outline"
+              title={
+                searchQuery
+                  ? 'No matching orders'
+                  : statusFilter === 'all'
+                    ? 'No orders yet'
+                    : `No ${statusFilter} orders`
+              }
+              description="Orders from the marketplace will show up here."
+            />
+          )
+        }
+      />
     </SafeAreaView>
   );
 }

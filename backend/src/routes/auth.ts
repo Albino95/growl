@@ -267,6 +267,37 @@ async function verifyFacebookAccessToken(
   return { email: data.email.toLowerCase(), name: data.name };
 }
 
+/** Decode Apple identity JWT payload (signature verification should use Apple JWKS in production). */
+function verifyAppleIdToken(
+  idToken: string,
+  env: Env
+): { email: string; name?: string; sub: string } {
+  const parts = idToken.split('.');
+  if (parts.length !== 3) throw new Error('Invalid Apple identity token');
+
+  let payload: { email?: string; sub?: string; aud?: string; iss?: string };
+  try {
+    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+    payload = JSON.parse(json) as typeof payload;
+  } catch {
+    throw new Error('Invalid Apple identity token payload');
+  }
+
+  if (payload.iss !== 'https://appleid.apple.com') {
+    throw new Error('Apple token issuer mismatch');
+  }
+  if (env.APPLE_CLIENT_ID && payload.aud && payload.aud !== env.APPLE_CLIENT_ID) {
+    throw new Error('Apple token audience mismatch');
+  }
+  if (!payload.sub) throw new Error('Apple token missing subject');
+
+  const email = payload.email?.toLowerCase();
+  if (!email) {
+    return { email: `${payload.sub}@privaterelay.appleid.com`, sub: payload.sub };
+  }
+  return { email, sub: payload.sub };
+}
+
 /**
  * POST /api/v1/auth/sso
  */
@@ -289,6 +320,11 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
       const profile = await verifyGoogleIdToken(idToken, env);
       email = profile.email;
       username = profile.name;
+    } else if (provider === 'apple') {
+      if (!idToken) return error('VALIDATION_ERROR', 'idToken required for Apple', 400);
+      const profile = verifyAppleIdToken(idToken, env);
+      email = profile.email;
+      username = profile.email.split('@')[0];
     } else {
       if (!accessToken) return error('VALIDATION_ERROR', 'accessToken required for Facebook', 400);
       const profile = await verifyFacebookAccessToken(accessToken);

@@ -1,44 +1,39 @@
 # Explore ranking — how it works
 
-Implementation: `frontend/src/utils/exploreAlgorithm.ts`  
-UI that loads data and calls it: `frontend/src/screens/Explore/ExploreScreen.tsx`  
-Automated checks: `frontend/src/utils/exploreAlgorithm.test.ts` (run `npm test` in `frontend/`)
+Implementation: `frontend/src/utils/ranking/`  
+UI: `frontend/src/screens/Explore/ExploreScreen.tsx` (single scroll, multi-section)  
+Tests: `frontend/src/utils/exploreAlgorithm.test.ts`
 
-## Goal
+## Explore screen sections (top to bottom)
 
-Mix **feed posts** and **marketplace products** into one discovery stream that feels personalized but cheap to compute on-device.
+1. **Stories to meet** — horizontal story rings from `rankDiscoverPeople`
+2. **Shop picks for you** — top 4 from `rankMarketplaceProducts`
+3. **Posts for you** — 2-column grid from `rankExploreRows` (posts only)
+4. **People to follow** — ranked people cards + Add Friend
+5. **Reels & clips** — vertical list from `rankDiscoverReelPosts`
 
 ## Score formula (posts)
 
-For each post:
-
 ```
-score = categoryMatch
-      + recencyBoost * 0.6
-      + min(40, (likes + comments) * 1.2)
-      + jitter(id) * 8
+score = categoryMatch + recencyBoost*0.65 + engagementBoost + friendSignals + jitter*8
 ```
 
-- **categoryMatch** — Your onboarding paths like `art:violin` are expanded to `{ art, art:violin }`. We reward exact subcategory matches most, parent category matches less, and add a small fuzzy overlap between category strings.
-- **recencyBoost** — `max(0, 48 - ageHours)` so fresh items from ~the last two days surface higher.
-- **Engagement** — Likes + comments add signal but are capped so one viral thread cannot explode past everything else.
-- **jitter** — Deterministic pseudo-random tie-break from the item id (stable across re-renders).
+Shared primitives live in `ranking/scores.ts`. Products in Explore use `productScoreMultiplier` (default 0.45) so the feed stays post-first.
 
-## Score formula (products)
+## Home feed (For You)
 
-Same category machinery, smaller recency multiplier, small bonus if `stock > 0`, lower jitter weight.
+`GET /feed/feed?mode=foryou` returns:
 
-## Sorting
+```json
+{ "following": [...], "suggested": [...] }
+```
 
-Sort all candidate rows by **score descending**. No MMR / diversity pass yet (that is the next architectural step when duplicates annoy people).
+Each post includes `relevance_score` and `feed_section`. Cold-start fills `suggested` to at least 5 items when the user has onboarding categories.
+
+## Marketplace ranking
+
+`rankMarketplaceProducts` uses category paths, recency, stock, journal tag overlap (when available), and purchase affinity.
 
 ## Tests
 
-Vitest covers cohort expansion, category preference vs mismatch, recency ordering, jitter stability, and end-to-end ordering with a frozen clock.
-
-## Next upgrades (when you outgrow v1)
-
-1. Friend / cohort boost using `GET /social/friends`.
-2. Session memory: down-rank items already opened from Explore.
-3. MMR or per-author caps for fairness.
-4. Server-side “explore” endpoint if payloads get large (pagination + indices).
+Run `npm test` in `frontend/` (requires vitest config compatible with your Node version).

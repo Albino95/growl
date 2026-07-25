@@ -32,6 +32,20 @@ export async function getRequestContext(request: Request, env: any): Promise<Req
     return { isAuthenticated: false };
   }
 
+  const accountState = (await env.DB.prepare(
+    'SELECT status FROM user_account_states WHERE user_id = ?'
+  )
+    .bind(userId)
+    .first()) as { status?: string } | null;
+
+  if (
+    accountState?.status === 'deleted' ||
+    accountState?.status === 'deleted_pending' ||
+    user.email.endsWith('@growl.invalid')
+  ) {
+    return { isAuthenticated: false };
+  }
+
   return {
     userId,
     user,

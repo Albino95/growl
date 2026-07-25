@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, Platform } from 'react-native';
+import { View, Text, Platform, Animated, Pressable } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -10,7 +10,8 @@ import JournalScreen from '../../../screens/Journal/JournalScreen';
 import ProfileScreen from '../../../screens/Profile/ProfileScreen';
 import InstructorScreen from '../../../screens/Instructor/InstructorScreen';
 import MarketplaceScreen from '../../../screens/Marketplace/MarketplaceScreen';
-import tw from '../../../lib/tw';
+import tw, { theme } from '../../../lib/tw';
+import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
 
 export type IndividualTabsParamList = {
@@ -33,14 +34,14 @@ const TAB_LEFT: Array<{
   inactiveIcon: keyof typeof Ionicons.glyphMap;
   activeColor: string;
 }> = [
-  { key: 'Feed', label: 'Feed', activeIcon: 'home', inactiveIcon: 'home-outline', activeColor: '#059669' },
-  { key: 'Explore', label: 'Explore', activeIcon: 'compass', inactiveIcon: 'compass-outline', activeColor: '#7C3AED' },
+  { key: 'Feed', label: 'Feed', activeIcon: 'home', inactiveIcon: 'home-outline', activeColor: theme.colors.brand },
+  { key: 'Explore', label: 'Explore', activeIcon: 'compass', inactiveIcon: 'compass-outline', activeColor: theme.colors.accent },
 ];
 
 const TAB_RIGHT: typeof TAB_LEFT = [
-  { key: 'Journal', label: 'Journal', activeIcon: 'book', inactiveIcon: 'book-outline', activeColor: '#059669' },
-  { key: 'Marketplace', label: 'Shop', activeIcon: 'storefront', inactiveIcon: 'storefront-outline', activeColor: '#059669' },
-  { key: 'Profile', label: 'Profile', activeIcon: 'person', inactiveIcon: 'person-outline', activeColor: '#059669' },
+  { key: 'Journal', label: 'Journal', activeIcon: 'book', inactiveIcon: 'book-outline', activeColor: theme.colors.brand },
+  { key: 'Marketplace', label: 'Shop', activeIcon: 'storefront', inactiveIcon: 'storefront-outline', activeColor: theme.colors.brand },
+  { key: 'Profile', label: 'Profile', activeIcon: 'person', inactiveIcon: 'person-outline', activeColor: theme.colors.brand },
 ];
 
 function TabButton({
@@ -53,7 +54,7 @@ function TabButton({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       style={tw`flex-1 items-center pb-1.5 min-w-0`}
       hitSlop={{ top: 8, right: 6, bottom: 8, left: 6 }}
@@ -63,34 +64,27 @@ function TabButton({
       <Ionicons
         name={isActive ? tab.activeIcon : tab.inactiveIcon}
         size={22}
-        color={isActive ? tab.activeColor : '#A8A29E'}
+        color={isActive ? tab.activeColor : theme.colors.textSubtle}
       />
       <Text
         style={tw`text-xs mt-0.5 ${isActive ? 'font-semibold' : ''}`}
         numberOfLines={1}
       >
-        <Text style={{ color: isActive ? tab.activeColor : '#78716C' }}>{tab.label}</Text>
+        <Text style={{ color: isActive ? tab.activeColor : theme.colors.textMuted }}>{tab.label}</Text>
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 export default function IndividualTabs() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const handleCreatePost = () => {
-    navigateFromRoot(navigation, 'Post');
-  };
+  const fabFeedback = usePressFeedback({
+    onPress: () => navigateFromRoot(navigation, 'Post'),
+  });
 
   const fabShadow =
-    Platform.OS === 'ios'
-      ? {
-          shadowColor: '#047857',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.35,
-          shadowRadius: 6,
-        }
-      : { elevation: 8 };
+    Platform.OS === 'ios' ? theme.shadows.fab : { elevation: 8 };
 
   return (
     <Tab.Navigator
@@ -118,20 +112,25 @@ export default function IndividualTabs() {
               </View>
 
               <View style={tw`w-[74px] items-center justify-end pb-0.5`} pointerEvents="box-none">
-                <TouchableOpacity
-                  onPress={handleCreatePost}
-                  activeOpacity={0.85}
+                <Pressable
+                  onPress={fabFeedback.onPress}
+                  onPressIn={fabFeedback.onPressIn}
+                  onPressOut={fabFeedback.onPressOut}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={[
-                    tw`w-14 h-14 rounded-full bg-emerald-600 items-center justify-center border-4 border-white`,
-                    fabShadow,
-                    { marginTop: -18 },
-                  ]}
                   accessibilityRole="button"
                   accessibilityLabel="Create post"
                 >
-                  <Ionicons name="add" size={30} color="#FFFFFF" />
-                </TouchableOpacity>
+                  <Animated.View
+                    style={[
+                      tw`w-14 h-14 rounded-full bg-brand-600 items-center justify-center border-4 border-white`,
+                      fabShadow,
+                      { marginTop: -18 },
+                      fabFeedback.animatedStyle,
+                    ]}
+                  >
+                    <Ionicons name="add" size={30} color="#FFFFFF" />
+                  </Animated.View>
+                </Pressable>
                 <View style={tw`h-[18px]`} />
               </View>
 

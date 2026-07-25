@@ -10,6 +10,9 @@ import * as profileRoutes from './routes/profile';
 import * as storiesRoutes from './routes/stories';
 import * as friendsRoutes from './routes/friends';
 import * as mediaRoutes from './routes/media';
+import * as privacyRoutes from './routes/privacy';
+import * as journalRoutes from './routes/journal';
+import * as messagesRoutes from './routes/messages';
 import * as adminAuthRoutes from './routes/admin/auth';
 import * as adminModerationRoutes from './routes/admin/moderation';
 import * as adminUsersRoutes from './routes/admin/users';
@@ -57,6 +60,8 @@ export default {
           marketplace: {
             products: `${apiPrefix}/marketplace/products`,
             orders: `${apiPrefix}/marketplace/orders`,
+            paymentConfig: `${apiPrefix}/marketplace/payment-config`,
+            checkoutSession: `${apiPrefix}/marketplace/checkout-session`,
           },
           profile: `${apiPrefix}/profile`,
           publicProfileByUserId: `${apiPrefix}/profile/user/:userId`,
@@ -65,6 +70,8 @@ export default {
             friendshipStatus: `${apiPrefix}/social/friends/status/:userId`,
           },
           stories: `${apiPrefix}/stories`,
+          journal: `${apiPrefix}/journal/entries`,
+          messages: `${apiPrefix}/messages/conversations`,
           media: {
             upload: `${apiPrefix}/media/upload`,
             get: `${apiPrefix}/media/:key`,
@@ -173,6 +180,13 @@ export default {
         }
       }
 
+      if (path === `${apiPrefix}/marketplace/payment-config` && request.method === 'GET') {
+        return marketplaceRoutes.getPaymentConfig(request, env);
+      }
+      if (path === `${apiPrefix}/marketplace/checkout-session` && request.method === 'POST') {
+        return marketplaceRoutes.createCheckoutSession(request, env);
+      }
+
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'GET') {
         return marketplaceRoutes.getProducts(request, env);
       }
@@ -212,6 +226,20 @@ export default {
         }
       }
 
+      const endorsementStatusMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/candidates/([^/]+)/endorsement-status$`)
+      );
+      if (endorsementStatusMatch && request.method === 'GET') {
+        return instructorRoutes.getEndorsementStatus(request, env, endorsementStatusMatch[1]);
+      }
+
+      if (path === `${apiPrefix}/instructor/eligibility` && request.method === 'GET') {
+        return instructorRoutes.getEligibility(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/claim` && request.method === 'POST') {
+        return instructorRoutes.claimInstructor(request, env);
+      }
+
       const instructorMatch = path.match(new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)$`));
       if (instructorMatch) {
         const instructorId = instructorMatch[1];
@@ -233,6 +261,48 @@ export default {
       }
       if (path === `${apiPrefix}/business/orders` && request.method === 'GET') {
         return businessRoutes.getBusinessOrders(request, env);
+      }
+      if (path === `${apiPrefix}/business/customers` && request.method === 'GET') {
+        return businessRoutes.getCustomers(request, env);
+      }
+      if (path === `${apiPrefix}/business/export/orders` && request.method === 'GET') {
+        return businessRoutes.exportOrdersCsv(request, env);
+      }
+      if (path === `${apiPrefix}/business/export/products` && request.method === 'GET') {
+        return businessRoutes.exportProductsCsv(request, env);
+      }
+      if (path === `${apiPrefix}/business/notifications` && request.method === 'GET') {
+        return businessRoutes.listNotifications(request, env);
+      }
+      const businessNotificationReadMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/notifications/([^/]+)/read$`)
+      );
+      if (businessNotificationReadMatch && request.method === 'PATCH') {
+        return businessRoutes.markNotificationRead(request, env, businessNotificationReadMatch[1]);
+      }
+      if (path === `${apiPrefix}/business/promo-codes` && request.method === 'GET') {
+        return businessRoutes.listPromoCodes(request, env);
+      }
+      if (path === `${apiPrefix}/business/promo-codes` && request.method === 'POST') {
+        return businessRoutes.createPromoCode(request, env);
+      }
+      const businessPromoMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/promo-codes/([^/]+)$`)
+      );
+      if (businessPromoMatch && request.method === 'PATCH') {
+        return businessRoutes.updatePromoCode(request, env, businessPromoMatch[1]);
+      }
+      const businessOrderFulfillmentMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/orders/([^/]+)/fulfillment$`)
+      );
+      if (businessOrderFulfillmentMatch && request.method === 'PATCH') {
+        return businessRoutes.updateOrderFulfillment(request, env, businessOrderFulfillmentMatch[1]);
+      }
+      const businessOrderRefundMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/orders/([^/]+)/refund-request$`)
+      );
+      if (businessOrderRefundMatch && request.method === 'POST') {
+        return businessRoutes.requestOrderRefund(request, env, businessOrderRefundMatch[1]);
       }
       const businessOrderDetailMatch = path.match(new RegExp(`^${apiPrefix}/business/orders/([^/]+)$`));
       if (businessOrderDetailMatch && request.method === 'GET') {
@@ -256,11 +326,35 @@ export default {
       if (path === `${apiPrefix}/business/analytics/timeseries` && request.method === 'GET') {
         return businessRoutes.getAnalyticsTimeseries(request, env);
       }
+      if (path === `${apiPrefix}/business/analytics/funnel` && request.method === 'GET') {
+        return businessRoutes.getAnalyticsFunnel(request, env);
+      }
       if (path === `${apiPrefix}/business/analytics/top-products` && request.method === 'GET') {
         return businessRoutes.getTopProducts(request, env);
       }
       if (path === `${apiPrefix}/business/analytics/partnerships` && request.method === 'GET') {
         return businessRoutes.getPartnershipPerformance(request, env);
+      }
+      const partnershipUpdateMatch = path.match(
+        new RegExp(`^${apiPrefix}/business/partnerships/([^/]+)$`)
+      );
+      if (
+        partnershipUpdateMatch &&
+        request.method === 'PATCH' &&
+        partnershipUpdateMatch[1] !== 'requests' &&
+        partnershipUpdateMatch[1] !== 'discover'
+      ) {
+        return businessRoutes.updatePartnership(request, env, partnershipUpdateMatch[1]);
+      }
+      if (path === `${apiPrefix}/business/campaigns` && request.method === 'GET') {
+        return businessRoutes.listCampaigns(request, env);
+      }
+      if (path === `${apiPrefix}/business/campaigns` && request.method === 'POST') {
+        return businessRoutes.createCampaign(request, env);
+      }
+      const campaignMatch = path.match(new RegExp(`^${apiPrefix}/business/campaigns/([^/]+)$`));
+      if (campaignMatch && request.method === 'PATCH') {
+        return businessRoutes.updateCampaign(request, env, campaignMatch[1]);
       }
       if (path === `${apiPrefix}/business/settings` && request.method === 'GET') {
         return businessRoutes.getBusinessSettings(request, env);
@@ -310,6 +404,51 @@ export default {
         return mediaRoutes.getMedia(request, env, mediaMatch[1]);
       }
 
+      // Journal routes
+      const journalUserMatch = path.match(new RegExp(`^${apiPrefix}/journal/entries/user/([^/]+)$`));
+      if (journalUserMatch && request.method === 'GET') {
+        return journalRoutes.getUserPublicJournalEntries(request, env, journalUserMatch[1]);
+      }
+
+      const journalEntryMatch = path.match(new RegExp(`^${apiPrefix}/journal/entries/([^/]+)$`));
+      if (journalEntryMatch) {
+        const entryId = journalEntryMatch[1];
+        if (request.method === 'PUT') {
+          return journalRoutes.updateJournalEntry(request, env, entryId);
+        }
+        if (request.method === 'DELETE') {
+          return journalRoutes.deleteJournalEntry(request, env, entryId);
+        }
+      }
+
+      if (path === `${apiPrefix}/journal/entries` && request.method === 'GET') {
+        return journalRoutes.getJournalEntries(request, env);
+      }
+      if (path === `${apiPrefix}/journal/entries` && request.method === 'POST') {
+        return journalRoutes.createJournalEntry(request, env);
+      }
+
+      // Messages routes
+      const conversationMessagesMatch = path.match(
+        new RegExp(`^${apiPrefix}/messages/conversations/([^/]+)/messages$`)
+      );
+      if (conversationMessagesMatch) {
+        const conversationId = conversationMessagesMatch[1];
+        if (request.method === 'GET') {
+          return messagesRoutes.getMessages(request, env, conversationId);
+        }
+        if (request.method === 'POST') {
+          return messagesRoutes.sendMessage(request, env, conversationId);
+        }
+      }
+
+      if (path === `${apiPrefix}/messages/conversations` && request.method === 'GET') {
+        return messagesRoutes.getConversations(request, env);
+      }
+      if (path === `${apiPrefix}/messages/conversations` && request.method === 'POST') {
+        return messagesRoutes.createConversation(request, env);
+      }
+
       // Friends / cohort social graph
       const friendStatusMatch = path.match(new RegExp(`^${apiPrefix}/social/friends/status/([^/]+)$`));
       if (friendStatusMatch && request.method === 'GET') {
@@ -348,7 +487,15 @@ export default {
         return friendsRoutes.muteUser(request, env);
       }
       if (path === `${apiPrefix}/social/report` && request.method === 'POST') {
-        return friendsRoutes.reportUser(request, env);
+        return friendsRoutes.reportContent(request, env);
+      }
+
+      // User privacy (GDPR / store compliance)
+      if (path === `${apiPrefix}/privacy/export` && request.method === 'GET') {
+        return privacyRoutes.exportAccountData(request, env);
+      }
+      if (path === `${apiPrefix}/privacy/delete-account` && request.method === 'POST') {
+        return privacyRoutes.deleteAccount(request, env);
       }
 
       // Profile routes (specific paths before /profile)

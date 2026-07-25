@@ -19,6 +19,14 @@ binding = "KV"
 id = "acb4474069c041bd838e3c2f6de54257"
 preview_id = "536de44686804dfaa0f27e5a523b596e"
 
+# R2 bucket for media storage.
+# Temporarily disabled: Cloudflare account needs R2 enabled + bucket `growl-media`
+# created before this binding can be restored. Deploy fails with code 10085/10042 otherwise.
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "growl-media"
+# preview_bucket_name = "growl-media-preview"
+
 # Environment variables
 [vars]
 ENVIRONMENT = "development"

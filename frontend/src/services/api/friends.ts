@@ -170,10 +170,19 @@ export async function unmuteUser(targetUserId: string): Promise<void> {
   });
 }
 
-/** Submits a moderation report for a user with a reason slug. */
-export async function reportUser(targetUserId: string, reason: string): Promise<void> {
+/** Submits a moderation report for a user or post with a reason slug. */
+export async function reportContent(
+  targetId: string,
+  targetType: 'user' | 'post' | 'journal',
+  reason: string
+): Promise<void> {
   await request('/social/report', {
     method: 'POST',
-    body: JSON.stringify({ targetUserId, reason }),
+    body: JSON.stringify({ targetId, targetType, reason }),
   });
+}
+
+/** @deprecated Use reportContent with targetType 'user' */
+export async function reportUser(targetUserId: string, reason: string): Promise<void> {
+  await reportContent(targetUserId, 'user', reason);
 }

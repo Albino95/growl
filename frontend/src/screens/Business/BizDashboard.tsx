@@ -1,335 +1,331 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { getDashboard, type DashboardKPIs } from '../../services/api/business';
-import type { Order } from '../../services/api/marketplace';
+import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
+import {
+  setCatalogFilter,
+  setOrdersFilter,
+  fetchNotifications,
+  markNotificationReadLocal,
+} from '../../store/slices/businessSlice';
+import { markBusinessNotificationRead } from '../../services/api/business';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { verticalScrollProps } from '../../constants/scroll';
-import { startOfBusinessPeriod, bucketOrdersByDay } from '../../utils/businessMetrics';
+import BusinessScreen from '../../components/business/BusinessScreen';
+import KpiCard from '../../components/business/KpiCard';
+import PeriodToggle from '../../components/business/PeriodToggle';
+import ActionInbox, { type ActionInboxItem } from '../../components/business/ActionInbox';
+import OrderStatusPill from '../../components/business/OrderStatusPill';
+import SkeletonCard from '../../components/ui/SkeletonCard';
+import SectionLabel from '../../components/ui/SectionLabel';
+import { parseShippingAddress } from '../../utils/safeJson';
 
-type KpiCard = {
-  label: string;
-  value: string;
-  change: string;
-  trend: 'up' | 'down' | 'neutral';
-  icon: string;
-};
+function formatTimeAgo(dateString: string) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffHours < 1) return 'Just now';
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
 
 export default function BizDashboard() {
   const navigation = useNavigation<any>();
-  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
-  const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  const notifications = useAppSelector((s) => s.business.notifications);
+  const unreadCount = useAppSelector((s) => s.business.unreadNotificationCount);
+  const { period, setPeriod, kpis, timeseries, status, error, loading, refresh } =
+    useBusinessDashboard();
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadDashboard = useCallback(async (period: 'today' | 'week' | 'month', isPullRefresh = false) => {
+  const stackNav = navigation.getParent?.() || navigation;
+
+  const openAnalytics = () => stackNav.navigate('BusinessAnalytics');
+  const openSettings = () => stackNav.navigate('BusinessSettings');
+  const openCustomers = () => stackNav.navigate('BusinessCustomers');
+
+  useFocusEffect(
+    useCallback(() => {
+      void dispatch(fetchNotifications());
+    }, [dispatch])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      if (!isPullRefresh) {
-        setLoading(true);
-      }
-      setLoadError(null);
-      const response = await getDashboard(period);
-      if (response.success && response.data) {
-        setKpis(response.data.kpis);
-        setRecentOrders(response.data.kpis.recent_orders || []);
-      }
-    } catch (error: unknown) {
-      console.error('[BizDashboard] Error loading dashboard:', error);
-      const msg = error instanceof Error ? error.message : 'Failed to load dashboard';
-      setLoadError(msg);
+      await Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()]);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [refresh, dispatch]);
 
-  useEffect(() => {
-    void loadDashboard(selectedPeriod, false);
-  }, [loadDashboard, selectedPeriod]);
+  const handleNotificationPress = useCallback(
+    (id: string, refType?: string | null, refId?: string | null) => {
+      dispatch(markNotificationReadLocal(id));
+      void markBusinessNotificationRead(id).catch(() => {});
+      if (refType === 'order' && refId) {
+        stackNav.navigate('BusinessOrderDetail', { orderId: refId });
+      }
+    },
+    [dispatch, stackNav]
+  );
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    void loadDashboard(selectedPeriod, true);
-  };
+  const inboxItems: ActionInboxItem[] = useMemo(() => {
+    const items: ActionInboxItem[] = [];
 
-  const openAnalytics = () => {
-    navigation.getParent()?.navigate('BusinessAnalytics' as never);
-  };
+    notifications
+      .filter((n) => !n.read)
+      .slice(0, 5)
+      .forEach((n) => {
+        items.push({
+          id: `notif-${n.id}`,
+          title: n.title,
+          subtitle: n.body || undefined,
+          icon: 'notifications-outline',
+          tone: 'blue',
+          onPress: () => handleNotificationPress(n.id, n.ref_type, n.ref_id),
+        });
+      });
 
-  const filteredRecentOrders = useMemo(() => {
-    const t0 = startOfBusinessPeriod(selectedPeriod);
-    return recentOrders.filter((o) => new Date(o.created_at).getTime() >= t0);
-  }, [recentOrders, selectedPeriod]);
-
-  const orderBars = useMemo(() => bucketOrdersByDay(recentOrders, 7), [recentOrders]);
-  const maxBar = Math.max(1, ...orderBars.map((b) => b.count));
-
-  const kpiCards: KpiCard[] = kpis
-    ? [
-        {
-          label: 'Revenue',
-          value: `$${kpis.total_revenue.toFixed(2)}`,
-          change: `${kpis.deltas?.net_revenue_pct ?? 0}%`,
-          trend: (kpis.deltas?.net_revenue_pct ?? 0) >= 0 ? 'up' : 'down',
-          icon: 'cash',
+    if (!kpis) return items;
+    if ((kpis.pending_orders || 0) > 0) {
+      items.push({
+        id: 'pending-orders',
+        title: `${kpis.pending_orders} order${kpis.pending_orders === 1 ? '' : 's'} to fulfill`,
+        subtitle: 'Mark as processing or ship',
+        icon: 'receipt-outline',
+        tone: 'amber',
+        onPress: () => {
+          dispatch(setOrdersFilter('pending'));
+          navigation.navigate('Orders');
         },
-        {
-          label: 'Orders',
-          value: kpis.total_orders.toString(),
-          change: `${kpis.deltas?.orders_pct ?? 0}%`,
-          trend: (kpis.deltas?.orders_pct ?? 0) >= 0 ? 'up' : 'down',
-          icon: 'receipt',
+      });
+    }
+    if ((kpis.low_stock_count || 0) > 0) {
+      items.push({
+        id: 'low-stock',
+        title: `${kpis.low_stock_count} SKU${kpis.low_stock_count === 1 ? '' : 's'} low stock`,
+        subtitle: `Below threshold of ${kpis.low_stock_threshold ?? 10}`,
+        icon: 'alert-circle-outline',
+        tone: 'red',
+        onPress: () => {
+          dispatch(setCatalogFilter('low'));
+          navigation.navigate('Catalog');
         },
-        {
-          label: 'Products',
-          value: kpis.total_products.toString(),
-          change: 'live',
-          trend: 'neutral',
-          icon: 'cube',
-        },
-        {
-          label: 'Avg Order',
-          value:
-            kpis.total_orders > 0 ? `$${(kpis.total_revenue / kpis.total_orders).toFixed(2)}` : '$0.00',
-          change: 'live',
-          trend: 'neutral',
-          icon: 'cart',
-        },
-      ]
-    : [];
+      });
+    }
+    if ((kpis.pending_partner_requests || 0) > 0) {
+      items.push({
+        id: 'partner-requests',
+        title: `${kpis.pending_partner_requests} partnership request${kpis.pending_partner_requests === 1 ? '' : 's'}`,
+        subtitle: 'Review discover requests',
+        icon: 'people-outline',
+        tone: 'blue',
+        onPress: () => navigation.navigate('Grow', { segment: 'partners' }),
+      });
+    }
+    return items;
+  }, [kpis, navigation, dispatch, notifications, handleNotificationPress]);
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
+  const maxSeries = Math.max(1, ...timeseries.map((p) => p.orders || 0));
+  const recent = (kpis?.recent_orders || []).slice(0, 5);
+  const net = kpis?.net_revenue ?? kpis?.total_revenue ?? 0;
+  const aov = kpis?.aov ?? 0;
+  const availablePayout = net * 0.92;
+  const feePending = net * 0.08;
 
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
+  const notificationBadge =
+    unreadCount > 0 ? (
+      <View style={tw`mr-2 min-w-[22px] h-[22px] rounded-full bg-red-500 items-center justify-center px-1`}>
+        <Text style={tw`text-[11px] font-bold text-white`}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+      </View>
+    ) : null;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <BusinessScreen
+      title="Home"
+      subtitle="What needs attention & how the store is doing"
+      onAnalytics={openAnalytics}
+      onSettings={openSettings}
+      headerRight={notificationBadge}
+    >
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`pb-8`}
+        contentContainerStyle={tw`pb-10`}
         {...verticalScrollProps}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={handleRefresh}
+            onRefresh={onRefresh}
             tintColor="#059669"
             colors={['#059669']}
           />
         }
       >
-        <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-100`}>
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <View style={tw`flex-1 pr-2`}>
-              <Text style={tw`text-2xl font-bold tracking-tight text-stone-900`}>Business Dashboard</Text>
-              <Text style={tw`text-sm text-stone-500 mt-1`}>
-                Period filter applies to recent activity & charts below
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={openAnalytics}
-              style={tw`w-11 h-11 rounded-full bg-emerald-50 items-center justify-center border border-emerald-100`}
-            >
-              <Ionicons name="analytics-outline" size={22} color="#059669" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={tw`flex-row bg-stone-100 rounded-xl p-1`}>
-            {(['today', 'week', 'month'] as const).map((period) => (
-              <TouchableOpacity
-                key={period}
-                onPress={() => setSelectedPeriod(period)}
-                style={tw`flex-1 py-2 rounded-lg ${selectedPeriod === period ? 'bg-white shadow-sm' : ''}`}
-              >
-                <Text
-                  style={tw`text-center text-sm font-semibold ${
-                    selectedPeriod === period ? 'text-emerald-700' : 'text-stone-500'
-                  }`}
-                >
-                  {period.charAt(0).toUpperCase() + period.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <View style={tw`bg-white px-4 pb-3 border-b border-stone-100`}>
+          <PeriodToggle value={period} onChange={setPeriod} />
         </View>
 
         <View style={tw`px-4 pt-4`}>
-          <Text style={tw`text-lg font-bold text-stone-900 mb-3`}>Key metrics</Text>
-          {loadError ? (
+          <SectionLabel>Action inbox</SectionLabel>
+          {error ? (
             <View style={tw`mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200`}>
-              <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
+              <Text style={tw`text-sm text-red-700 mb-2`}>{error}</Text>
+              <TouchableOpacity onPress={() => void refresh({ force: true })}>
+                <Text style={tw`text-sm font-semibold text-red-800`}>Retry</Text>
+              </TouchableOpacity>
             </View>
           ) : null}
-          {loading && !kpis ? (
-            <View style={tw`items-center justify-center py-8`}>
-              <ActivityIndicator size="large" color="#059669" />
-              <Text style={tw`text-stone-500 mt-2`}>Loading dashboard…</Text>
+          {loading ? <SkeletonCard variant="product" /> : <ActionInbox items={inboxItems} />}
+        </View>
+
+        <View style={tw`px-4 pt-5`}>
+          <SectionLabel>Key metrics</SectionLabel>
+          {loading ? (
+            <View style={tw`gap-3`}>
+              <SkeletonCard variant="product" />
+              <SkeletonCard variant="product" />
             </View>
           ) : (
-            <View style={tw`flex-row flex-wrap -mx-2`}>
-              {kpiCards.map((kpi, index) => (
-                <View key={index} style={tw`w-1/2 px-2 mb-4`}>
-                  <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
-                    <View style={tw`flex-row items-center justify-between mb-2`}>
-                      <Ionicons
-                        name={kpi.icon as keyof typeof Ionicons.glyphMap}
-                        size={24}
-                        color={
-                          kpi.trend === 'up' ? '#059669' : kpi.trend === 'down' ? '#EF4444' : '#78716C'
-                        }
-                      />
-                      <View
-                        style={tw`px-2 py-1 rounded-full ${
-                          kpi.trend === 'up'
-                            ? 'bg-emerald-50'
-                            : kpi.trend === 'down'
-                              ? 'bg-red-100'
-                              : 'bg-stone-100'
-                        }`}
-                      >
-                        <Text
-                          style={tw`text-xs font-semibold ${
-                            kpi.trend === 'up'
-                              ? 'text-emerald-800'
-                              : kpi.trend === 'down'
-                                ? 'text-red-700'
-                                : 'text-stone-600'
-                          }`}
-                        >
-                          {kpi.change}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={tw`text-2xl font-bold text-stone-900 mb-1`}>{kpi.value}</Text>
-                    <Text style={tw`text-sm text-stone-500`}>{kpi.label}</Text>
-                  </View>
-                </View>
-              ))}
+            <View style={tw`flex-row flex-wrap gap-3`}>
+              <KpiCard
+                label="Net revenue"
+                value={`$${Number(net).toFixed(2)}`}
+                change={`${kpis?.deltas?.net_revenue_pct ?? 0}%`}
+                trend={(kpis?.deltas?.net_revenue_pct ?? 0) >= 0 ? 'up' : 'down'}
+                icon="cash-outline"
+                onPress={openAnalytics}
+              />
+              <KpiCard
+                label="Orders"
+                value={String(kpis?.total_orders ?? 0)}
+                change={`${kpis?.deltas?.orders_pct ?? 0}%`}
+                trend={(kpis?.deltas?.orders_pct ?? 0) >= 0 ? 'up' : 'down'}
+                icon="receipt-outline"
+                onPress={() => navigation.navigate('Orders')}
+              />
+              <KpiCard
+                label="AOV"
+                value={`$${Number(aov).toFixed(2)}`}
+                change="avg"
+                trend="neutral"
+                icon="cart-outline"
+                onPress={openAnalytics}
+              />
+              <KpiCard
+                label="To fulfill"
+                value={String(kpis?.pending_orders ?? 0)}
+                change="live"
+                trend={(kpis?.pending_orders ?? 0) > 0 ? 'down' : 'neutral'}
+                icon="cube-outline"
+                onPress={() => {
+                  dispatch(setOrdersFilter('pending'));
+                  navigation.navigate('Orders');
+                }}
+              />
             </View>
           )}
         </View>
 
-        {!loading && recentOrders.length > 0 ? (
-          <View style={tw`px-4 mb-4`}>
-            <View style={tw`flex-row items-center justify-between mb-2`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>Order rhythm</Text>
-              <TouchableOpacity onPress={openAnalytics}>
-                <Text style={tw`text-sm text-emerald-700 font-semibold`}>Details</Text>
-              </TouchableOpacity>
+        <View style={tw`px-4 pt-5`}>
+          <SectionLabel>Payouts</SectionLabel>
+          <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
+            <View style={tw`flex-row gap-3 mb-3`}>
+              <View style={tw`flex-1 bg-emerald-50 rounded-xl p-3`}>
+                <Text style={tw`text-xs text-emerald-700`}>Available</Text>
+                <Text style={tw`text-lg font-bold text-emerald-900`}>${availablePayout.toFixed(2)}</Text>
+              </View>
+              <View style={tw`flex-1 bg-amber-50 rounded-xl p-3`}>
+                <Text style={tw`text-xs text-amber-700`}>Fee pending</Text>
+                <Text style={tw`text-lg font-bold text-amber-900`}>${feePending.toFixed(2)}</Text>
+              </View>
             </View>
-            <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
-              <Text style={tw`text-xs text-stone-500 mb-3`}>Last 7 days (from dashboard orders)</Text>
-              <View style={tw`flex-row items-end justify-between h-28 px-1`}>
-                {orderBars.map((b) => {
-                  const h = Math.max(6, Math.round((b.count / maxBar) * 96));
+            <Text style={tw`text-xs text-stone-500`}>Payouts via platform — Coming soon</Text>
+          </View>
+        </View>
+
+        <View style={tw`px-4 pt-5`}>
+          <View style={tw`flex-row items-center justify-between mb-2`}>
+            <Text style={tw`text-lg font-bold text-stone-900`}>Order rhythm</Text>
+            <TouchableOpacity onPress={openAnalytics}>
+              <Text style={tw`text-sm text-emerald-700 font-semibold`}>Full analytics</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
+            {timeseries.length === 0 ? (
+              <Text style={tw`text-sm text-stone-500`}>No order volume in this period yet.</Text>
+            ) : (
+              <View style={tw`flex-row items-end justify-between h-28`}>
+                {timeseries.map((p) => {
+                  const h = Math.max(6, Math.round(((p.orders || 0) / maxSeries) * 96));
+                  const label = (p.day || '').slice(5) || p.day;
                   return (
-                    <View key={b.label} style={tw`flex-1 items-center mx-0.5`}>
+                    <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
                       <View style={[tw`w-full rounded-t-md bg-emerald-500`, { height: h }]} />
-                      <Text style={tw`text-[10px] text-stone-400 mt-1`} numberOfLines={1}>
-                        {b.label}
+                      <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
+                        {label}
                       </Text>
                     </View>
                   );
                 })}
               </View>
-            </View>
+            )}
           </View>
-        ) : null}
+        </View>
 
-        <View style={tw`px-4 mt-2 mb-4`}>
+        <View style={tw`px-4 pt-5`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
             <Text style={tw`text-lg font-bold text-stone-900`}>Recent orders</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Orders')}>
               <Text style={tw`text-sm text-emerald-700 font-semibold`}>View all</Text>
             </TouchableOpacity>
           </View>
-          <Text style={tw`text-xs text-stone-500 mb-2`}>
-            Showing orders from selected period ({filteredRecentOrders.length} in view)
-          </Text>
           <View style={tw`bg-white rounded-2xl border border-stone-100 overflow-hidden`}>
-            {loading && recentOrders.length === 0 ? (
-              <View style={tw`items-center justify-center py-8`}>
-                <ActivityIndicator size="large" color="#059669" />
-              </View>
-            ) : filteredRecentOrders.length === 0 ? (
+            {recent.length === 0 ? (
               <View style={tw`p-6 items-center`}>
-                <Ionicons name="receipt-outline" size={48} color="#A8A29E" />
-                <Text style={tw`text-stone-500 mt-4 text-center`}>
-                  No orders in this period yet
-                </Text>
+                <Ionicons name="receipt-outline" size={40} color="#A8A29E" />
+                <Text style={tw`text-stone-500 mt-3 text-center text-sm`}>No orders in this period</Text>
               </View>
             ) : (
-              filteredRecentOrders.map((order) => {
-                const shippingAddress =
-                  typeof order.shipping_address === 'string'
-                    ? JSON.parse(order.shipping_address)
-                    : order.shipping_address;
-                const customerName = shippingAddress?.name || 'Unknown Customer';
-                const orderTotal = order.total || 0;
-                const orderStatus = order.status || 'pending';
-                const firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
-                const productName = firstItem?.product_name || 'Product';
-
+              recent.map((order) => {
+                const shipping = parseShippingAddress(order.shipping_address);
                 return (
                   <TouchableOpacity
                     key={order.id}
-                    style={tw`px-4 py-3 border-b border-stone-100 last:border-b-0`}
-                    onPress={() => navigation.navigate('Orders')}
+                    style={tw`px-4 py-3 border-b border-stone-100`}
+                    onPress={() =>
+                      stackNav.navigate('BusinessOrderDetail', { orderId: order.id })
+                    }
                   >
                     <View style={tw`flex-row items-center justify-between`}>
-                      <View style={tw`flex-1`}>
-                        <Text style={tw`font-semibold text-stone-900`}>{customerName}</Text>
-                        <Text style={tw`text-sm text-stone-500`}>{productName}</Text>
+                      <View style={tw`flex-1 pr-2`}>
+                        <Text style={tw`font-semibold text-stone-900`}>
+                          {shipping?.name || 'Customer'}
+                        </Text>
+                        <Text style={tw`text-xs text-stone-400 mt-0.5`}>
+                          {formatTimeAgo(order.created_at)}
+                        </Text>
                       </View>
                       <View style={tw`items-end`}>
-                        <Text style={tw`font-bold text-stone-900`}>${orderTotal.toFixed(2)}</Text>
-                        <View
-                          style={tw`mt-1 px-2 py-0.5 rounded-full ${
-                            orderStatus === 'completed'
-                              ? 'bg-emerald-50'
-                              : orderStatus === 'shipped'
-                                ? 'bg-blue-50'
-                                : orderStatus === 'delivered'
-                                  ? 'bg-emerald-50'
-                                  : 'bg-amber-50'
-                          }`}
-                        >
-                          <Text
-                            style={tw`text-xs font-medium ${
-                              orderStatus === 'completed'
-                                ? 'text-emerald-800'
-                                : orderStatus === 'shipped'
-                                  ? 'text-blue-700'
-                                  : orderStatus === 'delivered'
-                                    ? 'text-emerald-800'
-                                    : 'text-amber-800'
-                            }`}
-                          >
-                            {orderStatus}
-                          </Text>
+                        <Text style={tw`font-bold text-stone-900`}>
+                          ${Number(order.total || 0).toFixed(2)}
+                        </Text>
+                        <View style={tw`mt-1`}>
+                          <OrderStatusPill status={order.status || 'pending'} />
                         </View>
                       </View>
                     </View>
-                    <Text style={tw`text-xs text-stone-400 mt-1`}>{formatTimeAgo(order.created_at)}</Text>
                   </TouchableOpacity>
                 );
               })
@@ -337,44 +333,62 @@ export default function BizDashboard() {
           </View>
         </View>
 
-        <View style={tw`px-4 mb-6`}>
+        <View style={tw`px-4 pt-5`}>
           <Text style={tw`text-lg font-bold text-stone-900 mb-3`}>Quick actions</Text>
-          <View style={tw`flex-row flex-wrap -mx-2`}>
-            <TouchableOpacity style={tw`w-1/2 px-2 mb-3`} onPress={() => navigation.navigate('Inventory')}>
-              <View style={tw`bg-white rounded-2xl p-4 border border-stone-200 items-center`}>
-                <View style={tw`w-12 h-12 bg-emerald-50 rounded-full items-center justify-center mb-2`}>
-                  <Ionicons name="add-circle" size={28} color="#059669" />
+          <View style={tw`flex-row flex-wrap -mx-1.5`}>
+            {[
+              {
+                label: 'Add product',
+                icon: 'add-circle' as const,
+                color: '#059669',
+                bg: 'bg-emerald-50',
+                onPress: () => navigation.navigate('Catalog', { openForm: true }),
+              },
+              {
+                label: 'Orders',
+                icon: 'receipt' as const,
+                color: '#2563EB',
+                bg: 'bg-blue-50',
+                onPress: () => navigation.navigate('Orders'),
+              },
+              {
+                label: 'Customers',
+                icon: 'people' as const,
+                color: '#7C3AED',
+                bg: 'bg-violet-50',
+                onPress: openCustomers,
+              },
+              {
+                label: 'Discover',
+                icon: 'people' as const,
+                color: '#EA580C',
+                bg: 'bg-orange-50',
+                onPress: () => navigation.navigate('Grow', { segment: 'partners' }),
+              },
+              {
+                label: 'Analytics',
+                icon: 'analytics' as const,
+                color: '#0D9488',
+                bg: 'bg-teal-50',
+                onPress: openAnalytics,
+              },
+            ].map((action) => (
+              <TouchableOpacity key={action.label} style={tw`w-1/2 px-1.5 mb-3`} onPress={action.onPress}>
+                <View style={tw`bg-white rounded-2xl p-4 border border-stone-200 items-center`}>
+                  <View style={tw`w-12 h-12 ${action.bg} rounded-full items-center justify-center mb-2`}>
+                    <Ionicons name={action.icon} size={26} color={action.color} />
+                  </View>
+                  <Text style={tw`text-sm font-semibold text-stone-900`}>{action.label}</Text>
                 </View>
-                <Text style={tw`text-sm font-semibold text-stone-900`}>Add product</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={tw`w-1/2 px-2 mb-3`} onPress={() => navigation.navigate('Marketing')}>
-              <View style={tw`bg-white rounded-2xl p-4 border border-stone-200 items-center`}>
-                <View style={tw`w-12 h-12 bg-violet-50 rounded-full items-center justify-center mb-2`}>
-                  <Ionicons name="megaphone" size={28} color="#7C3AED" />
-                </View>
-                <Text style={tw`text-sm font-semibold text-stone-900`}>Promotions</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={tw`w-1/2 px-2 mb-3`} onPress={openAnalytics}>
-              <View style={tw`bg-white rounded-2xl p-4 border border-stone-200 items-center`}>
-                <View style={tw`w-12 h-12 bg-teal-50 rounded-full items-center justify-center mb-2`}>
-                  <Ionicons name="analytics" size={28} color="#0D9488" />
-                </View>
-                <Text style={tw`text-sm font-semibold text-stone-900`}>Analytics</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={tw`w-1/2 px-2 mb-3`} onPress={() => navigation.navigate('Partnerships')}>
-              <View style={tw`bg-white rounded-2xl p-4 border border-stone-200 items-center`}>
-                <View style={tw`w-12 h-12 bg-orange-50 rounded-full items-center justify-center mb-2`}>
-                  <Ionicons name="people" size={28} color="#EA580C" />
-                </View>
-                <Text style={tw`text-sm font-semibold text-stone-900`}>Partners</Text>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
+
+        {status === 'loading' && kpis ? (
+          <Text style={tw`text-center text-xs text-stone-400 mt-2`}>Refreshing…</Text>
+        ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </BusinessScreen>
   );
 }

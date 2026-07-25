@@ -1,0 +1,139 @@
+export type LegalDocumentId = 'terms' | 'privacy' | 'community' | 'support';
+
+export type LegalDocument = {
+  id: LegalDocumentId;
+  title: string;
+  updatedAt: string;
+  sections: Array<{ heading: string; body: string }>;
+};
+
+export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
+  terms: {
+    id: 'terms',
+    title: 'Terms of Service',
+    updatedAt: '2026-07-08',
+    sections: [
+      {
+        heading: 'Acceptance',
+        body:
+          'By creating an account or using Growl, you agree to these Terms of Service. If you do not agree, do not use the app.',
+      },
+      {
+        heading: 'Your account',
+        body:
+          'You are responsible for your account credentials and for activity under your account. You must provide accurate information and keep your contact details up to date.',
+      },
+      {
+        heading: 'Community content',
+        body:
+          'You retain ownership of content you post. You grant Growl a non-exclusive license to host, display, and distribute your content within the service. Do not post unlawful, harassing, or infringing material.',
+      },
+      {
+        heading: 'Marketplace',
+        body:
+          'Purchases through Growl are subject to seller policies and applicable law. Growl may facilitate payments but is not the seller of record unless stated otherwise.',
+      },
+      {
+        heading: 'Termination',
+        body:
+          'You may delete your account at any time from Profile settings. We may suspend or terminate accounts that violate these terms or our Community Guidelines.',
+      },
+      {
+        heading: 'Contact',
+        body: 'Questions about these terms: legal@growl.app',
+      },
+    ],
+  },
+  privacy: {
+    id: 'privacy',
+    title: 'Privacy Policy',
+    updatedAt: '2026-07-08',
+    sections: [
+      {
+        heading: 'Overview',
+        body:
+          'Growl collects information you provide (email, profile, posts) and usage data needed to operate the service. We do not sell your personal information.',
+      },
+      {
+        heading: 'Data we collect',
+        body:
+          'Account data (email, username, avatar), content you create (posts, comments, stories), social graph (friends, blocks), marketplace orders, and device/log data for security and reliability.',
+      },
+      {
+        heading: 'How we use data',
+        body:
+          'To provide the feed, messaging, marketplace, authentication, safety/moderation, and customer support. We may send service-related emails (verification, security).',
+      },
+      {
+        heading: 'Your rights',
+        body:
+          'You can export or delete your account from Profile → Delete Account. Deletion schedules removal of personal data subject to legal retention requirements.',
+      },
+      {
+        heading: 'Third parties',
+        body:
+          'We use infrastructure providers (e.g. Cloudflare) and optional sign-in providers (Google, Facebook, Apple). Payment processing uses Stripe when checkout is enabled.',
+      },
+      {
+        heading: 'Contact',
+        body: 'Privacy requests: privacy@growl.app',
+      },
+    ],
+  },
+  community: {
+    id: 'community',
+    title: 'Community Guidelines',
+    updatedAt: '2026-07-08',
+    sections: [
+      {
+        heading: 'Be respectful',
+        body: 'Treat others with respect. Harassment, hate speech, threats, and bullying are not allowed.',
+      },
+      {
+        heading: 'Safe content',
+        body:
+          'Do not post illegal content, sexual exploitation, gratuitous violence, or spam. Report content that violates these guidelines.',
+      },
+      {
+        heading: 'Authenticity',
+        body: 'Do not impersonate others or misrepresent your identity. One person per account unless using an approved business account.',
+      },
+      {
+        heading: 'Enforcement',
+        body:
+          'Violations may result in content removal, account warnings, suspension, or permanent ban. You can report users and posts from their profile or the feed menu.',
+      },
+    ],
+  },
+  support: {
+    id: 'support',
+    title: 'Help & Support',
+    updatedAt: '2026-07-08',
+    sections: [
+      {
+        heading: 'Get help',
+        body: 'Email support@growl.app with your account email and a description of the issue. We typically respond within 2 business days.',
+      },
+      {
+        heading: 'Account access',
+        body:
+          'Use Forgot password on the sign-in screen or verify your email if you recently signed up. For SSO, use the same provider you registered with.',
+      },
+      {
+        heading: 'Safety',
+        body:
+          'Block or report users and posts that make you uncomfortable. For urgent safety concerns, contact local authorities and support@growl.app.',
+      },
+    ],
+  },
+};
+
+export const LEGAL_HUB_ITEMS = [
+  { id: 'terms' as const, title: 'Terms of Service', icon: 'document-text-outline' as const },
+  { id: 'privacy' as const, title: 'Privacy Policy', icon: 'shield-checkmark-outline' as const },
+  { id: 'community' as const, title: 'Community Guidelines', icon: 'people-outline' as const },
+  { id: 'support' as const, title: 'Help & Support', icon: 'help-circle-outline' as const },
+];
+
+export const SUPPORT_EMAIL = 'support@growl.app';
+export const LEGAL_WEB_BASE = 'https://growl.app';

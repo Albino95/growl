@@ -1,4 +1,5 @@
 import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -6,6 +7,11 @@ WebBrowser.maybeCompleteAuthSession();
 function extra(key: string): string | undefined {
   const v = Constants.expoConfig?.extra?.[key];
   return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+/** OAuth redirect URI using the app scheme (growl://) for native builds. */
+export function getOAuthRedirectUri(): string {
+  return makeRedirectUri({ scheme: 'growl', path: 'oauth' });
 }
 
 export function isGoogleOAuthConfigured(): boolean {
@@ -24,7 +30,7 @@ export async function signInWithGooglePrompt(): Promise<string> {
     );
   }
 
-  const redirectUri = 'https://auth.expo.io/@anonymous/growl';
+  const redirectUri = getOAuthRedirectUri();
 
   const discovery = {
     authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -65,7 +71,7 @@ export async function signInWithFacebookPrompt(): Promise<string> {
     throw new Error('Facebook sign-in is not configured. Add facebookAppId to app.config.ts extra.');
   }
 
-  const redirectUri = 'https://auth.expo.io/@anonymous/growl';
+  const redirectUri = getOAuthRedirectUri();
   const authUrl =
     `https://www.facebook.com/v18.0/dialog/oauth?` +
     new URLSearchParams({

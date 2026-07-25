@@ -57,6 +57,26 @@ export interface ShippingAddress {
 export interface CreateOrderRequest {
   items: OrderItem[];
   shipping_address: ShippingAddress;
+  metadata?: {
+    payment_confirmed?: boolean;
+    stripe_checkout_session_id?: string;
+    payment_method?: string;
+  };
+}
+
+export interface PaymentConfigResponse {
+  success: boolean;
+  data: { enabled: boolean };
+}
+
+export interface CheckoutSessionResponse {
+  success: boolean;
+  data: {
+    session_id: string;
+    url: string;
+    amount_total: number;
+    currency: string;
+  };
 }
 
 export interface Order {
@@ -109,6 +129,23 @@ export async function getProducts(params?: {
  */
 export async function getProduct(productId: string): Promise<ProductResponse> {
   return request<ProductResponse>(`/marketplace/products/${productId}`);
+}
+
+/**
+ * Get marketplace payment configuration
+ */
+export async function getPaymentConfig(): Promise<PaymentConfigResponse> {
+  return request<PaymentConfigResponse>('/marketplace/payment-config');
+}
+
+/**
+ * Create a Stripe checkout session
+ */
+export async function createCheckoutSession(orderData: CreateOrderRequest): Promise<CheckoutSessionResponse> {
+  return request<CheckoutSessionResponse>('/marketplace/checkout-session', {
+    method: 'POST',
+    body: JSON.stringify(orderData),
+  });
 }
 
 /**

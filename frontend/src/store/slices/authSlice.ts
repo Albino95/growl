@@ -123,7 +123,7 @@ export const signIn = createAsyncThunk(
 export const signInWithSSO = createAsyncThunk(
   'auth/signInWithSSO',
   async (
-    payload: { provider: 'google' | 'facebook'; idToken?: string; accessToken?: string },
+    payload: { provider: 'google' | 'facebook' | 'apple'; idToken?: string; accessToken?: string },
     { rejectWithValue }
   ) => {
     try {

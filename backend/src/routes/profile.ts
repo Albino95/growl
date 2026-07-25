@@ -3,6 +3,7 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
 import { syncCategoryCohortFriends } from './friends';
+import { computeEligibility } from '../utils/instructorEligibility';
 
 /**
  * GET /api/v1/profile/user/:userId
@@ -80,6 +81,14 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     }
   }
 
+  let instructor;
+  try {
+    instructor = await computeEligibility(env, ctx.userId, ctx.user.is_instructor);
+  } catch (e) {
+    console.error('[getProfile] eligibility failed:', e);
+    instructor = undefined;
+  }
+
   return json({
     id: ctx.user.id,
     email: ctx.user.email,
@@ -89,7 +98,9 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     is_instructor: ctx.user.is_instructor,
     is_business: ctx.user.is_business,
     categories,
+    notifications_prefs: metadata.notifications_prefs || {},
     cohort_friends_linked: cohortFriendsLinked,
+    instructor,
     created_at: ctx.user.created_at,
   });
 }

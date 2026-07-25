@@ -4,6 +4,7 @@ import {
   View,
   Text,
   FlatList,
+  SectionList,
   TouchableOpacity,
   ScrollView,
   RefreshControl,
@@ -29,11 +30,14 @@ import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
 import Chip from '../../components/ui/Chip';
 import EmptyState from '../../components/ui/EmptyState';
+import PrimaryButton from '../../components/ui/PrimaryButton';
+import SkeletonCard from '../../components/ui/SkeletonCard';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { blockUser } from '../../services/api/friends';
+import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
+import { alertMessage } from '../../utils/confirmDialog';
 
 type Story = {
   id: string;
@@ -66,6 +70,8 @@ type Post = {
   friendLikers?: string[];
   isFriend?: boolean;
   isOwn?: boolean;
+  audioUrl?: string;
+  audioTitle?: string;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -84,6 +90,8 @@ export default function FeedScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const dispatch = useAppDispatch();
   const feedItems = useAppSelector((s) => s.feed.items);
+  const feedFollowing = useAppSelector((s) => s.feed.following);
+  const feedSuggested = useAppSelector((s) => s.feed.suggested);
   const feedStatus = useAppSelector((s) => s.feed.status);
   const feedError = useAppSelector((s) => s.feed.error);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -101,6 +109,8 @@ export default function FeedScreen({ navigation, route }: any) {
   } | null>(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -129,7 +139,31 @@ export default function FeedScreen({ navigation, route }: any) {
       friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
       isFriend: !!post.metadata?.is_friend,
       isOwn: post.user_id === user?.id,
+      audioUrl:
+        typeof post.metadata?.audio_url === 'string' ? post.metadata.audio_url : undefined,
+      audioTitle:
+        typeof post.metadata?.audio_title === 'string' ? post.metadata.audio_title : undefined,
     };
+  };
+
+  const togglePostAudio = (post: Post) => {
+    if (!post.audioUrl) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (playingAudioId === post.id) {
+        audioRef.current?.pause();
+        setPlayingAudioId(null);
+        return;
+      }
+      if (!audioRef.current) {
+        audioRef.current = new window.Audio();
+      }
+      audioRef.current.src = post.audioUrl;
+      void audioRef.current.play();
+      setPlayingAudioId(post.id);
+      audioRef.current.onended = () => setPlayingAudioId(null);
+      return;
+    }
+    alertMessage('Music preview', `Now playing: ${post.audioTitle || 'Soundtrack'}`);
   };
 
   const loadStoriesOnly = async () => {
@@ -171,21 +205,51 @@ export default function FeedScreen({ navigation, route }: any) {
     }
   };
 
-  useEffect(() => {
-    dispatch(fetchFeedPosts());
-    loadStoriesOnly();
-  }, [dispatch]);
-
   useFocusEffect(
     useCallback(() => {
-      dispatch(fetchFeedPosts());
+      // First paint may need a loading state; polling stays silent.
+      void dispatch(fetchFeedPosts());
+      void loadStoriesOnly();
+
+      // Lightweight live refresh while the Feed tab is focused (WebSocket-like freshness without DOs).
+      const pollId = setInterval(() => {
+        void dispatch(fetchFeedPosts({ force: true, silent: true }));
+      }, 25_000);
+
+      return () => clearInterval(pollId);
     }, [dispatch])
   );
 
   useEffect(() => {
+    // Stories warm-up; feed is owned by focus effect to avoid duplicate fetches.
+    void loadStoriesOnly();
+  }, []);
+
+  useEffect(() => {
     if (feedStatus !== 'succeeded') return;
-    setPosts(feedItems.map(toLocalPost));
-  }, [feedItems, feedStatus]);
+    const all = [...feedFollowing, ...feedSuggested];
+    const source = all.length > 0 ? all : feedItems;
+    setPosts(source.map(toLocalPost));
+  }, [feedFollowing, feedSuggested, feedItems, feedStatus, user?.id]);
+
+  const feedSections = useMemo(() => {
+    const mapSection = (items: typeof feedFollowing, title: string) => {
+      const mapped = items.map(toLocalPost);
+      const filtered = selectedCategory
+        ? mapped.filter((post) => {
+            if (selectedCategory.includes(':')) {
+              const [cat, sub] = selectedCategory.split(':');
+              return post.category === cat && post.subcategory === sub;
+            }
+            return post.category === selectedCategory;
+          })
+        : mapped;
+      return filtered.length > 0 ? { title, data: filtered } : null;
+    };
+    const following = mapSection(feedFollowing, 'From your circle');
+    const suggested = mapSection(feedSuggested, 'Suggested for you');
+    return [following, suggested].filter(Boolean) as { title: string; data: Post[] }[];
+  }, [feedFollowing, feedSuggested, selectedCategory, user?.id]);
 
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
@@ -202,12 +266,6 @@ export default function FeedScreen({ navigation, route }: any) {
     });
     
     const result = Array.from(grouped.values());
-    console.log('[FeedScreen] Grouped stories:', {
-      totalStories: stories.length,
-      groupedCount: result.length,
-      groupedUsers: result.map(g => ({ userId: g.user.userId, username: g.user.username, count: g.stories.length })),
-    });
-    
     return result;
   }, [stories]);
 
@@ -220,17 +278,6 @@ export default function FeedScreen({ navigation, route }: any) {
     );
   }, [feedItems, user?.id]);
 
-  const filteredPosts = useMemo(() => {
-    if (!selectedCategory) return posts;
-    return posts.filter((post) => {
-      if (selectedCategory.includes(':')) {
-        const [cat, sub] = selectedCategory.split(':');
-        return post.category === cat && post.subcategory === sub;
-      }
-      return post.category === selectedCategory;
-    });
-  }, [posts, selectedCategory]);
-
   const userCategories = useMemo(() => {
     const list = Array.isArray(user?.categories) ? user.categories : [];
     return list
@@ -241,7 +288,7 @@ export default function FeedScreen({ navigation, route }: any) {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await dispatch(fetchFeedPosts()).unwrap();
+      await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
       // Keep existing posts; Redux records error state.
     }
@@ -253,7 +300,7 @@ export default function FeedScreen({ navigation, route }: any) {
     if (retryingFeed) return;
     setRetryingFeed(true);
     try {
-      await dispatch(fetchFeedPosts()).unwrap();
+      await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
       // Keep banner visible; store already captures the latest error.
     } finally {
@@ -333,7 +380,7 @@ export default function FeedScreen({ navigation, route }: any) {
         )
       );
     } catch {
-      void dispatch(fetchFeedPosts());
+      void dispatch(fetchFeedPosts({ force: true, silent: true }));
     }
   };
 
@@ -381,6 +428,53 @@ export default function FeedScreen({ navigation, route }: any) {
     }
   };
 
+  const reportPost = (post: Post) => {
+    setPostMenuPost(null);
+    Alert.alert('Report post', 'Why are you reporting this post?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Spam',
+        onPress: () => {
+          void reportContent(post.id, 'post', 'spam')
+            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .catch((e: unknown) =>
+              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+            );
+        },
+      },
+      {
+        text: 'Harassment',
+        onPress: () => {
+          void reportContent(post.id, 'post', 'harassment')
+            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .catch((e: unknown) =>
+              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+            );
+        },
+      },
+      {
+        text: 'Inappropriate',
+        onPress: () => {
+          void reportContent(post.id, 'post', 'inappropriate_content')
+            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .catch((e: unknown) =>
+              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+            );
+        },
+      },
+      {
+        text: 'Other',
+        onPress: () => {
+          void reportContent(post.id, 'post', 'other')
+            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .catch((e: unknown) =>
+              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+            );
+        },
+      },
+    ]);
+  };
+
   const renderReactionIcon = (item: Post) => {
     const active = item.hasLiked || item.reaction != null;
     if (!active) {
@@ -404,7 +498,7 @@ export default function FeedScreen({ navigation, route }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <View style={tw`flex-1`}>
         {/* Header with Messages/Stories */}
         <View
@@ -432,14 +526,14 @@ export default function FeedScreen({ navigation, route }: any) {
             {...horizontalScrollProps}
           >
             <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full bg-green-50 border-2 border-green-200 mr-4`}
+              style={tw`items-center justify-center w-16 h-16 rounded-full bg-brand-50 border-2 border-brand-200 mr-4`}
               onPress={() => {
                 // Navigate to messages screen
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('Messages');
               }}
             >
-              <Ionicons name="chatbubbles" size={24} color="#10B981" />
+              <Ionicons name="chatbubbles" size={24} color="#059669" />
               <Text style={tw`text-[10px] text-stone-600 mt-1`}>Inbox</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -497,7 +591,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   <View style={tw`relative`}>
                     <View
                       style={tw`w-16 h-16 rounded-full border-2 ${
-                        allViewed ? 'border-gray-300' : 'border-purple-500'
+                        allViewed ? 'border-stone-300' : 'border-accent-600'
                       } items-center justify-center bg-purple-100 p-0.5`}
                     >
                       <Image
@@ -515,14 +609,14 @@ export default function FeedScreen({ navigation, route }: any) {
                       </View>
                     )}
                   </View>
-                  <Text style={tw`text-xs text-gray-600 mt-1 max-w-16`} numberOfLines={1}>
+                  <Text style={tw`text-xs text-stone-600 mt-1 max-w-16`} numberOfLines={1}>
                     {user.username}
                   </Text>
                 </TouchableOpacity>
               );
             })}
             <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-gray-300`}
+              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-stone-300`}
               onPress={() => {
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('CreateStory' as never);
@@ -558,18 +652,22 @@ export default function FeedScreen({ navigation, route }: any) {
 
         {/* Daily Post Reminder */}
         {!hasPostedToday && posts.length > 0 && (
-          <View style={tw`bg-yellow-50 border-b border-yellow-200 px-4 py-3`}>
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="information-circle" size={20} color="#F59E0B" />
-              <Text style={tw`text-sm text-yellow-800 ml-2 flex-1`}>
-                Post at least once today to see what others are doing!
+          <View style={tw`bg-brand-50 border-b border-brand-200 px-4 py-3`}>
+            <View style={tw`flex-row items-center gap-3`}>
+              <Ionicons name="sparkles" size={20} color="#059669" />
+              <Text style={tw`text-sm text-brand-800 flex-1`}>
+                Share your progress today to stay connected with your community.
               </Text>
-              <TouchableOpacity onPress={() => {
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Post');
-              }}>
-                <Text style={tw`text-sm font-semibold text-yellow-900`}>Post Now</Text>
-              </TouchableOpacity>
+              <View style={tw`w-24`}>
+                <PrimaryButton
+                  label="Post"
+                  variant="soft"
+                  onPress={() => {
+                    const rootNavigation = navigation.getParent() || navigation;
+                    rootNavigation.navigate('Post');
+                  }}
+                />
+              </View>
             </View>
           </View>
         )}
@@ -595,16 +693,22 @@ export default function FeedScreen({ navigation, route }: any) {
         )}
 
         {feedStatus === 'loading' && posts.length === 0 ? (
-          <View style={tw`py-8 items-center`}>
-            <ActivityIndicator size="small" color="#059669" />
-            <Text style={tw`text-stone-500 mt-2`}>Loading your feed...</Text>
+          <View style={tw`px-4 pt-2`}>
+            <SkeletonCard />
+            <SkeletonCard />
           </View>
         ) : null}
 
         {/* Posts Feed */}
-        <FlatList
-          data={filteredPosts}
+        <SectionList
+          sections={feedSections}
           keyExtractor={(item) => item.id}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <View style={tw`px-4 pt-4 pb-2`}>
+              <Text style={tw`text-lg font-bold text-stone-900`}>{section.title}</Text>
+            </View>
+          )}
           contentContainerStyle={[tw`px-4 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl
@@ -619,7 +723,7 @@ export default function FeedScreen({ navigation, route }: any) {
           renderItem={({ item }) => (
             <View
               style={[
-                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-100`,
+                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-200`,
                 Platform.OS === 'ios'
                   ? {
                       shadowColor: '#0f172a',
@@ -644,9 +748,18 @@ export default function FeedScreen({ navigation, route }: any) {
                     style={tw`w-11 h-11 rounded-full mr-3 shadow-sm`}
                     contentFit="cover"
                   />
-                  <View style={tw`flex-1`}>
-                    <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
-                    <Text style={tw`text-xs text-gray-500`}>{item.timestamp}</Text>
+                    <View style={tw`flex-1`}>
+                    <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
+                    <View style={tw`flex-row items-center flex-wrap gap-1 mt-0.5`}>
+                      <Text style={tw`text-xs text-stone-500`}>{item.timestamp}</Text>
+                      <View style={tw`px-2 py-0.5 rounded-full bg-brand-50`}>
+                        <Text style={tw`text-[10px] font-semibold text-brand-800`}>
+                          {item.subcategory
+                            ? `${item.category} · ${item.subcategory}`
+                            : item.category}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity style={tw`p-1`} onPress={() => setPostMenuPost(item)}>
@@ -672,7 +785,7 @@ export default function FeedScreen({ navigation, route }: any) {
               )}
 
               {/* Post Image - Modern Style */}
-              <View style={tw`w-full bg-gray-50`}>
+              <View style={tw`w-full bg-stone-50`}>
                 {item.image && item.image.trim() !== '' ? (
                   <Image
                     source={{
@@ -723,17 +836,7 @@ export default function FeedScreen({ navigation, route }: any) {
                         </Text>
                       </View>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => Alert.alert('Coming soon', 'Share-to-chat is being finalized.')}
-                    >
-                      <Ionicons name="paper-plane-outline" size={24} color="#374151" />
-                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => Alert.alert('Coming soon', 'Save-to-collections is in progress.')}
-                  >
-                    <Ionicons name="bookmark-outline" size={24} color="#374151" />
-                  </TouchableOpacity>
                 </View>
 
                 {/* Reaction Picker */}
@@ -759,7 +862,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
                 {/* Likes Count */}
                 <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
-                  <Text style={tw`font-bold text-gray-900 mb-2 text-base`}>
+                  <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
                     {item.likes} {item.likes === 1 ? 'like' : 'likes'}
                   </Text>
                 </TouchableOpacity>
@@ -787,10 +890,26 @@ export default function FeedScreen({ navigation, route }: any) {
                       rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
                     }}
                   >
-                    <Text style={tw`font-bold text-gray-900 text-base`}>{item.username}</Text>
+                    <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
                   </TouchableOpacity>
-                  <Text style={tw`text-gray-900 text-base`}> {item.caption}</Text>
+                  <Text style={tw`text-stone-900 text-base`}> {item.caption}</Text>
                 </View>
+
+                {item.audioTitle ? (
+                  <Pressable
+                    onPress={() => togglePostAudio(item)}
+                    style={tw`flex-row items-center self-start bg-brand-50 border border-brand-200 rounded-full px-3 py-1.5 mb-2`}
+                  >
+                    <Ionicons
+                      name={playingAudioId === item.id ? 'pause' : 'musical-notes'}
+                      size={14}
+                      color="#059669"
+                    />
+                    <Text style={tw`text-brand-800 text-xs font-semibold ml-1.5`}>
+                      {item.audioTitle}
+                    </Text>
+                  </Pressable>
+                ) : null}
 
                 {/* CO2 Calculator */}
                 <CO2Calculator category={item.category} activityType="post" />
@@ -798,14 +917,14 @@ export default function FeedScreen({ navigation, route }: any) {
                 {/* Comments */}
                 {item.comments > 0 && (
                   <TouchableOpacity onPress={() => setSelectedPost(item)}>
-                    <Text style={tw`text-gray-500 text-sm mb-1`}>
+                    <Text style={tw`text-stone-500 text-sm mb-1`}>
                       View all {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
                     </Text>
                   </TouchableOpacity>
                 )}
                 {item.comments === 0 ? (
                   <TouchableOpacity onPress={() => setSelectedPost(item)}>
-                    <Text style={tw`text-gray-400 text-xs mb-1`}>No comments yet</Text>
+                    <Text style={tw`text-stone-400 text-xs mb-1`}>No comments yet</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -814,7 +933,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   onPress={() => setSelectedPost(item)}
                   style={tw`mt-2`}
                 >
-                  <Text style={tw`text-gray-500 text-sm`}>Add a comment...</Text>
+                  <Text style={tw`text-stone-500 text-sm`}>Add a comment...</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -826,13 +945,12 @@ export default function FeedScreen({ navigation, route }: any) {
               description={
                 selectedCategory
                   ? 'Try a different category or clear filters to discover more posts.'
-                  : 'No posts yet. Be the first to share your growth journey.'
+                  : feedStatus === 'failed'
+                    ? 'Could not load posts. Pull down to retry.'
+                    : 'Explore people in your growth areas or share your first post.'
               }
-              actionLabel="Create Your First Post"
-              onAction={() => {
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Post' as never);
-              }}
+              actionLabel="Explore"
+              onAction={() => navigation.navigate('Explore')}
             />
           }
         />
@@ -856,7 +974,7 @@ export default function FeedScreen({ navigation, route }: any) {
                     post.id === selectedPost.id ? { ...post, comments: count } : post
                   )
                 );
-                void dispatch(fetchFeedPosts());
+                void dispatch(fetchFeedPosts({ force: true, silent: true }));
               }}
             />
           </Modal>
@@ -925,6 +1043,17 @@ export default function FeedScreen({ navigation, route }: any) {
             <View style={tw`flex-1 justify-end`}>
               <Pressable style={tw`absolute inset-0 bg-black/40`} onPress={() => setPostMenuPost(null)} />
               <View style={tw`bg-white rounded-t-3xl p-4`}>
+                <TouchableOpacity
+                  style={tw`flex-row items-center py-4 border-b border-stone-200`}
+                  onPress={() => {
+                    const target = postMenuPost;
+                    if (!target || target.isOwn) return;
+                    reportPost(target);
+                  }}
+                >
+                  <Ionicons name="flag-outline" size={22} color="#D97706" />
+                  <Text style={tw`ml-3 text-base text-stone-900`}>Report post</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={tw`flex-row items-center py-4 border-b border-stone-200`}
                   onPress={() => {

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, ScrollView, Platform, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +8,9 @@ import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { createStory } from '../../services/api/stories';
 import { uploadMediaApi } from '../../services/api/media';
 import PrimaryButton from '../../components/ui/PrimaryButton';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import StickyFooter from '../../components/ui/StickyFooter';
+import Screen from '../../components/ui/Screen';
 import tw from '../../lib/tw';
 
 type CreateStoryNavigationProp = NativeStackNavigationProp<RootStackParamList, 'CreateStory'>;
@@ -140,16 +142,10 @@ export default function CreateStoryScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200`}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={28} color="#6B7280" />
-        </TouchableOpacity>
-        <Text style={tw`text-xl font-bold text-stone-900`}>Create Story</Text>
-        <View style={tw`w-7`} />
-      </View>
+    <Screen background="card" edges={['top', 'bottom']}>
+      <ScreenHeader title="Create Story" onBack={() => navigation.goBack()} backIcon="close" />
 
-      <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4`}>
+      <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4 pb-6`} keyboardShouldPersistTaps="handled">
         {image ? (
           <View style={tw`relative mb-4`}>
             <Image source={{ uri: image }} style={tw`w-full h-96 rounded-2xl`} contentFit="cover" />
@@ -165,7 +161,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
             onPress={showPicker}
             style={tw`w-full h-96 rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50 items-center justify-center mb-4`}
           >
-            <Ionicons name="camera" size={44} color="#10B981" />
+            <Ionicons name="camera" size={44} color="#059669" />
             <Text style={tw`text-stone-700 font-semibold mt-2`}>Add story image</Text>
             <Text style={tw`text-stone-500 text-sm mt-1`}>Tap to pick or capture</Text>
           </TouchableOpacity>
@@ -181,10 +177,17 @@ export default function CreateStoryScreen({ navigation }: Props) {
           maxLength={180}
           style={tw`bg-stone-100 rounded-xl p-4 min-h-24 text-stone-800`}
         />
-        <Text style={tw`text-xs text-stone-400 mt-2 mb-4`}>{caption.length}/180</Text>
-
-        <PrimaryButton label={posting ? 'Publishing...' : 'Publish Story'} onPress={publishStory} disabled={!image || posting} />
+        <Text style={tw`text-xs text-stone-400 mt-2`}>{caption.length}/180</Text>
       </ScrollView>
-    </SafeAreaView>
+
+      <StickyFooter>
+        <PrimaryButton
+          label="Publish Story"
+          onPress={publishStory}
+          disabled={!image || posting}
+          loading={posting}
+        />
+      </StickyFooter>
+    </Screen>
   );
 }

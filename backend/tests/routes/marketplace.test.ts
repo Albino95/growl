@@ -254,4 +254,60 @@ describe('Marketplace Routes', () => {
       expect(data.error.code).toBe('FORBIDDEN');
     });
   });
+
+  describe('getPaymentConfig', () => {
+    it('should return enabled false when STRIPE_SECRET_KEY is unset', async () => {
+      const request = createMockRequest('https://example.com/api/v1/marketplace/payment-config', {
+        method: 'GET',
+      });
+
+      const response = await marketplaceRoutes.getPaymentConfig(request, env);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.enabled).toBe(false);
+    });
+
+    it('should return enabled true when STRIPE_SECRET_KEY is set', async () => {
+      env.STRIPE_SECRET_KEY = 'sk_test_example';
+
+      const request = createMockRequest('https://example.com/api/v1/marketplace/payment-config', {
+        method: 'GET',
+      });
+
+      const response = await marketplaceRoutes.getPaymentConfig(request, env);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data.data.enabled).toBe(true);
+    });
+  });
+
+  describe('createOrder payment gating', () => {
+    it('should return 503 when payments are disabled', async () => {
+      const request = createMockRequest('https://example.com/api/v1/marketplace/orders', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-token' },
+        body: {
+          items: [{ product_id: 'prod-1', quantity: 1 }],
+          shipping_address: {
+            name: 'Test User',
+            street: '123 Main St',
+            city: 'Austin',
+            state: 'TX',
+            zip: '78701',
+            country: 'United States',
+          },
+        },
+      });
+
+      const response = await marketplaceRoutes.createOrder(request, env);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(503);
+      expect(data.success).toBe(false);
+      expect(data.error.code).toBe('PAYMENTS_DISABLED');
+    });
+  });
 });

@@ -89,6 +89,7 @@ Default local URL: `http://localhost:8787/api/v1`
 |--------|--------|
 | **Core demos** | `demo@growl.app`, `instructor@growl.app`, `business@growl.app` — password **`GrowlDemo123!`** |
 | Social cohort seeds | `demo-fitness@growl.seed`, etc. — password **`growlseed123`** |
+| Dense seeds | `demo-01@growl.seed` … `demo-40@growl.seed` — password **`growlseed123`** (`01`–`05` are instructors) |
 
 After sign-in, open **Profile → Friends** for seeded connections, **Explore** for people with active stories/reels who are not yet friends, and **Feed** for posts.
 
@@ -244,6 +245,7 @@ There is no dedicated E2E suite in-repo yet; rely on the backend integration scr
 - Feed: load, pull-to-refresh, like, open comments.
 - Marketplace: list, product detail, cart/checkout path you support.
 - Business: dashboard, inventory, orders (business account).
+- Business hub: customers screen, notifications badge on Home, fulfillment + refund on order detail, promo codes under Grow → Community, CSV export from Settings or Analytics.
 - Instructors: list and detail if applicable.
 
 ---

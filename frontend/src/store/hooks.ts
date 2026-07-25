@@ -29,7 +29,7 @@ export const useAuth = () => {
     verifyEmail: (email: string, code: string) => dispatch(verifyEmail({ email, code })),
     signIn: (email: string, password: string) => dispatch(signIn({ email, password })),
     signInWithSSO: (payload: {
-      provider: 'google' | 'facebook';
+      provider: 'google' | 'facebook' | 'apple';
       idToken?: string;
       accessToken?: string;
     }) => dispatch(signInWithSSO(payload)),

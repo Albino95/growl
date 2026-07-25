@@ -2,6 +2,12 @@ import { Env } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
+import {
+  categoriesOverlap,
+  computeEligibility,
+  countEndorsements,
+  parseUserCategories,
+} from '../utils/instructorEligibility';
 
 /**
  * GET /api/v1/instructor/instructors
@@ -62,7 +68,6 @@ export async function getInstructors(request: Request, env: Env): Promise<Respon
   } catch (err: any) {
     console.error('[getInstructors] Error:', err);
     const errorMessage = err?.message || 'Failed to fetch instructors';
-    // Provide more helpful error message if tables don't exist
     if (errorMessage.includes('no such table')) {
       return error('DATABASE_ERROR', 'Database tables not initialized. Please run migrations.', 500);
     }
@@ -127,40 +132,51 @@ export async function getInstructor(
 
 /**
  * POST /api/v1/instructor/instructors/:id/vote
- * Vote for an instructor
+ * Endorse a candidate (peer endorsement). Works for non-instructors.
  */
 export async function voteInstructor(
   request: Request,
   env: Env,
-  instructorId: string
+  candidateId: string
 ): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Check if instructor exists
-  const instructor = await env.DB.prepare('SELECT id, is_instructor FROM users WHERE id = ?')
-    .bind(instructorId)
-    .first<{ id: string; is_instructor: boolean }>();
-
-  if (!instructor) {
-    return error('INSTRUCTOR_NOT_FOUND', 'Instructor not found', 404);
+  if (ctx.userId === candidateId) {
+    return error('INVALID_ENDORSEMENT', 'You cannot endorse yourself', 400);
   }
 
-  if (!instructor.is_instructor) {
-    return error('INVALID_INSTRUCTOR', 'User is not an instructor', 400);
+  const candidate = await env.DB.prepare('SELECT id, metadata FROM users WHERE id = ?')
+    .bind(candidateId)
+    .first<{ id: string; metadata: string }>();
+
+  if (!candidate) {
+    return error('USER_NOT_FOUND', 'User not found', 404);
   }
 
-  // Check if already voted
+  const voterMeta = ctx.user?.metadata ?? '{}';
+  const voterCats = parseUserCategories(voterMeta);
+  const candidateCats = parseUserCategories(candidate.metadata);
+  const shared = categoriesOverlap(voterCats, candidateCats);
+
+  if (shared.length === 0) {
+    return error(
+      'NO_CATEGORY_OVERLAP',
+      'You can only endorse people who share a growth category with you',
+      400
+    );
+  }
+
   const existingVote = await env.DB.prepare(
     'SELECT id FROM instructor_votes WHERE user_id = ? AND candidate_id = ?'
   )
-    .bind(ctx.userId, instructorId)
+    .bind(ctx.userId, candidateId)
     .first();
 
   if (existingVote) {
-    return error('ALREADY_VOTED', 'You have already voted for this instructor', 400);
+    return error('ALREADY_VOTED', 'You have already endorsed this person', 400);
   }
 
   try {
@@ -168,24 +184,153 @@ export async function voteInstructor(
     await env.DB.prepare(
       'INSERT INTO instructor_votes (id, user_id, candidate_id, created_at) VALUES (?, ?, ?, datetime("now"))'
     )
-      .bind(voteId, ctx.userId, instructorId)
+      .bind(voteId, ctx.userId, candidateId)
       .run();
 
-    // Award points to instructor
     await env.DB.prepare('UPDATE users SET points = points + 10 WHERE id = ?')
-      .bind(instructorId)
+      .bind(candidateId)
       .run();
 
-    return json({ message: 'Vote recorded successfully', voted: true }, 201);
+    const endorsementCount = await countEndorsements(env, candidateId);
+
+    return json(
+      {
+        message: 'Endorsement recorded',
+        endorsed: true,
+        sharedCategories: shared,
+        endorsementCount,
+      },
+      201
+    );
   } catch (err) {
     console.error('[voteInstructor] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to record vote', 500);
+    return error('DATABASE_ERROR', 'Failed to record endorsement', 500);
+  }
+}
+
+/**
+ * GET /api/v1/instructor/eligibility
+ */
+export async function getEligibility(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId || !ctx.user) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const eligibility = await computeEligibility(env, ctx.userId, ctx.user.is_instructor);
+    return json(eligibility);
+  } catch (err) {
+    console.error('[getEligibility]', err);
+    return error('DATABASE_ERROR', 'Failed to load eligibility', 500);
+  }
+}
+
+/**
+ * POST /api/v1/instructor/claim
+ */
+export async function claimInstructor(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId || !ctx.user) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    if (ctx.user.is_instructor) {
+      const eligibility = await computeEligibility(env, ctx.userId, 1);
+      return json({
+        ...eligibility,
+        claimed: true,
+        message: 'Already an instructor',
+      });
+    }
+
+    const eligibility = await computeEligibility(env, ctx.userId, 0);
+    if (!eligibility.canClaim) {
+      return error(
+        'NOT_ELIGIBLE',
+        `Need ${eligibility.endorsementsNeeded} endorsements and ${eligibility.postsNeeded} posts to claim`,
+        400
+      );
+    }
+
+    const user = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
+      .bind(ctx.userId)
+      .first<{ metadata: string }>();
+    const meta = JSON.parse(user?.metadata || '{}');
+    meta.instructor_claimed_at = new Date().toISOString();
+
+    await env.DB.prepare(
+      `UPDATE users SET is_instructor = 1, metadata = ?, updated_at = datetime('now') WHERE id = ?`
+    )
+      .bind(JSON.stringify(meta), ctx.userId)
+      .run();
+
+    const updated = await computeEligibility(env, ctx.userId, 1);
+    return json({
+      ...updated,
+      claimed: true,
+      message: 'You are now an instructor',
+    });
+  } catch (err) {
+    console.error('[claimInstructor]', err);
+    return error('DATABASE_ERROR', 'Failed to claim instructor status', 500);
+  }
+}
+
+/**
+ * GET /api/v1/instructor/candidates/:userId/endorsement-status
+ */
+export async function getEndorsementStatus(
+  request: Request,
+  env: Env,
+  candidateId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const candidate = await env.DB.prepare('SELECT id, metadata, is_instructor FROM users WHERE id = ?')
+      .bind(candidateId)
+      .first<{ id: string; metadata: string; is_instructor: number }>();
+
+    if (!candidate) {
+      return error('USER_NOT_FOUND', 'User not found', 404);
+    }
+
+    const voterCats = parseUserCategories(ctx.user?.metadata);
+    const candidateCats = parseUserCategories(candidate.metadata);
+    const sharedCategories = categoriesOverlap(voterCats, candidateCats);
+    const isSelf = ctx.userId === candidateId;
+
+    const existingVote = await env.DB.prepare(
+      'SELECT id FROM instructor_votes WHERE user_id = ? AND candidate_id = ?'
+    )
+      .bind(ctx.userId, candidateId)
+      .first();
+
+    const alreadyEndorsed = !!existingVote;
+    const endorsementCount = await countEndorsements(env, candidateId);
+    const canEndorse = !isSelf && !alreadyEndorsed && sharedCategories.length > 0;
+
+    return json({
+      canEndorse,
+      alreadyEndorsed,
+      sharedCategories,
+      endorsementCount,
+      isSelf,
+      isInstructor: !!candidate.is_instructor,
+    });
+  } catch (err) {
+    console.error('[getEndorsementStatus]', err);
+    return error('DATABASE_ERROR', 'Failed to load endorsement status', 500);
   }
 }
 
 /**
  * GET /api/v1/instructor/instructors/:id/students
- * Get students following an instructor
  */
 export async function getInstructorStudents(
   request: Request,
