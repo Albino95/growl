@@ -31,7 +31,7 @@ import ConnectionsListSheet, {
 } from '../../components/profile/ConnectionsListSheet';
 import EmptyState from '../../components/ui/EmptyState';
 import GrowthAreasPicker from '../../components/profile/GrowthAreasPicker';
-import { getCategoryLabel } from '../../utils/categoryLabels';
+import { getCategoryMeta } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
   claimInstructor,
@@ -426,13 +426,20 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             Shared growth categories connect you automatically — tap Following or Followers to see everyone.
           </Text>
 
-          <View style={tw`bg-brand-600 rounded-2xl p-4 mb-1`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4 mb-1`}>
             <View style={tw`flex-row items-center justify-between`}>
-              <View>
-                <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
-                <Text style={tw`text-white text-3xl font-bold`}>{points}</Text>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Growth points
+                </Text>
+                <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{points}</Text>
+                <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
+                  Earned from posts, streaks, and community activity.
+                </Text>
               </View>
-              <Ionicons name="trophy" size={40} color="white" />
+              <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
+                <Ionicons name="leaf" size={28} color="#059669" />
+              </View>
             </View>
           </View>
 
@@ -513,28 +520,62 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           )}
         </View>
 
-        {/* Categories with Edit */}
-        <View style={tw`px-4 py-4 border-b border-stone-200`}>
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-lg font-semibold text-stone-900`}>Your Growth Areas</Text>
-            <TouchableOpacity onPress={() => setShowCategorySettings(true)}>
-              <Ionicons name="create-outline" size={20} color="#10B981" />
-            </TouchableOpacity>
-          </View>
-          {user?.categories && user.categories.length > 0 ? (
-            <View style={tw`flex-row flex-wrap`}>
-              {user.categories.map((cat, index) => (
-                <View
-                  key={index}
-                  style={tw`bg-brand-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
-                >
-                  <Text style={tw`text-sm text-brand-800 font-medium`}>{getCategoryLabel(cat)}</Text>
-                </View>
-              ))}
+        {/* Growth areas */}
+        <View style={tw`px-4 py-4`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <View style={tw`flex-row items-center justify-between mb-3`}>
+              <View>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Grow!
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Your growth paths</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowCategorySettings(true)}
+                style={tw`flex-row items-center px-3 py-2 rounded-full bg-white border border-stone-200`}
+                accessibilityLabel="Edit growth paths"
+              >
+                <Ionicons name="create-outline" size={16} color="#059669" />
+                <Text style={tw`text-xs font-semibold text-emerald-700 ml-1.5`}>Edit</Text>
+              </TouchableOpacity>
             </View>
-          ) : (
-            <Text style={tw`text-stone-500 text-sm`}>No categories selected</Text>
-          )}
+
+            {user?.categories && user.categories.length > 0 ? (
+              <View>
+                {user.categories.map((cat) => {
+                  const meta = getCategoryMeta(cat);
+                  return (
+                    <View
+                      key={cat}
+                      style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2`}
+                    >
+                      <View style={tw`w-10 h-10 rounded-xl bg-emerald-600/12 items-center justify-center mr-3`}>
+                        <Ionicons name={meta.icon} size={20} color="#059669" />
+                      </View>
+                      <View style={tw`flex-1`}>
+                        <Text style={tw`text-[15px] font-bold text-stone-900`}>{meta.parentLabel}</Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                          {meta.subLabel ? meta.subLabel : 'All focuses in this path'}
+                        </Text>
+                      </View>
+                      <Ionicons name="leaf" size={14} color="#059669" />
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowCategorySettings(true)}
+                style={tw`bg-white/80 border border-dashed border-stone-300 rounded-2xl px-4 py-5 items-center`}
+              >
+                <Ionicons name="add-circle-outline" size={28} color="#059669" />
+                <Text style={tw`text-sm font-semibold text-stone-800 mt-2`}>Add growth paths</Text>
+                <Text style={tw`text-xs text-stone-500 mt-1 text-center`}>
+                  Pick up to 3 areas to personalize your feed
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Decay Timer Info */}
@@ -967,33 +1008,41 @@ function CategoryPickerModal({
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
-        <Text style={tw`text-2xl font-bold text-stone-900`}>Update Growth Areas</Text>
-        <TouchableOpacity onPress={onClose} disabled={saving} hitSlop={12}>
-          <Ionicons name="close" size={24} color="#6B7280" />
+    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+      <View style={tw`px-5 pt-4 pb-3 flex-row items-start justify-between`}>
+        <View style={tw`flex-1 pr-3`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            Grow!
+          </Text>
+          <Text style={tw`text-2xl font-bold text-stone-900 mt-1`}>Change your paths</Text>
+          <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5`}>
+            Expand a path and choose All or specific focuses. Up to 3 paths.
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={onClose}
+          disabled={saving}
+          hitSlop={12}
+          style={tw`w-10 h-10 rounded-full bg-white border border-stone-200 items-center justify-center`}
+        >
+          <Ionicons name="close" size={20} color="#57534E" />
         </TouchableOpacity>
       </View>
 
-      <View style={[tw`flex-1 px-4 pt-4`, { minHeight: 0 }]}>
-        <Text style={tw`text-sm text-stone-600 mb-3`}>
-          Expand a category and pick sub-areas (e.g. Fitness → Cardio). Max 3 growth areas.
-        </Text>
-        <View style={[tw`flex-1`, { minHeight: 0 }]}>
-          <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
-        </View>
+      <View style={[tw`flex-1 px-5 pt-1`, { minHeight: 0 }]}>
+        <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
       </View>
 
-      <View style={tw`px-4 pt-3 pb-6 border-t border-stone-200 bg-white`}>
+      <View style={tw`px-5 pt-3 pb-6 border-t border-stone-200/80 bg-[#F3EEE4]`}>
         <TouchableOpacity
           onPress={() => void handleSave()}
           disabled={saving || selectedCategories.length === 0}
-          style={tw`bg-brand-600 rounded-xl py-4 items-center ${
+          style={tw`bg-emerald-600 rounded-2xl py-4 items-center ${
             saving || selectedCategories.length === 0 ? 'opacity-50' : ''
           }`}
         >
           <Text style={tw`text-white text-center font-bold text-base`}>
-            {saving ? 'Saving…' : 'Save Changes'}
+            {saving ? 'Saving…' : 'Save growth paths'}
           </Text>
         </TouchableOpacity>
       </View>

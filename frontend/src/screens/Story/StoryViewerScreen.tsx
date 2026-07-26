@@ -45,12 +45,34 @@ export default function StoryViewerScreen() {
   const { stories: initialStories, initialIndex, onStoriesUpdate } = route.params;
 
   const [stories, setStories] = useState(initialStories);
+  const storiesRef = useRef(initialStories);
   const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
   const [progress, setProgress] = useState(0);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [previousUserId, setPreviousUserId] = useState<string | null>(null);
+
+  const syncStories = (next: Story[]) => {
+    storiesRef.current = next;
+    setStories(next);
+  };
+
+  const markIndexViewed = (index: number) => {
+    const next = storiesRef.current.map((story, i) =>
+      i === index ? { ...story, hasViewed: true } : story
+    );
+    syncStories(next);
+    return next;
+  };
+
+  const markAllViewedAndClose = () => {
+    const updatedStories = storiesRef.current.map((story) => ({ ...story, hasViewed: true }));
+    syncStories(updatedStories);
+    onStoriesUpdate?.(updatedStories);
+    navigation.goBack();
+  };
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -59,17 +81,12 @@ export default function StoryViewerScreen() {
         const { dx, dy } = gestureState;
         const swipeThreshold = 50;
 
-        // Swipe left (next story)
         if (dx < -swipeThreshold && Math.abs(dy) < Math.abs(dx)) {
           goToNextStory();
-        }
-        // Swipe right (previous story)
-        else if (dx > swipeThreshold && Math.abs(dy) < Math.abs(dx)) {
+        } else if (dx > swipeThreshold && Math.abs(dy) < Math.abs(dx)) {
           goToPreviousStory();
-        }
-        // Swipe down (close)
-        else if (dy > swipeThreshold && Math.abs(dx) < Math.abs(dy)) {
-          navigation.goBack();
+        } else if (dy > swipeThreshold && Math.abs(dx) < Math.abs(dy)) {
+          markAllViewedAndClose();
         }
       },
     })
@@ -109,28 +126,18 @@ export default function StoryViewerScreen() {
     }
     setPreviousUserId(currentStory?.userId || null);
 
-    // Mark current story as viewed
-    if (stories[currentIndex] && !stories[currentIndex].hasViewed) {
-      setStories((prev) =>
-        prev.map((story, index) =>
-          index === currentIndex ? { ...story, hasViewed: true } : story
-        )
-      );
+    // Mark current story as viewed + push to parent so Feed ring updates immediately
+    if (storiesRef.current[currentIndex] && !storiesRef.current[currentIndex].hasViewed) {
+      const next = markIndexViewed(currentIndex);
+      onStoriesUpdate?.(next);
     }
 
     // Auto-advance story after 5 seconds
     const timer = setTimeout(() => {
-      if (currentIndex < stories.length - 1) {
+      if (currentIndex < storiesRef.current.length - 1) {
         goToNextStory();
       } else {
-        // Mark all stories as viewed before closing
-        const updatedStories = stories.map((story) => ({ ...story, hasViewed: true }));
-        setStories(updatedStories);
-        // Pass updated stories back to parent
-        if (onStoriesUpdate) {
-          onStoriesUpdate(updatedStories);
-        }
-        navigation.goBack();
+        markAllViewedAndClose();
       }
     }, 5000);
 
@@ -148,26 +155,13 @@ export default function StoryViewerScreen() {
   }, [currentIndex]);
 
   const goToNextStory = () => {
-    // Mark current story as viewed
-    if (stories[currentIndex] && !stories[currentIndex].hasViewed) {
-      setStories((prev) =>
-        prev.map((story, index) =>
-          index === currentIndex ? { ...story, hasViewed: true } : story
-        )
-      );
-    }
+    markIndexViewed(currentIndex);
 
-    if (currentIndex < stories.length - 1) {
+    if (currentIndex < storiesRef.current.length - 1) {
       setCurrentIndex(currentIndex + 1);
       progressAnim.setValue(0);
     } else {
-      // Mark all stories as viewed before closing
-      const updatedStories = stories.map((story) => ({ ...story, hasViewed: true }));
-      setStories(updatedStories);
-      if (onStoriesUpdate) {
-        onStoriesUpdate(updatedStories);
-      }
-      navigation.goBack();
+      markAllViewedAndClose();
     }
   };
 
@@ -179,12 +173,9 @@ export default function StoryViewerScreen() {
   };
 
   const navigateToProfile = () => {
-    // Mark all stories as viewed before navigating
-    const updatedStories = stories.map((story) => ({ ...story, hasViewed: true }));
-    setStories(updatedStories);
-    if (onStoriesUpdate) {
-      onStoriesUpdate(updatedStories);
-    }
+    const updatedStories = storiesRef.current.map((story) => ({ ...story, hasViewed: true }));
+    syncStories(updatedStories);
+    onStoriesUpdate?.(updatedStories);
     navigation.goBack();
     const rootNavigation = navigation.getParent() || navigation;
     rootNavigation.navigate('PublicProfile' as never, { userId: currentStory.userId } as never);
@@ -282,7 +273,7 @@ export default function StoryViewerScreen() {
             </View>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={markAllViewedAndClose}
             style={tw`w-10 h-10 items-center justify-center`}
           >
             <Ionicons name="close" size={28} color="#FFFFFF" />

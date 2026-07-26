@@ -193,16 +193,18 @@ export default function FeedScreen({ navigation, route }: any) {
           } : 'none',
         });
         if (storiesArray.length > 0) {
-          setStories(
-            storiesArray.map((s: StoryItem) => ({
+          setStories((prev) => {
+            const locallyViewed = new Set(prev.filter((s) => s.hasViewed).map((s) => s.id));
+            return storiesArray.map((s: StoryItem) => ({
               id: s.id,
               userId: s.userId,
               username: s.username,
               avatar: resolveAvatarUri(s.userId, s.username, s.avatar),
               image: s.image,
-              hasViewed: !!s.hasViewed,
-            }))
-          );
+              // Keep optimistic views if a silent refresh races ahead of viewStory
+              hasViewed: !!s.hasViewed || locallyViewed.has(s.id),
+            }));
+          });
         } else {
           setStories([]);
         }
@@ -640,22 +642,31 @@ export default function FeedScreen({ navigation, route }: any) {
                         Date.now() - (userStories.length - idx) * 3600000
                       ).toISOString(),
                       views: Math.floor(Math.random() * 100),
+                      // Keep real hasViewed so StoryViewer marks + persists views
+                      hasViewed: !!s.hasViewed,
                     }));
+
+                    // Optimistic: gray the ring as soon as the viewer opens
+                    const viewedIds = new Set(userStories.map((s) => s.id));
+                    setStories((prev) =>
+                      prev.map((s) => (viewedIds.has(s.id) ? { ...s, hasViewed: true } : s))
+                    );
 
                     rootNavigation.navigate('StoryViewer' as never, {
                       stories: fullStories,
                       initialIndex: 0,
                       onStoriesUpdate: (updatedStories: typeof fullStories) => {
-                        const viewedIds = updatedStories
+                        const ids = updatedStories
                           .filter((us) => us.hasViewed)
                           .map((us) => us.id);
-                        if (viewedIds.length > 0) {
-                          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
+                        if (ids.length > 0) {
+                          Promise.all(ids.map((id) => viewStory(id))).catch(() => undefined);
                         }
                         setStories((prev) =>
                           prev.map((s) => {
                             const updated = updatedStories.find((us) => us.id === s.id);
-                            return updated ? { ...s, hasViewed: updated.hasViewed } : s;
+                            if (!updated) return s;
+                            return { ...s, hasViewed: s.hasViewed || !!updated.hasViewed };
                           })
                         );
                       },

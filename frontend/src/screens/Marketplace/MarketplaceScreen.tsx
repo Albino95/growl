@@ -40,7 +40,10 @@ export default function MarketplaceScreen() {
   const [failedProductImages, setFailedProductImages] = useState<Record<string, boolean>>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [onMyPathsOnly, setOnMyPathsOnly] = useState(false);
+  const [minPrice, setMinPrice] = useState<number | null>(null);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<'relevance' | 'price_asc' | 'price_desc' | 'newest'>('relevance');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
@@ -121,17 +124,58 @@ export default function MarketplaceScreen() {
   );
 
   const searchFiltered = useMemo(() => {
-    let list = recommendedProducts;
+    let list = [...recommendedProducts];
     if (inStockOnly) {
       list = list.filter((p) => p.stock > 0);
+    }
+    if (onMyPathsOnly) {
+      const parents = new Set<string>();
+      user?.categories?.forEach((cat: string) => {
+        if (cat.includes(':')) parents.add(cat.split(':')[0]);
+        else if (cat) parents.add(cat);
+      });
+      if (parents.size > 0) {
+        list = list.filter((p) => parents.has((p.category || '').split(':')[0]));
+      }
+    }
+    if (minPrice != null) {
+      list = list.filter((p) => p.price >= minPrice);
     }
     if (maxPrice != null) {
       list = list.filter((p) => p.price <= maxPrice);
     }
+    if (sortBy === 'price_asc') {
+      list.sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price_desc') {
+      list.sort((a, b) => b.price - a.price);
+    } else if (sortBy === 'newest') {
+      list.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    }
     return list;
-  }, [recommendedProducts, inStockOnly, maxPrice]);
+  }, [
+    recommendedProducts,
+    inStockOnly,
+    onMyPathsOnly,
+    minPrice,
+    maxPrice,
+    sortBy,
+    user?.categories,
+  ]);
 
   const priceTiers = useMemo(() => [25, 50, 100, 250], []);
+  const minPriceTiers = useMemo(() => [10, 25, 50], []);
+  const hasActiveFilters =
+    inStockOnly || onMyPathsOnly || minPrice != null || maxPrice != null || sortBy !== 'relevance';
+
+  const clearShopFilters = () => {
+    setInStockOnly(false);
+    setOnMyPathsOnly(false);
+    setMinPrice(null);
+    setMaxPrice(null);
+    setSortBy('relevance');
+  };
 
   /** Always show catalog parents; put the user's growth areas first when present. */
   const categories = useMemo(() => {
@@ -242,16 +286,37 @@ export default function MarketplaceScreen() {
                   onChangeText={setSearchQuery}
                   placeholder="Search products"
                 />
-                {(inStockOnly || maxPrice != null) && (
+                {hasActiveFilters && (
                   <View style={tw`flex-row flex-wrap mt-2`}>
                     {inStockOnly ? (
                       <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
                         <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
                       </View>
                     ) : null}
+                    {onMyPathsOnly ? (
+                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                        <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
+                      </View>
+                    ) : null}
+                    {minPrice != null ? (
+                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                        <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
+                      </View>
+                    ) : null}
                     {maxPrice != null ? (
                       <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
                         <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
+                      </View>
+                    ) : null}
+                    {sortBy !== 'relevance' ? (
+                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                        <Text style={tw`text-xs text-emerald-800 font-medium`}>
+                          {sortBy === 'price_asc'
+                            ? 'Price ↑'
+                            : sortBy === 'price_desc'
+                              ? 'Price ↓'
+                              : 'Newest'}
+                        </Text>
                       </View>
                     ) : null}
                   </View>
@@ -424,61 +489,148 @@ export default function MarketplaceScreen() {
 
       <Modal visible={filterOpen} animationType="slide" transparent onRequestClose={() => setFilterOpen(false)}>
         <View style={tw`flex-1 justify-end bg-black/40`}>
-          <View style={tw`bg-white rounded-t-3xl px-5 pt-5 pb-10`}>
+          <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-5 pb-10 max-h-[88%]`}>
             <View style={tw`flex-row items-center justify-between mb-4`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
+              <View>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                  Grow! Shop
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
+              </View>
               <TouchableOpacity onPress={() => setFilterOpen(false)}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}>
-              <Text style={tw`text-base text-stone-800`}>In stock only</Text>
-              <Switch
-                value={inStockOnly}
-                onValueChange={setInStockOnly}
-                trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
-                thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
-              />
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+                <Text style={tw`text-base text-stone-800`}>In stock only</Text>
+                <Switch
+                  value={inStockOnly}
+                  onValueChange={setInStockOnly}
+                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
+                  thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
+                />
+              </View>
 
-            <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
-            <View style={tw`flex-row flex-wrap`}>
-              <TouchableOpacity
-                onPress={() => setMaxPrice(null)}
-                style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${maxPrice == null ? 'bg-emerald-600' : 'bg-stone-100'}`}
-              >
-                <Text style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-stone-600'}`}>Any</Text>
-              </TouchableOpacity>
-              {priceTiers.map((tier) => (
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+                <View style={tw`flex-1 pr-4`}>
+                  <Text style={tw`text-base text-stone-800`}>On my growth paths</Text>
+                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>Only products in your interest areas</Text>
+                </View>
+                <Switch
+                  value={onMyPathsOnly}
+                  onValueChange={setOnMyPathsOnly}
+                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
+                  thumbColor={onMyPathsOnly ? '#059669' : '#F5F5F4'}
+                />
+              </View>
+
+              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Sort by</Text>
+              <View style={tw`flex-row flex-wrap`}>
+                {(
+                  [
+                    { key: 'relevance', label: 'For you' },
+                    { key: 'newest', label: 'Newest' },
+                    { key: 'price_asc', label: 'Price ↑' },
+                    { key: 'price_desc', label: 'Price ↓' },
+                  ] as const
+                ).map((opt) => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => setSortBy(opt.key)}
+                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                      sortBy === opt.key ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-medium ${
+                        sortBy === opt.key ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Min price</Text>
+              <View style={tw`flex-row flex-wrap`}>
                 <TouchableOpacity
-                  key={tier}
-                  onPress={() => setMaxPrice(tier)}
-                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${maxPrice === tier ? 'bg-emerald-600' : 'bg-stone-100'}`}
+                  onPress={() => setMinPrice(null)}
+                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                    minPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                  }`}
                 >
-                  <Text style={tw`text-sm font-medium ${maxPrice === tier ? 'text-white' : 'text-stone-600'}`}>
-                    Under ${tier}
+                  <Text
+                    style={tw`text-sm font-medium ${minPrice == null ? 'text-white' : 'text-stone-600'}`}
+                  >
+                    Any
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+                {minPriceTiers.map((tier) => (
+                  <TouchableOpacity
+                    key={tier}
+                    onPress={() => setMinPrice(tier)}
+                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                      minPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-medium ${
+                        minPrice === tier ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
+                      ${tier}+
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <TouchableOpacity
-              onPress={() => {
-                setInStockOnly(false);
-                setMaxPrice(null);
-              }}
-              style={tw`mt-4 py-3 items-center`}
-            >
-              <Text style={tw`text-brand-700 font-semibold`}>Clear filters</Text>
-            </TouchableOpacity>
+              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
+              <View style={tw`flex-row flex-wrap`}>
+                <TouchableOpacity
+                  onPress={() => setMaxPrice(null)}
+                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                    maxPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-stone-600'}`}
+                  >
+                    Any
+                  </Text>
+                </TouchableOpacity>
+                {priceTiers.map((tier) => (
+                  <TouchableOpacity
+                    key={tier}
+                    onPress={() => setMaxPrice(tier)}
+                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                      maxPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-medium ${
+                        maxPrice === tier ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
+                      Under ${tier}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <TouchableOpacity
-              onPress={() => setFilterOpen(false)}
-              style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center`}
-            >
-              <Text style={tw`text-white font-semibold`}>Show results</Text>
-            </TouchableOpacity>
+              <TouchableOpacity onPress={clearShopFilters} style={tw`mt-4 py-3 items-center`}>
+                <Text style={tw`text-emerald-700 font-semibold`}>Clear filters</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setFilterOpen(false)}
+                style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center mb-2`}
+              >
+                <Text style={tw`text-white font-semibold`}>Show results</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>

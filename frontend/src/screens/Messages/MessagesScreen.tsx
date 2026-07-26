@@ -36,7 +36,37 @@ type InboxTab = 'friends' | 'shop' | 'coaches';
 
 type ActiveConversation = ConversationSummary & {
   messages: ChatMessage[];
+  peer_last_read_at?: string | null;
 };
+
+function messageReceipt(
+  msg: ChatMessage,
+  peerLastReadAt?: string | null
+): 'sending' | 'sent' | 'seen' {
+  if (msg.id.startsWith('temp-')) return 'sending';
+  if (
+    peerLastReadAt &&
+    new Date(peerLastReadAt).getTime() >= new Date(msg.created_at).getTime()
+  ) {
+    return 'seen';
+  }
+  return 'sent';
+}
+
+function ReceiptTicks({
+  status,
+}: {
+  status: 'sending' | 'sent' | 'seen';
+}) {
+  if (status === 'sending') {
+    return <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />;
+  }
+  if (status === 'seen') {
+    return <Ionicons name="checkmark-done" size={14} color="#A7F3D0" />;
+  }
+  // Delivered to server — single tick; peer read upgrades to double emerald
+  return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.65)" />;
+}
 
 type MessagesRouteParams = {
   Messages: {
@@ -107,11 +137,12 @@ export default function MessagesScreen() {
     setSelectedConversation({ ...conversation, messages: [], unread: false });
     try {
       const res = await getMessages(conversation.id);
-      setSelectedConversation({
-        ...conversation,
-        unread: false,
-        messages: res.data?.messages ?? [],
-      });
+        setSelectedConversation({
+          ...conversation,
+          unread: false,
+          messages: res.data?.messages ?? [],
+          peer_last_read_at: res.data?.peer_last_read_at ?? null,
+        });
       setConversations((prev) =>
         prev.map((c) => (c.id === conversation.id ? { ...c, unread: false } : c))
       );
@@ -137,7 +168,12 @@ export default function MessagesScreen() {
             const msgs = res.data?.messages ?? [];
             setSelectedConversation((prev) =>
               prev && prev.id === selectedIdRef.current
-                ? { ...prev, messages: msgs, unread: false }
+                ? {
+                    ...prev,
+                    messages: msgs,
+                    unread: false,
+                    peer_last_read_at: res.data?.peer_last_read_at ?? prev.peer_last_read_at,
+                  }
                 : prev
             );
           })
@@ -326,13 +362,20 @@ export default function MessagesScreen() {
                     >
                       {item.body}
                     </Text>
-                    <Text
-                      style={tw`text-[10px] mt-1 text-right ${
-                        item.is_own ? 'text-emerald-100' : 'text-stone-400'
-                      }`}
-                    >
-                      {formatMessageTime(item.created_at)}
-                    </Text>
+                    <View style={tw`flex-row items-center justify-end mt-1`}>
+                      <Text
+                        style={tw`text-[10px] mr-1 ${
+                          item.is_own ? 'text-emerald-100' : 'text-stone-400'
+                        }`}
+                      >
+                        {formatMessageTime(item.created_at)}
+                      </Text>
+                      {item.is_own ? (
+                        <ReceiptTicks
+                          status={messageReceipt(item, selectedConversation.peer_last_read_at)}
+                        />
+                      ) : null}
+                    </View>
                   </View>
                 </View>
               )}

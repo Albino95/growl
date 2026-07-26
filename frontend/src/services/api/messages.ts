@@ -55,7 +55,7 @@ export async function getMessages(
   params?: { limit?: number; offset?: number }
 ): Promise<{
   success: boolean;
-  data: { messages: ChatMessage[]; limit: number; offset: number };
+  data: { messages: ChatMessage[]; peer_last_read_at?: string | null; limit: number; offset: number };
 }> {
   const query = new URLSearchParams();
   if (params?.limit) query.append('limit', String(params.limit));

@@ -64,7 +64,7 @@ export default function MarketplaceCategoryBar({
       </View>
 
       {selectedMeta && selectedMeta.subcategories.length > 0 ? (
-        <View style={{ height: 48, justifyContent: 'center', backgroundColor: '#F8FAFC' }}>
+        <View style={{ height: 48, justifyContent: 'center', backgroundColor: '#EAE4D6' }}>
           <ScrollView
             horizontal
             style={{ flexGrow: 0 }}

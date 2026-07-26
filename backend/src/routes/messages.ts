@@ -274,6 +274,11 @@ export async function getMessages(
 
     await markConversationRead(env, conversation, ctx.userId);
 
+    const peerReadAt =
+      conversation.user_a === ctx.userId
+        ? conversation.user_b_last_read_at || null
+        : conversation.user_a_last_read_at || null;
+
     const messages = (rows.results || []).map((m) => ({
       id: m.id,
       conversation_id: m.conversation_id,
@@ -283,7 +288,7 @@ export async function getMessages(
       is_own: m.sender_id === ctx.userId,
     }));
 
-    return json({ messages, limit, offset });
+    return json({ messages, peer_last_read_at: peerReadAt, limit, offset });
   } catch (err) {
     console.error('[getMessages]', err);
     return error('DATABASE_ERROR', 'Failed to fetch messages', 500);
