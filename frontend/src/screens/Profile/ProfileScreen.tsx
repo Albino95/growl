@@ -829,6 +829,16 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             />
           </View>
           <TouchableOpacity
+            onPress={() => navigation.navigate('Marketplace' as never)}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="storefront-outline" size={20} color="#6B7280" />
+              <Text style={tw`text-stone-900 ml-3`}>Shop</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => {
               const rootNavigation = navigation.getParent() || navigation;
               rootNavigation.navigate('UserOrders' as never);

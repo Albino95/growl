@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import tw from '../../lib/tw';
 import SearchField from '../../components/ui/SearchField';
 import EmptyState from '../../components/ui/EmptyState';
@@ -44,6 +46,7 @@ import {
   type JournalMood,
 } from '../../store/slices/journalSlice';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import type { IndividualTabsParamList } from '../../app/navigation/tabs/IndividualTabs';
 
 type ViewTab = 'today' | 'timeline';
 type VisibilityFilter = 'all' | 'private' | 'shared';
@@ -117,6 +120,8 @@ function EntryCard({
 export default function JournalScreen() {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
+  const route = useRoute<RouteProp<IndividualTabsParamList, 'Journal'>>();
+  const navigation = useNavigation<BottomTabNavigationProp<IndividualTabsParamList, 'Journal'>>();
   const { entries, isLoading, isSaving, error } = useAppSelector((s) => s.journal);
 
   const [viewTab, setViewTab] = useState<ViewTab>('today');
@@ -141,6 +146,15 @@ export default function JournalScreen() {
   useEffect(() => {
     void loadEntries();
   }, [loadEntries]);
+
+  // Open compose when launched from the dock Create menu.
+  useEffect(() => {
+    if (route.params?.openCompose) {
+      setComposeOpen(true);
+      setViewTab('today');
+      navigation.setParams({ openCompose: undefined });
+    }
+  }, [route.params?.openCompose, navigation]);
 
   const dateKeys = useMemo(() => {
     const set = new Set<string>();
