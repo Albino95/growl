@@ -12,6 +12,8 @@ type ConversationRow = {
   created_at: string;
   updated_at: string;
   last_message_at: string | null;
+  user_a_last_read_at?: string | null;
+  user_b_last_read_at?: string | null;
 };
 
 type MessageRow = {
@@ -28,6 +30,25 @@ function orderedPair(a: string, b: string): [string, string] {
 
 function peerIdFor(conversation: ConversationRow, userId: string): string {
   return conversation.user_a === userId ? conversation.user_b : conversation.user_a;
+}
+
+function myLastReadAt(conversation: ConversationRow, userId: string): string | null {
+  return conversation.user_a === userId
+    ? conversation.user_a_last_read_at || null
+    : conversation.user_b_last_read_at || null;
+}
+
+async function markConversationRead(env: Env, conversation: ConversationRow, userId: string) {
+  const now = new Date().toISOString();
+  if (conversation.user_a === userId) {
+    await env.DB.prepare(`UPDATE conversations SET user_a_last_read_at = ? WHERE id = ?`)
+      .bind(now, conversation.id)
+      .run();
+  } else {
+    await env.DB.prepare(`UPDATE conversations SET user_b_last_read_at = ? WHERE id = ?`)
+      .bind(now, conversation.id)
+      .run();
+  }
 }
 
 async function getConversationForUser(
@@ -108,6 +129,14 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
       if (!peer) continue;
 
       const meta = parseUserMeta(peer.metadata);
+      const lastAt = row.last_message_at || row.updated_at;
+      const lastSender = row.last_sender_id;
+      const readAt = myLastReadAt(row, ctx.userId);
+      const unread =
+        !!lastAt &&
+        lastSender !== ctx.userId &&
+        (!readAt || new Date(lastAt).getTime() > new Date(readAt).getTime());
+
       conversations.push({
         id: row.id,
         peer: {
@@ -117,7 +146,8 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
         },
         last_message: row.last_message,
         last_sender_id: row.last_sender_id,
-        last_message_at: row.last_message_at || row.updated_at,
+        last_message_at: lastAt,
+        unread,
         created_at: row.created_at,
         updated_at: row.updated_at,
       });
@@ -241,6 +271,8 @@ export async function getMessages(
     )
       .bind(conversationId, limit, offset)
       .all<MessageRow>();
+
+    await markConversationRead(env, conversation, ctx.userId);
 
     const messages = (rows.results || []).map((m) => ({
       id: m.id,

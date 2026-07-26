@@ -9,7 +9,6 @@ import {
   Modal,
   TextInput,
   Platform,
-  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -39,7 +38,6 @@ import {
   getInstructorEligibility,
   type InstructorEligibility,
 } from '../../services/api/instructor';
-import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 
 type Award = {
   id: string;
@@ -171,10 +169,6 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     bio?: string | null;
     status?: string | null;
   }>({});
-  const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
-  const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
-  const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
-  const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
 
   /** Loads posts, stories, cohort connections, and instructor eligibility. */
   const loadProfileContent = useCallback(async () => {
@@ -363,7 +357,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={{
@@ -371,7 +365,23 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         }}
       >
         {/* Header */}
-        <View style={tw`px-4 pt-4 pb-6 border-b border-stone-200`}>
+        <View style={tw`px-5 pt-3 pb-5`}>
+          <View style={tw`flex-row items-center justify-between mb-4`}>
+            <View>
+              <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-3xl text-stone-900 mt-1`}>You</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigateFromRoot(navigation, 'Settings')}
+              style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+              accessibilityLabel="Settings"
+            >
+              <Ionicons name="settings-outline" size={20} color="#059669" />
+            </TouchableOpacity>
+          </View>
+
           <View style={tw`flex-row items-center mb-4`}>
             <Image
               source={{
@@ -381,7 +391,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                   profileMeta.avatar
                 ),
               }}
-              style={tw`w-20 h-20 rounded-full mr-4`}
+              style={tw`w-20 h-20 rounded-full mr-4 border-2 border-white`}
               contentFit="cover"
             />
             <View style={tw`flex-1`}>
@@ -390,14 +400,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
-                  <Ionicons name="school" size={16} color="#10B981" />
-                  <Text style={tw`text-sm text-brand-600 ml-1 font-semibold`}>Instructor</Text>
+                  <Ionicons name="school" size={16} color="#059669" />
+                  <Text style={tw`text-sm text-emerald-700 ml-1 font-semibold`}>Instructor</Text>
                 </View>
               )}
             </View>
-            <TouchableOpacity onPress={() => setShowDecaySettings(true)}>
-              <Ionicons name="settings-outline" size={24} color="#6B7280" />
-            </TouchableOpacity>
           </View>
 
           {profileMeta.status ? (
@@ -548,41 +555,22 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </Text>
         </View>
 
-        {/* Account & privacy — visible without scrolling past posts/awards */}
-        <View style={tw`px-4 py-4 border-b border-stone-200 bg-white`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Account & privacy</Text>
+        {/* Settings shortcut */}
+        <View style={tw`px-5 py-3`}>
           <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'EditProfile')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+            onPress={() => navigateFromRoot(navigation, 'Settings')}
+            style={tw`flex-row items-center justify-between py-3.5 px-4 bg-white/80 border border-stone-200/80 rounded-2xl`}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="person-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Edit profile</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'Legal')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="shield-checkmark-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Legal & support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
-            style={tw`flex-row items-center justify-between py-3 mt-1 rounded-xl bg-red-50 px-3 -mx-1 border border-red-100`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+              <Ionicons name="settings-outline" size={20} color="#059669" />
               <View style={tw`ml-3`}>
-                <Text style={tw`text-red-700 font-semibold`}>Delete account</Text>
-                <Text style={tw`text-xs text-red-600/80 mt-0.5`}>Export data or permanently delete</Text>
+                <Text style={tw`text-stone-900 font-semibold`}>Settings</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Account, preferences, orders, legal
+                </Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#DC2626" />
+            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
           </TouchableOpacity>
         </View>
 
@@ -797,108 +785,14 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         )}
 
-        {/* Settings */}
-        <View style={tw`px-4 py-4`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Settings</Text>
-          <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-stone-900 font-medium`}>Haptics feedback</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                Subtle vibration on button presses (mobile only).
-              </Text>
-            </View>
-            <Switch
-              value={hapticsEnabled}
-              onValueChange={setHapticsEnabled}
-              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
-              thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
-            />
-          </View>
-          <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-stone-900 font-medium`}>Click sound</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                Optional click tone where supported.
-              </Text>
-            </View>
-            <Switch
-              value={soundEnabled}
-              onValueChange={setSoundEnabled}
-              trackColor={{ false: '#D6D3D1', true: '#DDD6FE' }}
-              thumbColor={soundEnabled ? '#7C3AED' : '#F5F5F4'}
-            />
-          </View>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Marketplace' as never)}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="storefront-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Shop</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              const rootNavigation = navigation.getParent() || navigation;
-              rootNavigation.navigate('UserOrders' as never);
-            }}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="receipt-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>My Orders</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'EditProfile')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="person-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Edit Profile</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'NotificationPrefs')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="notifications-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Notifications</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'Legal')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="document-text-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Legal & Support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="trash-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Delete Account</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
+        {/* Sign out */}
+        <View style={tw`px-5 py-4`}>
           <TouchableOpacity
             onPress={() => setShowSignOutModal(true)}
-            style={tw`flex-row items-center justify-between py-3 mt-2`}
+            style={tw`flex-row items-center justify-center py-3.5 bg-white/80 border border-stone-200/80 rounded-2xl`}
           >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-              <Text style={tw`text-red-600 ml-3 font-semibold`}>Sign Out</Text>
-            </View>
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+            <Text style={tw`text-red-600 ml-2 font-semibold`}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

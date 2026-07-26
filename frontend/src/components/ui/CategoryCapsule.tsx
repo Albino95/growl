@@ -76,6 +76,8 @@ type RowProps = {
   allCount?: number;
   /** When true, selecting the active chip again clears to All */
   allowDeselect?: boolean;
+  /** Hide the leading All chip (e.g. exclusive tab strips). */
+  showAll?: boolean;
 };
 
 export function CategoryCapsuleRow({
@@ -85,6 +87,7 @@ export function CategoryCapsuleRow({
   allLabel = 'All',
   allCount,
   allowDeselect = true,
+  showAll = true,
 }: RowProps) {
   return (
     <View style={{ height: 56, justifyContent: 'center' }}>
@@ -94,13 +97,15 @@ export function CategoryCapsuleRow({
         contentContainerStyle={tw`px-1 items-center`}
         {...horizontalScrollProps}
       >
-        <CategoryCapsule
-          label={allLabel}
-          icon="grid-outline"
-          count={allCount}
-          selected={selectedKey === null}
-          onPress={() => onSelect(null)}
-        />
+        {showAll ? (
+          <CategoryCapsule
+            label={allLabel}
+            icon="grid-outline"
+            count={allCount}
+            selected={selectedKey === null}
+            onPress={() => onSelect(null)}
+          />
+        ) : null}
         {items.map((item) => (
           <CategoryCapsule
             key={item.key}
@@ -109,7 +114,13 @@ export function CategoryCapsuleRow({
             count={item.count}
             selected={selectedKey === item.key}
             onPress={() =>
-              onSelect(allowDeselect && selectedKey === item.key ? null : item.key)
+              onSelect(
+                allowDeselect && selectedKey === item.key
+                  ? showAll
+                    ? null
+                    : item.key
+                  : item.key
+              )
             }
           />
         ))}

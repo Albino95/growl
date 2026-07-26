@@ -30,12 +30,12 @@ export default function MarketplaceCategoryBar({
   const selectedMeta: Category | undefined = CATEGORIES.find((c) => c.key === selectedCategory);
 
   return (
-    <View style={tw`bg-white border-b border-stone-100`}>
+    <View style={tw`bg-transparent`}>
       <View style={{ height: 56, justifyContent: 'center' }}>
         <ScrollView
           horizontal
           style={{ flexGrow: 0 }}
-          contentContainerStyle={tw`px-4 items-center`}
+          contentContainerStyle={tw`px-5 items-center`}
           {...horizontalScrollProps}
         >
           <CategoryCapsule

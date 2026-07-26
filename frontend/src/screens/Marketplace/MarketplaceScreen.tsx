@@ -163,33 +163,38 @@ export default function MarketplaceScreen() {
   })();
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
       <View style={tw`flex-1`}>
-        <View style={tw`px-5 pt-3 pb-3 border-b border-stone-100 bg-white`}>
-          <View style={tw`flex-row items-center justify-between mb-1`}>
-            <Text style={tw`text-2xl font-bold tracking-tight text-emerald-700`}>Shop</Text>
-            <View style={tw`flex-row items-center`}>
+        <View style={tw`px-5 pt-3 pb-2`}>
+          <View style={tw`flex-row items-end justify-between mb-1`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-3xl text-stone-900 mt-1`}>Shop</Text>
+            </View>
+            <View style={tw`flex-row items-center gap-2`}>
               <TouchableOpacity
                 onPress={() => setFilterOpen(true)}
-                style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center mr-2`}
+                style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
                 accessibilityLabel="Open filters"
               >
-                <Ionicons name="options-outline" size={22} color="#059669" />
+                <Ionicons name="options-outline" size={20} color="#059669" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
                   rootNavigation.navigate('UserOrders' as never);
                 }}
-                style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center`}
+                style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
                 accessibilityLabel="Your orders"
               >
-                <Ionicons name="receipt-outline" size={22} color="#059669" />
+                <Ionicons name="receipt-outline" size={20} color="#059669" />
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={tw`text-sm text-stone-500`}>
-            Browse by growth path — chips stay pinned so you can filter without losing the catalog.
+          <Text style={tw`text-sm text-stone-500 mb-2`}>
+            Gear ranked for your growth paths — filter with the capsules below.
           </Text>
         </View>
 
