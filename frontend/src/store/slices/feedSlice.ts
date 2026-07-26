@@ -88,6 +88,33 @@ const feedSlice = createSlice({
       state.following = [post, ...state.following.filter((p) => p.id !== post.id)];
       state.items = [post, ...state.items.filter((p) => p.id !== post.id)];
     },
+    /** Keep like/comment counts and has_liked in sync with optimistic UI (SectionList reads Redux). */
+    patchFeedPostEngagement: (
+      state,
+      action: PayloadAction<{
+        id: string;
+        likes?: number;
+        comments?: number;
+        has_liked?: boolean;
+      }>
+    ) => {
+      const { id, likes, comments, has_liked } = action.payload;
+      const apply = (p: FeedPostWithSection): FeedPostWithSection => {
+        if (p.id !== id) return p;
+        return {
+          ...p,
+          metadata: {
+            ...p.metadata,
+            ...(likes !== undefined ? { likes } : {}),
+            ...(comments !== undefined ? { comments } : {}),
+            ...(has_liked !== undefined ? { has_liked } : {}),
+          },
+        };
+      };
+      state.following = state.following.map(apply);
+      state.suggested = state.suggested.map(apply);
+      state.items = state.items.map(apply);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -112,5 +139,5 @@ const feedSlice = createSlice({
   },
 });
 
-export const { clearFeed, prependFeedPost } = feedSlice.actions;
+export const { clearFeed, prependFeedPost, patchFeedPostEngagement } = feedSlice.actions;
 export default feedSlice.reducer;

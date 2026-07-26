@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
-import { fetchFeedPosts } from '../../store/slices/feedSlice';
+import { fetchFeedPosts, patchFeedPostEngagement } from '../../store/slices/feedSlice';
 import {
   horizontalScrollProps,
   verticalScrollProps,
@@ -32,12 +32,18 @@ import Chip from '../../components/ui/Chip';
 import EmptyState from '../../components/ui/EmptyState';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import HeartBurst from '../../components/feed/HeartBurst';
+import FeedLikeButton, {
+  ReactionPickerBar,
+  type FeedReaction,
+} from '../../components/feed/FeedLikeButton';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
 type Story = {
   id: string;
@@ -49,7 +55,7 @@ type Story = {
   hasViewed: boolean;
 };
 
-type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
+type ReactionType = FeedReaction;
 
 type Post = {
   id: string;
@@ -100,6 +106,10 @@ export default function FeedScreen({ navigation, route }: any) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  /** Client-only reaction emoji (API stores like boolean only). */
+  const [reactionsById, setReactionsById] = useState<Record<string, ReactionType>>({});
+  const [heartBurst, setHeartBurst] = useState<Record<string, number>>({});
+  const lastTapRef = React.useRef<{ id: string; at: number } | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
   const [failedPostImages, setFailedPostImages] = useState<Record<string, boolean>>({});
   const [likesModal, setLikesModal] = useState<{
@@ -234,7 +244,17 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const feedSections = useMemo(() => {
     const mapSection = (items: typeof feedFollowing, title: string) => {
-      const mapped = items.map(toLocalPost);
+      const mapped = items.map((raw) => {
+        const post = toLocalPost(raw);
+        const reaction = reactionsById[post.id];
+        if (reaction === undefined) return post;
+        // Explicit null = unliked; any emoji = liked (client reaction overlay).
+        return {
+          ...post,
+          reaction,
+          hasLiked: reaction != null,
+        };
+      });
       const filtered = selectedCategory
         ? mapped.filter((post) => {
             if (selectedCategory.includes(':')) {
@@ -249,7 +269,11 @@ export default function FeedScreen({ navigation, route }: any) {
     const following = mapSection(feedFollowing, 'From your circle');
     const suggested = mapSection(feedSuggested, 'Suggested for you');
     return [following, suggested].filter(Boolean) as { title: string; data: Post[] }[];
-  }, [feedFollowing, feedSuggested, selectedCategory, user?.id]);
+  }, [feedFollowing, feedSuggested, selectedCategory, user?.id, reactionsById]);
+
+  const playHeartBurst = useCallback((postId: string) => {
+    setHeartBurst((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
+  }, []);
 
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
@@ -308,103 +332,119 @@ export default function FeedScreen({ navigation, route }: any) {
     }
   };
 
-  const toggleLike = async (postId: string) => {
+  const toggleLike = async (postId: string, opts?: { fromDoubleTap?: boolean }) => {
+    const current =
+      feedSections.flatMap((s) => s.data).find((p) => p.id === postId) ||
+      posts.find((p) => p.id === postId);
+    const wasLiked = !!current?.hasLiked;
+
+    // Optimistic Redux patch so SectionList re-renders with a filled heart.
+    if (opts?.fromDoubleTap && wasLiked) {
+      playHeartBurst(postId);
+      return;
+    }
+
+    const nextLiked = !wasLiked;
+    const nextLikes = nextLiked
+      ? (current?.likes ?? 0) + 1
+      : Math.max(0, (current?.likes ?? 0) - 1);
+
+    dispatch(
+      patchFeedPostEngagement({
+        id: postId,
+        has_liked: nextLiked,
+        likes: nextLikes,
+      })
+    );
+    setReactionsById((prev) => ({
+      ...prev,
+      [postId]: nextLiked ? prev[postId] || 'love' : null,
+    }));
+    if (nextLiked) playHeartBurst(postId);
+
     try {
       const res = await toggleFeedPostLike(postId);
       const liked = !!res.data?.liked;
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                hasLiked: liked,
-                likes: liked ? post.likes + (post.hasLiked ? 0 : 1) : Math.max(0, post.likes - (post.hasLiked ? 1 : 0)),
-                reaction: liked ? post.reaction || 'love' : null,
-              }
-            : post
-        )
+      dispatch(
+        patchFeedPostEngagement({
+          id: postId,
+          has_liked: liked,
+          likes: liked
+            ? wasLiked
+              ? current?.likes ?? nextLikes
+              : (current?.likes ?? 0) + 1
+            : Math.max(0, (current?.likes ?? 1) - (wasLiked ? 1 : 0)),
+        })
       );
-      return;
+      setReactionsById((prev) => ({
+        ...prev,
+        [postId]: liked ? prev[postId] || 'love' : null,
+      }));
     } catch {
-      // Fallback optimistic toggle
+      // Revert optimistic patch
+      dispatch(
+        patchFeedPostEngagement({
+          id: postId,
+          has_liked: wasLiked,
+          likes: current?.likes ?? 0,
+        })
+      );
+      setReactionsById((prev) => ({
+        ...prev,
+        [postId]: wasLiked ? prev[postId] || 'love' : null,
+      }));
     }
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              hasLiked: !post.hasLiked,
-              likes: post.hasLiked ? Math.max(0, post.likes - 1) : post.likes + 1,
-              reaction: post.hasLiked ? null : post.reaction || 'love',
-            }
-          : post
-      )
-    );
+  };
+
+  const handleMediaPress = (post: Post) => {
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (last && last.id === post.id && now - last.at < 320) {
+      lastTapRef.current = null;
+      triggerPressFeedback();
+      void toggleLike(post.id, { fromDoubleTap: true });
+      return;
+    }
+    lastTapRef.current = { id: post.id, at: now };
   };
 
   const setReaction = async (postId: string, reaction: ReactionType) => {
     setShowReactionPicker(null);
-    const current = posts.find((p) => p.id === postId);
+    const current =
+      feedSections.flatMap((s) => s.data).find((p) => p.id === postId) ||
+      posts.find((p) => p.id === postId);
+
     try {
       if (reaction === null) {
         if (current?.hasLiked) {
           await toggleFeedPostLike(postId);
         }
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === postId
-              ? {
-                  ...p,
-                  reaction: null,
-                  hasLiked: false,
-                  likes: Math.max(0, p.likes - (current?.hasLiked ? 1 : 0)),
-                }
-              : p
-          )
+        dispatch(
+          patchFeedPostEngagement({
+            id: postId,
+            has_liked: false,
+            likes: Math.max(0, (current?.likes ?? 0) - (current?.hasLiked ? 1 : 0)),
+          })
         );
+        setReactionsById((prev) => ({ ...prev, [postId]: null }));
         return;
       }
       if (!current?.hasLiked) {
         await toggleFeedPostLike(postId);
+        dispatch(
+          patchFeedPostEngagement({
+            id: postId,
+            has_liked: true,
+            likes: (current?.likes ?? 0) + 1,
+          })
+        );
+      } else {
+        dispatch(patchFeedPostEngagement({ id: postId, has_liked: true }));
       }
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                reaction,
-                hasLiked: true,
-                likes: p.likes + (current?.hasLiked ? 0 : 1),
-              }
-            : p
-        )
-      );
+      setReactionsById((prev) => ({ ...prev, [postId]: reaction }));
+      if (reaction === 'love') playHeartBurst(postId);
     } catch {
       void dispatch(fetchFeedPosts({ force: true, silent: true }));
-    }
-  };
-
-  const openLikesModal = async (post: Post, mode: 'all' | 'friends') => {
-    setLikesLoading(true);
-    try {
-      const likes = await getFeedPostLikes(post.id);
-      const users = mode === 'friends' ? likes.friendLikers : likes.likers;
-      setLikesModal({
-        title: mode === 'friends' ? 'Friends who liked' : 'Liked by',
-        users,
-        subtitle:
-          mode === 'friends'
-            ? `${likes.friendLikesCount} friends liked this`
-            : `${likes.likes} total likes`,
-      });
-    } catch (e) {
-      setLikesModal({
-        title: 'Liked by',
-        users: [],
-        subtitle: e instanceof Error ? e.message : 'Could not load likes',
-      });
-    } finally {
-      setLikesLoading(false);
     }
   };
 
@@ -475,25 +515,27 @@ export default function FeedScreen({ navigation, route }: any) {
     ]);
   };
 
-  const renderReactionIcon = (item: Post) => {
-    const active = item.hasLiked || item.reaction != null;
-    if (!active) {
-      return <Ionicons name="heart-outline" size={26} color="#374151" />;
-    }
-    const r = item.reaction || 'love';
-    switch (r) {
-      case 'like':
-        return <Text style={tw`text-2xl leading-none`}>👍</Text>;
-      case 'love':
-        return <Ionicons name="heart" size={26} color="#EF4444" />;
-      case 'laugh':
-        return <Text style={tw`text-2xl leading-none`}>😂</Text>;
-      case 'wow':
-        return <Text style={tw`text-2xl leading-none`}>😮</Text>;
-      case 'support':
-        return <Text style={tw`text-2xl leading-none`}>💪</Text>;
-      default:
-        return <Ionicons name="heart" size={26} color="#EF4444" />;
+  const openLikesModal = async (post: Post, mode: 'all' | 'friends') => {
+    setLikesLoading(true);
+    try {
+      const likes = await getFeedPostLikes(post.id);
+      const users = mode === 'friends' ? likes.friendLikers : likes.likers;
+      setLikesModal({
+        title: mode === 'friends' ? 'Friends who liked' : 'Liked by',
+        users,
+        subtitle:
+          mode === 'friends'
+            ? `${likes.friendLikesCount} friends liked this`
+            : `${likes.likes} total likes`,
+      });
+    } catch (e: unknown) {
+      setLikesModal({
+        title: 'Likes',
+        users: [],
+        subtitle: e instanceof Error ? e.message : 'Could not load likes',
+      });
+    } finally {
+      setLikesLoading(false);
     }
   };
 
@@ -515,7 +557,9 @@ export default function FeedScreen({ navigation, route }: any) {
           ]}
         >
           <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-2xl font-bold text-brand-600`}>Growl</Text>
+            <Text style={tw`text-2xl font-bold text-brand-600`}>
+              Grow<Text style={tw`text-emerald-500`}>!</Text>
+            </Text>
           </View>
 
           {/* Messages/Stories Section (Instagram-style) */}
@@ -784,8 +828,8 @@ export default function FeedScreen({ navigation, route }: any) {
                 </View>
               )}
 
-              {/* Post Image - Modern Style */}
-              <View style={tw`w-full bg-stone-50`}>
+              {/* Post Image — double-tap to like */}
+              <Pressable onPress={() => handleMediaPress(item)} style={tw`relative w-full bg-stone-50`}>
                 {item.image && item.image.trim() !== '' ? (
                   <Image
                     source={{
@@ -809,19 +853,21 @@ export default function FeedScreen({ navigation, route }: any) {
                     <Text style={tw`text-gray-400 mt-2 text-sm`}>No image available</Text>
                   </View>
                 )}
-              </View>
+                <HeartBurst triggerKey={heartBurst[item.id] || 0} />
+              </Pressable>
 
               {/* Post Actions - Modern Style */}
               <View style={tw`px-4 py-3`}>
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View style={tw`flex-row items-center`}>
-                    <TouchableOpacity
+                    <FeedLikeButton
+                      hasLiked={item.hasLiked}
+                      reaction={item.reaction}
                       onPress={() => void toggleLike(item.id)}
-                      onLongPress={() => setShowReactionPicker(showReactionPicker === item.id ? null : item.id)}
-                      style={tw`mr-3`}
-                    >
-                      {renderReactionIcon(item)}
-                    </TouchableOpacity>
+                      onLongPress={() =>
+                        setShowReactionPicker(showReactionPicker === item.id ? null : item.id)
+                      }
+                    />
                     <View style={tw`relative mr-3`}>
                       <TouchableOpacity onPress={() => setSelectedPost(item)}>
                         <Ionicons name="chatbubble-outline" size={24} color="#374151" />
@@ -841,23 +887,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
                 {/* Reaction Picker */}
                 {showReactionPicker === item.id && (
-                  <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-gray-200 z-10`}>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'like')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>👍</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'love')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>❤️</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'laugh')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>😂</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'wow')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>😮</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'support')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>💪</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <ReactionPickerBar onPick={(r) => void setReaction(item.id, r)} />
                 )}
 
                 {/* Likes Count */}
@@ -969,12 +999,17 @@ export default function FeedScreen({ navigation, route }: any) {
               postCaption={selectedPost.caption}
               onClose={() => setSelectedPost(null)}
               onCommentsChanged={(count) => {
+                dispatch(
+                  patchFeedPostEngagement({
+                    id: selectedPost.id,
+                    comments: count,
+                  })
+                );
                 setPosts((prev) =>
                   prev.map((post) =>
                     post.id === selectedPost.id ? { ...post, comments: count } : post
                   )
                 );
-                void dispatch(fetchFeedPosts({ force: true, silent: true }));
               }}
             />
           </Modal>
