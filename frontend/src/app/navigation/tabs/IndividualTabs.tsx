@@ -29,7 +29,7 @@ export type IndividualTabsParamList = {
 
 const Tab = createBottomTabNavigator<IndividualTabsParamList>();
 
-type DockTabKey = 'Feed' | 'Explore' | 'Journal' | 'Profile';
+type DockTabKey = 'Feed' | 'Explore' | 'Journal' | 'Marketplace' | 'Profile';
 
 const DOCK_LEFT: Array<{
   key: DockTabKey;
@@ -43,8 +43,15 @@ const DOCK_LEFT: Array<{
 
 const DOCK_RIGHT: typeof DOCK_LEFT = [
   { key: 'Journal', label: 'Journal', activeIcon: 'book', inactiveIcon: 'book-outline' },
+  { key: 'Marketplace', label: 'Shop', activeIcon: 'storefront', inactiveIcon: 'storefront-outline' },
   { key: 'Profile', label: 'You', activeIcon: 'person', inactiveIcon: 'person-outline' },
 ];
+
+/** Fixed stack so active/inactive tabs share the same vertical rhythm. */
+const TAB_HEIGHT = 48;
+const ICON_SLOT = 24;
+const LABEL_SLOT = 13;
+const DOT_SLOT = 6;
 
 function DockTabButton({
   tab,
@@ -61,30 +68,40 @@ function DockTabButton({
         triggerPressFeedback();
         onPress();
       }}
-      style={tw`flex-1 items-center justify-center py-1 min-w-0`}
+      style={[tw`flex-1 items-center justify-center min-w-0`, { height: TAB_HEIGHT }]}
       hitSlop={{ top: 6, right: 4, bottom: 6, left: 4 }}
       accessibilityRole="button"
       accessibilityState={{ selected: isActive }}
       accessibilityLabel={tab.label}
     >
-      <View style={tw`items-center`}>
+      <View style={[tw`w-full items-center justify-center`, { height: ICON_SLOT }]}>
         <Ionicons
           name={isActive ? tab.activeIcon : tab.inactiveIcon}
           size={22}
-          color={isActive ? theme.colors.textPrimary : theme.colors.textSubtle}
+          color={isActive ? theme.colors.brand : theme.colors.textSubtle}
         />
-        {isActive ? (
-          <Text style={tw`text-[10px] font-semibold text-stone-900 mt-1`} numberOfLines={1}>
-            {tab.label}
-          </Text>
-        ) : (
-          <View style={tw`h-3.5 mt-1`} />
-        )}
+      </View>
+      <View style={[tw`w-full items-center justify-center`, { height: LABEL_SLOT }]}>
+        <Text
+          style={{
+            fontSize: 10,
+            lineHeight: 12,
+            fontWeight: isActive ? '600' : '400',
+            color: isActive ? theme.colors.brand : theme.colors.textSubtle,
+          }}
+          numberOfLines={1}
+        >
+          {tab.label}
+        </Text>
+      </View>
+      <View style={[tw`w-full items-center justify-center`, { height: DOT_SLOT }]}>
         <View
-          style={[
-            tw`mt-1 w-1 h-1 rounded-full`,
-            { backgroundColor: isActive ? theme.colors.textPrimary : 'transparent' },
-          ]}
+          style={{
+            width: 4,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: isActive ? theme.colors.brand : 'transparent',
+          }}
         />
       </View>
     </Pressable>
@@ -126,7 +143,7 @@ export default function IndividualTabs() {
               style={[styles.dockWrap, { paddingBottom: bottomPad }]}
             >
               <View style={styles.dock}>
-                <View style={tw`flex-1 flex-row items-center`}>
+                <View style={[tw`flex-1 flex-row`, { height: TAB_HEIGHT }]}>
                   {DOCK_LEFT.map((tab) => (
                     <DockTabButton
                       key={tab.key}
@@ -137,7 +154,10 @@ export default function IndividualTabs() {
                   ))}
                 </View>
 
-                <View style={tw`w-[64px] items-center justify-center`} pointerEvents="box-none">
+                <View
+                  style={[tw`w-[56px] items-center justify-center`, { height: TAB_HEIGHT }]}
+                  pointerEvents="box-none"
+                >
                   <Pressable
                     onPress={fabFeedback.onPress}
                     onPressIn={fabFeedback.onPressIn}
@@ -148,24 +168,17 @@ export default function IndividualTabs() {
                   >
                     <Animated.View
                       style={[
-                        tw`w-12 h-12 rounded-full bg-stone-900 items-center justify-center`,
-                        Platform.OS === 'ios'
-                          ? {
-                              shadowColor: '#1C1917',
-                              shadowOffset: { width: 0, height: 4 },
-                              shadowOpacity: 0.25,
-                              shadowRadius: 8,
-                            }
-                          : { elevation: 6 },
+                        tw`w-11 h-11 rounded-full bg-brand-600 items-center justify-center`,
+                        Platform.OS === 'ios' ? theme.shadows.fab : { elevation: 6 },
                         fabFeedback.animatedStyle,
                       ]}
                     >
-                      <Ionicons name="add" size={26} color="#FFFFFF" />
+                      <Ionicons name="add" size={24} color="#FFFFFF" />
                     </Animated.View>
                   </Pressable>
                 </View>
 
-                <View style={tw`flex-1 flex-row items-center`}>
+                <View style={[tw`flex-1 flex-row`, { height: TAB_HEIGHT }]}>
                   {DOCK_RIGHT.map((tab) => (
                     <DockTabButton
                       key={tab.key}
@@ -183,13 +196,12 @@ export default function IndividualTabs() {
         <Tab.Screen name="Feed" component={FeedScreen} options={{ tabBarButton: () => null }} />
         <Tab.Screen name="Explore" component={ExploreScreen} options={{ tabBarButton: () => null }} />
         <Tab.Screen name="Journal" component={JournalScreen} options={{ tabBarButton: () => null }} />
-        <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarButton: () => null }} />
-        {/* Reachable from Explore / Profile — not in the dock */}
         <Tab.Screen
           name="Marketplace"
           component={MarketplaceScreen}
           options={{ tabBarButton: () => null }}
         />
+        <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarButton: () => null }} />
         <Tab.Screen
           name="Instructor"
           component={InstructorScreen}
@@ -212,7 +224,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 8,
     backgroundColor: 'transparent',
   },
@@ -221,8 +233,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFcf7',
     borderRadius: 28,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(28,25,23,0.08)',
     ...Platform.select({

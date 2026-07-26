@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { horizontalScrollProps } from '../../constants/scroll';
 import CATEGORIES, { type Category } from '../../data/categories';
+import { CategoryCapsule } from '../ui/CategoryCapsule';
 
 type Props = {
   categoryKeys: string[];
@@ -15,64 +16,6 @@ type Props = {
   onSelectSubcategory: (subcategory: string | null) => void;
   totalCount: number;
 };
-
-function Chip({
-  label,
-  icon,
-  count,
-  selected,
-  onPress,
-  compact,
-}: {
-  label: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  count?: number;
-  selected: boolean;
-  onPress: () => void;
-  compact?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={tw`mr-2 ${compact ? 'min-h-[36px] px-3.5' : 'min-h-[44px] px-3.5'} rounded-2xl flex-row items-center border ${
-        selected
-          ? 'bg-emerald-600 border-emerald-600'
-          : 'bg-white border-stone-200'
-      }`}
-    >
-      {icon ? (
-        <Ionicons
-          name={icon}
-          size={compact ? 16 : 18}
-          color={selected ? '#FFFFFF' : '#059669'}
-          style={tw`mr-1.5`}
-        />
-      ) : null}
-      <Text
-        style={tw`font-semibold ${compact ? 'text-sm' : 'text-[15px]'} ${
-          selected ? 'text-white' : 'text-stone-800'
-        }`}
-      >
-        {label}
-      </Text>
-      {typeof count === 'number' ? (
-        <View
-          style={tw`ml-2 min-w-[22px] h-[22px] px-1.5 rounded-full items-center justify-center ${
-            selected ? 'bg-white/20' : 'bg-stone-100'
-          }`}
-        >
-          <Text
-            style={tw`text-[11px] font-bold ${selected ? 'text-white' : 'text-stone-600'}`}
-          >
-            {count}
-          </Text>
-        </View>
-      ) : null}
-    </TouchableOpacity>
-  );
-}
 
 export default function MarketplaceCategoryBar({
   categoryKeys,
@@ -95,7 +38,7 @@ export default function MarketplaceCategoryBar({
           contentContainerStyle={tw`px-4 items-center`}
           {...horizontalScrollProps}
         >
-          <Chip
+          <CategoryCapsule
             label="All"
             icon="grid-outline"
             count={totalCount}
@@ -107,7 +50,7 @@ export default function MarketplaceCategoryBar({
             const label = meta?.label || key;
             const icon = (meta?.icon || 'ellipse-outline') as keyof typeof Ionicons.glyphMap;
             return (
-              <Chip
+              <CategoryCapsule
                 key={key}
                 label={label}
                 icon={icon}
@@ -128,7 +71,7 @@ export default function MarketplaceCategoryBar({
             contentContainerStyle={tw`px-4 items-center`}
             {...horizontalScrollProps}
           >
-            <Chip
+            <CategoryCapsule
               compact
               label="All"
               count={counts[selectedMeta.key] ?? 0}
@@ -136,7 +79,7 @@ export default function MarketplaceCategoryBar({
               onPress={() => onSelectSubcategory(null)}
             />
             {selectedMeta.subcategories.map((sub) => (
-              <Chip
+              <CategoryCapsule
                 key={sub.key}
                 compact
                 label={sub.label}
