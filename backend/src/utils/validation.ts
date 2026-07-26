@@ -179,6 +179,8 @@ export const updateUserSchema = z.object({
       },
       { message: 'You can select a maximum of 3 growth paths' }
     ),
+  /** Post lifespan in days (1–365). Also accepted via metadata.decay_timer. */
+  decay_timer: z.number().int().min(1).max(365).optional(),
   metadata: z.record(z.any()).optional(),
 });
 

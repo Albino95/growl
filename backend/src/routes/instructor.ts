@@ -8,6 +8,7 @@ import {
   countEndorsements,
   parseUserCategories,
 } from '../utils/instructorEligibility';
+import { POINTS, awardPoints } from '../utils/points';
 
 /**
  * GET /api/v1/instructor/instructors
@@ -187,9 +188,8 @@ export async function voteInstructor(
       .bind(voteId, ctx.userId, candidateId)
       .run();
 
-    await env.DB.prepare('UPDATE users SET points = points + 10 WHERE id = ?')
-      .bind(candidateId)
-      .run();
+    const candidatePoints = await awardPoints(env, candidateId, POINTS.RECEIVE_ENDORSEMENT);
+    const voterPoints = await awardPoints(env, ctx.userId, POINTS.GIVE_ENDORSEMENT);
 
     const endorsementCount = await countEndorsements(env, candidateId);
 
@@ -199,6 +199,10 @@ export async function voteInstructor(
         endorsed: true,
         sharedCategories: shared,
         endorsementCount,
+        points_awarded_candidate: POINTS.RECEIVE_ENDORSEMENT,
+        points_total_candidate: candidatePoints ?? undefined,
+        points_awarded_voter: POINTS.GIVE_ENDORSEMENT,
+        points_total_voter: voterPoints ?? undefined,
       },
       201
     );
@@ -266,11 +270,15 @@ export async function claimInstructor(request: Request, env: Env): Promise<Respo
       .bind(JSON.stringify(meta), ctx.userId)
       .run();
 
+    const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CLAIM_INSTRUCTOR);
+
     const updated = await computeEligibility(env, ctx.userId, 1);
     return json({
       ...updated,
       claimed: true,
       message: 'You are now an instructor',
+      points_awarded: POINTS.CLAIM_INSTRUCTOR,
+      points_total: pointsTotal ?? undefined,
     });
   } catch (err) {
     console.error('[claimInstructor]', err);

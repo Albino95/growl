@@ -7,7 +7,6 @@ import {
   Alert,
   FlatList,
   Modal,
-  TextInput,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,6 +34,8 @@ import GrowthAreasPicker, {
   growthParentCount,
   MAX_GROWTH_PATHS,
 } from '../../components/profile/GrowthAreasPicker';
+import DecaySettingsModal from '../../components/profile/DecaySettingsModal';
+import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { getCategoryMeta } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
@@ -42,6 +43,11 @@ import {
   getInstructorEligibility,
   type InstructorEligibility,
 } from '../../services/api/instructor';
+import {
+  evaluateAchievements,
+  TIER_LABELS,
+  type AchievementTier,
+} from '../../data/achievements';
 
 type Post = {
   id: string;
@@ -64,48 +70,6 @@ type Story = {
   views: number;
   hasViewed: boolean;
 };
-
-type Award = {
-  id: string;
-  name: string;
-  description: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  unlocked: boolean;
-  unlockedAt?: string;
-};
-
-const AWARDS: Award[] = [
-  {
-    id: '1',
-    name: 'First Steps',
-    description: 'Share your first post with the community',
-    icon: 'flag-outline',
-    unlocked: true,
-    unlockedAt: '2024-01-10',
-  },
-  {
-    id: '2',
-    name: 'Week Warrior',
-    description: 'Post for 7 days in a row',
-    icon: 'flame-outline',
-    unlocked: true,
-    unlockedAt: '2024-01-15',
-  },
-  {
-    id: '3',
-    name: 'Community Helper',
-    description: 'Support 10 people on their paths',
-    icon: 'people-outline',
-    unlocked: false,
-  },
-  {
-    id: '4',
-    name: 'Instructor Ready',
-    description: 'Reach 500 growth points',
-    icon: 'school-outline',
-    unlocked: false,
-  },
-];
 
 /** Computes remaining full days before a post reaches decay cutoff. */
 function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
@@ -158,6 +122,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showClaimWelcome, setShowClaimWelcome] = useState(false);
+  const [showFadedPosts, setShowFadedPosts] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
@@ -186,12 +151,13 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         getInstructorEligibility().catch(() => null),
         fetchCurrentProfile().catch(() => null),
       ]);
-      const decay = user.decayTimer || 7;
+      if (elig) setEligibility(elig);
+      const decay =
+        typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
       setFollowing(cohort.following);
       setFollowers(cohort.followers);
-      if (elig) setEligibility(elig);
       if (me) {
         setProfileMeta({
           username: me.username,
@@ -199,13 +165,27 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           bio: me.bio,
           status: me.status,
         });
+        if (typeof me.decay_timer === 'number') {
+          setDecayDays(me.decay_timer);
+        }
+        updateUser({
+          points: me.points,
+          decayTimer: me.decay_timer ?? 7,
+          postCount: me.post_count ?? 0,
+          endorsementsReceived: me.endorsements_received ?? 0,
+          endorsementsGiven: me.endorsements_given ?? 0,
+          streakDays: me.streak_days ?? 0,
+          bio: me.bio ?? null,
+          categories: me.categories,
+          isInstructor: me.is_instructor,
+        });
       }
     } catch (e) {
       console.warn('[ProfileScreen] load profile content', e);
     } finally {
       setProfileLoading(false);
     }
-  }, [user?.id, user?.decayTimer]);
+  }, [user?.id, user?.decayTimer, updateUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -276,14 +256,17 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     if (claimBusy || !eligibility?.canClaim) return;
     const ok = await confirmAsync(
       'Switch to Instructor Account?',
-      'Peers in your growth areas endorsed you. Claiming unlocks the Instructor hub. You can keep posting as usual.',
+      'Peers in your growth areas endorsed you. Claiming unlocks the Instructor hub and awards growth points.',
       { confirmLabel: 'Claim instructor', destructive: false }
     );
     if (!ok) return;
     setClaimBusy(true);
     try {
       const result = await claimInstructor();
-      updateUser({ isInstructor: true });
+      updateUser({
+        isInstructor: true,
+        ...(typeof result.points_total === 'number' ? { points: result.points_total } : {}),
+      });
       await refreshProfile();
       setEligibility(result);
       setShowClaimWelcome(true);
@@ -294,13 +277,37 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     }
   };
 
-  /** Persists local decay timer preference and refreshes profile content projections. */
-  const handleSaveDecayTimer = () => {
-    updateUser({ decayTimer: decayDays });
-    setShowDecaySettings(false);
-    Alert.alert('Success', `Decay timer set to ${decayDays} days`);
-    void loadProfileContent();
+  /** Persists post lifespan to profile metadata and refreshes post countdown. */
+  const handleSaveDecayTimer = async (days: number) => {
+    try {
+      await updateProfileOnServer({ decay_timer: days });
+      setDecayDays(days);
+      updateUser({ decayTimer: days });
+      setShowDecaySettings(false);
+      alertMessage('Saved', `Posts soft-hide after ${days} day${days === 1 ? '' : 's'}.`);
+      void loadProfileContent();
+    } catch (e) {
+      alertMessage('Could not save', e instanceof Error ? e.message : 'Try again later');
+    }
   };
+
+  const achievementStats = {
+    postCount: user?.postCount ?? posts.length,
+    categoriesCount: user?.categories?.length ?? 0,
+    hasBio: !!(profileMeta.bio && String(profileMeta.bio).trim()),
+    streakDays: user?.streakDays ?? 0,
+    endorsementsReceived: eligibility?.endorsementsReceived ?? user?.endorsementsReceived ?? 0,
+    endorsementsGiven: user?.endorsementsGiven ?? 0,
+    points,
+    canClaimInstructor: !!eligibility?.canClaim,
+    isInstructor,
+  };
+  const achievements = evaluateAchievements(achievementStats);
+  const unlockedCount = achievements.filter((a) => a.unlocked).length;
+  const visiblePosts = showFadedPosts
+    ? posts
+    : posts.filter((p) => p.daysUntilDecay > 0);
+  const fadedCount = posts.filter((p) => p.daysUntilDecay <= 0).length;
 
   /** Persists category updates, then re-syncs cohort-based friend graph. */
   const handleUpdateCategories = async (selectedCategories: string[]) => {
@@ -443,7 +450,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 </Text>
                 <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{points}</Text>
                 <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
-                  Earned from posts, streaks, and community activity.
+                  +10 per post · +25 when endorsed · +5 when you endorse · milestones unlock badges
+                  (endorsements still gate instructor).
                 </Text>
               </View>
               <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
@@ -521,7 +529,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               >
                 <View style={tw`flex-row items-center mb-2`}>
                   <Ionicons name="school" size={24} color="#FFFFFF" />
-                  <Text style={tw`text-white font-bold text-lg ml-2`}>Instructor hub</Text>
+                  <Text style={tw`text-white font-bold text-lg ml-2`}>Instructor Hub</Text>
                 </View>
                 <Text style={tw`text-white text-xs opacity-90`}>Teach & mentor your community</Text>
               </TouchableOpacity>
@@ -587,22 +595,29 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         </View>
 
-        {/* Decay Timer Info */}
-        <View style={tw`px-4 py-3 bg-blue-50 border-b border-stone-200`}>
-          <View style={tw`flex-row items-center justify-between`}>
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="time-outline" size={20} color="#3B82F6" />
-              <Text style={tw`text-sm text-stone-700 ml-2`}>
-                Decay Timer: {user?.decayTimer || 7} days
-              </Text>
+        {/* Post lifespan */}
+        <View style={tw`px-4 pb-2`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <View style={tw`flex-row items-center justify-between`}>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Post lifespan
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>
+                  {decayDays} day{decayDays === 1 ? '' : 's'}
+                </Text>
+                <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
+                  Posts soft-hide from timelines after this window so focus stays current.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowDecaySettings(true)}
+                style={tw`px-3 py-2 rounded-full bg-white border border-stone-200`}
+              >
+                <Text style={tw`text-xs font-semibold text-emerald-700`}>Change</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => setShowDecaySettings(true)}>
-              <Text style={tw`text-sm text-blue-600 font-semibold`}>Change</Text>
-            </TouchableOpacity>
           </View>
-          <Text style={tw`text-xs text-stone-500 mt-1`}>
-            Posts will automatically decay after this period to keep your timeline focused
-          </Text>
         </View>
 
         {/* Settings shortcut */}
@@ -657,7 +672,27 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         {/* Content */}
         {activeTab === 'posts' && (
           <View style={tw`p-4`}>
-            {posts.map((post) => (
+            {fadedCount > 0 ? (
+              <TouchableOpacity
+                onPress={() => setShowFadedPosts((v) => !v)}
+                style={tw`mb-3 flex-row items-center justify-between px-3 py-2 rounded-xl bg-[#EAE4D6] border border-stone-200/80`}
+              >
+                <Text style={tw`text-xs text-stone-600`}>
+                  {showFadedPosts
+                    ? 'Showing faded posts'
+                    : `${fadedCount} faded post${fadedCount === 1 ? '' : 's'} hidden`}
+                </Text>
+                <Text style={tw`text-xs font-semibold text-emerald-700`}>
+                  {showFadedPosts ? 'Hide faded' : 'Show faded'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {visiblePosts.length === 0 && posts.length > 0 ? (
+              <Text style={tw`text-sm text-stone-500 text-center py-6`}>
+                All posts have faded. Tap “Show faded” or extend post lifespan.
+              </Text>
+            ) : null}
+            {visiblePosts.map((post) => (
               <TouchableOpacity
                 key={post.id}
                 style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
@@ -710,14 +745,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
                     </View>
                   </View>
-                  <View style={tw`flex-row items-center`}>
-                    <Ionicons name="time" size={16} color={post.daysUntilDecay <= 1 ? '#EF4444' : '#F59E0B'} />
-                    <Text style={tw`text-sm font-semibold ml-1 ${
-                      post.daysUntilDecay <= 1 ? 'text-red-600' : 'text-orange-600'
-                    }`}>
-                      {post.daysUntilDecay} day{post.daysUntilDecay !== 1 ? 's' : ''} left
-                    </Text>
-                  </View>
+                  <DecayCountdownChip daysLeft={post.daysUntilDecay} compact />
                 </View>
               </TouchableOpacity>
             ))}
@@ -779,7 +807,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           />
         )}
 
-        {/* Awards & achievements */}
+        {/* Growth journey — achievements */}
         <View style={tw`px-4 py-4`}>
           <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
             <View style={tw`flex-row items-end justify-between mb-4`}>
@@ -787,9 +815,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
                   Grow!
                 </Text>
-                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Awards & achievements</Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Growth journey</Text>
                 <Text style={tw`text-xs text-stone-500 mt-1`}>
-                  {AWARDS.filter((a) => a.unlocked).length} of {AWARDS.length} unlocked
+                  {unlockedCount} of {achievements.length} unlocked · points and endorsements are separate tracks
                 </Text>
               </View>
               <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center`}>
@@ -797,45 +825,71 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               </View>
             </View>
 
-            {AWARDS.map((award) => (
-              <View
-                key={award.id}
-                style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2 ${
-                  award.unlocked ? '' : 'opacity-70'
-                }`}
-              >
-                <View
-                  style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
-                    award.unlocked ? 'bg-emerald-600' : 'bg-stone-200'
-                  }`}
-                >
-                  <Ionicons
-                    name={award.icon}
-                    size={22}
-                    color={award.unlocked ? '#FFFFFF' : '#78716C'}
-                  />
-                </View>
-                <View style={tw`flex-1 pr-2`}>
-                  <Text
-                    style={tw`text-[15px] font-bold ${
-                      award.unlocked ? 'text-stone-900' : 'text-stone-600'
-                    }`}
-                  >
-                    {award.name}
+            {(Object.keys(TIER_LABELS) as AchievementTier[]).map((tier) => {
+              const tierItems = achievements.filter((a) => a.tier === tier);
+              if (tierItems.length === 0) return null;
+              return (
+                <View key={tier} style={tw`mb-3`}>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                    {TIER_LABELS[tier]}
                   </Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5 leading-4`}>
-                    {award.description}
-                  </Text>
+                  {tierItems.map((award) => (
+                    <View
+                      key={award.id}
+                      style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2 ${
+                        award.unlocked ? '' : 'opacity-75'
+                      }`}
+                    >
+                      <View
+                        style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
+                          award.unlocked ? 'bg-emerald-600' : 'bg-stone-200'
+                        }`}
+                      >
+                        <Ionicons
+                          name={award.icon}
+                          size={22}
+                          color={award.unlocked ? '#FFFFFF' : '#78716C'}
+                        />
+                      </View>
+                      <View style={tw`flex-1 pr-2`}>
+                        <Text
+                          style={tw`text-[15px] font-bold ${
+                            award.unlocked ? 'text-stone-900' : 'text-stone-600'
+                          }`}
+                        >
+                          {award.name}
+                        </Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5 leading-4`}>
+                          {award.description}
+                        </Text>
+                        {!award.unlocked && award.target > 1 ? (
+                          <View style={tw`mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden`}>
+                            <View
+                              style={[
+                                tw`h-full bg-emerald-500 rounded-full`,
+                                { width: `${Math.min(100, (award.progress / award.target) * 100)}%` },
+                              ]}
+                            />
+                          </View>
+                        ) : null}
+                        {!award.unlocked && award.target > 1 ? (
+                          <Text style={tw`text-[10px] text-stone-400 mt-1`}>
+                            {award.progress}/{award.target}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {award.unlocked ? (
+                        <View style={tw`px-2 py-1 rounded-full bg-emerald-100`}>
+                          <Text style={tw`text-[10px] font-bold text-emerald-800 uppercase`}>Earned</Text>
+                        </View>
+                      ) : (
+                        <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
+                      )}
+                    </View>
+                  ))}
                 </View>
-                {award.unlocked ? (
-                  <View style={tw`px-2 py-1 rounded-full bg-emerald-100`}>
-                    <Text style={tw`text-[10px] font-bold text-emerald-800 uppercase`}>Earned</Text>
-                  </View>
-                ) : (
-                  <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
-                )}
-              </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 
@@ -916,63 +970,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         </View>
       </Modal>
 
-      {/* Decay Timer Settings Modal */}
-      <Modal
+      <DecaySettingsModal
         visible={showDecaySettings}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowDecaySettings(false)}
-      >
-        <SafeAreaView style={tw`flex-1 bg-white`}>
-          <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
-            <Text style={tw`text-2xl font-bold text-stone-900`}>Decay Timer</Text>
-            <TouchableOpacity onPress={() => setShowDecaySettings(false)}>
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={tw`flex-1 px-4 pt-6`}>
-            <Text style={tw`text-base text-stone-700 mb-4`}>
-              Set how many days until your posts automatically decay and are removed from your timeline. 
-              This helps you stay focused on current growth areas.
-            </Text>
-            <View style={tw`bg-stone-50 rounded-xl p-4 mb-4`}>
-              <Text style={tw`text-sm text-stone-600 mb-2`}>Days until decay:</Text>
-              <TextInput
-                value={decayDays.toString()}
-                onChangeText={(text) => {
-                  const num = parseInt(text) || 0;
-                  if (num >= 1 && num <= 365) setDecayDays(num);
-                }}
-                keyboardType="numeric"
-                style={tw`bg-white border border-stone-300 rounded-lg px-4 py-3 text-2xl font-bold text-stone-900`}
-              />
-              <View style={tw`flex-row gap-2 mt-3`}>
-                {[1, 3, 7, 14, 30, 90].map((days) => (
-                  <TouchableOpacity
-                    key={days}
-                    onPress={() => setDecayDays(days)}
-                    style={tw`px-3 py-2 rounded-lg ${
-                      decayDays === days ? 'bg-brand-600' : 'bg-white border border-stone-300'
-                    }`}
-                  >
-                    <Text style={tw`text-sm font-semibold ${
-                      decayDays === days ? 'text-white' : 'text-stone-700'
-                    }`}>
-                      {days}d
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-            <TouchableOpacity
-              onPress={handleSaveDecayTimer}
-              style={tw`bg-brand-600 rounded-xl py-4 mb-4`}
-            >
-              <Text style={tw`text-white text-center font-bold text-base`}>Save Settings</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+        initialDays={decayDays}
+        onClose={() => setShowDecaySettings(false)}
+        onSave={handleSaveDecayTimer}
+      />
 
       {/* Category Settings Modal */}
       <Modal
@@ -998,7 +1001,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           <View style={tw`w-full max-w-sm bg-white rounded-2xl p-6`}>
             <Text style={tw`text-xl font-bold text-stone-900 mb-2`}>You’re an instructor</Text>
             <Text style={tw`text-sm text-stone-600 mb-6`}>
-              Your community endorsed you. Open the Instructor hub anytime from Profile.
+              Your community endorsed you. Open the Instructor Hub anytime from Profile.
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -1007,7 +1010,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               }}
               style={tw`bg-brand-600 rounded-xl py-3 items-center mb-3`}
             >
-              <Text style={tw`text-white font-bold`}>Open Instructor hub</Text>
+              <Text style={tw`text-white font-bold`}>Open Instructor Hub</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowClaimWelcome(false)} style={tw`py-2 items-center`}>
               <Text style={tw`text-stone-600 font-semibold`}>Skip for now</Text>

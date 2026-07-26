@@ -3,7 +3,8 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
 import { syncCategoryCohortFriends } from './friends';
-import { computeEligibility } from '../utils/instructorEligibility';
+import { computeEligibility, countEndorsements, countUserPosts } from '../utils/instructorEligibility';
+import { countEndorsementsGiven, computePostStreak } from '../utils/points';
 
 /**
  * GET /api/v1/profile/user/:userId
@@ -82,6 +83,24 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     instructor = undefined;
   }
 
+  const [postCount, endorsementsGiven, streakDays, freshPoints] = await Promise.all([
+    countUserPosts(env, ctx.userId),
+    countEndorsementsGiven(env, ctx.userId),
+    computePostStreak(env, ctx.userId),
+    env.DB.prepare('SELECT points FROM users WHERE id = ?')
+      .bind(ctx.userId)
+      .first<{ points: number }>()
+      .then((r) => (r ? Number(r.points) : ctx.user!.points)),
+  ]);
+
+  const endorsementsReceived =
+    instructor?.endorsementsReceived ?? (await countEndorsements(env, ctx.userId));
+
+  const decayTimer =
+    typeof metadata.decay_timer === 'number' && metadata.decay_timer >= 1
+      ? Math.min(365, Math.floor(metadata.decay_timer))
+      : 7;
+
   return json({
     id: ctx.user.id,
     email: ctx.user.email,
@@ -89,12 +108,17 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     avatar: metadata.avatar,
     bio: typeof metadata.bio === 'string' ? metadata.bio : null,
     status: typeof metadata.status === 'string' ? metadata.status : null,
-    points: ctx.user.points,
+    points: freshPoints,
     is_instructor: ctx.user.is_instructor,
     is_business: ctx.user.is_business,
     categories,
     notifications_prefs: metadata.notifications_prefs || {},
     instructor,
+    decay_timer: decayTimer,
+    post_count: postCount,
+    endorsements_received: endorsementsReceived,
+    endorsements_given: endorsementsGiven,
+    streak_days: streakDays,
     created_at: ctx.user.created_at,
   });
 }
@@ -112,10 +136,9 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
   const validation = await validateRequest(request, updateUserSchema);
   if (!validation.success) return validation.response;
 
-  const { username, avatar, categories, metadata } = validation.data;
+  const { username, avatar, categories, metadata, decay_timer } = validation.data;
 
   try {
-    // Get current user metadata
     const user = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
       .bind(ctx.userId)
       .first<{ metadata: string }>();
@@ -125,13 +148,17 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
     }
 
     const currentMetadata = JSON.parse(user.metadata || '{}');
-    const updatedMetadata = {
+    const updatedMetadata: Record<string, unknown> = {
       ...currentMetadata,
+      ...(metadata || {}),
       ...(username && { username }),
       ...(avatar && { avatar }),
       ...(categories && { categories }),
-      ...(metadata && { ...currentMetadata, ...metadata }),
     };
+
+    if (typeof decay_timer === 'number') {
+      updatedMetadata.decay_timer = decay_timer;
+    }
 
     await env.DB.prepare('UPDATE users SET metadata = ?, updated_at = datetime("now") WHERE id = ?')
       .bind(JSON.stringify(updatedMetadata), ctx.userId)
@@ -150,6 +177,7 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       username: updatedMetadata.username,
       avatar: updatedMetadata.avatar,
       categories: updatedMetadata.categories || [],
+      decay_timer: updatedMetadata.decay_timer ?? 7,
       message: 'Profile updated successfully',
     });
   } catch (err) {

@@ -4,18 +4,19 @@
 
 import { request } from './http';
 
-export type ProfileUpdatePayload = {
-  username?: string;
-  avatar?: string;
-  categories?: string[];
-  metadata?: Record<string, unknown>;
-};
-
 export type NotificationPrefs = {
   notificationsEnabled?: boolean;
   emailNotifications?: boolean;
   pushNotifications?: boolean;
   marketingEmails?: boolean;
+};
+
+export type ProfileUpdatePayload = {
+  username?: string;
+  avatar?: string;
+  categories?: string[];
+  decay_timer?: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type CurrentProfile = {
@@ -30,6 +31,20 @@ export type CurrentProfile = {
   is_business: boolean;
   categories: string[];
   notifications_prefs?: NotificationPrefs;
+  decay_timer?: number;
+  post_count?: number;
+  endorsements_received?: number;
+  endorsements_given?: number;
+  streak_days?: number;
+  instructor?: {
+    alreadyInstructor?: boolean;
+    endorsementsReceived?: number;
+    endorsementsNeeded?: number;
+    postCount?: number;
+    postsNeeded?: number;
+    eligible?: boolean;
+    canClaim?: boolean;
+  };
 };
 
 export type PublicProfileApiData = {
@@ -69,6 +84,10 @@ export async function fetchCurrentProfile(): Promise<CurrentProfile> {
     ...res.data,
     categories: Array.isArray(res.data.categories) ? res.data.categories : [],
     notifications_prefs: res.data.notifications_prefs || {},
+    decay_timer:
+      typeof res.data.decay_timer === 'number' && res.data.decay_timer >= 1
+        ? res.data.decay_timer
+        : 7,
   };
 }
 

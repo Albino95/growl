@@ -30,10 +30,22 @@ export async function getInstructorEligibility(): Promise<InstructorEligibility>
   return res.data;
 }
 
-export async function claimInstructor(): Promise<InstructorEligibility & { claimed: boolean; message: string }> {
+export async function claimInstructor(): Promise<
+  InstructorEligibility & {
+    claimed: boolean;
+    message: string;
+    points_awarded?: number;
+    points_total?: number;
+  }
+> {
   const res = await request<{
     success: boolean;
-    data: InstructorEligibility & { claimed: boolean; message: string };
+    data: InstructorEligibility & {
+      claimed: boolean;
+      message: string;
+      points_awarded?: number;
+      points_total?: number;
+    };
   }>('/instructor/claim', { method: 'POST', body: JSON.stringify({}) });
   if (!res.success || !res.data) throw new Error('Failed to claim instructor status');
   return res.data;
@@ -43,10 +55,19 @@ export async function endorseCandidate(userId: string): Promise<{
   endorsed: boolean;
   endorsementCount: number;
   sharedCategories: string[];
+  points_awarded_voter?: number;
+  points_total_voter?: number;
 }> {
   const res = await request<{
     success: boolean;
-    data: { endorsed: boolean; endorsementCount: number; sharedCategories: string[]; message: string };
+    data: {
+      endorsed: boolean;
+      endorsementCount: number;
+      sharedCategories: string[];
+      message: string;
+      points_awarded_voter?: number;
+      points_total_voter?: number;
+    };
   }>(`/instructor/instructors/${encodeURIComponent(userId)}/vote`, {
     method: 'POST',
     body: JSON.stringify({}),

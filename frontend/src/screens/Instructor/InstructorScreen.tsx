@@ -147,7 +147,7 @@ export default function InstructorScreen({ navigation }: any) {
       updateUser({ isInstructor: true });
       await refreshProfile();
       setEligibility(result);
-      alertMessage('Welcome', 'You’re an instructor. Explore the hub below.');
+      alertMessage('Welcome', 'You’re an instructor. Explore the Instructor Hub below.');
     } catch (e) {
       alertMessage('Could not claim', e instanceof Error ? e.message : 'Try again');
     } finally {
@@ -157,14 +157,19 @@ export default function InstructorScreen({ navigation }: any) {
 
   if (!user?.isInstructor) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+      <SafeAreaView style={tw`flex-1 bg-surface-page`}>
         <View style={tw`flex-1 px-6 justify-center`}>
           <View style={tw`items-center mb-6`}>
-            <Ionicons name="school-outline" size={64} color="#A8A29E" />
-            <Text style={tw`text-xl font-bold text-stone-900 mt-4 mb-2`}>Become an instructor</Text>
-            <Text style={tw`text-stone-600 text-center`}>
-              Peers in your growth areas can endorse you. When you hit the thresholds, claim your instructor account
-              in one tap.
+            <View style={tw`w-16 h-16 rounded-full bg-emerald-600/12 items-center justify-center mb-2`}>
+              <Ionicons name="school-outline" size={36} color="#059669" />
+            </View>
+            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+              Grow!
+            </Text>
+            <Text style={tw`text-xl font-bold text-stone-900 mt-2 mb-2`}>Instructor Hub</Text>
+            <Text style={tw`text-stone-600 text-center leading-5`}>
+              Peers in your growth areas can endorse you. When you hit the thresholds, claim access to the
+              Instructor Hub in one tap.
             </Text>
           </View>
 
@@ -233,15 +238,31 @@ export default function InstructorScreen({ navigation }: any) {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
       <View style={tw`flex-1`}>
-        <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200`}>
-          <Text style={tw`text-3xl font-bold text-green-600 mb-2`}>Instructor Dashboard</Text>
-          <Text style={tw`text-gray-600`}>Manage your students and track their progress</Text>
+        <View style={tw`px-5 pt-4 pb-3`}>
+          <View style={tw`flex-row items-start justify-between`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-2xl font-bold text-stone-900 mt-1`}>Instructor Hub</Text>
+              <Text style={tw`text-sm text-stone-500 mt-1 leading-5`}>
+                Students, homework, and earnings in one place.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigation.goBack?.()}
+              style={tw`w-10 h-10 rounded-full bg-white border border-stone-200 items-center justify-center`}
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={20} color="#1C1917" />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`border-b border-gray-200`}>
-          <View style={tw`flex-row`}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`border-b border-stone-200/80`}>
+          <View style={tw`flex-row px-3`}>
             {[
               { key: 'students', label: 'Students', icon: 'people' },
               { key: 'homework', label: 'Homework', icon: 'document-text' },
@@ -251,18 +272,18 @@ export default function InstructorScreen({ navigation }: any) {
               <TouchableOpacity
                 key={tab.key}
                 onPress={() => setActiveTab(tab.key as typeof activeTab)}
-                style={tw`px-4 py-3 flex-row items-center border-b-2 ${
-                  activeTab === tab.key ? 'border-green-600' : 'border-transparent'
+                style={tw`px-3.5 py-3 flex-row items-center border-b-2 ${
+                  activeTab === tab.key ? 'border-emerald-600' : 'border-transparent'
                 }`}
               >
                 <Ionicons
                   name={tab.icon as keyof typeof Ionicons.glyphMap}
                   size={18}
-                  color={activeTab === tab.key ? '#059669' : '#9CA3AF'}
+                  color={activeTab === tab.key ? '#059669' : '#A8A29E'}
                 />
                 <Text
                   style={tw`ml-2 font-semibold ${
-                    activeTab === tab.key ? 'text-green-700' : 'text-gray-500'
+                    activeTab === tab.key ? 'text-emerald-700' : 'text-stone-500'
                   }`}
                 >
                   {tab.label}

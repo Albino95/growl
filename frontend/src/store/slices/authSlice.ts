@@ -20,6 +20,11 @@ export type User = {
   hasCompletedOnboarding?: boolean;
   points?: number;
   decayTimer?: number;
+  postCount?: number;
+  endorsementsReceived?: number;
+  endorsementsGiven?: number;
+  streakDays?: number;
+  bio?: string | null;
 };
 
 interface AuthState {
@@ -58,6 +63,13 @@ async function loadUserFromApi(email?: string): Promise<User> {
     categories: profile.categories,
     hasCompletedOnboarding: profile.categories.length > 0,
     points: profile.points,
+    decayTimer: profile.decay_timer ?? 7,
+    postCount: profile.post_count ?? 0,
+    endorsementsReceived:
+      profile.endorsements_received ?? profile.instructor?.endorsementsReceived ?? 0,
+    endorsementsGiven: profile.endorsements_given ?? 0,
+    streakDays: profile.streak_days ?? 0,
+    bio: profile.bio ?? null,
   };
 }
 

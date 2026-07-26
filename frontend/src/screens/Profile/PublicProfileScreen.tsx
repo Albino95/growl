@@ -135,7 +135,7 @@ async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]
 }
 
 export default function PublicProfileScreen() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, updateUser } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PublicProfile'>>();
   const { userId } = route.params;
@@ -211,6 +211,9 @@ export default function PublicProfileScreen() {
     setEndorseBusy(true);
     try {
       const result = await endorseCandidate(userId);
+      if (typeof result.points_total_voter === 'number') {
+        updateUser({ points: result.points_total_voter });
+      }
       setEndorseStatus((prev) =>
         prev
           ? {
@@ -221,7 +224,7 @@ export default function PublicProfileScreen() {
             }
           : prev
       );
-      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement.`);
+      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement. You earned growth points too.`);
     } catch (e) {
       alertMessage('Could not endorse', e instanceof Error ? e.message : 'Try again later');
     } finally {

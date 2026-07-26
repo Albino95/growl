@@ -144,10 +144,11 @@ export function useCreatePost(onSuccess?: () => void) {
             },
           })
         );
+        if (typeof created.data.points_total === 'number') {
+          updateUser({ points: created.data.points_total });
+        }
       }
 
-      const currentPoints = user?.points || 0;
-      updateUser({ points: currentPoints + 10 });
       clearDraft();
       triggerPressFeedback();
       onSuccess?.();
@@ -167,7 +168,6 @@ export function useCreatePost(onSuccess?: () => void) {
     audioTrack,
     isPosting,
     dispatch,
-    user?.points,
     user?.username,
     user?.avatar,
     updateUser,
