@@ -28,11 +28,9 @@ const initialState: JournalState = {
 
 export const fetchJournalEntries = createAsyncThunk(
   'journal/fetchEntries',
-  async (tab: 'public' | 'private' = 'public') => {
-    const response =
-      tab === 'public'
-        ? await getJournalEntries({ scope: 'public', limit: 100 })
-        : await getJournalEntries({ scope: 'mine', visibility: 'private', limit: 100 });
+  async (_arg?: void) => {
+    // Own practice log (private + shared). Public discovery lives on profiles.
+    const response = await getJournalEntries({ scope: 'mine', limit: 100 });
     if (response.success && response.data?.entries) {
       return response.data.entries;
     }

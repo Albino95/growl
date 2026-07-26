@@ -109,7 +109,7 @@ export function ReactionPickerBar({
   return (
     <Animated.View
       style={[
-        tw`absolute left-4 top-12 z-10 flex-row items-center rounded-full border border-stone-200 bg-white px-2 py-2 shadow-lg`,
+        tw`flex-row items-center rounded-full border border-stone-200 bg-white px-2 py-2 shadow-lg`,
         {
           opacity: enter,
           transform: [

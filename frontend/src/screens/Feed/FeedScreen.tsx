@@ -221,10 +221,11 @@ export default function FeedScreen({ navigation, route }: any) {
       void dispatch(fetchFeedPosts());
       void loadStoriesOnly();
 
-      // Lightweight live refresh while the Feed tab is focused (WebSocket-like freshness without DOs).
+      // Background refresh while Feed is focused. Silent mode merges so engaged posts
+      // are not dropped when the server top-N window reshuffles.
       const pollId = setInterval(() => {
         void dispatch(fetchFeedPosts({ force: true, silent: true }));
-      }, 25_000);
+      }, 60_000);
 
       return () => clearInterval(pollId);
     }, [dispatch])
@@ -444,7 +445,7 @@ export default function FeedScreen({ navigation, route }: any) {
       setReactionsById((prev) => ({ ...prev, [postId]: reaction }));
       if (reaction === 'love') playHeartBurst(postId);
     } catch {
-      void dispatch(fetchFeedPosts({ force: true, silent: true }));
+      // Keep optimistic reaction; avoid a hard feed refresh that can reshuffle posts.
     }
   };
 
@@ -863,7 +864,13 @@ export default function FeedScreen({ navigation, route }: any) {
                     <FeedLikeButton
                       hasLiked={item.hasLiked}
                       reaction={item.reaction}
-                      onPress={() => void toggleLike(item.id)}
+                      onPress={() => {
+                        if (showReactionPicker === item.id) {
+                          setShowReactionPicker(null);
+                          return;
+                        }
+                        void toggleLike(item.id);
+                      }}
                       onLongPress={() =>
                         setShowReactionPicker(showReactionPicker === item.id ? null : item.id)
                       }
@@ -884,11 +891,6 @@ export default function FeedScreen({ navigation, route }: any) {
                     </View>
                   </View>
                 </View>
-
-                {/* Reaction Picker */}
-                {showReactionPicker === item.id && (
-                  <ReactionPickerBar onPick={(r) => void setReaction(item.id, r)} />
-                )}
 
                 {/* Likes Count */}
                 <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
@@ -984,6 +986,28 @@ export default function FeedScreen({ navigation, route }: any) {
             />
           }
         />
+
+        {/* Reaction picker — tap outside to cancel */}
+        <Modal
+          visible={!!showReactionPicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowReactionPicker(null)}
+        >
+          <View style={tw`flex-1 justify-center items-center`}>
+            <Pressable
+              style={tw`absolute inset-0 bg-black/30`}
+              onPress={() => setShowReactionPicker(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss reactions"
+            />
+            <ReactionPickerBar
+              onPick={(r) => {
+                if (showReactionPicker) void setReaction(showReactionPicker, r);
+              }}
+            />
+          </View>
+        </Modal>
 
         {/* Comments Modal */}
         {selectedPost && (
