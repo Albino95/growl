@@ -168,7 +168,17 @@ export const checkoutSessionSchema = z.object({
 export const updateUserSchema = z.object({
   username: z.string().min(3).optional(),
   avatar: z.string().url().optional(),
-  categories: z.array(z.string()).optional(),
+  categories: z
+    .array(z.string())
+    .optional()
+    .refine(
+      (cats) => {
+        if (!cats) return true;
+        const parents = new Set(cats.map((k) => (k.includes(':') ? k.split(':')[0] : k)));
+        return parents.size <= 3;
+      },
+      { message: 'You can select a maximum of 3 growth paths' }
+    ),
   metadata: z.record(z.any()).optional(),
 });
 

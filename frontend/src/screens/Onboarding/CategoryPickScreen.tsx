@@ -4,7 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
 import Screen from '../../components/ui/Screen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
-import GrowthAreasPicker from '../../components/profile/GrowthAreasPicker';
+import GrowthAreasPicker, { clampGrowthPaths } from '../../components/profile/GrowthAreasPicker';
 import { useAuth } from '../../store/hooks';
 import { updateProfileOnServer } from '../../services/api/profile';
 import { syncCohortFriends } from '../../services/api/friends';
@@ -28,7 +28,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
       return;
     }
     try {
-      await updateProfileOnServer({ categories: selectedCategories });
+      await updateProfileOnServer({ categories: clampGrowthPaths(selectedCategories) });
       await syncCohortFriends();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';

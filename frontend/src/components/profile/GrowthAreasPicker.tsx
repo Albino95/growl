@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import CATEGORIES, { type Category } from '../../data/categories';
@@ -10,7 +10,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const MAX_CATEGORIES = 3;
+export const MAX_GROWTH_PATHS = 3;
 
 type Props = {
   value: string[];
@@ -19,58 +19,86 @@ type Props = {
   showCountBanner?: boolean;
 };
 
+function parentKeyOf(path: string): string {
+  return path.includes(':') ? path.split(':')[0] : path;
+}
+
+/** Unique parent growth areas (max 3). */
+export function growthParentCount(keys: string[]): number {
+  return new Set(keys.map(parentKeyOf)).size;
+}
+
+/** Keep at most one entry per parent, then at most MAX_GROWTH_PATHS parents. */
+export function clampGrowthPaths(keys: string[], max = MAX_GROWTH_PATHS): string[] {
+  const byParent = new Map<string, string>();
+  for (const key of keys) {
+    const parent = parentKeyOf(key);
+    if (!byParent.has(parent)) {
+      byParent.set(parent, key);
+    }
+  }
+  return Array.from(byParent.values()).slice(0, max);
+}
+
 /**
- * Shared growth-area picker: expand parent → pick "All" or subcategories as `parent:sub` paths.
- * Max 3 selections (parent keys or parent:sub paths count toward the limit by parent group).
+ * Shared growth-area picker: expand parent → pick "All" or one focus as `parent:sub`.
+ * Hard limit: 3 parent paths (not 3 chips of mixed subcategories).
  */
 export default function GrowthAreasPicker({ value, onChange, showCountBanner = true }: Props) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
-  const parentGroupCount = (keys: string[]) => {
-    const parents = new Set(keys.map((k) => (k.includes(':') ? k.split(':')[0] : k)));
-    return parents.size;
+  // Normalize: one entry per parent, max 3 — fixes legacy multi-sub selections over the limit
+  const normalized = useMemo(() => clampGrowthPaths(value), [value]);
+  const selectedParentCount = growthParentCount(normalized);
+
+  useEffect(() => {
+    const clamped = clampGrowthPaths(value);
+    const same =
+      clamped.length === value.length && clamped.every((k, i) => k === value[i]);
+    if (!same) {
+      onChange(clamped);
+    }
+    // Intentionally key off serialized value to avoid onChange identity loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.join('|')]);
+
+  const commit = (next: string[]) => {
+    onChange(clampGrowthPaths(next));
   };
 
-  const selectedParentCount = useMemo(() => parentGroupCount(value), [value]);
-
   const toggleCategory = (categoryKey: string) => {
-    if (value.includes(categoryKey)) {
-      onChange(value.filter((k) => k !== categoryKey));
+    if (normalized.includes(categoryKey)) {
+      commit(normalized.filter((k) => k !== categoryKey));
       return;
     }
-    const withoutSubs = value.filter((k) => !k.startsWith(categoryKey + ':'));
-    const otherParents = parentGroupCount(withoutSubs);
-    if (otherParents >= MAX_CATEGORIES) {
-      alertMessage('Limit reached', `You can select a maximum of ${MAX_CATEGORIES} growth areas`);
+    const withoutParent = normalized.filter((k) => parentKeyOf(k) !== categoryKey);
+    if (growthParentCount(withoutParent) >= MAX_GROWTH_PATHS) {
+      alertMessage('Limit reached', `You can select a maximum of ${MAX_GROWTH_PATHS} growth paths`);
       return;
     }
-    onChange([...withoutSubs, categoryKey]);
+    commit([...withoutParent, categoryKey]);
   };
 
   const toggleSubcategory = (categoryKey: string, subcategoryKey: string) => {
     const fullKey = `${categoryKey}:${subcategoryKey}`;
-    const otherCategories = value.filter((k) => !k.startsWith(categoryKey + ':') && k !== categoryKey);
-
-    if (value.includes(fullKey)) {
-      const remaining = value.filter((k) => k !== fullKey);
-      const hasOtherSubs = remaining.some((k) => k.startsWith(categoryKey + ':'));
-      onChange(hasOtherSubs ? remaining : otherCategories);
+    if (normalized.includes(fullKey)) {
+      commit(normalized.filter((k) => k !== fullKey));
       return;
     }
-
-    if (parentGroupCount(otherCategories) >= MAX_CATEGORIES) {
-      alertMessage('Limit reached', `You can select a maximum of ${MAX_CATEGORIES} growth areas`);
+    const withoutParent = normalized.filter((k) => parentKeyOf(k) !== categoryKey);
+    // One focus per parent: replace any existing selection for this path
+    if (growthParentCount(withoutParent) >= MAX_GROWTH_PATHS) {
+      alertMessage('Limit reached', `You can select a maximum of ${MAX_GROWTH_PATHS} growth paths`);
       return;
     }
-    const withoutCategory = value.filter((k) => k !== categoryKey);
-    onChange([...withoutCategory, fullKey]);
+    commit([...withoutParent, fullKey]);
   };
 
   const getSelectedSubcategories = (category: Category): string[] =>
-    value.filter((k) => k.startsWith(category.key + ':')).map((k) => k.split(':')[1]);
+    normalized.filter((k) => k.startsWith(category.key + ':')).map((k) => k.split(':')[1]);
 
   const isCategorySelected = (category: Category): boolean =>
-    value.includes(category.key) || getSelectedSubcategories(category).length > 0;
+    normalized.some((k) => parentKeyOf(k) === category.key);
 
   const expand = (key: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -78,7 +106,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
   };
 
   const removePath = (path: string) => {
-    onChange(value.filter((k) => k !== path));
+    commit(normalized.filter((k) => k !== path));
   };
 
   return (
@@ -91,12 +119,12 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                 Growth paths
               </Text>
               <Text style={tw`text-base font-bold text-stone-900 mt-0.5`}>
-                {selectedParentCount} of {MAX_CATEGORIES} selected
+                {selectedParentCount} of {MAX_GROWTH_PATHS} selected
               </Text>
             </View>
-            {value.length > 0 ? (
+            {normalized.length > 0 ? (
               <TouchableOpacity
-                onPress={() => onChange([])}
+                onPress={() => commit([])}
                 style={tw`px-3 py-1.5 bg-white border border-stone-200 rounded-full`}
               >
                 <Text style={tw`text-xs font-semibold text-emerald-700`}>Clear</Text>
@@ -104,14 +132,14 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
             ) : null}
           </View>
 
-          {value.length > 0 ? (
+          {normalized.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={tw`mt-3`}
               contentContainerStyle={tw`pr-2`}
             >
-              {value.map((path) => (
+              {normalized.map((path) => (
                 <TouchableOpacity
                   key={path}
                   onPress={() => removePath(path)}
@@ -127,7 +155,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
             </ScrollView>
           ) : (
             <Text style={tw`text-xs text-stone-500 mt-2 leading-4`}>
-              Tap a path, then choose All or specific focuses.
+              Tap a path, then choose All or one focus. Max {MAX_GROWTH_PATHS}.
             </Text>
           )}
         </View>
@@ -144,8 +172,9 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
           const isSelected = isCategorySelected(category);
           const isExpanded = expandedCategory === category.key;
           const selectedSubs = getSelectedSubcategories(category);
-          const allSelected = value.includes(category.key);
+          const allSelected = normalized.includes(category.key);
           const icon = category.icon as keyof typeof Ionicons.glyphMap;
+          const atLimit = selectedParentCount >= MAX_GROWTH_PATHS && !isSelected;
 
           return (
             <View
@@ -156,7 +185,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                   : isExpanded
                     ? 'border-stone-300 bg-white'
                     : 'border-stone-200/80 bg-white'
-              }`}
+              } ${atLimit ? 'opacity-55' : ''}`}
             >
               <TouchableOpacity
                 onPress={() => expand(category.key)}
@@ -183,13 +212,11 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                     {allSelected
                       ? `All ${category.label}`
                       : selectedSubs.length > 0
-                        ? selectedSubs
-                            .map(
-                              (sk) =>
-                                category.subcategories.find((s) => s.key === sk)?.label || sk
-                            )
-                            .join(' · ')
-                        : `${category.subcategories.length} focuses`}
+                        ? category.subcategories.find((s) => s.key === selectedSubs[0])?.label ||
+                          selectedSubs[0]
+                        : atLimit
+                          ? 'Limit reached'
+                          : `${category.subcategories.length} focuses`}
                   </Text>
                 </View>
 
@@ -216,6 +243,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                   <View style={tw`flex-row flex-wrap`}>
                     <TouchableOpacity
                       onPress={() => toggleCategory(category.key)}
+                      disabled={atLimit}
                       style={tw`mr-2 mb-2 px-3.5 py-2 rounded-full border flex-row items-center ${
                         allSelected
                           ? 'bg-emerald-600 border-emerald-600'
@@ -240,11 +268,12 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
 
                     {category.subcategories.map((sub) => {
                       const subKey = `${category.key}:${sub.key}`;
-                      const isSubSelected = value.includes(subKey);
+                      const isSubSelected = normalized.includes(subKey);
                       return (
                         <TouchableOpacity
                           key={sub.key}
                           onPress={() => toggleSubcategory(category.key, sub.key)}
+                          disabled={atLimit && !isSubSelected}
                           style={tw`mr-2 mb-2 px-3.5 py-2 rounded-full border ${
                             isSubSelected
                               ? 'bg-emerald-600 border-emerald-600'

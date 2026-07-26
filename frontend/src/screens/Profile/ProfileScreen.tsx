@@ -30,7 +30,11 @@ import ConnectionsListSheet, {
   type ConnectionsSheetMode,
 } from '../../components/profile/ConnectionsListSheet';
 import EmptyState from '../../components/ui/EmptyState';
-import GrowthAreasPicker from '../../components/profile/GrowthAreasPicker';
+import GrowthAreasPicker, {
+  clampGrowthPaths,
+  growthParentCount,
+  MAX_GROWTH_PATHS,
+} from '../../components/profile/GrowthAreasPicker';
 import { getCategoryMeta } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
@@ -38,15 +42,6 @@ import {
   getInstructorEligibility,
   type InstructorEligibility,
 } from '../../services/api/instructor';
-
-type Award = {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  unlocked: boolean;
-  unlockedAt?: string;
-};
 
 type Post = {
   id: string;
@@ -70,35 +65,44 @@ type Story = {
   hasViewed: boolean;
 };
 
+type Award = {
+  id: string;
+  name: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  unlocked: boolean;
+  unlockedAt?: string;
+};
+
 const AWARDS: Award[] = [
   {
     id: '1',
     name: 'First Steps',
-    description: 'Complete your first post',
-    icon: '🎯',
+    description: 'Share your first post with the community',
+    icon: 'flag-outline',
     unlocked: true,
     unlockedAt: '2024-01-10',
   },
   {
     id: '2',
     name: 'Week Warrior',
-    description: 'Post for 7 consecutive days',
-    icon: '🔥',
+    description: 'Post for 7 days in a row',
+    icon: 'flame-outline',
     unlocked: true,
     unlockedAt: '2024-01-15',
   },
   {
     id: '3',
     name: 'Community Helper',
-    description: 'Help 10 other users',
-    icon: '🤝',
+    description: 'Support 10 people on their paths',
+    icon: 'people-outline',
     unlocked: false,
   },
   {
     id: '4',
     name: 'Instructor Ready',
-    description: 'Reach 500 points',
-    icon: '🎓',
+    description: 'Reach 500 growth points',
+    icon: 'school-outline',
     unlocked: false,
   },
 ];
@@ -300,13 +304,18 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
   /** Persists category updates, then re-syncs cohort-based friend graph. */
   const handleUpdateCategories = async (selectedCategories: string[]) => {
-    if (selectedCategories.length === 0) {
-      alertMessage('Select at least one', 'Pick at least one growth area before saving.');
+    const next = clampGrowthPaths(selectedCategories);
+    if (next.length === 0) {
+      alertMessage('Select at least one', 'Pick at least one growth path before saving.');
+      return;
+    }
+    if (growthParentCount(next) > MAX_GROWTH_PATHS) {
+      alertMessage('Limit reached', `You can save at most ${MAX_GROWTH_PATHS} growth paths.`);
       return;
     }
     try {
-      await updateProfileOnServer({ categories: selectedCategories });
-      updateUser({ categories: selectedCategories });
+      await updateProfileOnServer({ categories: next });
+      updateUser({ categories: next });
       try {
         const cohort = await syncCohortFriends();
         setFollowing(cohort.following);
@@ -315,7 +324,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         console.warn('[ProfileScreen] cohort sync after category update', cohortErr);
       }
       setShowCategorySettings(false);
-      alertMessage('Success', 'Growth areas updated!');
+      alertMessage('Success', 'Growth paths updated!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not update growth areas';
       alertMessage('Error', msg);
@@ -770,35 +779,61 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           />
         )}
 
-        {/* Awards Section */}
-        <View style={tw`px-4 py-4 border-t border-stone-200`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Awards & Achievements</Text>
-          <View style={tw`flex-row flex-wrap`}>
+        {/* Awards & achievements */}
+        <View style={tw`px-4 py-4`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <View style={tw`flex-row items-end justify-between mb-4`}>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Grow!
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Awards & achievements</Text>
+                <Text style={tw`text-xs text-stone-500 mt-1`}>
+                  {AWARDS.filter((a) => a.unlocked).length} of {AWARDS.length} unlocked
+                </Text>
+              </View>
+              <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center`}>
+                <Ionicons name="ribbon-outline" size={22} color="#059669" />
+              </View>
+            </View>
+
             {AWARDS.map((award) => (
-              <View key={award.id} style={tw`w-1/2 mb-4 pr-2`}>
+              <View
+                key={award.id}
+                style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2 ${
+                  award.unlocked ? '' : 'opacity-70'
+                }`}
+              >
                 <View
-                  style={tw`bg-white border-2 rounded-xl p-4 items-center ${
-                    award.unlocked
-                      ? 'border-brand-500 bg-brand-50'
-                      : 'border-stone-200 bg-stone-50 opacity-60'
+                  style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
+                    award.unlocked ? 'bg-emerald-600' : 'bg-stone-200'
                   }`}
                 >
-                  <Text style={tw`text-4xl mb-2`}>{award.icon}</Text>
+                  <Ionicons
+                    name={award.icon}
+                    size={22}
+                    color={award.unlocked ? '#FFFFFF' : '#78716C'}
+                  />
+                </View>
+                <View style={tw`flex-1 pr-2`}>
                   <Text
-                    style={tw`font-semibold text-center mb-1 ${
-                      award.unlocked ? 'text-stone-900' : 'text-stone-500'
+                    style={tw`text-[15px] font-bold ${
+                      award.unlocked ? 'text-stone-900' : 'text-stone-600'
                     }`}
                   >
                     {award.name}
                   </Text>
-                  <Text
-                    style={tw`text-xs text-center ${
-                      award.unlocked ? 'text-stone-600' : 'text-stone-400'
-                    }`}
-                  >
+                  <Text style={tw`text-xs text-stone-500 mt-0.5 leading-4`}>
                     {award.description}
                   </Text>
                 </View>
+                {award.unlocked ? (
+                  <View style={tw`px-2 py-1 rounded-full bg-emerald-100`}>
+                    <Text style={tw`text-[10px] font-bold text-emerald-800 uppercase`}>Earned</Text>
+                  </View>
+                ) : (
+                  <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
+                )}
               </View>
             ))}
           </View>
@@ -999,9 +1034,11 @@ function CategoryPickerModal({
 
   const handleSave = async () => {
     if (saving) return;
+    const next = clampGrowthPaths(selectedCategories);
+    if (growthParentCount(next) === 0 || growthParentCount(next) > MAX_GROWTH_PATHS) return;
     setSaving(true);
     try {
-      await onSave(selectedCategories);
+      await onSave(next);
     } finally {
       setSaving(false);
     }
@@ -1036,9 +1073,11 @@ function CategoryPickerModal({
       <View style={tw`px-5 pt-3 pb-6 border-t border-stone-200/80 bg-[#F3EEE4]`}>
         <TouchableOpacity
           onPress={() => void handleSave()}
-          disabled={saving || selectedCategories.length === 0}
+          disabled={saving || growthParentCount(selectedCategories) === 0 || growthParentCount(selectedCategories) > MAX_GROWTH_PATHS}
           style={tw`bg-emerald-600 rounded-2xl py-4 items-center ${
-            saving || selectedCategories.length === 0 ? 'opacity-50' : ''
+            saving || growthParentCount(selectedCategories) === 0 || growthParentCount(selectedCategories) > MAX_GROWTH_PATHS
+              ? 'opacity-50'
+              : ''
           }`}
         >
           <Text style={tw`text-white text-center font-bold text-base`}>

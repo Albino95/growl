@@ -74,15 +74,6 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
   const metadata = JSON.parse(ctx.user.metadata || '{}');
   const categories = metadata.categories || [];
 
-  let cohortFriendsLinked = 0;
-  if (categories.length > 0) {
-    try {
-      cohortFriendsLinked = await syncCategoryCohortFriends(env, ctx.userId);
-    } catch (syncErr) {
-      console.error('[getProfile] cohort friend sync failed:', syncErr);
-    }
-  }
-
   let instructor;
   try {
     instructor = await computeEligibility(env, ctx.userId, ctx.user.is_instructor);
@@ -103,7 +94,6 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     is_business: ctx.user.is_business,
     categories,
     notifications_prefs: metadata.notifications_prefs || {},
-    cohort_friends_linked: cohortFriendsLinked,
     instructor,
     created_at: ctx.user.created_at,
   });
