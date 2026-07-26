@@ -28,10 +28,10 @@ import {
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import Chip from '../../components/ui/Chip';
 import EmptyState from '../../components/ui/EmptyState';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import HeartBurst from '../../components/feed/HeartBurst';
 import FeedLikeButton, {
   ReactionPickerBar,
@@ -310,6 +310,29 @@ export default function FeedScreen({ navigation, route }: any) {
       .filter((x) => x.length > 0);
   }, [user?.categories]);
 
+  const pathCapsules: CapsuleItem[] = useMemo(() => {
+    const keys =
+      userCategories.length > 0
+        ? userCategories
+        : CATEGORIES.slice(0, 8).map((c) => c.key);
+
+    return keys.map((cat) => {
+      const parentKey = cat.split(':')[0];
+      const category = CATEGORIES.find((c) => c.key === parentKey);
+      const subcategory = cat.includes(':')
+        ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
+        : null;
+      const label = String(
+        (subcategory ? subcategory.label : category?.label || cat) || ''
+      ).trim() || 'Path';
+      return {
+        key: cat,
+        label,
+        icon: (category?.icon || 'ellipse-outline') as keyof typeof Ionicons.glyphMap,
+      };
+    });
+  }, [userCategories]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     try {
@@ -541,85 +564,91 @@ export default function FeedScreen({ navigation, route }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
       <View style={tw`flex-1`}>
-        {/* Header with Messages/Stories */}
-        <View
-          style={[
-            tw`px-4 pt-2 pb-3 bg-white border-b border-stone-100`,
-            Platform.OS === 'ios'
-              ? {
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.07,
-                  shadowRadius: 10,
-                }
-              : { elevation: 3 },
-          ]}
-        >
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-2xl font-bold text-brand-600`}>
-              Grow<Text style={tw`text-emerald-500`}>!</Text>
-            </Text>
+        <View style={tw`px-5 pt-3 pb-2`}>
+          <View style={tw`flex-row items-end justify-between mb-1`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-3xl text-stone-900 mt-1`}>Feed</Text>
+            </View>
+            <View style={tw`flex-row items-center gap-2`}>
+              <Pressable
+                onPress={() => {
+                  triggerPressFeedback();
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Messages');
+                }}
+                style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+                accessibilityLabel="Inbox"
+              >
+                <Ionicons name="chatbubbles-outline" size={18} color="#059669" />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  triggerPressFeedback();
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Reels');
+                }}
+                style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+                accessibilityLabel="Reels"
+              >
+                <Ionicons name="play-circle-outline" size={18} color="#059669" />
+              </Pressable>
+            </View>
           </View>
+          <Text style={tw`text-sm text-stone-500 mb-3`}>
+            Progress from your circle — and a few suggestions on your paths.
+          </Text>
 
-          {/* Messages/Stories Section (Instagram-style) */}
+          {/* Stories */}
           <ScrollView
             horizontal
-            style={tw`mb-3`}
-            contentContainerStyle={tw`px-2`}
+            style={tw`mb-2`}
+            contentContainerStyle={tw`pr-2`}
             {...horizontalScrollProps}
           >
             <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full bg-brand-50 border-2 border-brand-200 mr-4`}
+              style={tw`items-center mr-4`}
               onPress={() => {
-                // Navigate to messages screen
                 const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Messages');
+                rootNavigation.navigate('CreateStory' as never);
               }}
             >
-              <Ionicons name="chatbubbles" size={24} color="#059669" />
-              <Text style={tw`text-[10px] text-stone-600 mt-1`}>Inbox</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full bg-purple-50 border-2 border-purple-200 mr-4`}
-              onPress={() => {
-                // Navigate to reels screen
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Reels');
-              }}
-            >
-              <Ionicons name="videocam" size={24} color="#A855F7" />
-              <Text style={tw`text-[10px] text-stone-600 mt-1`}>Reels</Text>
+              <View style={tw`w-16 h-16 rounded-full border-2 border-dashed border-stone-300 items-center justify-center bg-white/60`}>
+                <Ionicons name="add" size={24} color="#78716C" />
+              </View>
+              <Text style={tw`text-xs text-stone-600 mt-1.5`}>Your story</Text>
             </TouchableOpacity>
             {groupedStories.map((group) => {
-              const { user, stories: userStories } = group;
-              // Check if all stories from this user have been viewed
+              const { user: storyUser, stories: userStories } = group;
               const allViewed = userStories.every((s) => s.hasViewed);
               const storyCount = userStories.length;
-              
+
               return (
                 <TouchableOpacity
-                  key={user.userId}
+                  key={storyUser.userId}
                   style={tw`items-center mr-4`}
                   onPress={() => {
-                    // Navigate to story viewer when clicking on story
                     const rootNavigation = navigation.getParent() || navigation;
-                    
-                    // Create full story objects with images for the viewer
                     const fullStories = userStories.map((s, idx) => ({
                       ...s,
                       image: resolveStoryDisplayUri(s.image, s.userId, s.id),
-                      createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(),
+                      createdAt: new Date(
+                        Date.now() - (userStories.length - idx) * 3600000
+                      ).toISOString(),
                       views: Math.floor(Math.random() * 100),
                     }));
-                    
+
                     rootNavigation.navigate('StoryViewer' as never, {
                       stories: fullStories,
-                      initialIndex: 0, // Always start from first story
+                      initialIndex: 0,
                       onStoriesUpdate: (updatedStories: typeof fullStories) => {
-                        // Update the main stories array with viewed status
-                        const viewedIds = updatedStories.filter((us) => us.hasViewed).map((us) => us.id);
+                        const viewedIds = updatedStories
+                          .filter((us) => us.hasViewed)
+                          .map((us) => us.id);
                         if (viewedIds.length > 0) {
                           Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
                         }
@@ -636,71 +665,52 @@ export default function FeedScreen({ navigation, route }: any) {
                   <View style={tw`relative`}>
                     <View
                       style={tw`w-16 h-16 rounded-full border-2 ${
-                        allViewed ? 'border-stone-300' : 'border-accent-600'
-                      } items-center justify-center bg-purple-100 p-0.5`}
+                        allViewed ? 'border-stone-300' : 'border-emerald-500'
+                      } items-center justify-center bg-emerald-50 p-0.5`}
                     >
                       <Image
-                        source={{ uri: resolveAvatarUri(user.userId, user.username, user.avatar) }}
+                        source={{
+                          uri: resolveAvatarUri(
+                            storyUser.userId,
+                            storyUser.username,
+                            storyUser.avatar
+                          ),
+                        }}
                         style={tw`w-full h-full rounded-full`}
                         contentFit="cover"
                       />
                     </View>
-                    {/* Story count badge */}
                     {storyCount > 1 && (
                       <View
-                        style={tw`absolute -top-1 -right-1 bg-purple-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
+                        style={tw`absolute -top-1 -right-1 bg-emerald-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
                       >
                         <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={tw`text-xs text-stone-600 mt-1 max-w-16`} numberOfLines={1}>
-                    {user.username}
+                  <Text style={tw`text-xs text-stone-600 mt-1.5 max-w-16`} numberOfLines={1}>
+                    {storyUser.username}
                   </Text>
                 </TouchableOpacity>
               );
             })}
-            <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-stone-300`}
-              onPress={() => {
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('CreateStory' as never);
-              }}
-            >
-              <Ionicons name="add" size={24} color="#9CA3AF" />
-            </TouchableOpacity>
           </ScrollView>
 
-          {/* Category Selector */}
-          {userCategories.length > 0 && (
-            <ScrollView horizontal contentContainerStyle={tw`px-2`} {...horizontalScrollProps}>
-              <Chip selected={selectedCategory === null} onPress={() => setSelectedCategory(null)}>
-                All
-              </Chip>
-              {userCategories.map((cat) => {
-                const category = CATEGORIES.find((c) => c.key === cat || c.key === cat.split(':')[0]);
-                const subcategory = cat.includes(':')
-                  ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
-                  : null;
-                const labelCandidate = subcategory ? subcategory.label : category?.label || cat;
-                const label = String(labelCandidate || '').trim() || 'Untitled';
-
-                return (
-                  <Chip key={cat} selected={selectedCategory === cat} onPress={() => setSelectedCategory(cat)}>
-                    {label}
-                  </Chip>
-                );
-              })}
-            </ScrollView>
-          )}
+          <View style={tw`mt-1 -mx-1`}>
+            <CategoryCapsuleRow
+              items={pathCapsules}
+              selectedKey={selectedCategory}
+              onSelect={setSelectedCategory}
+            />
+          </View>
         </View>
 
         {/* Daily Post Reminder */}
         {!hasPostedToday && posts.length > 0 && (
-          <View style={tw`bg-brand-50 border-b border-brand-200 px-4 py-3`}>
+          <View style={tw`mx-5 mb-2 px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-100`}>
             <View style={tw`flex-row items-center gap-3`}>
               <Ionicons name="sparkles" size={20} color="#059669" />
-              <Text style={tw`text-sm text-brand-800 flex-1`}>
+              <Text style={tw`text-sm text-emerald-900 flex-1`}>
                 Share your progress today to stay connected with your community.
               </Text>
               <View style={tw`w-24`}>
@@ -718,7 +728,7 @@ export default function FeedScreen({ navigation, route }: any) {
         )}
 
         {feedStatus === 'failed' && (
-          <View style={tw`mx-4 mt-3 mb-1 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
+          <View style={tw`mx-5 mt-1 mb-1 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
             <View style={tw`flex-row items-center`}>
               <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
               <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>
@@ -738,7 +748,7 @@ export default function FeedScreen({ navigation, route }: any) {
         )}
 
         {feedStatus === 'loading' && posts.length === 0 ? (
-          <View style={tw`px-4 pt-2`}>
+          <View style={tw`px-5 pt-2`}>
             <SkeletonCard />
             <SkeletonCard />
           </View>
@@ -750,11 +760,13 @@ export default function FeedScreen({ navigation, route }: any) {
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
-            <View style={tw`px-4 pt-4 pb-2`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>{section.title}</Text>
+            <View style={tw`px-5 pt-4 pb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+                {section.title}
+              </Text>
             </View>
           )}
-          contentContainerStyle={[tw`px-4 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+          contentContainerStyle={[tw`px-5 pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -768,13 +780,13 @@ export default function FeedScreen({ navigation, route }: any) {
           renderItem={({ item }) => (
             <View
               style={[
-                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-200`,
+                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-200/80`,
                 Platform.OS === 'ios'
                   ? {
-                      shadowColor: '#0f172a',
-                      shadowOffset: { width: 0, height: 8 },
-                      shadowOpacity: 0.08,
-                      shadowRadius: 16,
+                      shadowColor: '#1C1917',
+                      shadowOffset: { width: 0, height: 6 },
+                      shadowOpacity: 0.06,
+                      shadowRadius: 12,
                     }
                   : { elevation: 2 },
               ]}
@@ -815,12 +827,12 @@ export default function FeedScreen({ navigation, route }: any) {
                 <View style={tw`px-4 pb-2`}>
                   <View
                     style={tw`self-start rounded-full px-2.5 py-1 ${
-                      item.isOwn ? 'bg-emerald-100' : 'bg-indigo-100'
+                      item.isOwn ? 'bg-emerald-100' : 'bg-stone-100'
                     }`}
                   >
                     <Text
                       style={tw`text-[11px] font-semibold ${
-                        item.isOwn ? 'text-emerald-800' : 'text-indigo-800'
+                        item.isOwn ? 'text-emerald-800' : 'text-stone-700'
                       }`}
                     >
                       {item.isOwn ? 'Your post' : 'Friend'}
@@ -906,7 +918,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   </TouchableOpacity>
                 ) : null}
                 {(item.friendLikers?.length ?? 0) > 0 ? (
-                  <Text style={tw`text-xs text-indigo-700 mb-2`}>
+                  <Text style={tw`text-xs text-stone-600 mb-2`}>
                     Liked by friends: {item.friendLikers?.slice(0, 3).join(', ')}
                     {(item.friendLikers?.length ?? 0) > 3
                       ? ` +${(item.friendLikers?.length ?? 0) - 3} more`
