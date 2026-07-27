@@ -7,6 +7,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   WEAK_PASSWORD: 'Password does not meet security requirements.',
   EMAIL_SEND_FAILED: 'Could not send verification email. Try again later.',
   AUTH_TEMPORARILY_UNAVAILABLE: 'Account creation is temporarily unavailable. Please try again shortly.',
+  AUTH_MISCONFIGURED: 'Sign-in is temporarily unavailable. Please try again shortly.',
   DATABASE_ERROR: 'We could not create your account right now. Please try again in a minute.',
   MEDIA_NOT_CONFIGURED: 'Image upload is not configured yet. Please contact support.',
   PAYLOAD_TOO_LARGE: 'Image is too large. Please choose a smaller file.',

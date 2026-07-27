@@ -6,8 +6,8 @@ import {
   TextInput,
   RefreshControl,
   FlatList,
+  Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
@@ -18,6 +18,7 @@ import ProductForm from '../../components/business/ProductForm';
 import StockBadge from '../../components/business/StockBadge';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import BusinessStatStrip from '../../components/business/BusinessStatStrip';
+import BusinessScreen from '../../components/business/BusinessScreen';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import CATEGORIES from '../../data/categories';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -115,25 +116,25 @@ export default function InventoryScreen() {
   const renderProduct = ({ item: product }: { item: BusinessProduct }) => {
     const sku = `PRD-${product.id.slice(-6).toUpperCase()}`;
     return (
-      <View style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}>
+      <View style={tw`py-4 border-b border-stone-200/70`}>
         <View style={tw`flex-row items-start`}>
           {product.image_url ? (
-            <Image source={{ uri: product.image_url }} style={tw`w-16 h-16 rounded-lg mr-3`} contentFit="cover" />
+            <Image source={{ uri: product.image_url }} style={tw`w-14 h-14 rounded-xl mr-3`} contentFit="cover" />
           ) : (
-            <View style={tw`w-16 h-16 rounded-lg mr-3 bg-stone-100 items-center justify-center`}>
-              <Ionicons name="image-outline" size={24} color="#A8A29E" />
+            <View style={tw`w-14 h-14 rounded-xl mr-3 bg-[#EAE4D6] items-center justify-center`}>
+              <Ionicons name="image-outline" size={22} color="#A8A29E" />
             </View>
           )}
           <View style={tw`flex-1`}>
             <View style={tw`flex-row items-start justify-between`}>
-              <Text style={tw`text-lg font-bold text-stone-900 flex-1 pr-2`}>{product.name}</Text>
+              <Text style={tw`text-base font-bold text-stone-900 flex-1 pr-2`}>{product.name}</Text>
               <StockBadge stock={product.stock} threshold={threshold} />
             </View>
             <Text style={tw`text-sm text-stone-500 mt-1`}>
               {sku} · {categoryName(product.category)}
               {product.units_sold != null ? ` · ${product.units_sold} sold` : ''}
             </Text>
-            <Text style={tw`text-xl font-bold text-stone-900 mt-2`}>${product.price.toFixed(2)}</Text>
+            <Text style={tw`text-lg font-bold text-stone-900 mt-1.5`}>${product.price.toFixed(2)}</Text>
           </View>
         </View>
         <View style={tw`flex-row gap-2 mt-3`}>
@@ -158,17 +159,33 @@ export default function InventoryScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
-      <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
-        <Text style={tw`text-2xl font-bold text-stone-900 mb-3 tracking-tight`}>Catalog</Text>
+    <BusinessScreen
+      title="Catalog"
+      subtitle="Products, stock, and storefront SKUs"
+      onSettings={() => navigation.getParent()?.navigate('BusinessSettings')}
+      onMessages={() => navigation.getParent()?.navigate('BusinessMessages')}
+      headerRight={
+        <Pressable
+          onPress={() => {
+            setEditingProduct(null);
+            setShowProductForm(true);
+          }}
+          style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+          accessibilityLabel="Add product"
+        >
+          <Ionicons name="add" size={20} color="#059669" />
+        </Pressable>
+      }
+    >
+      <View style={tw`px-5 pb-3`}>
         <View style={tw`relative mb-3`}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={tw`absolute left-3 top-3 z-10`} />
+          <Ionicons name="search" size={18} color="#A8A29E" style={tw`absolute left-3.5 top-3.5 z-10`} />
           <TextInput
-            placeholder="Search products by name or SKU..."
+            placeholder="Search name or SKU…"
             value={searchQuery}
             onChangeText={setSearchQuery}
-            style={tw`bg-stone-100 rounded-lg pl-10 pr-4 py-2.5 text-base`}
-            placeholderTextColor="#9CA3AF"
+            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl pl-10 pr-4 py-3 text-base text-stone-900`}
+            placeholderTextColor="#A8A29E"
           />
         </View>
         <BusinessStatStrip
@@ -183,9 +200,15 @@ export default function InventoryScreen() {
             <TouchableOpacity
               key={f}
               onPress={() => dispatch(setCatalogFilter(f))}
-              style={tw`px-4 py-2 rounded-full ${catalogFilter === f ? 'bg-emerald-600' : 'bg-stone-100'}`}
+              style={tw`px-3.5 py-2 rounded-full ${
+                catalogFilter === f ? 'bg-emerald-600' : 'bg-[#EAE4D6]/80 border border-stone-200/60'
+              }`}
             >
-              <Text style={tw`text-sm font-semibold ${catalogFilter === f ? 'text-white' : 'text-stone-600'}`}>
+              <Text
+                style={tw`text-sm font-semibold ${
+                  catalogFilter === f ? 'text-white' : 'text-stone-600'
+                }`}
+              >
                 {f === 'all' ? 'All' : f === 'low' ? 'Low' : 'Out'}
               </Text>
             </TouchableOpacity>
@@ -199,7 +222,7 @@ export default function InventoryScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderProduct}
         contentContainerStyle={[
-          tw`px-4 pt-4 pb-10`,
+          tw`px-5 pt-1 pb-10`,
           filteredProducts.length === 0 ? tw`flex-grow` : null,
         ]}
         refreshControl={
@@ -227,9 +250,9 @@ export default function InventoryScreen() {
         }
       />
 
-      <View style={tw`px-4 pb-4 pt-2 bg-white border-t border-stone-200`}>
+      <View style={tw`px-5 pb-4 pt-2 border-t border-stone-200/60 bg-surface-page`}>
         <TouchableOpacity
-          style={tw`bg-emerald-600 rounded-xl py-4 flex-row items-center justify-center`}
+          style={tw`bg-emerald-600 rounded-2xl py-4 flex-row items-center justify-center`}
           onPress={() => {
             setEditingProduct(null);
             setShowProductForm(true);
@@ -249,6 +272,6 @@ export default function InventoryScreen() {
         }}
         onSubmit={editingProduct ? handleUpdateProduct : handleCreateProduct}
       />
-    </SafeAreaView>
+    </BusinessScreen>
   );
 }

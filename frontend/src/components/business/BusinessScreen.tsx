@@ -1,7 +1,8 @@
 import React, { PropsWithChildren, ReactNode } from 'react';
-import { View, Text, TouchableOpacity, ViewStyle, StyleProp } from 'react-native';
+import { View, Text, Pressable, ViewStyle, StyleProp } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import GrowChromeHeader from '../ui/GrowChromeHeader';
 import tw from '../../lib/tw';
 
 type Props = PropsWithChildren<{
@@ -9,50 +10,65 @@ type Props = PropsWithChildren<{
   subtitle?: string;
   onAnalytics?: () => void;
   onSettings?: () => void;
+  onMessages?: () => void;
   headerRight?: ReactNode;
   style?: StyleProp<ViewStyle>;
   edges?: ('top' | 'bottom' | 'left' | 'right')[];
 }>;
 
-/** Shared Business hub screen chrome: title + optional analytics/settings. */
+function ChromeButton({
+  icon,
+  onPress,
+  label,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  label: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={17} color="#059669" />
+    </Pressable>
+  );
+}
+
+/** Shared Business hub chrome: green Grow! bar + page title. */
 export default function BusinessScreen({
   title,
   subtitle,
   onAnalytics,
   onSettings,
+  onMessages,
   headerRight,
   children,
   style,
   edges = ['top'],
 }: Props) {
   return (
-    <SafeAreaView style={[tw`flex-1 bg-stone-50`, style]} edges={edges}>
-      <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
-        <View style={tw`flex-row items-center justify-between`}>
-          <View style={tw`flex-1 pr-2`}>
-            <Text style={tw`text-2xl font-bold tracking-tight text-stone-900`}>{title}</Text>
-            {subtitle ? <Text style={tw`text-sm text-stone-500 mt-1`}>{subtitle}</Text> : null}
-          </View>
-          <View style={tw`flex-row items-center`}>
+    <SafeAreaView style={[tw`flex-1 bg-surface-page`, style]} edges={edges}>
+      <GrowChromeHeader
+        right={
+          <>
             {headerRight}
+            {onMessages ? (
+              <ChromeButton icon="chatbubbles-outline" onPress={onMessages} label="Messages" />
+            ) : null}
             {onAnalytics ? (
-              <TouchableOpacity
-                onPress={onAnalytics}
-                style={tw`w-11 h-11 rounded-full bg-emerald-50 items-center justify-center border border-emerald-100 mr-2`}
-              >
-                <Ionicons name="analytics-outline" size={22} color="#059669" />
-              </TouchableOpacity>
+              <ChromeButton icon="analytics-outline" onPress={onAnalytics} label="Analytics" />
             ) : null}
             {onSettings ? (
-              <TouchableOpacity
-                onPress={onSettings}
-                style={tw`w-11 h-11 rounded-full bg-stone-100 items-center justify-center`}
-              >
-                <Ionicons name="settings-outline" size={22} color="#57534E" />
-              </TouchableOpacity>
+              <ChromeButton icon="settings-outline" onPress={onSettings} label="Settings" />
             ) : null}
-          </View>
-        </View>
+          </>
+        }
+      />
+      <View style={tw`px-5 pt-3 pb-2`}>
+        <Text style={tw`text-lg font-bold text-stone-900`}>{title}</Text>
+        {subtitle ? <Text style={tw`text-sm text-stone-500 mt-0.5 leading-5`}>{subtitle}</Text> : null}
       </View>
       {children}
     </SafeAreaView>

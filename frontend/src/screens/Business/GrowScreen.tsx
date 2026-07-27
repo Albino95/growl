@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
@@ -36,6 +35,7 @@ import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
+import BusinessScreen from '../../components/business/BusinessScreen';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 
 type MainSegment = 'partners' | 'community';
@@ -952,16 +952,28 @@ export default function GrowScreen() {
   const selectedPerf = selectedPartner ? perfById.get(selectedPartner.id) : undefined;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-100`}>
-        <Text style={tw`text-2xl font-bold tracking-tight text-stone-900 mb-1`}>Grow</Text>
-        <Text style={tw`text-sm text-stone-500 mb-3`}>Partnerships & community marketing</Text>
-        <View style={tw`flex-row bg-stone-100 rounded-xl p-1`}>
+    <BusinessScreen
+      title="Grow"
+      subtitle="Partnerships, campaigns, promos, and community posts"
+      onSettings={() => stackNav.navigate('BusinessSettings')}
+      onMessages={() => stackNav.navigate('BusinessMessages')}
+      headerRight={
+        <TouchableOpacity
+          onPress={() => stackNav.navigate('BusinessCreatePost')}
+          style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+          accessibilityLabel="Create post"
+        >
+          <Ionicons name="create-outline" size={17} color="#059669" />
+        </TouchableOpacity>
+      }
+    >
+      <View style={tw`px-5 pb-3`}>
+        <View style={tw`flex-row bg-[#EAE4D6]/80 rounded-full p-1 border border-stone-200/60`}>
           {(['partners', 'community'] as const).map((seg) => (
             <TouchableOpacity
               key={seg}
               onPress={() => setMainSegment(seg)}
-              style={tw`flex-1 py-2.5 rounded-lg ${mainSegment === seg ? 'bg-white' : ''}`}
+              style={tw`flex-1 py-2.5 rounded-full ${mainSegment === seg ? 'bg-[#FFFcf7]' : ''}`}
             >
               <Text
                 style={tw`text-center text-sm font-semibold ${
@@ -1123,6 +1135,6 @@ export default function GrowScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </BusinessScreen>
   );
 }

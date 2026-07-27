@@ -14,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import Screen from '../../components/ui/Screen';
 import SectionLabel from '../../components/ui/SectionLabel';
 import PrimaryButton from '../../components/ui/PrimaryButton';
-import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { useAuth } from '../../store/hooks';
 import { validatePasswordStrength } from '../../utils/passwordPolicy';
 import {
@@ -89,7 +88,7 @@ function AuthBrandBlock({
   return (
     <Animated.View
       style={[
-        tw`mb-7 pt-4`,
+        tw`mb-7 pt-6`,
         {
           opacity: fade,
           transform: [
@@ -362,7 +361,6 @@ export default function AuthScreen() {
     <Screen edges={['top', 'bottom']} background="page">
       <View style={tw`flex-1`}>
         <AuthAtmosphere />
-        <GrowChromeHeader />
         <KeyboardAvoidingView
           style={tw`flex-1`}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}

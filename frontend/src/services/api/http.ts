@@ -3,9 +3,25 @@ import { getSecureItem, setSecureItem, deleteSecureItem } from '../storage/secur
 import { getToken, setToken, clearToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
 
-const BASE_URL: string =
-  (Constants?.expoConfig?.extra?.API_BASE_URL as string) ||
-  'https://growl-backend.albino-ndreu.workers.dev/api/v1';
+const DEFAULT_API_BASE = 'https://growl-backend.albino-ndreu.workers.dev/api/v1';
+
+function resolveApiBaseUrl(): string {
+  const extra = (Constants?.expoConfig?.extra ?? {}) as Record<string, unknown>;
+  const fromExtra = typeof extra.API_BASE_URL === 'string' ? extra.API_BASE_URL.trim() : '';
+  const fromPublic =
+    typeof process.env.EXPO_PUBLIC_API_BASE_URL === 'string'
+      ? process.env.EXPO_PUBLIC_API_BASE_URL.trim()
+      : '';
+  const raw = fromExtra || fromPublic || DEFAULT_API_BASE;
+  // Guard against misconfigured empty / relative values that break fetch
+  if (!/^https?:\/\//i.test(raw)) {
+    console.warn('[HTTP] Invalid API_BASE_URL, using default:', raw);
+    return DEFAULT_API_BASE;
+  }
+  return raw.replace(/\/$/, '');
+}
+
+const BASE_URL = resolveApiBaseUrl();
 
 const TOKEN_KEY = 'auth_token';
 const REFRESH_KEY = 'auth_refresh_token';
@@ -19,20 +35,40 @@ function isAuthBootstrapPath(path: string): boolean {
     path.startsWith('/auth/forgot-password') ||
     path.startsWith('/auth/reset-password') ||
     path.startsWith('/auth/verify-email') ||
-    path.startsWith('/auth/sso')
+    path.startsWith('/auth/sso') ||
+    path.startsWith('/auth/sign-out')
   );
 }
 
 function isNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
+  // Do NOT treat every TypeError as offline — that hid real bugs (CORS, bad URL, crypto).
   return (
-    error.name === 'TypeError' ||
     msg.includes('failed to fetch') ||
     msg.includes('network request failed') ||
     msg.includes('networkerror') ||
-    msg.includes('load failed')
+    msg.includes('load failed') ||
+    msg.includes('the internet connection appears to be offline') ||
+    msg.includes('could not connect to the server') ||
+    msg.includes('network is unreachable')
   );
+}
+
+function networkErrorMessage(error: unknown): string {
+  const host = (() => {
+    try {
+      return new URL(BASE_URL).host;
+    } catch {
+      return BASE_URL;
+    }
+  })();
+  const detail =
+    error instanceof Error && error.message ? ` (${error.message})` : '';
+  if (__DEV__) {
+    return `Could not reach Grow! API at ${host}${detail}. If you pointed Expo at localhost, start the worker or use the production API URL.`;
+  }
+  return `Could not reach Grow! servers (${host}). Please try again in a moment.`;
 }
 
 let refreshInFlight: Promise<string | null> | null = null;
@@ -122,6 +158,10 @@ async function fetchWithRetry(
   throw lastError instanceof Error ? lastError : new Error('Network request failed');
 }
 
+export function getApiBaseUrl(): string {
+  return BASE_URL;
+}
+
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const bootstrap = isAuthBootstrapPath(path);
@@ -143,10 +183,9 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   try {
     res = await fetchWithRetry(url, { ...options, headers }, bootstrap ? 2 : 1);
   } catch (error: unknown) {
+    console.warn('[HTTP] fetch failed', { url, error });
     if (isNetworkError(error)) {
-      throw new Error(
-        'Could not reach the Grow! servers. Check your connection and try again.'
-      );
+      throw new Error(networkErrorMessage(error));
     }
     if (error instanceof Error) throw error;
     throw new Error('Network request failed');
@@ -160,10 +199,9 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       try {
         res = await fetchWithRetry(url, { ...options, headers }, 1);
       } catch (error: unknown) {
+        console.warn('[HTTP] retry after refresh failed', { url, error });
         if (isNetworkError(error)) {
-          throw new Error(
-            'Could not reach the Grow! servers. Check your connection and try again.'
-          );
+          throw new Error(networkErrorMessage(error));
         }
         throw error instanceof Error ? error : new Error('Network request failed');
       }

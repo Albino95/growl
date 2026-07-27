@@ -83,13 +83,16 @@ const defineConfig = (): ExpoConfig => ({
   ],
   extra: {
     API_BASE_URL:
-      process.env.API_BASE_URL ?? 'https://growl-backend.albino-ndreu.workers.dev/api/v1',
+      process.env.API_BASE_URL ||
+      process.env.EXPO_PUBLIC_API_BASE_URL ||
+      'https://growl-backend.albino-ndreu.workers.dev/api/v1',
     APP_ENV: appEnv,
     ENV: appEnv,
     SHOW_DEMO_ACCOUNTS: process.env.SHOW_DEMO_ACCOUNTS === 'true',
     SHOW_DEV_TOOLS: process.env.SHOW_DEV_TOOLS === 'true',
-    ENABLE_KYC: process.env.ENABLE_KYC === 'true',
-    ENABLE_PUSH_PREFS: process.env.ENABLE_PUSH_PREFS === 'true',
+    // Default ON so business tooling is available; set ENABLE_*=false to gate off
+    ENABLE_KYC: process.env.ENABLE_KYC !== 'false',
+    ENABLE_PUSH_PREFS: process.env.ENABLE_PUSH_PREFS !== 'false',
     SENTRY_DSN: process.env.SENTRY_DSN,
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID,
     googleIosClientId: process.env.GOOGLE_IOS_CLIENT_ID,

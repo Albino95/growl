@@ -16,12 +16,12 @@ type Props = {
 
 export default function PeriodToggle({ value, onChange }: Props) {
   return (
-    <View style={tw`flex-row bg-stone-100 rounded-xl p-1`}>
+    <View style={tw`flex-row bg-[#EAE4D6]/80 rounded-full p-1 border border-stone-200/60`}>
       {(['today', 'week', 'month'] as const).map((period) => (
         <TouchableOpacity
           key={period}
           onPress={() => onChange(period)}
-          style={tw`flex-1 py-2 rounded-lg ${value === period ? 'bg-white' : ''}`}
+          style={tw`flex-1 py-2 rounded-full ${value === period ? 'bg-[#FFFcf7]' : ''}`}
         >
           <Text
             style={tw`text-center text-sm font-semibold ${
