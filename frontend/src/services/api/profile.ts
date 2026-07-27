@@ -75,8 +75,12 @@ export type PublicProfileSummary = {
 };
 
 /** GET /profile — source of truth for categories after login (not stored in AsyncStorage). */
-export async function fetchCurrentProfile(): Promise<CurrentProfile> {
-  const res = await request<{ success: boolean; data: CurrentProfile }>('/profile');
+export async function fetchCurrentProfile(options?: {
+  /** Include streak / endorsement counters (slower). */
+  stats?: boolean;
+}): Promise<CurrentProfile> {
+  const qs = options?.stats ? '?stats=1' : '';
+  const res = await request<{ success: boolean; data: CurrentProfile }>(`/profile${qs}`);
   if (!res.success || !res.data) {
     throw new Error('Failed to load profile');
   }

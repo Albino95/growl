@@ -8,6 +8,7 @@ import {
   signInSsoApi,
   signOutApi,
   refreshSessionApi,
+  type SessionResponse,
 } from '../../services/api/auth';
 import { fetchCurrentProfile } from '../../services/api/profile';
 
@@ -38,6 +39,21 @@ interface AuthState {
 
 const TOKEN_KEY = 'auth_token';
 const REFRESH_KEY = 'auth_refresh_token';
+const USER_CACHE_KEY = 'auth_user_cache';
+
+function isTransientAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes('could not reach') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network request failed') ||
+    msg.includes('networkerror') ||
+    msg.includes('load failed') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout')
+  );
+}
 
 async function persistSession(token: string, refreshToken?: string) {
   await setSecureItem(TOKEN_KEY, token);
@@ -47,14 +63,52 @@ async function persistSession(token: string, refreshToken?: string) {
   }
 }
 
+async function cacheUserSnapshot(user: User) {
+  try {
+    await setSecureItem(USER_CACHE_KEY, JSON.stringify(user));
+  } catch {
+    // non-fatal
+  }
+}
+
+async function readCachedUser(): Promise<User | null> {
+  try {
+    const raw = await getSecureItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as User;
+    return parsed?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function clearSessionStorage() {
   await deleteSecureItem(TOKEN_KEY);
   await deleteSecureItem(REFRESH_KEY);
+  await deleteSecureItem(USER_CACHE_KEY);
   clearToken();
 }
 
-async function loadUserFromApi(email?: string): Promise<User> {
-  const profile = await fetchCurrentProfile();
+/** Instant user from auth/session payload — no extra /profile round-trip. */
+function userFromSession(res: SessionResponse, emailFallback?: string): User {
+  return {
+    id: res.userId,
+    email: res.email || emailFallback,
+    isInstructor: res.isInstructor,
+    isBusiness: !!res.isBusiness,
+    categories: Array.isArray(res.categories) ? res.categories : [],
+    hasCompletedOnboarding: res.hasCompletedOnboarding,
+    points: res.points ?? 0,
+    decayTimer: res.decayTimer ?? 7,
+  };
+}
+
+/** Lite profile by default (fast boot). Pass stats:true for You-tab achievements. */
+async function loadUserFromApi(
+  email?: string,
+  opts?: { stats?: boolean }
+): Promise<User> {
+  const profile = await fetchCurrentProfile({ stats: opts?.stats });
   return {
     id: profile.id,
     email: profile.email || email,
@@ -75,8 +129,9 @@ async function loadUserFromApi(email?: string): Promise<User> {
 
 export const hydrateAuth = createAsyncThunk('auth/hydrate', async (_, { rejectWithValue }) => {
   try {
-    let token = await getSecureItem(TOKEN_KEY);
+    const token = await getSecureItem(TOKEN_KEY);
     const refreshToken = await getSecureItem(REFRESH_KEY);
+    const cachedUser = await readCachedUser();
 
     if (!token && !refreshToken) {
       clearToken();
@@ -86,24 +141,75 @@ export const hydrateAuth = createAsyncThunk('auth/hydrate', async (_, { rejectWi
     if (token) {
       setToken(token);
       try {
-        const user = await loadUserFromApi();
+        // Lite profile — avoid streak/eligibility queries on every cold start
+        const user = await loadUserFromApi(undefined, { stats: false });
+        await cacheUserSnapshot(user);
         return { token, user };
-      } catch {
+      } catch (error) {
+        // Network blip with a still-valid access token — stay signed in offline
+        if (isTransientAuthError(error) && cachedUser) {
+          console.warn('[Auth] hydrate: profile unreachable, using cache');
+          return { token, user: cachedUser };
+        }
         // Access token may be expired — try refresh below
       }
     }
 
     if (refreshToken) {
-      const res = await refreshSessionApi(refreshToken);
-      await persistSession(res.token, res.refreshToken);
-      const user = await loadUserFromApi();
-      return { token: res.token, user };
+      try {
+        const res = await refreshSessionApi(refreshToken);
+        await persistSession(res.token, res.refreshToken);
+        const user = userFromSession(res);
+        await cacheUserSnapshot(user);
+        return { token: res.token, user };
+      } catch (error) {
+        // Keep session on network errors — only wipe on definitive auth failure
+        if (isTransientAuthError(error)) {
+          if (token && cachedUser) {
+            console.warn('[Auth] hydrate: refresh unreachable, keeping session');
+            setToken(token);
+            return { token, user: cachedUser };
+          }
+          // Tokens exist but we can't reach the server — don't force logout
+          if (token) {
+            setToken(token);
+            return {
+              token,
+              user:
+                cachedUser ||
+                ({
+                  id: 'offline',
+                  hasCompletedOnboarding: true,
+                  categories: [],
+                } satisfies User),
+            };
+          }
+          return rejectWithValue(
+            'Could not reach Grow! servers. Check your connection and try again.'
+          );
+        }
+        // Invalid / expired refresh — real sign-out
+        await clearSessionStorage();
+        return rejectWithValue('Session expired. Please sign in again.');
+      }
     }
 
     await clearSessionStorage();
     return rejectWithValue('Session expired. Please sign in again.');
   } catch (error) {
     console.error('[Auth] hydrate failed:', error);
+    // Never wipe tokens on unexpected/transient failures
+    if (isTransientAuthError(error)) {
+      const token = await getSecureItem(TOKEN_KEY);
+      const cachedUser = await readCachedUser();
+      if (token && cachedUser) {
+        setToken(token);
+        return { token, user: cachedUser };
+      }
+      return rejectWithValue(
+        'Could not reach Grow! servers. Check your connection and try again.'
+      );
+    }
     await clearSessionStorage();
     return rejectWithValue('Session expired. Please sign in again.');
   }
@@ -141,7 +247,9 @@ export const signIn = createAsyncThunk(
     try {
       const res = await signInApi(email.trim(), password);
       await persistSession(res.token, res.refreshToken);
-      const user = await loadUserFromApi(email.trim());
+      const user = userFromSession(res, email.trim());
+      await cacheUserSnapshot(user);
+      // Do not await /profile here — session payload is enough to enter the app
       return { token: res.token, user };
     } catch (e: unknown) {
       return rejectWithValue(e instanceof Error ? e.message : 'Sign in failed');
@@ -158,7 +266,8 @@ export const signInWithSSO = createAsyncThunk(
     try {
       const res = await signInSsoApi(payload);
       await persistSession(res.token, res.refreshToken);
-      const user = await loadUserFromApi();
+      const user = userFromSession(res);
+      await cacheUserSnapshot(user);
       return { token: res.token, user };
     } catch (e: unknown) {
       return rejectWithValue(e instanceof Error ? e.message : 'SSO sign in failed');
@@ -166,14 +275,19 @@ export const signInWithSSO = createAsyncThunk(
   }
 );
 
-export const refreshProfile = createAsyncThunk('auth/refreshProfile', async (_, { rejectWithValue }) => {
-  try {
-    const user = await loadUserFromApi();
-    return user;
-  } catch (e: unknown) {
-    return rejectWithValue(e instanceof Error ? e.message : 'Failed to refresh profile');
+export const refreshProfile = createAsyncThunk(
+  'auth/refreshProfile',
+  async (opts: { stats?: boolean } | undefined, { rejectWithValue }) => {
+    try {
+      const user = await loadUserFromApi(undefined, { stats: opts?.stats });
+      await cacheUserSnapshot(user);
+      return user;
+    } catch (e: unknown) {
+      // Soft failure — never treat profile refresh as a sign-out signal
+      return rejectWithValue(e instanceof Error ? e.message : 'Failed to refresh profile');
+    }
   }
-});
+);
 
 export const signOut = createAsyncThunk('auth/signOut', async (_, { rejectWithValue }) => {
   try {
@@ -238,12 +352,20 @@ const authSlice = createSlice({
         }
       })
       .addCase(hydrateAuth.rejected, (state, action) => {
-        state.token = null;
-        state.user = null;
+        const msg = (action.payload as string) || null;
+        const transient =
+          !!msg &&
+          (msg.toLowerCase().includes('could not reach') ||
+            msg.toLowerCase().includes('connection'));
+        // Only clear local auth state on definitive session expiry
+        if (!transient) {
+          state.token = null;
+          state.user = null;
+          state.shouldCompleteSignupOnboarding = false;
+        }
         state.hydrated = true;
         state.isLoading = false;
-        state.error = (action.payload as string) || null;
-        state.shouldCompleteSignupOnboarding = false;
+        state.error = msg;
       });
 
     builder
@@ -303,9 +425,7 @@ const authSlice = createSlice({
       });
 
     builder.addCase(refreshProfile.fulfilled, (state, action) => {
-      if (state.user) {
-        state.user = { ...state.user, ...action.payload };
-      }
+      state.user = state.user ? { ...state.user, ...action.payload } : action.payload;
     });
 
     builder

@@ -22,6 +22,7 @@ import EmptyState from '../../components/ui/EmptyState';
 import SearchField from '../../components/ui/SearchField';
 import SectionLabel from '../../components/ui/SectionLabel';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import MarketplaceCategoryBar from '../../components/marketplace/MarketplaceCategoryBar';
 import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
@@ -207,36 +208,34 @@ export default function MarketplaceScreen() {
   })();
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <View style={tw`flex-1`}>
-        <View style={tw`px-5 pt-3 pb-2`}>
-          <View style={tw`flex-row items-end justify-between mb-1`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-                Grow!
-              </Text>
-              <Text style={tw`text-3xl text-stone-900 mt-1`}>Shop</Text>
-            </View>
-            <View style={tw`flex-row items-center gap-2`}>
+        <GrowChromeHeader
+          right={
+            <>
               <TouchableOpacity
                 onPress={() => setFilterOpen(true)}
-                style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
                 accessibilityLabel="Open filters"
               >
-                <Ionicons name="options-outline" size={20} color="#059669" />
+                <Ionicons name="options-outline" size={17} color="#059669" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
                   rootNavigation.navigate('UserOrders' as never);
                 }}
-                style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
                 accessibilityLabel="Your orders"
               >
-                <Ionicons name="receipt-outline" size={20} color="#059669" />
+                <Ionicons name="receipt-outline" size={17} color="#059669" />
               </TouchableOpacity>
-            </View>
-          </View>
+            </>
+          }
+        />
+
+        <View style={tw`px-5 pt-3 pb-2`}>
+          <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Shop</Text>
           <Text style={tw`text-sm text-stone-500 mb-2`}>
             Gear ranked for your growth paths — filter with the capsules below.
           </Text>

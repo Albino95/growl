@@ -7,6 +7,7 @@ import tw from '../../lib/tw';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 
 function Row({
   icon,
@@ -50,26 +51,25 @@ export default function SettingsScreen() {
   const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
-      <View style={tw`px-5 pt-3 pb-2 flex-row items-center`}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
-        >
-          <Ionicons name="arrow-back" size={20} color="#1C1917" />
-        </Pressable>
-        <View>
-          <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-            Grow!
-          </Text>
-          <Text style={tw`text-3xl text-stone-900 mt-0.5`}>Settings</Text>
-        </View>
-      </View>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <GrowChromeHeader
+        leftAccessory={
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+          </Pressable>
+        }
+      />
 
       <ScrollView
-        contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+        contentContainerStyle={[tw`px-5 pt-4`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
       >
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-2`}>
+        <Text style={tw`text-lg font-bold text-stone-900 mb-4`}>Settings</Text>
+
+        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
           Account
         </Text>
         <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>

@@ -17,6 +17,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import tw from '../../lib/tw';
 import SearchField from '../../components/ui/SearchField';
 import EmptyState from '../../components/ui/EmptyState';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import MoodWeekStrip from '../../components/journal/MoodWeekStrip';
 import JournalComposeModal from '../../components/journal/JournalComposeModal';
 import {
@@ -257,28 +258,26 @@ export default function JournalScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <View style={tw`flex-row items-end justify-between mb-4`}>
-          <View>
-            <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-              Grow!
-            </Text>
-            <Text style={tw`text-3xl text-stone-900 mt-1`} numberOfLines={1}>
-              Journal
-            </Text>
-          </View>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <GrowChromeHeader
+        right={
           <Pressable
             onPress={() => {
               triggerPressFeedback();
               setComposeOpen(true);
             }}
-            style={tw`w-11 h-11 rounded-full bg-stone-900 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
             accessibilityLabel="New journal entry"
           >
-            <Ionicons name="pencil" size={18} color="#fff" />
+            <Ionicons name="pencil" size={17} color="#059669" />
           </Pressable>
-        </View>
+        }
+      />
+
+      <View style={tw`px-5 pt-3 pb-2`}>
+        <Text style={tw`text-lg font-bold text-stone-900 mb-3`} numberOfLines={1}>
+          Journal
+        </Text>
 
         <View style={tw`flex-row bg-white/60 rounded-full p-1 border border-stone-200/80`}>
           {([

@@ -7,6 +7,7 @@ import {
   generateRefreshToken,
   hashRefreshToken,
   REFRESH_TOKEN_TTL_SECONDS,
+  ACCESS_TOKEN_TTL_SECONDS,
   signAccessToken,
 } from './jwt';
 
@@ -27,7 +28,7 @@ export async function issueSessionTokens(
     .bind(sessionId, userId, tokenHash, expiresAt)
     .run();
 
-  return { token, refreshToken, expiresIn: 3600 };
+  return { token, refreshToken, expiresIn: ACCESS_TOKEN_TTL_SECONDS };
 }
 
 export async function rotateRefreshToken(

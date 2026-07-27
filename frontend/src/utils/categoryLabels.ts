@@ -35,3 +35,47 @@ export function getCategoryMeta(cat: string): {
     icon: (category?.icon || 'leaf-outline') as IoniconName,
   };
 }
+
+/** Group stored paths by parent so profile shows one card per growth area. */
+export function groupGrowthPaths(keys: string[]): Array<{
+  parentKey: string;
+  parentLabel: string;
+  focusLabels: string[];
+  icon: IoniconName;
+}> {
+  const order: string[] = [];
+  const byParent = new Map<
+    string,
+    { parentLabel: string; focusLabels: string[]; icon: IoniconName; all: boolean }
+  >();
+
+  for (const key of keys) {
+    const meta = getCategoryMeta(key);
+    if (!byParent.has(meta.parentKey)) {
+      order.push(meta.parentKey);
+      byParent.set(meta.parentKey, {
+        parentLabel: meta.parentLabel,
+        focusLabels: [],
+        icon: meta.icon,
+        all: false,
+      });
+    }
+    const entry = byParent.get(meta.parentKey)!;
+    if (!key.includes(':')) {
+      entry.all = true;
+      entry.focusLabels = [];
+    } else if (!entry.all && meta.subLabel && !entry.focusLabels.includes(meta.subLabel)) {
+      entry.focusLabels.push(meta.subLabel);
+    }
+  }
+
+  return order.map((parentKey) => {
+    const entry = byParent.get(parentKey)!;
+    return {
+      parentKey,
+      parentLabel: entry.parentLabel,
+      focusLabels: entry.focusLabels,
+      icon: entry.icon,
+    };
+  });
+}

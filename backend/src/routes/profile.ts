@@ -64,7 +64,7 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
 
 /**
  * GET /api/v1/profile
- * Get current user profile
+ * Fast by default (auth/boot). Pass ?stats=1 for achievement / eligibility counters.
  */
 export async function getProfile(request: Request, env: Env): Promise<Response> {
   const ctx = await getRequestContext(request, env);
@@ -72,8 +72,35 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
+  const url = new URL(request.url);
+  const wantStats = url.searchParams.get('stats') === '1';
+
   const metadata = JSON.parse(ctx.user.metadata || '{}');
   const categories = metadata.categories || [];
+  const decayTimer =
+    typeof metadata.decay_timer === 'number' && metadata.decay_timer >= 1
+      ? Math.min(365, Math.floor(metadata.decay_timer))
+      : 7;
+
+  const base = {
+    id: ctx.user.id,
+    email: ctx.user.email,
+    username: metadata.username,
+    avatar: metadata.avatar,
+    bio: typeof metadata.bio === 'string' ? metadata.bio : null,
+    status: typeof metadata.status === 'string' ? metadata.status : null,
+    points: Number(ctx.user.points) || 0,
+    is_instructor: ctx.user.is_instructor,
+    is_business: ctx.user.is_business,
+    categories,
+    notifications_prefs: metadata.notifications_prefs || {},
+    decay_timer: decayTimer,
+    created_at: ctx.user.created_at,
+  };
+
+  if (!wantStats) {
+    return json(base);
+  }
 
   let instructor;
   try {
@@ -83,43 +110,22 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     instructor = undefined;
   }
 
-  const [postCount, endorsementsGiven, streakDays, freshPoints] = await Promise.all([
-    countUserPosts(env, ctx.userId),
+  const [endorsementsGiven, streakDays] = await Promise.all([
     countEndorsementsGiven(env, ctx.userId),
     computePostStreak(env, ctx.userId),
-    env.DB.prepare('SELECT points FROM users WHERE id = ?')
-      .bind(ctx.userId)
-      .first<{ points: number }>()
-      .then((r) => (r ? Number(r.points) : ctx.user!.points)),
   ]);
 
+  const postCount = instructor?.postCount ?? (await countUserPosts(env, ctx.userId));
   const endorsementsReceived =
     instructor?.endorsementsReceived ?? (await countEndorsements(env, ctx.userId));
 
-  const decayTimer =
-    typeof metadata.decay_timer === 'number' && metadata.decay_timer >= 1
-      ? Math.min(365, Math.floor(metadata.decay_timer))
-      : 7;
-
   return json({
-    id: ctx.user.id,
-    email: ctx.user.email,
-    username: metadata.username,
-    avatar: metadata.avatar,
-    bio: typeof metadata.bio === 'string' ? metadata.bio : null,
-    status: typeof metadata.status === 'string' ? metadata.status : null,
-    points: freshPoints,
-    is_instructor: ctx.user.is_instructor,
-    is_business: ctx.user.is_business,
-    categories,
-    notifications_prefs: metadata.notifications_prefs || {},
+    ...base,
     instructor,
-    decay_timer: decayTimer,
     post_count: postCount,
     endorsements_received: endorsementsReceived,
     endorsements_given: endorsementsGiven,
     streak_days: streakDays,
-    created_at: ctx.user.created_at,
   });
 }
 

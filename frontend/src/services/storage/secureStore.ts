@@ -1,16 +1,17 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-// SecureStore doesn't work on web; use sessionStorage (not localStorage) as fallback.
+// Web: persist in localStorage so sessions survive tab reloads / backgrounding.
+// (sessionStorage was clearing too aggressively and felt like random logouts.)
 const isWeb = Platform.OS === 'web';
 
 export async function setSecureItem(key: string, value: string) {
   if (isWeb) {
     try {
-      localStorage.removeItem(key);
-      sessionStorage.setItem(key, value);
+      sessionStorage.removeItem(key);
+      localStorage.setItem(key, value);
     } catch (error) {
-      console.warn('[SecureStore] Failed to set item in sessionStorage:', error);
+      console.warn('[SecureStore] Failed to set item in localStorage:', error);
     }
   } else {
     try {
@@ -24,10 +25,18 @@ export async function setSecureItem(key: string, value: string) {
 export async function getSecureItem(key: string): Promise<string | null> {
   if (isWeb) {
     try {
-      localStorage.removeItem(key);
-      return sessionStorage.getItem(key);
+      const fromLocal = localStorage.getItem(key);
+      if (fromLocal) return fromLocal;
+      // Migrate any leftover sessionStorage tokens once
+      const fromSession = sessionStorage.getItem(key);
+      if (fromSession) {
+        localStorage.setItem(key, fromSession);
+        sessionStorage.removeItem(key);
+        return fromSession;
+      }
+      return null;
     } catch (error) {
-      console.warn('[SecureStore] Failed to get item from sessionStorage:', error);
+      console.warn('[SecureStore] Failed to get item from localStorage:', error);
       return null;
     }
   } else {
@@ -43,10 +52,10 @@ export async function getSecureItem(key: string): Promise<string | null> {
 export async function deleteSecureItem(key: string) {
   if (isWeb) {
     try {
-      localStorage.removeItem(key);
       sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
     } catch (error) {
-      console.warn('[SecureStore] Failed to delete item from sessionStorage:', error);
+      console.warn('[SecureStore] Failed to delete item from storage:', error);
     }
   } else {
     try {

@@ -34,6 +34,7 @@ import {
 } from '../../constants/scroll';
 import SearchField from '../../components/ui/SearchField';
 import EmptyState from '../../components/ui/EmptyState';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import CATEGORIES from '../../data/categories';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
@@ -506,23 +507,21 @@ export default function ExploreScreen() {
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <View style={tw`flex-row items-end justify-between mb-1`}>
-          <View style={tw`flex-1 pr-3`}>
-            <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-              Grow!
-            </Text>
-            <Text style={tw`text-3xl text-stone-900 mt-1`}>Explore</Text>
-          </View>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <GrowChromeHeader
+        right={
           <Pressable
             onPress={openMarketplace}
-            style={tw`flex-row items-center bg-white/80 border border-stone-200 rounded-full px-3 py-2`}
+            style={tw`flex-row items-center bg-[#EAE4D6] border border-stone-200/80 rounded-full px-3 py-2`}
           >
             <Ionicons name="storefront-outline" size={16} color="#059669" />
             <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Shop</Text>
           </Pressable>
-        </View>
+        }
+      />
+
+      <View style={tw`px-5 pt-3 pb-2`}>
+        <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Explore</Text>
         <Text style={tw`text-sm text-stone-500 mb-3`}>
           {userPaths.length
             ? `Discover people and progress outside your circle · ${userPaths.length} growth path${userPaths.length === 1 ? '' : 's'}`

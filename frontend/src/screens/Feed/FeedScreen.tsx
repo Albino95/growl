@@ -30,6 +30,7 @@ import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import HeartBurst from '../../components/feed/HeartBurst';
 import FeedLikeButton, {
@@ -218,12 +219,9 @@ export default function FeedScreen({ navigation, route }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      // First paint may need a loading state; polling stays silent.
       void dispatch(fetchFeedPosts());
       void loadStoriesOnly();
 
-      // Background refresh while Feed is focused. Silent mode merges so engaged posts
-      // are not dropped when the server top-N window reshuffles.
       const pollId = setInterval(() => {
         void dispatch(fetchFeedPosts({ force: true, silent: true }));
       }, 60_000);
@@ -231,11 +229,6 @@ export default function FeedScreen({ navigation, route }: any) {
       return () => clearInterval(pollId);
     }, [dispatch])
   );
-
-  useEffect(() => {
-    // Stories warm-up; feed is owned by focus effect to avoid duplicate fetches.
-    void loadStoriesOnly();
-  }, []);
 
   useEffect(() => {
     if (feedStatus !== 'succeeded') return;
@@ -565,7 +558,16 @@ export default function FeedScreen({ navigation, route }: any) {
   };
 
   const feedListHeader = (
-    <View style={tw`pb-1`}>
+    <View style={tw`pb-2`}>
+      <View style={tw`mx-4 mb-3 px-4 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/70`}>
+        <Text style={tw`text-[11px] tracking-[2px] uppercase text-stone-500 font-semibold`}>
+          Your circle
+        </Text>
+        <Text style={tw`text-sm text-stone-600 mt-1 leading-5`}>
+          Progress from friends — and a few suggestions on your paths.
+        </Text>
+      </View>
+
       {/* Stories */}
       <ScrollView
         horizontal
@@ -717,38 +719,36 @@ export default function FeedScreen({ navigation, route }: any) {
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
-      <View style={tw`flex-1`}>
-        {/* Compact chrome — stays put; stories/filters scroll away with the feed */}
-        <View style={tw`px-4 py-2 flex-row items-center justify-between bg-[#F3EEE4]`}>
-          <Text style={tw`text-[15px] tracking-[2.5px] uppercase text-emerald-700 font-bold`}>
-            Grow!
-          </Text>
-          <View style={tw`flex-row items-center gap-2`}>
-            <Pressable
-              onPress={() => {
-                triggerPressFeedback();
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Messages');
-              }}
-              style={tw`w-9 h-9 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
-              accessibilityLabel="Inbox"
-            >
-              <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                triggerPressFeedback();
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Reels');
-              }}
-              style={tw`w-9 h-9 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
-              accessibilityLabel="Reels"
-            >
-              <Ionicons name="play-circle-outline" size={17} color="#059669" />
-            </Pressable>
-          </View>
-        </View>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <View style={tw`flex-1 bg-surface-page`}>
+        <GrowChromeHeader
+          right={
+            <>
+              <Pressable
+                onPress={() => {
+                  triggerPressFeedback();
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Messages');
+                }}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Inbox"
+              >
+                <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  triggerPressFeedback();
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Reels');
+                }}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Reels"
+              >
+                <Ionicons name="play-circle-outline" size={17} color="#059669" />
+              </Pressable>
+            </>
+          }
+        />
 
         {feedStatus === 'loading' && posts.length === 0 ? (
           <View style={tw`px-5 pt-2`}>
@@ -783,17 +783,7 @@ export default function FeedScreen({ navigation, route }: any) {
           {...verticalScrollProps}
           renderItem={({ item }) => (
             <View
-              style={[
-                tw`mx-5 bg-white mb-4 overflow-hidden rounded-2xl border border-stone-200/80`,
-                Platform.OS === 'ios'
-                  ? {
-                      shadowColor: '#1C1917',
-                      shadowOffset: { width: 0, height: 6 },
-                      shadowOpacity: 0.06,
-                      shadowRadius: 12,
-                    }
-                  : { elevation: 2 },
-              ]}
+              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70`}
             >
               {/* Post Header - Modern Style */}
               <View style={tw`flex-row items-center justify-between px-4 py-3`}>

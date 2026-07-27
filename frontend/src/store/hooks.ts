@@ -35,7 +35,7 @@ export const useAuth = () => {
     }) => dispatch(signInWithSSO(payload)),
     signOut: () => dispatch(signOut()),
     hydrate: () => dispatch(hydrateAuth()),
-    refreshProfile: () => dispatch(refreshProfile()),
+    refreshProfile: (opts?: { stats?: boolean }) => dispatch(refreshProfile(opts)),
     updateUser: (updates: Partial<User>) => dispatch(updateUser(updates)),
     setOnboardingComplete: (categories: string[]) => dispatch(setOnboardingComplete(categories)),
     markSignupOnboardingRequired: () => dispatch(markSignupOnboardingRequired()),

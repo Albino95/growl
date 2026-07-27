@@ -11,6 +11,8 @@ export type SessionResponse = {
   isBusiness?: boolean;
   hasCompletedOnboarding: boolean;
   categories?: string[];
+  points?: number;
+  decayTimer?: number;
 };
 
 export type SignUpResponse = {

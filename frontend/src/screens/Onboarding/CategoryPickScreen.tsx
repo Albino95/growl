@@ -54,7 +54,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
           </Text>
           <Text style={tw`text-3xl font-bold text-stone-900 mt-1.5`}>Choose your paths</Text>
           <Text style={tw`text-stone-500 text-base leading-6 mt-2`}>
-            Pick up to 3 growth areas. This shapes your feed, shop ranking, and who can endorse you.
+            Pick up to 3 growth areas (multiple focuses per area). This shapes your feed, shop ranking, and who can endorse you.
           </Text>
         </View>
 

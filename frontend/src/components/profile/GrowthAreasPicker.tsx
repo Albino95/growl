@@ -28,26 +28,41 @@ export function growthParentCount(keys: string[]): number {
   return new Set(keys.map(parentKeyOf)).size;
 }
 
-/** Keep at most one entry per parent, then at most MAX_GROWTH_PATHS parents. */
+/**
+ * Keep all focuses for up to `max` parent paths.
+ * Allows multiple subcategories under the same parent.
+ * If both "All" (`fitness`) and specific focuses (`fitness:cardio`) exist, keep focuses.
+ */
 export function clampGrowthPaths(keys: string[], max = MAX_GROWTH_PATHS): string[] {
-  const byParent = new Map<string, string>();
+  const hasSpecificFocus = new Set(
+    keys.filter((k) => k.includes(':')).map((k) => parentKeyOf(k))
+  );
+
+  const seenParents: string[] = [];
+  const out: string[] = [];
+
   for (const key of keys) {
     const parent = parentKeyOf(key);
-    if (!byParent.has(parent)) {
-      byParent.set(parent, key);
+    // Drop bare parent when specific focuses already exist for it
+    if (!key.includes(':') && hasSpecificFocus.has(parent)) continue;
+
+    if (!seenParents.includes(parent)) {
+      if (seenParents.length >= max) continue;
+      seenParents.push(parent);
     }
+    if (!out.includes(key)) out.push(key);
   }
-  return Array.from(byParent.values()).slice(0, max);
+
+  return out;
 }
 
 /**
- * Shared growth-area picker: expand parent → pick "All" or one focus as `parent:sub`.
- * Hard limit: 3 parent paths (not 3 chips of mixed subcategories).
+ * Shared growth-area picker: expand parent → pick "All" and/or multiple focuses.
+ * Hard limit: 3 parent paths; multiple subcategories allowed within each.
  */
 export default function GrowthAreasPicker({ value, onChange, showCountBanner = true }: Props) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
-  // Normalize: one entry per parent, max 3 — fixes legacy multi-sub selections over the limit
   const normalized = useMemo(() => clampGrowthPaths(value), [value]);
   const selectedParentCount = growthParentCount(normalized);
 
@@ -67,10 +82,12 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
   };
 
   const toggleCategory = (categoryKey: string) => {
+    // "All" selected → clear entire parent
     if (normalized.includes(categoryKey)) {
-      commit(normalized.filter((k) => k !== categoryKey));
+      commit(normalized.filter((k) => parentKeyOf(k) !== categoryKey));
       return;
     }
+    // Selecting All replaces any specific focuses for this parent
     const withoutParent = normalized.filter((k) => parentKeyOf(k) !== categoryKey);
     if (growthParentCount(withoutParent) >= MAX_GROWTH_PATHS) {
       alertMessage('Limit reached', `You can select a maximum of ${MAX_GROWTH_PATHS} growth paths`);
@@ -85,13 +102,14 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
       commit(normalized.filter((k) => k !== fullKey));
       return;
     }
-    const withoutParent = normalized.filter((k) => parentKeyOf(k) !== categoryKey);
-    // One focus per parent: replace any existing selection for this path
-    if (growthParentCount(withoutParent) >= MAX_GROWTH_PATHS) {
+    // Drop bare "All" when picking a specific focus; keep sibling focuses
+    const withoutAll = normalized.filter((k) => k !== categoryKey);
+    const alreadyInParent = withoutAll.some((k) => parentKeyOf(k) === categoryKey);
+    if (!alreadyInParent && growthParentCount(withoutAll) >= MAX_GROWTH_PATHS) {
       alertMessage('Limit reached', `You can select a maximum of ${MAX_GROWTH_PATHS} growth paths`);
       return;
     }
-    commit([...withoutParent, fullKey]);
+    commit([...withoutAll, fullKey]);
   };
 
   const getSelectedSubcategories = (category: Category): string[] =>
@@ -155,7 +173,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
             </ScrollView>
           ) : (
             <Text style={tw`text-xs text-stone-500 mt-2 leading-4`}>
-              Tap a path, then choose All or one focus. Max {MAX_GROWTH_PATHS}.
+              Tap a path, then choose All or one or more focuses. Max {MAX_GROWTH_PATHS} paths.
             </Text>
           )}
         </View>
@@ -175,6 +193,19 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
           const allSelected = normalized.includes(category.key);
           const icon = category.icon as keyof typeof Ionicons.glyphMap;
           const atLimit = selectedParentCount >= MAX_GROWTH_PATHS && !isSelected;
+
+          const focusSummary = allSelected
+            ? `All ${category.label}`
+            : selectedSubs.length > 0
+              ? selectedSubs
+                  .map(
+                    (subKey) =>
+                      category.subcategories.find((s) => s.key === subKey)?.label || subKey
+                  )
+                  .join(', ')
+              : atLimit
+                ? 'Limit reached'
+                : `${category.subcategories.length} focuses`;
 
           return (
             <View
@@ -208,15 +239,8 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                   >
                     {category.label}
                   </Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
-                    {allSelected
-                      ? `All ${category.label}`
-                      : selectedSubs.length > 0
-                        ? category.subcategories.find((s) => s.key === selectedSubs[0])?.label ||
-                          selectedSubs[0]
-                        : atLimit
-                          ? 'Limit reached'
-                          : `${category.subcategories.length} focuses`}
+                  <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={2}>
+                    {focusSummary}
                   </Text>
                 </View>
 
@@ -237,7 +261,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                 <View style={tw`px-3 pb-3 pt-0`}>
                   <View style={tw`h-px bg-stone-100 mb-3`} />
                   <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-400 uppercase mb-2 px-0.5`}>
-                    Choose focus
+                    Choose focuses
                   </Text>
 
                   <View style={tw`flex-row flex-wrap`}>

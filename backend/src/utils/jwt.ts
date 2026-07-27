@@ -8,11 +8,11 @@ type JwtPayload = {
   exp: number;
 };
 
-/** Access token lifetime: 1 hour */
-export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+/** Access token lifetime: 7 days (mobile clients refresh quietly before expiry). */
+export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-/** Refresh token lifetime: 30 days */
-export const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+/** Refresh token lifetime: 90 days */
+export const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90;
 
 function requireSecret(env: { JWT_SECRET?: string }): string {
   const secret = env.JWT_SECRET?.trim();

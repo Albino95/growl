@@ -36,7 +36,7 @@ import GrowthAreasPicker, {
 } from '../../components/profile/GrowthAreasPicker';
 import DecaySettingsModal from '../../components/profile/DecaySettingsModal';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
-import { getCategoryMeta } from '../../utils/categoryLabels';
+import { groupGrowthPaths } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
   claimInstructor,
@@ -149,7 +149,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         getUserStories(user.id),
         syncCohortFriends(),
         getInstructorEligibility().catch(() => null),
-        fetchCurrentProfile().catch(() => null),
+        fetchCurrentProfile({ stats: true }).catch(() => null),
       ]);
       if (elig) setEligibility(elig);
       const decay =
@@ -559,26 +559,25 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
             {user?.categories && user.categories.length > 0 ? (
               <View>
-                {user.categories.map((cat) => {
-                  const meta = getCategoryMeta(cat);
-                  return (
-                    <View
-                      key={cat}
-                      style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2`}
-                    >
-                      <View style={tw`w-10 h-10 rounded-xl bg-emerald-600/12 items-center justify-center mr-3`}>
-                        <Ionicons name={meta.icon} size={20} color="#059669" />
-                      </View>
-                      <View style={tw`flex-1`}>
-                        <Text style={tw`text-[15px] font-bold text-stone-900`}>{meta.parentLabel}</Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                          {meta.subLabel ? meta.subLabel : 'All focuses in this path'}
-                        </Text>
-                      </View>
-                      <Ionicons name="leaf" size={14} color="#059669" />
+                {groupGrowthPaths(user.categories).map((group) => (
+                  <View
+                    key={group.parentKey}
+                    style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2`}
+                  >
+                    <View style={tw`w-10 h-10 rounded-xl bg-emerald-600/12 items-center justify-center mr-3`}>
+                      <Ionicons name={group.icon} size={20} color="#059669" />
                     </View>
-                  );
-                })}
+                    <View style={tw`flex-1`}>
+                      <Text style={tw`text-[15px] font-bold text-stone-900`}>{group.parentLabel}</Text>
+                      <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                        {group.focusLabels.length > 0
+                          ? group.focusLabels.join(' · ')
+                          : 'All focuses in this path'}
+                      </Text>
+                    </View>
+                    <Ionicons name="leaf" size={14} color="#059669" />
+                  </View>
+                ))}
               </View>
             ) : (
               <TouchableOpacity
@@ -1056,7 +1055,7 @@ function CategoryPickerModal({
           </Text>
           <Text style={tw`text-2xl font-bold text-stone-900 mt-1`}>Change your paths</Text>
           <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5`}>
-            Expand a path and choose All or specific focuses. Up to 3 paths.
+            Expand a path and choose All or multiple focuses. Up to 3 paths.
           </Text>
         </View>
         <TouchableOpacity
