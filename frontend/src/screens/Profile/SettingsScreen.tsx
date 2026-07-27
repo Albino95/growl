@@ -8,6 +8,7 @@ import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import { useAuth } from '../../store/hooks';
 
 function Row({
   icon,
@@ -45,6 +46,7 @@ function Row({
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
   const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
@@ -115,6 +117,31 @@ export default function SettingsScreen() {
               thumbColor={soundEnabled ? '#059669' : '#F5F5F4'}
             />
           </View>
+        </View>
+
+        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+          Teaching
+        </Text>
+        <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+          <Row
+            icon="school-outline"
+            label="Instructor Hub"
+            subtitle={
+              user?.isInstructor
+                ? 'Community, partnerships, and teaching tools'
+                : 'Earn peer endorsements, then claim instructor status'
+            }
+            onPress={() => {
+              navigation.goBack();
+              setTimeout(() => {
+                try {
+                  (navigation as any).navigate('Instructor');
+                } catch {
+                  navigateFromRoot(navigation, 'Instructor');
+                }
+              }, 0);
+            }}
+          />
         </View>
 
         <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>

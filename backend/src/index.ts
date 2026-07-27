@@ -229,6 +229,32 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
 
       // Instructor routes
+      if (path === `${apiPrefix}/instructor/hub` && request.method === 'GET') {
+        return instructorRoutes.getInstructorHub(request, env);
+      }
+
+      const instructorPartnershipReqMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/partnerships/requests/([^/]+)$`)
+      );
+      if (instructorPartnershipReqMatch && request.method === 'PATCH') {
+        return instructorRoutes.respondToPartnershipRequest(
+          request,
+          env,
+          instructorPartnershipReqMatch[1]
+        );
+      }
+
+      const instructorPartnershipMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/partnerships/([^/]+)$`)
+      );
+      if (instructorPartnershipMatch && request.method === 'PATCH') {
+        return instructorRoutes.updateInstructorPartnership(
+          request,
+          env,
+          instructorPartnershipMatch[1]
+        );
+      }
+
       const instructorStudentsMatch = path.match(new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)/students$`));
       if (instructorStudentsMatch) {
         const instructorId = instructorStudentsMatch[1];

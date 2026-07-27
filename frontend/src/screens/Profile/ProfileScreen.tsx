@@ -520,20 +520,22 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </View>
           ) : null}
 
-          {/* Instructor Access Card */}
           {isInstructor && (
-            <View style={tw`mt-4`}>
-              <TouchableOpacity
-                onPress={navigateToInstructor}
-                style={tw`bg-emerald-700 rounded-xl p-4`}
-              >
-                <View style={tw`flex-row items-center mb-2`}>
-                  <Ionicons name="school" size={24} color="#FFFFFF" />
-                  <Text style={tw`text-white font-bold text-lg ml-2`}>Instructor Hub</Text>
-                </View>
-                <Text style={tw`text-white text-xs opacity-90`}>Teach & mentor your community</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={navigateToInstructor}
+              style={tw`mt-4 flex-row items-center py-3 border-t border-stone-200/80`}
+            >
+              <View style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
+                <Ionicons name="school-outline" size={18} color="#57534E" />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`font-semibold text-stone-900`}>Open Instructor Hub</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Community · partnerships · teaching
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+            </TouchableOpacity>
           )}
         </View>
 
@@ -892,24 +894,25 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         </View>
 
-        {/* Quick Actions */}
         {isInstructor && (
-          <View style={tw`px-4 py-4 border-b border-stone-200`}>
-            <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Quick Actions</Text>
+          <View style={tw`px-5 py-4 border-b border-stone-200/80`}>
+            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+              Teaching
+            </Text>
             <TouchableOpacity
               onPress={navigateToInstructor}
-              style={tw`flex-row items-center justify-between py-4 bg-purple-50 rounded-xl px-4 border border-purple-200`}
+              style={tw`flex-row items-center py-3.5`}
             >
-              <View style={tw`flex-row items-center flex-1`}>
-                <View style={tw`w-12 h-12 bg-purple-500 rounded-full items-center justify-center mr-3`}>
-                  <Ionicons name="school" size={24} color="#FFFFFF" />
-                </View>
-                <View style={tw`flex-1`}>
-                  <Text style={tw`font-bold text-stone-900 text-base`}>Instructor Hub</Text>
-                  <Text style={tw`text-sm text-stone-600`}>Manage students & courses</Text>
-                </View>
+              <View style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
+                <Ionicons name="school-outline" size={18} color="#57534E" />
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#A855F7" />
+              <View style={tw`flex-1 pr-2`}>
+                <Text style={tw`font-semibold text-stone-900`}>Instructor Hub</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Community, partnerships, and teaching tools
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
             </TouchableOpacity>
           </View>
         )}

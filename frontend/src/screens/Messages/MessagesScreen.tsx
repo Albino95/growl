@@ -285,9 +285,21 @@ export default function MessagesScreen() {
   };
 
   const goBackRoot = () => {
-    const rootNavigation = navigation.getParent() || navigation;
-    if (rootNavigation.canGoBack()) rootNavigation.goBack();
-    else rootNavigation.navigate('Individual' as never);
+    // Prefer the navigator that pushed this screen (e.g. Business stack → BusinessMessages).
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    const parent = navigation.getParent();
+    if (parent?.canGoBack()) {
+      parent.goBack();
+      return;
+    }
+    try {
+      parent?.navigate('Individual' as never);
+    } catch {
+      /* ignore */
+    }
   };
 
   if (selectedConversation) {
