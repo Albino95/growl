@@ -8,6 +8,22 @@ export function getSiteUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
+/** True when a real App Store listing URL is configured (not the generic store homepage). */
+export function hasLiveAppStoreUrl(): boolean {
+  const url =
+    process.env.NEXT_PUBLIC_APP_STORE_URL?.trim() || process.env.APP_STORE_URL?.trim() || '';
+  if (!url) return false;
+  return /\/app\/|id\d+/i.test(url);
+}
+
+/** True when a real Play Store listing URL is configured. */
+export function hasLivePlayStoreUrl(): boolean {
+  const url =
+    process.env.NEXT_PUBLIC_PLAY_STORE_URL?.trim() || process.env.PLAY_STORE_URL?.trim() || '';
+  if (!url) return false;
+  return /details\?id=/i.test(url) && !url.includes('id=app.growl.mobile');
+}
+
 export function getAppStoreUrl(): string {
   return (
     process.env.NEXT_PUBLIC_APP_STORE_URL?.trim() ||
@@ -20,7 +36,7 @@ export function getPlayStoreUrl(): string {
   return (
     process.env.NEXT_PUBLIC_PLAY_STORE_URL?.trim() ||
     process.env.PLAY_STORE_URL?.trim() ||
-    'https://play.google.com/store/apps/details?id=app.growl.mobile'
+    'https://play.google.com/store'
   );
 }
 

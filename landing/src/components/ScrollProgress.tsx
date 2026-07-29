@@ -6,14 +6,19 @@ export default function ScrollProgress() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const onScroll = () => {
+    const update = () => {
       const el = document.documentElement;
-      const max = el.scrollHeight - el.clientHeight;
-      setProgress(max > 0 ? (el.scrollTop / max) * 100 : 0);
+      const max = el.scrollHeight - window.innerHeight;
+      const top = window.scrollY || el.scrollTop || 0;
+      setProgress(max > 0 ? Math.min(100, Math.max(0, (top / max) * 100)) : 0);
     };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
   }, []);
 
   return (
@@ -22,7 +27,7 @@ export default function ScrollProgress() {
       aria-hidden
     >
       <div
-        className="h-full bg-emerald-400 transition-[width] duration-75 ease-out"
+        className="h-full origin-left bg-emerald-400 transition-[width] duration-100 ease-out"
         style={{ width: `${progress}%` }}
       />
     </div>

@@ -9,30 +9,36 @@ export default function FaqSection() {
   const reduced = useReducedMotion();
 
   return (
-    <section id="faq" className="bg-[#f8fafc] px-6 py-24 sm:px-8 lg:px-10">
+    <section id="faq" className="bg-[var(--surface-alt)] px-6 py-24 sm:px-8 sm:py-28 lg:px-10">
       <div className="mx-auto max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">FAQ</p>
-        <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-stone-900 sm:text-4xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+          FAQ
+        </p>
+        <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-stone-900 sm:text-4xl">
           Questions, answered.
         </h2>
 
-        <div className="mt-10 divide-y divide-stone-200 border-y border-stone-200">
+        <div className="mt-12 divide-y divide-stone-900/10 border-y border-stone-900/10">
           {FAQ_ITEMS.map((item, i) => {
             const isOpen = open === i;
+            const panelId = `faq-panel-${i}`;
+            const buttonId = `faq-button-${i}`;
             return (
               <div key={item.question}>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-4 py-5 text-left"
+                  id={buttonId}
+                  className="flex w-full items-center justify-between gap-4 py-5 text-left transition hover:text-emerald-800"
                   aria-expanded={isOpen}
+                  aria-controls={panelId}
                   onClick={() => setOpen(isOpen ? null : i)}
                 >
                   <span className="font-display text-lg font-semibold text-stone-900">
                     {item.question}
                   </span>
                   <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-200 text-emerald-700 transition ${
-                      isOpen ? 'rotate-45 bg-emerald-50' : ''
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-700/20 text-emerald-800 transition duration-300 ${
+                      isOpen ? 'rotate-45 bg-emerald-700/10' : ''
                     }`}
                     aria-hidden
                   >
@@ -42,14 +48,19 @@ export default function FaqSection() {
                 <AnimatePresence initial={false}>
                   {isOpen ? (
                     <motion.div
+                      id={panelId}
+                      role="region"
+                      aria-labelledby={buttonId}
                       key="content"
                       initial={reduced ? false : { height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={reduced ? undefined : { height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25 }}
+                      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                       className="overflow-hidden"
                     >
-                      <p className="pb-5 text-base leading-relaxed text-stone-600">{item.answer}</p>
+                      <p className="pb-5 pr-10 text-base leading-relaxed text-stone-600">
+                        {item.answer}
+                      </p>
                     </motion.div>
                   ) : null}
                 </AnimatePresence>

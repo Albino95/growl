@@ -4,6 +4,10 @@ import { FormEvent, useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'grow-waitlist-joined';
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+
 export default function WaitlistForm({ variant = 'hero' }: { variant?: 'hero' | 'footer' }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
@@ -22,13 +26,19 @@ export default function WaitlistForm({ variant = 'hero' }: { variant?: 'hero' | 
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    const trimmed = email.trim().toLowerCase();
+    if (!isValidEmail(trimmed)) {
+      setStatus('error');
+      setMessage('Enter a valid email address.');
+      return;
+    }
     setStatus('loading');
     setMessage('');
     try {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: trimmed }),
       });
       const data = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
@@ -58,7 +68,7 @@ export default function WaitlistForm({ variant = 'hero' }: { variant?: 'hero' | 
         className={`rounded-2xl border px-4 py-4 text-sm ${
           isHero
             ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-50'
-            : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+            : 'border-emerald-200/80 bg-emerald-50 text-emerald-900'
         }`}
         role="status"
       >
@@ -101,23 +111,31 @@ export default function WaitlistForm({ variant = 'hero' }: { variant?: 'hero' | 
           name="email"
           required
           autoComplete="email"
+          inputMode="email"
           placeholder="you@email.com"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (status === 'error') {
+              setStatus('idle');
+              setMessage('');
+            }
+          }}
           disabled={status === 'loading'}
+          aria-invalid={status === 'error'}
           className={`min-h-12 flex-1 rounded-2xl border px-4 text-base outline-none transition focus:ring-2 focus:ring-emerald-400/60 ${
             isHero
-              ? 'border-white/20 bg-white/10 text-white placeholder:text-emerald-100/60'
-              : 'border-stone-200 bg-white text-stone-900 placeholder:text-stone-400'
+              ? 'border-white/20 bg-white/10 text-white placeholder:text-emerald-100/55'
+              : 'border-stone-300/80 bg-white text-stone-900 placeholder:text-stone-400'
           }`}
         />
         <button
           type="submit"
           disabled={status === 'loading'}
-          className={`min-h-12 rounded-2xl px-6 text-sm font-semibold transition disabled:opacity-60 ${
+          className={`min-h-12 shrink-0 rounded-2xl px-6 text-sm font-semibold transition disabled:opacity-60 ${
             isHero
-              ? 'bg-white text-emerald-900 hover:bg-emerald-50'
-              : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              ? 'bg-white text-emerald-950 hover:bg-emerald-50'
+              : 'bg-emerald-700 text-white hover:bg-emerald-800'
           }`}
         >
           {status === 'loading' ? 'Joining…' : 'Get early access'}
