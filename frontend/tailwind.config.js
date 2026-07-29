@@ -22,9 +22,9 @@ module.exports = {
           700: '#6d28d9',
         },
         surface: {
-          page: '#f8fafc',
-          card: '#ffffff',
-          subtle: '#f5f5f4',
+          page: '#F3EEE4',
+          card: '#FFFcf7',
+          subtle: '#EAE4D6',
           border: '#e7e5e4',
         },
       },

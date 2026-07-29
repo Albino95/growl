@@ -1,10 +1,17 @@
 export type Subcategory = { key: string; label: string };
-export type Category = { key: string; label: string; subcategories: Subcategory[] };
+export type Category = {
+  key: string;
+  label: string;
+  /** Ionicons glyph for marketplace / growth pickers */
+  icon: string;
+  subcategories: Subcategory[];
+};
 
 const CATEGORIES: Category[] = [
   {
     key: 'fitness',
     label: 'Fitness',
+    icon: 'barbell-outline',
     subcategories: [
       { key: 'losing-weight', label: 'Losing Weight' },
       { key: 'building-muscle', label: 'Building Muscle' },
@@ -16,6 +23,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'art',
     label: 'Art',
+    icon: 'color-palette-outline',
     subcategories: [
       { key: 'piano', label: 'Piano' },
       { key: 'violin', label: 'Violin' },
@@ -28,6 +36,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'nutrition',
     label: 'Nutrition',
+    icon: 'restaurant-outline',
     subcategories: [
       { key: 'meal-planning', label: 'Meal Planning' },
       { key: 'healthy-eating', label: 'Healthy Eating' },
@@ -38,6 +47,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'mindset',
     label: 'Mindset',
+    icon: 'leaf-outline',
     subcategories: [
       { key: 'meditation', label: 'Meditation' },
       { key: 'positive-thinking', label: 'Positive Thinking' },
@@ -48,6 +58,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'discipline',
     label: 'Discipline',
+    icon: 'checkmark-done-outline',
     subcategories: [
       { key: 'time-management', label: 'Time Management' },
       { key: 'habit-building', label: 'Habit Building' },
@@ -58,6 +69,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'martial-arts',
     label: 'Martial Arts',
+    icon: 'flash-outline',
     subcategories: [
       { key: 'karate', label: 'Karate' },
       { key: 'jiu-jitsu', label: 'Jiu-Jitsu' },
@@ -68,6 +80,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'language',
     label: 'Language Learning',
+    icon: 'language-outline',
     subcategories: [
       { key: 'spanish', label: 'Spanish' },
       { key: 'french', label: 'French' },
@@ -78,6 +91,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'coding',
     label: 'Coding',
+    icon: 'code-slash-outline',
     subcategories: [
       { key: 'web-development', label: 'Web Development' },
       { key: 'mobile-development', label: 'Mobile Development' },
@@ -88,6 +102,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'sustainability',
     label: 'Sustainability',
+    icon: 'globe-outline',
     subcategories: [
       { key: 'zero-waste', label: 'Zero Waste' },
       { key: 'renewable-energy', label: 'Renewable Energy' },
@@ -102,6 +117,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'wellness',
     label: 'Wellness',
+    icon: 'heart-outline',
     subcategories: [
       { key: 'mental-health', label: 'Mental Health' },
       { key: 'sleep', label: 'Sleep Optimization' },
@@ -112,6 +128,7 @@ const CATEGORIES: Category[] = [
   {
     key: 'finance',
     label: 'Finance',
+    icon: 'wallet-outline',
     subcategories: [
       { key: 'budgeting', label: 'Budgeting' },
       { key: 'investing', label: 'Investing' },

@@ -7,6 +7,7 @@ import BizSettings from '../../screens/Business/BizSettings';
 import CustomersScreen from '../../screens/Business/CustomersScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
 import PostScreen from '../../screens/Post/PostScreen';
+import KYCScreen from '../../screens/KYC/KYCScreen';
 
 export type BusinessStackParamList = {
   BusinessMain: undefined;
@@ -16,6 +17,7 @@ export type BusinessStackParamList = {
   BusinessCustomers: undefined;
   BusinessMessages: { conversationId?: string; targetUserId?: string } | undefined;
   BusinessCreatePost: undefined;
+  BusinessKYC: undefined;
 };
 
 const Stack = createNativeStackNavigator<BusinessStackParamList>();
@@ -76,6 +78,16 @@ export default function BusinessRootStack() {
           headerShown: false,
           presentation: 'modal',
           animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="BusinessKYC"
+        component={KYCScreen}
+        options={{
+          headerShown: true,
+          title: 'Identity verification',
+          headerBackTitle: 'Back',
+          headerTintColor: '#059669',
         }}
       />
     </Stack.Navigator>

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
+import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike } from '../../services/api/feed';
 import tw from '../../lib/tw';
@@ -223,15 +224,8 @@ export default function PostDetailScreen() {
             <CO2Calculator category={post.category} activityType="post" />
 
             {post.daysUntilDecay !== undefined && (
-              <View style={tw`flex-row items-center mt-2`}>
-                <Ionicons name="time" size={16} color={post.daysUntilDecay <= 1 ? '#EF4444' : '#F59E0B'} />
-                <Text
-                  style={tw`text-sm font-semibold ml-1 ${
-                    post.daysUntilDecay <= 1 ? 'text-red-600' : 'text-orange-600'
-                  }`}
-                >
-                  {post.daysUntilDecay} day{post.daysUntilDecay !== 1 ? 's' : ''} left
-                </Text>
+              <View style={tw`mt-2`}>
+                <DecayCountdownChip daysLeft={post.daysUntilDecay} />
               </View>
             )}
 

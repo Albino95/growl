@@ -9,7 +9,8 @@ export async function getUserIdFromRequest(request: Request, env: any): Promise<
 
   const token = authHeader.substring(7);
 
-  if (env?.ENVIRONMENT === 'test') {
+  // Vitest / local unit tests only — never enabled for remote envs (dev/qa/production).
+  if (env?.ENVIRONMENT === 'test' && env?.ALLOW_TEST_AUTH_BYPASS === 'true') {
     return 'test-user';
   }
 
@@ -56,6 +57,10 @@ export async function getRequestContext(request: Request, env: any): Promise<Req
 export function userAuthPayload(user: User) {
   const metadata = JSON.parse(user.metadata || '{}');
   const categories = Array.isArray(metadata.categories) ? metadata.categories : [];
+  const decayTimer =
+    typeof metadata.decay_timer === 'number' && metadata.decay_timer >= 1
+      ? Math.min(365, Math.floor(metadata.decay_timer))
+      : 7;
   return {
     userId: user.id,
     email: user.email,
@@ -63,6 +68,8 @@ export function userAuthPayload(user: User) {
     isBusiness: !!user.is_business,
     hasCompletedOnboarding: categories.length > 0,
     categories,
+    points: Number(user.points) || 0,
+    decayTimer,
     emailVerified: !!(user as User & { email_verified?: number }).email_verified,
   };
 }

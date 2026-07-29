@@ -130,7 +130,7 @@ export function BusinessAccountsPage() {
 
   function copyCredentials() {
     if (!created) return;
-    const text = `Growl Business Account\nEmail: ${created.email}\nTemporary password: ${created.temporaryPassword}\nSign in via the Growl mobile app.`;
+    const text = `Grow! Business Account\nEmail: ${created.email}\nTemporary password: ${created.temporaryPassword}\nSign in: Seller tab on the admin portal, or the Grow! mobile app.`;
     void navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -142,7 +142,7 @@ export function BusinessAccountsPage() {
     <div>
       <PageHeader
         title="Business Accounts"
-        subtitle="Register and manage admin-provisioned business users. They sign in via the mobile app."
+        subtitle="Provision sellers for Grow!. They sign in via the Seller tab on this portal or the mobile app."
       />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
@@ -153,7 +153,7 @@ export function BusinessAccountsPage() {
             <div className="flex-1">
               <h3 className="font-semibold text-emerald-900">Business account created</h3>
               <p className="mt-1 text-sm text-emerald-800">
-                Share these credentials securely with the business owner. They sign in on the Growl app — not here.
+                Share these credentials securely. Sellers use the Seller tab on this portal (or the Grow! mobile app).
               </p>
               <dl className="mt-3 space-y-1 text-sm">
                 <div><dt className="inline font-medium text-emerald-900">Email: </dt><dd className="inline font-mono">{created.email}</dd></div>
@@ -242,6 +242,7 @@ export function BusinessAccountsPage() {
                     </DataTableCell>
                     <DataTableCell>
                       <div className="flex flex-wrap gap-1">
+                        <Link to={`/business/accounts/${a.id}`} className="text-xs font-medium text-brand-600 hover:text-brand-700">Overview</Link>
                         <Link to={`/users/${a.id}`} className="text-xs font-medium text-brand-600 hover:text-brand-700">User</Link>
                         {a.verification_status !== 'verified' && (
                           <Button variant="ghost" className="h-7 px-2 text-xs" onClick={() => void setVerification(a.id, 'verified')}>Verify</Button>

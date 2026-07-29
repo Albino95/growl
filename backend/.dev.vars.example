@@ -1,0 +1,12 @@
+# Copy to `.dev.vars` for local `wrangler dev` (gitignored).
+# Remote envs: use `npx wrangler secret put <NAME> --env <dev|qa|production>`
+
+JWT_SECRET=dev-secret-key-change-in-production
+# RESEND_API_KEY=re_xxx
+# EMAIL_FROM=Growl <noreply@growl.app>
+# APP_PUBLIC_URL=http://localhost:8787
+# GOOGLE_CLIENT_ID=
+# FACEBOOK_APP_ID=
+# APPLE_CLIENT_ID=app.growl.mobile
+# STRIPE_SECRET_KEY=sk_test_xxx
+# STRIPE_WEBHOOK_SECRET=whsec_xxx

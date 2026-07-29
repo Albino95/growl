@@ -2,10 +2,13 @@
 export interface Env {
   DB: D1Database; // Required - configured in wrangler.toml
   KV: KVNamespace; // Required - configured in wrangler.toml
-  R2?: R2Bucket; // Optional - not used yet
+  R2?: R2Bucket; // Optional until R2 buckets are bound per env
   ENVIRONMENT: string;
-  JWT_SECRET: string;
+  /** Set via wrangler secret / .dev.vars — never commit production values */
+  JWT_SECRET?: string;
   API_VERSION: string;
+  /** Comma-separated browser origins; `*` only for local/dev */
+  CORS_ORIGINS?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   APP_PUBLIC_URL?: string;
@@ -14,6 +17,8 @@ export interface Env {
   APPLE_CLIENT_ID?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Vitest only — never set on remote Workers */
+  ALLOW_TEST_AUTH_BYPASS?: string;
 }
 
 // User types

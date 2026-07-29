@@ -7,33 +7,56 @@ export async function getAdminOverview(request: Request, env: Env): Promise<Resp
   if (ctx instanceof Response) return ctx;
 
   try {
-    const [pendingReports, openAppeals, privacyPending, totalUsers, orders7d, revenue7d, refunds7d, trends] =
-      await Promise.all([
-        env.DB.prepare(
-          `SELECT COUNT(*) as c FROM reports WHERE workflow_status IN ('pending', 'investigating')`
-        ).first<{ c: number }>(),
-        env.DB.prepare(`SELECT COUNT(*) as c FROM moderation_appeals WHERE status = 'pending'`).first<{
-          c: number;
-        }>(),
-        env.DB.prepare(`SELECT COUNT(*) as c FROM privacy_requests WHERE status IN ('pending', 'in_progress')`).first<{
-          c: number;
-        }>(),
-        env.DB.prepare(`SELECT COUNT(*) as c FROM users`).first<{ c: number }>(),
-        env.DB.prepare(
-          `SELECT COUNT(*) as c FROM orders WHERE created_at >= datetime('now', '-7 days')`
-        ).first<{ c: number }>(),
-        env.DB.prepare(
-          `SELECT COALESCE(SUM(total), 0) as t FROM orders WHERE created_at >= datetime('now', '-7 days')`
-        ).first<{ t: number }>(),
-        env.DB.prepare(
-          `SELECT COALESCE(SUM(refund_amount), 0) as t FROM orders WHERE created_at >= datetime('now', '-7 days')`
-        ).first<{ t: number }>(),
-        env.DB.prepare(
-          `SELECT date(created_at) as day, COUNT(*) as count
-           FROM reports WHERE created_at >= datetime('now', '-7 days')
-           GROUP BY date(created_at) ORDER BY day ASC`
-        ).all(),
-      ]);
+    const [
+      pendingReports,
+      openAppeals,
+      privacyPending,
+      totalUsers,
+      orders7d,
+      revenue7d,
+      refunds7d,
+      gmv30d,
+      activeSellers,
+      lowStockPlatform,
+      trends,
+    ] = await Promise.all([
+      env.DB.prepare(
+        `SELECT COUNT(*) as c FROM reports WHERE workflow_status IN ('pending', 'investigating')`
+      ).first<{ c: number }>(),
+      env.DB.prepare(`SELECT COUNT(*) as c FROM moderation_appeals WHERE status = 'pending'`).first<{
+        c: number;
+      }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as c FROM privacy_requests WHERE status IN ('pending', 'in_progress')`
+      ).first<{ c: number }>(),
+      env.DB.prepare(`SELECT COUNT(*) as c FROM users`).first<{ c: number }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as c FROM orders WHERE created_at >= datetime('now', '-7 days')`
+      ).first<{ c: number }>(),
+      env.DB.prepare(
+        `SELECT COALESCE(SUM(total), 0) as t FROM orders WHERE created_at >= datetime('now', '-7 days')`
+      ).first<{ t: number }>(),
+      env.DB.prepare(
+        `SELECT COALESCE(SUM(refund_amount), 0) as t FROM orders WHERE created_at >= datetime('now', '-7 days')`
+      ).first<{ t: number }>(),
+      env.DB.prepare(
+        `SELECT COALESCE(SUM(total), 0) as t FROM orders
+         WHERE created_at >= datetime('now', '-30 days')
+           AND status IN ('completed', 'delivered', 'shipped', 'processing')`
+      ).first<{ t: number }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as c FROM users WHERE is_business = 1
+         AND id IN (SELECT DISTINCT user_id FROM products)`
+      ).first<{ c: number }>(),
+      env.DB.prepare(
+        `SELECT COUNT(*) as c FROM products WHERE stock > 0 AND stock < 10`
+      ).first<{ c: number }>(),
+      env.DB.prepare(
+        `SELECT date(created_at) as day, COUNT(*) as count
+         FROM reports WHERE created_at >= datetime('now', '-7 days')
+         GROUP BY date(created_at) ORDER BY day ASC`
+      ).all(),
+    ]);
 
     return json({
       kpis: {
@@ -44,6 +67,9 @@ export async function getAdminOverview(request: Request, env: Env): Promise<Resp
         orders_7d: orders7d?.c || 0,
         revenue_7d: revenue7d?.t || 0,
         refunds_7d: refunds7d?.t || 0,
+        gmv_30d: gmv30d?.t || 0,
+        active_sellers: activeSellers?.c || 0,
+        low_stock_platform: lowStockPlatform?.c || 0,
       },
       trends: { reports_7d: trends.results || [] },
     });

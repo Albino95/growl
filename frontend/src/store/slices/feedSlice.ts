@@ -70,6 +70,26 @@ export const fetchFeedPosts = createAsyncThunk(
   }
 );
 
+/**
+ * Background poll merge: refresh engagement on posts already on screen, prepend
+ * new ones, and never drop a card the user is still looking at (server top-N
+ * window churns when likes/comments bump engagement_score).
+ */
+function mergeFeedSection(
+  existing: FeedPostWithSection[],
+  incoming: FeedPostWithSection[],
+  movedToOtherSection: Set<string>
+): FeedPostWithSection[] {
+  const incomingById = new Map(incoming.map((p) => [p.id, p]));
+  const kept = existing
+    .filter((p) => !movedToOtherSection.has(p.id))
+    .map((p) => incomingById.get(p.id) ?? p);
+  const keptIds = new Set(kept.map((p) => p.id));
+  // Append (don't prepend) so the post the user is looking at doesn't jump away.
+  const brandNew = incoming.filter((p) => !keptIds.has(p.id));
+  return [...kept, ...brandNew];
+}
+
 const feedSlice = createSlice({
   name: 'feed',
   initialState,
@@ -88,6 +108,33 @@ const feedSlice = createSlice({
       state.following = [post, ...state.following.filter((p) => p.id !== post.id)];
       state.items = [post, ...state.items.filter((p) => p.id !== post.id)];
     },
+    /** Keep like/comment counts and has_liked in sync with optimistic UI (SectionList reads Redux). */
+    patchFeedPostEngagement: (
+      state,
+      action: PayloadAction<{
+        id: string;
+        likes?: number;
+        comments?: number;
+        has_liked?: boolean;
+      }>
+    ) => {
+      const { id, likes, comments, has_liked } = action.payload;
+      const apply = (p: FeedPostWithSection): FeedPostWithSection => {
+        if (p.id !== id) return p;
+        return {
+          ...p,
+          metadata: {
+            ...p.metadata,
+            ...(likes !== undefined ? { likes } : {}),
+            ...(comments !== undefined ? { comments } : {}),
+            ...(has_liked !== undefined ? { has_liked } : {}),
+          },
+        };
+      };
+      state.following = state.following.map(apply);
+      state.suggested = state.suggested.map(apply);
+      state.items = state.items.map(apply);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -99,9 +146,33 @@ const feedSlice = createSlice({
       })
       .addCase(fetchFeedPosts.fulfilled, (state, action) => {
         state.status = 'succeeded';
-        state.following = action.payload.following;
-        state.suggested = action.payload.suggested;
-        state.items = [...action.payload.following, ...action.payload.suggested];
+        const hasVisibleFeed = state.following.length > 0 || state.suggested.length > 0;
+        // Pull-to-refresh / retry use force without silent → full replace.
+        // Silent polls and stale refocuses merge so likes/comments don't eject posts.
+        const hardRefresh = !!action.meta.arg?.force && !action.meta.arg?.silent;
+        const shouldReplace = !hasVisibleFeed || hardRefresh;
+
+        if (!shouldReplace) {
+          const incomingSuggestedIds = new Set(action.payload.suggested.map((p) => p.id));
+          const incomingFollowingIds = new Set(action.payload.following.map((p) => p.id));
+          state.following = mergeFeedSection(
+            state.following,
+            action.payload.following,
+            incomingSuggestedIds
+          );
+          state.suggested = mergeFeedSection(
+            state.suggested,
+            action.payload.suggested,
+            incomingFollowingIds
+          );
+          const followingIds = new Set(state.following.map((p) => p.id));
+          state.suggested = state.suggested.filter((p) => !followingIds.has(p.id));
+        } else {
+          state.following = action.payload.following;
+          state.suggested = action.payload.suggested;
+        }
+
+        state.items = [...state.following, ...state.suggested];
         state.lastFetchedAt = new Date().toISOString();
       })
       .addCase(fetchFeedPosts.rejected, (state, action) => {
@@ -112,5 +183,5 @@ const feedSlice = createSlice({
   },
 });
 
-export const { clearFeed, prependFeedPost } = feedSlice.actions;
+export const { clearFeed, prependFeedPost, patchFeedPostEngagement } = feedSlice.actions;
 export default feedSlice.reducer;

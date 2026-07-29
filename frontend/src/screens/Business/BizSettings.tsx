@@ -28,6 +28,7 @@ import { fetchBusinessSettings } from '../../store/slices/businessSlice';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { downloadCsv } from '../../utils/csvDownload';
 import { verticalScrollProps } from '../../constants/scroll';
+import { featureFlags } from '../../constants/featureFlags';
 
 const EMERALD = '#059669';
 
@@ -209,7 +210,7 @@ export default function BizSettings() {
   const net = useAppSelector((s) => s.business.kpis?.net_revenue ?? s.business.kpis?.total_revenue ?? 0);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['bottom']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['bottom']}>
       <ScrollView style={tw`flex-1`} {...verticalScrollProps}>
         {loading ? (
           <View style={tw`items-center justify-center py-8`}>
@@ -217,18 +218,20 @@ export default function BizSettings() {
           </View>
         ) : null}
 
-        <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-100`}>
-          <Text style={tw`text-2xl font-bold text-stone-900`}>Business Settings</Text>
-          <Text style={tw`text-sm text-stone-500 mt-1`}>Manage your business account</Text>
+        <View style={tw`px-5 pt-4 pb-3`}>
+          <Text style={tw`text-lg font-bold text-stone-900`}>Business settings</Text>
+          <Text style={tw`text-sm text-stone-500 mt-0.5`}>Store profile, ops, exports, and account</Text>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Business</Text>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Business
+          </Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Business name</Text>
           <TextInput
             value={businessName}
             onChangeText={setBusinessName}
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
             placeholder="My Business"
             placeholderTextColor="#A8A29E"
           />
@@ -237,13 +240,13 @@ export default function BizSettings() {
             {logoPreview ? (
               <Image source={{ uri: logoPreview }} style={tw`w-16 h-16 rounded-xl mr-3`} contentFit="cover" />
             ) : (
-              <View style={tw`w-16 h-16 rounded-xl mr-3 bg-stone-100 items-center justify-center`}>
+              <View style={tw`w-16 h-16 rounded-xl mr-3 bg-[#EAE4D6] items-center justify-center`}>
                 <Ionicons name="storefront-outline" size={28} color="#A8A29E" />
               </View>
             )}
             <TouchableOpacity
               onPress={() => void pickLogo()}
-              style={tw`px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl`}
+              style={tw`px-4 py-2.5 bg-[#EAE4D6] border border-stone-200/80 rounded-xl`}
             >
               <Text style={tw`text-sm font-semibold text-emerald-800`}>Choose image</Text>
             </TouchableOpacity>
@@ -254,14 +257,16 @@ export default function BizSettings() {
           </View>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Ops</Text>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Ops
+          </Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Low stock threshold (units)</Text>
           <TextInput
             value={lowStockThreshold}
             onChangeText={setLowStockThreshold}
             keyboardType="numeric"
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
             placeholder="10"
             placeholderTextColor="#A8A29E"
           />
@@ -271,16 +276,18 @@ export default function BizSettings() {
             onChangeText={setDefaultShippingNote}
             multiline
             numberOfLines={3}
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-stone-900 min-h-[80px]`}
+            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 text-stone-900 min-h-[80px]`}
             placeholder="Ships within 2 business days…"
             placeholderTextColor="#A8A29E"
             textAlignVertical="top"
           />
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Notifications</Text>
-          <View style={tw`flex-row items-center justify-between py-3`}>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Notifications
+          </Text>
+          <View style={tw`flex-row items-center justify-between py-2`}>
             <View style={tw`flex-row items-center flex-1 pr-3`}>
               <Ionicons name="notifications-outline" size={20} color="#78716C" />
               <Text style={tw`text-stone-900 ml-3`}>In-app alerts</Text>
@@ -294,27 +301,28 @@ export default function BizSettings() {
           </View>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Payouts</Text>
-          <View style={tw`bg-stone-50 rounded-xl p-4 border border-stone-100`}>
-            <View style={tw`flex-row gap-3 mb-2`}>
-              <View style={tw`flex-1`}>
-                <Text style={tw`text-xs text-stone-500`}>Available</Text>
-                <Text style={tw`text-lg font-bold text-emerald-700`}>${(net * 0.92).toFixed(2)}</Text>
-              </View>
-              <View style={tw`flex-1`}>
-                <Text style={tw`text-xs text-stone-500`}>Fee pending</Text>
-                <Text style={tw`text-lg font-bold text-amber-700`}>${(net * 0.08).toFixed(2)}</Text>
-              </View>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Payouts
+          </Text>
+          <View style={tw`flex-row`}>
+            <View style={tw`flex-1 pr-4`}>
+              <Text style={tw`text-xs text-stone-500`}>Available</Text>
+              <Text style={tw`text-lg font-bold text-emerald-700`}>${(net * 0.92).toFixed(2)}</Text>
             </View>
-            <Text style={tw`text-xs text-stone-500`}>Payouts via platform — Coming soon</Text>
+            <View style={tw`flex-1 border-l border-stone-200/80 pl-4`}>
+              <Text style={tw`text-xs text-stone-500`}>Fee hold</Text>
+              <Text style={tw`text-lg font-bold text-stone-800`}>${(net * 0.08).toFixed(2)}</Text>
+            </View>
           </View>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Export</Text>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Export
+          </Text>
           <TouchableOpacity
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100 ${exportBusy ? 'opacity-60' : ''}`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/60 ${exportBusy ? 'opacity-60' : ''}`}
             disabled={!!exportBusy}
             onPress={() => void handleExportOrders()}
           >
@@ -345,27 +353,31 @@ export default function BizSettings() {
           </TouchableOpacity>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Storefront</Text>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Storefront
+          </Text>
           <TouchableOpacity
-            style={tw`flex-row items-center justify-between py-3 border border-emerald-200 bg-emerald-50 rounded-xl px-3 mb-3`}
+            style={tw`flex-row items-center justify-between py-3`}
             onPress={openStorefrontPreview}
           >
             <View style={tw`flex-row items-center flex-1`}>
               <Ionicons name="storefront-outline" size={22} color={EMERALD} />
               <View style={tw`ml-3 flex-1`}>
-                <Text style={tw`font-semibold text-emerald-900`}>Your products</Text>
-                <Text style={tw`text-xs text-emerald-700 mt-0.5`}>Preview catalog tab</Text>
+                <Text style={tw`font-semibold text-stone-900`}>Your products</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Open catalog tab</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={EMERALD} />
+            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
           </TouchableOpacity>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Shortcuts</Text>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Shortcuts
+          </Text>
           <TouchableOpacity
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/60`}
             onPress={() => stackNav.navigate('BusinessCustomers')}
           >
             <View style={tw`flex-row items-center`}>
@@ -375,7 +387,7 @@ export default function BizSettings() {
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/60`}
             onPress={() => stackNav.navigate('BusinessMessages')}
           >
             <View style={tw`flex-row items-center`}>
@@ -384,6 +396,38 @@ export default function BizSettings() {
             </View>
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/60`}
+            onPress={() => stackNav.navigate('BusinessCreatePost')}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="create-outline" size={20} color="#78716C" />
+              <Text style={tw`text-stone-900 ml-3`}>Create post</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/60`}
+            onPress={() => stackNav.navigate('BusinessAnalytics')}
+          >
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="analytics-outline" size={20} color="#78716C" />
+              <Text style={tw`text-stone-900 ml-3`}>Analytics</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+          </TouchableOpacity>
+          {featureFlags.enableKYC ? (
+            <TouchableOpacity
+              style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/60`}
+              onPress={() => stackNav.navigate('BusinessKYC')}
+            >
+              <View style={tw`flex-row items-center`}>
+                <Ionicons name="shield-checkmark-outline" size={20} color="#78716C" />
+                <Text style={tw`text-stone-900 ml-3`}>Identity verification</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={tw`flex-row items-center justify-between py-3`}
             onPress={() => navigateFromRoot(navigation, 'Legal')}
@@ -396,8 +440,10 @@ export default function BizSettings() {
           </TouchableOpacity>
         </View>
 
-        <View style={tw`bg-white px-4 py-4 mb-3 border-b border-stone-100`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Support</Text>
+        <View style={tw`px-5 py-4 border-b border-stone-200/70`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            Support
+          </Text>
           <TouchableOpacity
             onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
             style={tw`flex-row items-center justify-between py-3`}
@@ -410,22 +456,22 @@ export default function BizSettings() {
           </TouchableOpacity>
         </View>
 
-        <View style={tw`px-4 pb-2 pt-2`}>
+        <View style={tw`px-5 pb-2 pt-4`}>
           <TouchableOpacity
             onPress={() => void saveSettings()}
             disabled={saving || loading}
-            style={tw`bg-emerald-600 rounded-xl py-3.5 items-center ${saving || loading ? 'opacity-60' : ''}`}
+            style={tw`bg-emerald-600 rounded-2xl py-3.5 items-center ${saving || loading ? 'opacity-60' : ''}`}
           >
             <Text style={tw`text-white font-semibold`}>{saving ? 'Saving…' : 'Save settings'}</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={tw`px-4 py-4 mb-6`}>
+        <View style={tw`px-5 py-4 mb-6`}>
           <TouchableOpacity
             onPress={() => void handleSignOut()}
-            style={tw`bg-red-50 border border-red-200 rounded-xl py-4 flex-row items-center justify-center`}
+            style={tw`py-4 flex-row items-center justify-center`}
           >
-            <Ionicons name="log-out-outline" size={20} color="#EF4444" style={tw`mr-2`} />
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" style={tw`mr-2`} />
             <Text style={tw`text-red-600 font-bold text-base`}>Sign out</Text>
           </TouchableOpacity>
         </View>

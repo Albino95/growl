@@ -7,9 +7,7 @@ import {
   Alert,
   FlatList,
   Modal,
-  TextInput,
   Platform,
-  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -22,7 +20,7 @@ import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
-import { updateProfileOnServer } from '../../services/api/profile';
+import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
@@ -31,24 +29,25 @@ import ConnectionsListSheet, {
   type ConnectionsSheetMode,
 } from '../../components/profile/ConnectionsListSheet';
 import EmptyState from '../../components/ui/EmptyState';
-import GrowthAreasPicker from '../../components/profile/GrowthAreasPicker';
-import { getCategoryLabel } from '../../utils/categoryLabels';
+import GrowthAreasPicker, {
+  clampGrowthPaths,
+  growthParentCount,
+  MAX_GROWTH_PATHS,
+} from '../../components/profile/GrowthAreasPicker';
+import DecaySettingsModal from '../../components/profile/DecaySettingsModal';
+import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
+import { groupGrowthPaths } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
   claimInstructor,
   getInstructorEligibility,
   type InstructorEligibility,
 } from '../../services/api/instructor';
-import { useUiPrefsStore } from '../../state/useUiPrefsStore';
-
-type Award = {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  unlocked: boolean;
-  unlockedAt?: string;
-};
+import {
+  evaluateAchievements,
+  TIER_LABELS,
+  type AchievementTier,
+} from '../../data/achievements';
 
 type Post = {
   id: string;
@@ -71,39 +70,6 @@ type Story = {
   views: number;
   hasViewed: boolean;
 };
-
-const AWARDS: Award[] = [
-  {
-    id: '1',
-    name: 'First Steps',
-    description: 'Complete your first post',
-    icon: '🎯',
-    unlocked: true,
-    unlockedAt: '2024-01-10',
-  },
-  {
-    id: '2',
-    name: 'Week Warrior',
-    description: 'Post for 7 consecutive days',
-    icon: '🔥',
-    unlocked: true,
-    unlockedAt: '2024-01-15',
-  },
-  {
-    id: '3',
-    name: 'Community Helper',
-    description: 'Help 10 other users',
-    icon: '🤝',
-    unlocked: false,
-  },
-  {
-    id: '4',
-    name: 'Instructor Ready',
-    description: 'Reach 500 points',
-    icon: '🎓',
-    unlocked: false,
-  },
-];
 
 /** Computes remaining full days before a post reaches decay cutoff. */
 function daysLeftUntilDecay(createdAtIso: string, decayDays: number): number {
@@ -156,6 +122,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showClaimWelcome, setShowClaimWelcome] = useState(false);
+  const [showFadedPosts, setShowFadedPosts] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
@@ -165,34 +132,60 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
-  const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
-  const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
-  const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
-  const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
+  const [profileMeta, setProfileMeta] = useState<{
+    username?: string;
+    avatar?: string;
+    bio?: string | null;
+    status?: string | null;
+  }>({});
 
   /** Loads posts, stories, cohort connections, and instructor eligibility. */
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, cohort, elig] = await Promise.all([
+      const [postList, storyList, cohort, elig, me] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
         syncCohortFriends(),
         getInstructorEligibility().catch(() => null),
+        fetchCurrentProfile({ stats: true }).catch(() => null),
       ]);
-      const decay = user.decayTimer || 7;
+      if (elig) setEligibility(elig);
+      const decay =
+        typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
       setFollowing(cohort.following);
       setFollowers(cohort.followers);
-      if (elig) setEligibility(elig);
+      if (me) {
+        setProfileMeta({
+          username: me.username,
+          avatar: me.avatar,
+          bio: me.bio,
+          status: me.status,
+        });
+        if (typeof me.decay_timer === 'number') {
+          setDecayDays(me.decay_timer);
+        }
+        updateUser({
+          points: me.points,
+          decayTimer: me.decay_timer ?? 7,
+          postCount: me.post_count ?? 0,
+          endorsementsReceived: me.endorsements_received ?? 0,
+          endorsementsGiven: me.endorsements_given ?? 0,
+          streakDays: me.streak_days ?? 0,
+          bio: me.bio ?? null,
+          categories: me.categories,
+          isInstructor: me.is_instructor,
+        });
+      }
     } catch (e) {
       console.warn('[ProfileScreen] load profile content', e);
     } finally {
       setProfileLoading(false);
     }
-  }, [user?.id, user?.decayTimer]);
+  }, [user?.id, user?.decayTimer, updateUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -263,14 +256,17 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     if (claimBusy || !eligibility?.canClaim) return;
     const ok = await confirmAsync(
       'Switch to Instructor Account?',
-      'Peers in your growth areas endorsed you. Claiming unlocks the Instructor hub. You can keep posting as usual.',
+      'Peers in your growth areas endorsed you. Claiming unlocks the Instructor hub and awards growth points.',
       { confirmLabel: 'Claim instructor', destructive: false }
     );
     if (!ok) return;
     setClaimBusy(true);
     try {
       const result = await claimInstructor();
-      updateUser({ isInstructor: true });
+      updateUser({
+        isInstructor: true,
+        ...(typeof result.points_total === 'number' ? { points: result.points_total } : {}),
+      });
       await refreshProfile();
       setEligibility(result);
       setShowClaimWelcome(true);
@@ -281,23 +277,52 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     }
   };
 
-  /** Persists local decay timer preference and refreshes profile content projections. */
-  const handleSaveDecayTimer = () => {
-    updateUser({ decayTimer: decayDays });
-    setShowDecaySettings(false);
-    Alert.alert('Success', `Decay timer set to ${decayDays} days`);
-    void loadProfileContent();
+  /** Persists post lifespan to profile metadata and refreshes post countdown. */
+  const handleSaveDecayTimer = async (days: number) => {
+    try {
+      await updateProfileOnServer({ decay_timer: days });
+      setDecayDays(days);
+      updateUser({ decayTimer: days });
+      setShowDecaySettings(false);
+      alertMessage('Saved', `Posts soft-hide after ${days} day${days === 1 ? '' : 's'}.`);
+      void loadProfileContent();
+    } catch (e) {
+      alertMessage('Could not save', e instanceof Error ? e.message : 'Try again later');
+    }
   };
+
+  const achievementStats = {
+    postCount: user?.postCount ?? posts.length,
+    categoriesCount: user?.categories?.length ?? 0,
+    hasBio: !!(profileMeta.bio && String(profileMeta.bio).trim()),
+    streakDays: user?.streakDays ?? 0,
+    endorsementsReceived: eligibility?.endorsementsReceived ?? user?.endorsementsReceived ?? 0,
+    endorsementsGiven: user?.endorsementsGiven ?? 0,
+    points,
+    canClaimInstructor: !!eligibility?.canClaim,
+    isInstructor,
+  };
+  const achievements = evaluateAchievements(achievementStats);
+  const unlockedCount = achievements.filter((a) => a.unlocked).length;
+  const visiblePosts = showFadedPosts
+    ? posts
+    : posts.filter((p) => p.daysUntilDecay > 0);
+  const fadedCount = posts.filter((p) => p.daysUntilDecay <= 0).length;
 
   /** Persists category updates, then re-syncs cohort-based friend graph. */
   const handleUpdateCategories = async (selectedCategories: string[]) => {
-    if (selectedCategories.length === 0) {
-      alertMessage('Select at least one', 'Pick at least one growth area before saving.');
+    const next = clampGrowthPaths(selectedCategories);
+    if (next.length === 0) {
+      alertMessage('Select at least one', 'Pick at least one growth path before saving.');
+      return;
+    }
+    if (growthParentCount(next) > MAX_GROWTH_PATHS) {
+      alertMessage('Limit reached', `You can save at most ${MAX_GROWTH_PATHS} growth paths.`);
       return;
     }
     try {
-      await updateProfileOnServer({ categories: selectedCategories });
-      updateUser({ categories: selectedCategories });
+      await updateProfileOnServer({ categories: next });
+      updateUser({ categories: next });
       try {
         const cohort = await syncCohortFriends();
         setFollowing(cohort.following);
@@ -306,7 +331,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         console.warn('[ProfileScreen] cohort sync after category update', cohortErr);
       }
       setShowCategorySettings(false);
-      alertMessage('Success', 'Growth areas updated!');
+      alertMessage('Success', 'Growth paths updated!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not update growth areas';
       alertMessage('Error', msg);
@@ -348,7 +373,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={{
@@ -356,28 +381,54 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         }}
       >
         {/* Header */}
-        <View style={tw`px-4 pt-4 pb-6 border-b border-stone-200`}>
+        <View style={tw`px-5 pt-3 pb-5`}>
+          <View style={tw`flex-row items-center justify-between mb-4`}>
+            <View>
+              <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-3xl text-stone-900 mt-1`}>You</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigateFromRoot(navigation, 'Settings')}
+              style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+              accessibilityLabel="Settings"
+            >
+              <Ionicons name="settings-outline" size={20} color="#059669" />
+            </TouchableOpacity>
+          </View>
+
           <View style={tw`flex-row items-center mb-4`}>
             <Image
-              source={{ uri: getAvatarUrl(user?.id || 'default', user?.email?.split('@')[0]) }}
-              style={tw`w-20 h-20 rounded-full mr-4`}
+              source={{
+                uri: resolveAvatarUri(
+                  user?.id || 'default',
+                  profileMeta.username || user?.email?.split('@')[0],
+                  profileMeta.avatar
+                ),
+              }}
+              style={tw`w-20 h-20 rounded-full mr-4 border-2 border-white`}
               contentFit="cover"
             />
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {user?.email?.split('@')[0] || 'User'}
+                {profileMeta.username || user?.email?.split('@')[0] || 'User'}
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
-                  <Ionicons name="school" size={16} color="#10B981" />
-                  <Text style={tw`text-sm text-brand-600 ml-1 font-semibold`}>Instructor</Text>
+                  <Ionicons name="school" size={16} color="#059669" />
+                  <Text style={tw`text-sm text-emerald-700 ml-1 font-semibold`}>Instructor</Text>
                 </View>
               )}
             </View>
-            <TouchableOpacity onPress={() => setShowDecaySettings(true)}>
-              <Ionicons name="settings-outline" size={24} color="#6B7280" />
-            </TouchableOpacity>
           </View>
+
+          {profileMeta.status ? (
+            <Text style={tw`text-sm text-stone-800 mb-1 leading-5`}>{profileMeta.status}</Text>
+          ) : null}
+          {profileMeta.bio ? (
+            <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileMeta.bio}</Text>
+          ) : null}
 
           <ProfileStatsRow
             postsCount={posts.length}
@@ -391,13 +442,21 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             Shared growth categories connect you automatically — tap Following or Followers to see everyone.
           </Text>
 
-          <View style={tw`bg-brand-600 rounded-2xl p-4 mb-1`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4 mb-1`}>
             <View style={tw`flex-row items-center justify-between`}>
-              <View>
-                <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
-                <Text style={tw`text-white text-3xl font-bold`}>{points}</Text>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Growth points
+                </Text>
+                <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{points}</Text>
+                <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
+                  +10 per post · +25 when endorsed · +5 when you endorse · milestones unlock badges
+                  (endorsements still gate instructor).
+                </Text>
               </View>
-              <Ionicons name="trophy" size={40} color="white" />
+              <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
+                <Ionicons name="leaf" size={28} color="#059669" />
+              </View>
             </View>
           </View>
 
@@ -461,100 +520,123 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </View>
           ) : null}
 
-          {/* Instructor Access Card */}
           {isInstructor && (
-            <View style={tw`mt-4`}>
+            <TouchableOpacity
+              onPress={navigateToInstructor}
+              style={tw`mt-4 flex-row items-center py-3 border-t border-stone-200/80`}
+            >
+              <View style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
+                <Ionicons name="school-outline" size={18} color="#57534E" />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`font-semibold text-stone-900`}>Open Instructor Hub</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Community · partnerships · teaching
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Growth areas */}
+        <View style={tw`px-4 py-4`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <View style={tw`flex-row items-center justify-between mb-3`}>
+              <View>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Grow!
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Your growth paths</Text>
+              </View>
               <TouchableOpacity
-                onPress={navigateToInstructor}
-                style={tw`bg-emerald-700 rounded-xl p-4`}
+                onPress={() => setShowCategorySettings(true)}
+                style={tw`flex-row items-center px-3 py-2 rounded-full bg-white border border-stone-200`}
+                accessibilityLabel="Edit growth paths"
               >
-                <View style={tw`flex-row items-center mb-2`}>
-                  <Ionicons name="school" size={24} color="#FFFFFF" />
-                  <Text style={tw`text-white font-bold text-lg ml-2`}>Instructor hub</Text>
-                </View>
-                <Text style={tw`text-white text-xs opacity-90`}>Teach & mentor your community</Text>
+                <Ionicons name="create-outline" size={16} color="#059669" />
+                <Text style={tw`text-xs font-semibold text-emerald-700 ml-1.5`}>Edit</Text>
               </TouchableOpacity>
             </View>
-          )}
-        </View>
 
-        {/* Categories with Edit */}
-        <View style={tw`px-4 py-4 border-b border-stone-200`}>
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-lg font-semibold text-stone-900`}>Your Growth Areas</Text>
-            <TouchableOpacity onPress={() => setShowCategorySettings(true)}>
-              <Ionicons name="create-outline" size={20} color="#10B981" />
-            </TouchableOpacity>
+            {user?.categories && user.categories.length > 0 ? (
+              <View>
+                {groupGrowthPaths(user.categories).map((group) => (
+                  <View
+                    key={group.parentKey}
+                    style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2`}
+                  >
+                    <View style={tw`w-10 h-10 rounded-xl bg-emerald-600/12 items-center justify-center mr-3`}>
+                      <Ionicons name={group.icon} size={20} color="#059669" />
+                    </View>
+                    <View style={tw`flex-1`}>
+                      <Text style={tw`text-[15px] font-bold text-stone-900`}>{group.parentLabel}</Text>
+                      <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                        {group.focusLabels.length > 0
+                          ? group.focusLabels.join(' · ')
+                          : 'All focuses in this path'}
+                      </Text>
+                    </View>
+                    <Ionicons name="leaf" size={14} color="#059669" />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowCategorySettings(true)}
+                style={tw`bg-white/80 border border-dashed border-stone-300 rounded-2xl px-4 py-5 items-center`}
+              >
+                <Ionicons name="add-circle-outline" size={28} color="#059669" />
+                <Text style={tw`text-sm font-semibold text-stone-800 mt-2`}>Add growth paths</Text>
+                <Text style={tw`text-xs text-stone-500 mt-1 text-center`}>
+                  Pick up to 3 areas to personalize your feed
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-          {user?.categories && user.categories.length > 0 ? (
-            <View style={tw`flex-row flex-wrap`}>
-              {user.categories.map((cat, index) => (
-                <View
-                  key={index}
-                  style={tw`bg-brand-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
-                >
-                  <Text style={tw`text-sm text-brand-800 font-medium`}>{getCategoryLabel(cat)}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={tw`text-stone-500 text-sm`}>No categories selected</Text>
-          )}
         </View>
 
-        {/* Decay Timer Info */}
-        <View style={tw`px-4 py-3 bg-blue-50 border-b border-stone-200`}>
-          <View style={tw`flex-row items-center justify-between`}>
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="time-outline" size={20} color="#3B82F6" />
-              <Text style={tw`text-sm text-stone-700 ml-2`}>
-                Decay Timer: {user?.decayTimer || 7} days
-              </Text>
+        {/* Post lifespan */}
+        <View style={tw`px-4 pb-2`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <View style={tw`flex-row items-center justify-between`}>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Post lifespan
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>
+                  {decayDays} day{decayDays === 1 ? '' : 's'}
+                </Text>
+                <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
+                  Posts soft-hide from timelines after this window so focus stays current.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowDecaySettings(true)}
+                style={tw`px-3 py-2 rounded-full bg-white border border-stone-200`}
+              >
+                <Text style={tw`text-xs font-semibold text-emerald-700`}>Change</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => setShowDecaySettings(true)}>
-              <Text style={tw`text-sm text-blue-600 font-semibold`}>Change</Text>
-            </TouchableOpacity>
           </View>
-          <Text style={tw`text-xs text-stone-500 mt-1`}>
-            Posts will automatically decay after this period to keep your timeline focused
-          </Text>
         </View>
 
-        {/* Account & privacy — visible without scrolling past posts/awards */}
-        <View style={tw`px-4 py-4 border-b border-stone-200 bg-white`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Account & privacy</Text>
+        {/* Settings shortcut */}
+        <View style={tw`px-5 py-3`}>
           <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'EditProfile')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
+            onPress={() => navigateFromRoot(navigation, 'Settings')}
+            style={tw`flex-row items-center justify-between py-3.5 px-4 bg-white/80 border border-stone-200/80 rounded-2xl`}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="person-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Edit profile</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'Legal')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="shield-checkmark-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Legal & support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
-            style={tw`flex-row items-center justify-between py-3 mt-1 rounded-xl bg-red-50 px-3 -mx-1 border border-red-100`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+              <Ionicons name="settings-outline" size={20} color="#059669" />
               <View style={tw`ml-3`}>
-                <Text style={tw`text-red-700 font-semibold`}>Delete account</Text>
-                <Text style={tw`text-xs text-red-600/80 mt-0.5`}>Export data or permanently delete</Text>
+                <Text style={tw`text-stone-900 font-semibold`}>Settings</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Account, preferences, orders, legal
+                </Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#DC2626" />
+            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
           </TouchableOpacity>
         </View>
 
@@ -591,7 +673,27 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         {/* Content */}
         {activeTab === 'posts' && (
           <View style={tw`p-4`}>
-            {posts.map((post) => (
+            {fadedCount > 0 ? (
+              <TouchableOpacity
+                onPress={() => setShowFadedPosts((v) => !v)}
+                style={tw`mb-3 flex-row items-center justify-between px-3 py-2 rounded-xl bg-[#EAE4D6] border border-stone-200/80`}
+              >
+                <Text style={tw`text-xs text-stone-600`}>
+                  {showFadedPosts
+                    ? 'Showing faded posts'
+                    : `${fadedCount} faded post${fadedCount === 1 ? '' : 's'} hidden`}
+                </Text>
+                <Text style={tw`text-xs font-semibold text-emerald-700`}>
+                  {showFadedPosts ? 'Hide faded' : 'Show faded'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {visiblePosts.length === 0 && posts.length > 0 ? (
+              <Text style={tw`text-sm text-stone-500 text-center py-6`}>
+                All posts have faded. Tap “Show faded” or extend post lifespan.
+              </Text>
+            ) : null}
+            {visiblePosts.map((post) => (
               <TouchableOpacity
                 key={post.id}
                 style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
@@ -644,14 +746,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
                     </View>
                   </View>
-                  <View style={tw`flex-row items-center`}>
-                    <Ionicons name="time" size={16} color={post.daysUntilDecay <= 1 ? '#EF4444' : '#F59E0B'} />
-                    <Text style={tw`text-sm font-semibold ml-1 ${
-                      post.daysUntilDecay <= 1 ? 'text-red-600' : 'text-orange-600'
-                    }`}>
-                      {post.daysUntilDecay} day{post.daysUntilDecay !== 1 ? 's' : ''} left
-                    </Text>
-                  </View>
+                  <DecayCountdownChip daysLeft={post.daysUntilDecay} compact />
                 </View>
               </TouchableOpacity>
             ))}
@@ -713,154 +808,123 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           />
         )}
 
-        {/* Awards Section */}
-        <View style={tw`px-4 py-4 border-t border-stone-200`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Awards & Achievements</Text>
-          <View style={tw`flex-row flex-wrap`}>
-            {AWARDS.map((award) => (
-              <View key={award.id} style={tw`w-1/2 mb-4 pr-2`}>
-                <View
-                  style={tw`bg-white border-2 rounded-xl p-4 items-center ${
-                    award.unlocked
-                      ? 'border-brand-500 bg-brand-50'
-                      : 'border-stone-200 bg-stone-50 opacity-60'
-                  }`}
-                >
-                  <Text style={tw`text-4xl mb-2`}>{award.icon}</Text>
-                  <Text
-                    style={tw`font-semibold text-center mb-1 ${
-                      award.unlocked ? 'text-stone-900' : 'text-stone-500'
-                    }`}
-                  >
-                    {award.name}
-                  </Text>
-                  <Text
-                    style={tw`text-xs text-center ${
-                      award.unlocked ? 'text-stone-600' : 'text-stone-400'
-                    }`}
-                  >
-                    {award.description}
-                  </Text>
-                </View>
+        {/* Growth journey — achievements */}
+        <View style={tw`px-4 py-4`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <View style={tw`flex-row items-end justify-between mb-4`}>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Grow!
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Growth journey</Text>
+                <Text style={tw`text-xs text-stone-500 mt-1`}>
+                  {unlockedCount} of {achievements.length} unlocked · points and endorsements are separate tracks
+                </Text>
               </View>
-            ))}
+              <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center`}>
+                <Ionicons name="ribbon-outline" size={22} color="#059669" />
+              </View>
+            </View>
+
+            {(Object.keys(TIER_LABELS) as AchievementTier[]).map((tier) => {
+              const tierItems = achievements.filter((a) => a.tier === tier);
+              if (tierItems.length === 0) return null;
+              return (
+                <View key={tier} style={tw`mb-3`}>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                    {TIER_LABELS[tier]}
+                  </Text>
+                  {tierItems.map((award) => (
+                    <View
+                      key={award.id}
+                      style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2 ${
+                        award.unlocked ? '' : 'opacity-75'
+                      }`}
+                    >
+                      <View
+                        style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
+                          award.unlocked ? 'bg-emerald-600' : 'bg-stone-200'
+                        }`}
+                      >
+                        <Ionicons
+                          name={award.icon}
+                          size={22}
+                          color={award.unlocked ? '#FFFFFF' : '#78716C'}
+                        />
+                      </View>
+                      <View style={tw`flex-1 pr-2`}>
+                        <Text
+                          style={tw`text-[15px] font-bold ${
+                            award.unlocked ? 'text-stone-900' : 'text-stone-600'
+                          }`}
+                        >
+                          {award.name}
+                        </Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5 leading-4`}>
+                          {award.description}
+                        </Text>
+                        {!award.unlocked && award.target > 1 ? (
+                          <View style={tw`mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden`}>
+                            <View
+                              style={[
+                                tw`h-full bg-emerald-500 rounded-full`,
+                                { width: `${Math.min(100, (award.progress / award.target) * 100)}%` },
+                              ]}
+                            />
+                          </View>
+                        ) : null}
+                        {!award.unlocked && award.target > 1 ? (
+                          <Text style={tw`text-[10px] text-stone-400 mt-1`}>
+                            {award.progress}/{award.target}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {award.unlocked ? (
+                        <View style={tw`px-2 py-1 rounded-full bg-emerald-100`}>
+                          <Text style={tw`text-[10px] font-bold text-emerald-800 uppercase`}>Earned</Text>
+                        </View>
+                      ) : (
+                        <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
+                      )}
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
           </View>
         </View>
 
-        {/* Quick Actions */}
         {isInstructor && (
-          <View style={tw`px-4 py-4 border-b border-stone-200`}>
-            <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Quick Actions</Text>
+          <View style={tw`px-5 py-4 border-b border-stone-200/80`}>
+            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+              Teaching
+            </Text>
             <TouchableOpacity
               onPress={navigateToInstructor}
-              style={tw`flex-row items-center justify-between py-4 bg-purple-50 rounded-xl px-4 border border-purple-200`}
+              style={tw`flex-row items-center py-3.5`}
             >
-              <View style={tw`flex-row items-center flex-1`}>
-                <View style={tw`w-12 h-12 bg-purple-500 rounded-full items-center justify-center mr-3`}>
-                  <Ionicons name="school" size={24} color="#FFFFFF" />
-                </View>
-                <View style={tw`flex-1`}>
-                  <Text style={tw`font-bold text-stone-900 text-base`}>Instructor Hub</Text>
-                  <Text style={tw`text-sm text-stone-600`}>Manage students & courses</Text>
-                </View>
+              <View style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
+                <Ionicons name="school-outline" size={18} color="#57534E" />
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#A855F7" />
+              <View style={tw`flex-1 pr-2`}>
+                <Text style={tw`font-semibold text-stone-900`}>Instructor Hub</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  Community, partnerships, and teaching tools
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Settings */}
-        <View style={tw`px-4 py-4`}>
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Settings</Text>
-          <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-stone-900 font-medium`}>Haptics feedback</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                Subtle vibration on button presses (mobile only).
-              </Text>
-            </View>
-            <Switch
-              value={hapticsEnabled}
-              onValueChange={setHapticsEnabled}
-              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
-              thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
-            />
-          </View>
-          <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-stone-900 font-medium`}>Click sound</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                Optional click tone where supported.
-              </Text>
-            </View>
-            <Switch
-              value={soundEnabled}
-              onValueChange={setSoundEnabled}
-              trackColor={{ false: '#D6D3D1', true: '#DDD6FE' }}
-              thumbColor={soundEnabled ? '#7C3AED' : '#F5F5F4'}
-            />
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              const rootNavigation = navigation.getParent() || navigation;
-              rootNavigation.navigate('UserOrders' as never);
-            }}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="receipt-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>My Orders</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'EditProfile')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="person-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Edit Profile</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'NotificationPrefs')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="notifications-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Notifications</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'Legal')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="document-text-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Legal & Support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'DeleteAccount')}
-            style={tw`flex-row items-center justify-between py-3 border-b border-stone-200`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="trash-outline" size={20} color="#6B7280" />
-              <Text style={tw`text-stone-900 ml-3`}>Delete Account</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
+        {/* Sign out */}
+        <View style={tw`px-5 py-4`}>
           <TouchableOpacity
             onPress={() => setShowSignOutModal(true)}
-            style={tw`flex-row items-center justify-between py-3 mt-2`}
+            style={tw`flex-row items-center justify-center py-3.5 bg-white/80 border border-stone-200/80 rounded-2xl`}
           >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-              <Text style={tw`text-red-600 ml-3 font-semibold`}>Sign Out</Text>
-            </View>
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+            <Text style={tw`text-red-600 ml-2 font-semibold`}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -908,63 +972,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         </View>
       </Modal>
 
-      {/* Decay Timer Settings Modal */}
-      <Modal
+      <DecaySettingsModal
         visible={showDecaySettings}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowDecaySettings(false)}
-      >
-        <SafeAreaView style={tw`flex-1 bg-white`}>
-          <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
-            <Text style={tw`text-2xl font-bold text-stone-900`}>Decay Timer</Text>
-            <TouchableOpacity onPress={() => setShowDecaySettings(false)}>
-              <Ionicons name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={tw`flex-1 px-4 pt-6`}>
-            <Text style={tw`text-base text-stone-700 mb-4`}>
-              Set how many days until your posts automatically decay and are removed from your timeline. 
-              This helps you stay focused on current growth areas.
-            </Text>
-            <View style={tw`bg-stone-50 rounded-xl p-4 mb-4`}>
-              <Text style={tw`text-sm text-stone-600 mb-2`}>Days until decay:</Text>
-              <TextInput
-                value={decayDays.toString()}
-                onChangeText={(text) => {
-                  const num = parseInt(text) || 0;
-                  if (num >= 1 && num <= 365) setDecayDays(num);
-                }}
-                keyboardType="numeric"
-                style={tw`bg-white border border-stone-300 rounded-lg px-4 py-3 text-2xl font-bold text-stone-900`}
-              />
-              <View style={tw`flex-row gap-2 mt-3`}>
-                {[1, 3, 7, 14, 30, 90].map((days) => (
-                  <TouchableOpacity
-                    key={days}
-                    onPress={() => setDecayDays(days)}
-                    style={tw`px-3 py-2 rounded-lg ${
-                      decayDays === days ? 'bg-brand-600' : 'bg-white border border-stone-300'
-                    }`}
-                  >
-                    <Text style={tw`text-sm font-semibold ${
-                      decayDays === days ? 'text-white' : 'text-stone-700'
-                    }`}>
-                      {days}d
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-            <TouchableOpacity
-              onPress={handleSaveDecayTimer}
-              style={tw`bg-brand-600 rounded-xl py-4 mb-4`}
-            >
-              <Text style={tw`text-white text-center font-bold text-base`}>Save Settings</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+        initialDays={decayDays}
+        onClose={() => setShowDecaySettings(false)}
+        onSave={handleSaveDecayTimer}
+      />
 
       {/* Category Settings Modal */}
       <Modal
@@ -990,7 +1003,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           <View style={tw`w-full max-w-sm bg-white rounded-2xl p-6`}>
             <Text style={tw`text-xl font-bold text-stone-900 mb-2`}>You’re an instructor</Text>
             <Text style={tw`text-sm text-stone-600 mb-6`}>
-              Your community endorsed you. Open the Instructor hub anytime from Profile.
+              Your community endorsed you. Open the Instructor Hub anytime from Profile.
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -999,7 +1012,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               }}
               style={tw`bg-brand-600 rounded-xl py-3 items-center mb-3`}
             >
-              <Text style={tw`text-white font-bold`}>Open Instructor hub</Text>
+              <Text style={tw`text-white font-bold`}>Open Instructor Hub</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowClaimWelcome(false)} style={tw`py-2 items-center`}>
               <Text style={tw`text-stone-600 font-semibold`}>Skip for now</Text>
@@ -1026,42 +1039,54 @@ function CategoryPickerModal({
 
   const handleSave = async () => {
     if (saving) return;
+    const next = clampGrowthPaths(selectedCategories);
+    if (growthParentCount(next) === 0 || growthParentCount(next) > MAX_GROWTH_PATHS) return;
     setSaving(true);
     try {
-      await onSave(selectedCategories);
+      await onSave(next);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 flex-row items-center justify-between`}>
-        <Text style={tw`text-2xl font-bold text-stone-900`}>Update Growth Areas</Text>
-        <TouchableOpacity onPress={onClose} disabled={saving} hitSlop={12}>
-          <Ionicons name="close" size={24} color="#6B7280" />
+    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+      <View style={tw`px-5 pt-4 pb-3 flex-row items-start justify-between`}>
+        <View style={tw`flex-1 pr-3`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            Grow!
+          </Text>
+          <Text style={tw`text-2xl font-bold text-stone-900 mt-1`}>Change your paths</Text>
+          <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5`}>
+            Expand a path and choose All or multiple focuses. Up to 3 paths.
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={onClose}
+          disabled={saving}
+          hitSlop={12}
+          style={tw`w-10 h-10 rounded-full bg-white border border-stone-200 items-center justify-center`}
+        >
+          <Ionicons name="close" size={20} color="#57534E" />
         </TouchableOpacity>
       </View>
 
-      <View style={[tw`flex-1 px-4 pt-4`, { minHeight: 0 }]}>
-        <Text style={tw`text-sm text-stone-600 mb-3`}>
-          Expand a category and pick sub-areas (e.g. Fitness → Cardio). Max 3 growth areas.
-        </Text>
-        <View style={[tw`flex-1`, { minHeight: 0 }]}>
-          <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
-        </View>
+      <View style={[tw`flex-1 px-5 pt-1`, { minHeight: 0 }]}>
+        <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
       </View>
 
-      <View style={tw`px-4 pt-3 pb-6 border-t border-stone-200 bg-white`}>
+      <View style={tw`px-5 pt-3 pb-6 border-t border-stone-200/80 bg-[#F3EEE4]`}>
         <TouchableOpacity
           onPress={() => void handleSave()}
-          disabled={saving || selectedCategories.length === 0}
-          style={tw`bg-brand-600 rounded-xl py-4 items-center ${
-            saving || selectedCategories.length === 0 ? 'opacity-50' : ''
+          disabled={saving || growthParentCount(selectedCategories) === 0 || growthParentCount(selectedCategories) > MAX_GROWTH_PATHS}
+          style={tw`bg-emerald-600 rounded-2xl py-4 items-center ${
+            saving || growthParentCount(selectedCategories) === 0 || growthParentCount(selectedCategories) > MAX_GROWTH_PATHS
+              ? 'opacity-50'
+              : ''
           }`}
         >
           <Text style={tw`text-white text-center font-bold text-base`}>
-            {saving ? 'Saving…' : 'Save Changes'}
+            {saving ? 'Saving…' : 'Save growth paths'}
           </Text>
         </TouchableOpacity>
       </View>

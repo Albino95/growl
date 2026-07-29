@@ -30,5 +30,5 @@ export const feedListPerformanceProps = {
   removeClippedSubviews: Platform.OS === 'android',
 } as const;
 
-/** Shared bottom padding so tab-screen content clears the custom tab bar + FAB. */
-export const TAB_SCREEN_BOTTOM_PADDING = Platform.OS === 'ios' ? 120 : 112;
+/** Shared bottom padding so tab-screen content clears the floating dock. */
+export const TAB_SCREEN_BOTTOM_PADDING = Platform.OS === 'ios' ? 118 : 108;

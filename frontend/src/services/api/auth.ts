@@ -3,12 +3,16 @@ import { sha256Hex } from '../../utils/cryptoHash';
 
 export type SessionResponse = {
   token: string;
+  refreshToken?: string;
+  expiresIn?: number;
   userId: string;
   email?: string;
   isInstructor: boolean;
   isBusiness?: boolean;
   hasCompletedOnboarding: boolean;
   categories?: string[];
+  points?: number;
+  decayTimer?: number;
 };
 
 export type SignUpResponse = {
@@ -42,6 +46,33 @@ export async function verifyEmailApi(email: string, code: string): Promise<void>
   });
 }
 
+export async function forgotPasswordApi(email: string): Promise<{ message: string; devResetCode?: string }> {
+  const res = await request<{ success: boolean; data: { message: string; devResetCode?: string } }>(
+    '/auth/forgot-password',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }
+  );
+  return res.data;
+}
+
+export async function resetPasswordApi(payload: {
+  email: string;
+  code: string;
+  password: string;
+}): Promise<void> {
+  const passwordHash = await sha256Hex(payload.password);
+  await request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: payload.email,
+      code: payload.code,
+      passwordHash,
+    }),
+  });
+}
+
 export async function signInApi(email: string, password: string): Promise<SessionResponse> {
   const passwordHash = await sha256Hex(password);
   const res = await request<{ success: boolean; data: SessionResponse }>('/auth/sign-in', {
@@ -49,6 +80,21 @@ export async function signInApi(email: string, password: string): Promise<Sessio
     body: JSON.stringify({ email, password, passwordHash }),
   });
   return res.data;
+}
+
+export async function refreshSessionApi(refreshToken: string): Promise<SessionResponse> {
+  const res = await request<{ success: boolean; data: SessionResponse }>('/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
+  return res.data;
+}
+
+export async function signOutApi(refreshToken?: string | null): Promise<void> {
+  await request('/auth/sign-out', {
+    method: 'POST',
+    body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+  }).catch(() => undefined);
 }
 
 export async function signInSsoApi(payload: {

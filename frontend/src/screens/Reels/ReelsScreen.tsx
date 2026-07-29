@@ -125,11 +125,24 @@ export default function ReelsScreen() {
           <View style={tw`absolute inset-0 bg-black/25`} />
         </TouchableOpacity>
 
-        <SafeAreaView style={tw`absolute top-0 left-0 right-0`} edges={['top']}>
+        <SafeAreaView style={tw`absolute top-0 left-0 right-0 z-10`} edges={['top']}>
           <View style={tw`flex-row items-center justify-between px-4 pt-2`}>
-            <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
-            <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
-              <Ionicons name="close" size={28} color="#FFFFFF" />
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={tw`text-white font-bold text-lg`}>Clips</Text>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -208,9 +221,19 @@ export default function ReelsScreen() {
 
   if (loading && items.length === 0) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-black items-center justify-center`}>
-        <ActivityIndicator color="#fff" size="large" />
-        <Text style={tw`text-white/70 mt-4`}>Loading reels…</Text>
+      <SafeAreaView style={tw`flex-1 bg-black`} edges={['top']}>
+        <View style={tw`flex-row items-center px-4 pt-2`}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={tw`w-10 h-10 rounded-full bg-white/15 items-center justify-center`}
+          >
+            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+        <View style={tw`flex-1 items-center justify-center`}>
+          <ActivityIndicator color="#fff" size="large" />
+          <Text style={tw`text-white/70 mt-4`}>Loading clips…</Text>
+        </View>
       </SafeAreaView>
     );
   }

@@ -1386,6 +1386,103 @@ export async function exportProductsCsv(request: Request, env: Env): Promise<Res
 }
 
 /**
+ * GET /api/v1/business/export/sales?from=YYYY-MM-DD&to=YYYY-MM-DD&category=
+ */
+export async function exportSalesCsv(request: Request, env: Env): Promise<Response> {
+  const auth = await requireBusiness(request, env);
+  if (auth instanceof Response) return auth;
+
+  const url = new URL(request.url);
+  const from = (url.searchParams.get('from') || '').trim();
+  const to = (url.searchParams.get('to') || '').trim();
+  const category = (url.searchParams.get('category') || '').trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return error('VALIDATION_ERROR', 'from and to must be YYYY-MM-DD', 400);
+  }
+
+  const start = `${from} 00:00:00`;
+  const endExclusive = `${to} 23:59:59`;
+
+  try {
+    const bindings: unknown[] = [auth.userId, start, endExclusive];
+    let categoryClause = '';
+    if (category) {
+      categoryClause = ' AND p.category = ?';
+      bindings.push(category);
+    }
+
+    const rows = await env.DB.prepare(
+      `SELECT
+        date(o.created_at) AS sale_date,
+        o.id AS order_id,
+        p.id AS product_id,
+        p.name AS product_name,
+        p.category,
+        oi.quantity,
+        oi.price,
+        (oi.quantity * oi.price) AS line_revenue,
+        COALESCE(o.refund_amount, 0) AS order_refunds,
+        o.status
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      JOIN products p ON p.id = oi.product_id
+      WHERE p.user_id = ?
+        AND o.created_at >= ?
+        AND o.created_at <= ?
+        ${categoryClause}
+      ORDER BY o.created_at DESC, o.id, p.name`
+    )
+      .bind(...bindings)
+      .all<{
+        sale_date: string;
+        order_id: string;
+        product_id: string;
+        product_name: string;
+        category: string;
+        quantity: number;
+        price: number;
+        line_revenue: number;
+        order_refunds: number;
+        status: string;
+      }>();
+
+    const header = [
+      'date',
+      'order_id',
+      'product_id',
+      'product_name',
+      'category',
+      'qty',
+      'unit_price',
+      'revenue',
+      'order_refunds',
+      'status',
+    ].join(',');
+
+    const lines = (rows.results || []).map((row) =>
+      [
+        csvEscape(row.sale_date),
+        csvEscape(row.order_id),
+        csvEscape(row.product_id),
+        csvEscape(row.product_name),
+        csvEscape(row.category),
+        csvEscape(row.quantity),
+        csvEscape(row.price),
+        csvEscape(row.line_revenue),
+        csvEscape(row.order_refunds),
+        csvEscape(row.status),
+      ].join(',')
+    );
+
+    return csvResponse([header, ...lines].join('\n'), `sales-${from}-${to}.csv`);
+  } catch (err) {
+    console.error('[exportSalesCsv] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to export sales', 500);
+  }
+}
+
+/**
  * GET /api/v1/business/notifications
  */
 export async function listNotifications(request: Request, env: Env): Promise<Response> {

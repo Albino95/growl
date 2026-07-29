@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
-import { fetchFeedPosts } from '../../store/slices/feedSlice';
+import { fetchFeedPosts, patchFeedPostEngagement } from '../../store/slices/feedSlice';
 import {
   horizontalScrollProps,
   verticalScrollProps,
@@ -28,16 +28,22 @@ import {
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import CO2Calculator from '../../components/ui/CO2Calculator';
-import Chip from '../../components/ui/Chip';
 import EmptyState from '../../components/ui/EmptyState';
-import PrimaryButton from '../../components/ui/PrimaryButton';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
+import HeartBurst from '../../components/feed/HeartBurst';
+import FeedLikeButton, {
+  ReactionPickerBar,
+  type FeedReaction,
+} from '../../components/feed/FeedLikeButton';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
 type Story = {
   id: string;
@@ -49,7 +55,7 @@ type Story = {
   hasViewed: boolean;
 };
 
-type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
+type ReactionType = FeedReaction;
 
 type Post = {
   id: string;
@@ -100,6 +106,10 @@ export default function FeedScreen({ navigation, route }: any) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  /** Client-only reaction emoji (API stores like boolean only). */
+  const [reactionsById, setReactionsById] = useState<Record<string, ReactionType>>({});
+  const [heartBurst, setHeartBurst] = useState<Record<string, number>>({});
+  const lastTapRef = React.useRef<{ id: string; at: number } | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
   const [failedPostImages, setFailedPostImages] = useState<Record<string, boolean>>({});
   const [likesModal, setLikesModal] = useState<{
@@ -183,16 +193,18 @@ export default function FeedScreen({ navigation, route }: any) {
           } : 'none',
         });
         if (storiesArray.length > 0) {
-          setStories(
-            storiesArray.map((s: StoryItem) => ({
+          setStories((prev) => {
+            const locallyViewed = new Set(prev.filter((s) => s.hasViewed).map((s) => s.id));
+            return storiesArray.map((s: StoryItem) => ({
               id: s.id,
               userId: s.userId,
               username: s.username,
               avatar: resolveAvatarUri(s.userId, s.username, s.avatar),
               image: s.image,
-              hasViewed: !!s.hasViewed,
-            }))
-          );
+              // Keep optimistic views if a silent refresh races ahead of viewStory
+              hasViewed: !!s.hasViewed || locallyViewed.has(s.id),
+            }));
+          });
         } else {
           setStories([]);
         }
@@ -207,23 +219,16 @@ export default function FeedScreen({ navigation, route }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      // First paint may need a loading state; polling stays silent.
       void dispatch(fetchFeedPosts());
       void loadStoriesOnly();
 
-      // Lightweight live refresh while the Feed tab is focused (WebSocket-like freshness without DOs).
       const pollId = setInterval(() => {
         void dispatch(fetchFeedPosts({ force: true, silent: true }));
-      }, 25_000);
+      }, 60_000);
 
       return () => clearInterval(pollId);
     }, [dispatch])
   );
-
-  useEffect(() => {
-    // Stories warm-up; feed is owned by focus effect to avoid duplicate fetches.
-    void loadStoriesOnly();
-  }, []);
 
   useEffect(() => {
     if (feedStatus !== 'succeeded') return;
@@ -234,7 +239,17 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const feedSections = useMemo(() => {
     const mapSection = (items: typeof feedFollowing, title: string) => {
-      const mapped = items.map(toLocalPost);
+      const mapped = items.map((raw) => {
+        const post = toLocalPost(raw);
+        const reaction = reactionsById[post.id];
+        if (reaction === undefined) return post;
+        // Explicit null = unliked; any emoji = liked (client reaction overlay).
+        return {
+          ...post,
+          reaction,
+          hasLiked: reaction != null,
+        };
+      });
       const filtered = selectedCategory
         ? mapped.filter((post) => {
             if (selectedCategory.includes(':')) {
@@ -249,7 +264,11 @@ export default function FeedScreen({ navigation, route }: any) {
     const following = mapSection(feedFollowing, 'From your circle');
     const suggested = mapSection(feedSuggested, 'Suggested for you');
     return [following, suggested].filter(Boolean) as { title: string; data: Post[] }[];
-  }, [feedFollowing, feedSuggested, selectedCategory, user?.id]);
+  }, [feedFollowing, feedSuggested, selectedCategory, user?.id, reactionsById]);
+
+  const playHeartBurst = useCallback((postId: string) => {
+    setHeartBurst((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
+  }, []);
 
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
@@ -285,6 +304,29 @@ export default function FeedScreen({ navigation, route }: any) {
       .filter((x) => x.length > 0);
   }, [user?.categories]);
 
+  const pathCapsules: CapsuleItem[] = useMemo(() => {
+    const keys =
+      userCategories.length > 0
+        ? userCategories
+        : CATEGORIES.slice(0, 8).map((c) => c.key);
+
+    return keys.map((cat) => {
+      const parentKey = cat.split(':')[0];
+      const category = CATEGORIES.find((c) => c.key === parentKey);
+      const subcategory = cat.includes(':')
+        ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
+        : null;
+      const label = String(
+        (subcategory ? subcategory.label : category?.label || cat) || ''
+      ).trim() || 'Path';
+      return {
+        key: cat,
+        label,
+        icon: (category?.icon || 'ellipse-outline') as keyof typeof Ionicons.glyphMap,
+      };
+    });
+  }, [userCategories]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     try {
@@ -308,103 +350,119 @@ export default function FeedScreen({ navigation, route }: any) {
     }
   };
 
-  const toggleLike = async (postId: string) => {
+  const toggleLike = async (postId: string, opts?: { fromDoubleTap?: boolean }) => {
+    const current =
+      feedSections.flatMap((s) => s.data).find((p) => p.id === postId) ||
+      posts.find((p) => p.id === postId);
+    const wasLiked = !!current?.hasLiked;
+
+    // Optimistic Redux patch so SectionList re-renders with a filled heart.
+    if (opts?.fromDoubleTap && wasLiked) {
+      playHeartBurst(postId);
+      return;
+    }
+
+    const nextLiked = !wasLiked;
+    const nextLikes = nextLiked
+      ? (current?.likes ?? 0) + 1
+      : Math.max(0, (current?.likes ?? 0) - 1);
+
+    dispatch(
+      patchFeedPostEngagement({
+        id: postId,
+        has_liked: nextLiked,
+        likes: nextLikes,
+      })
+    );
+    setReactionsById((prev) => ({
+      ...prev,
+      [postId]: nextLiked ? prev[postId] || 'love' : null,
+    }));
+    if (nextLiked) playHeartBurst(postId);
+
     try {
       const res = await toggleFeedPostLike(postId);
       const liked = !!res.data?.liked;
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                hasLiked: liked,
-                likes: liked ? post.likes + (post.hasLiked ? 0 : 1) : Math.max(0, post.likes - (post.hasLiked ? 1 : 0)),
-                reaction: liked ? post.reaction || 'love' : null,
-              }
-            : post
-        )
+      dispatch(
+        patchFeedPostEngagement({
+          id: postId,
+          has_liked: liked,
+          likes: liked
+            ? wasLiked
+              ? current?.likes ?? nextLikes
+              : (current?.likes ?? 0) + 1
+            : Math.max(0, (current?.likes ?? 1) - (wasLiked ? 1 : 0)),
+        })
       );
-      return;
+      setReactionsById((prev) => ({
+        ...prev,
+        [postId]: liked ? prev[postId] || 'love' : null,
+      }));
     } catch {
-      // Fallback optimistic toggle
+      // Revert optimistic patch
+      dispatch(
+        patchFeedPostEngagement({
+          id: postId,
+          has_liked: wasLiked,
+          likes: current?.likes ?? 0,
+        })
+      );
+      setReactionsById((prev) => ({
+        ...prev,
+        [postId]: wasLiked ? prev[postId] || 'love' : null,
+      }));
     }
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              hasLiked: !post.hasLiked,
-              likes: post.hasLiked ? Math.max(0, post.likes - 1) : post.likes + 1,
-              reaction: post.hasLiked ? null : post.reaction || 'love',
-            }
-          : post
-      )
-    );
+  };
+
+  const handleMediaPress = (post: Post) => {
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (last && last.id === post.id && now - last.at < 320) {
+      lastTapRef.current = null;
+      triggerPressFeedback();
+      void toggleLike(post.id, { fromDoubleTap: true });
+      return;
+    }
+    lastTapRef.current = { id: post.id, at: now };
   };
 
   const setReaction = async (postId: string, reaction: ReactionType) => {
     setShowReactionPicker(null);
-    const current = posts.find((p) => p.id === postId);
+    const current =
+      feedSections.flatMap((s) => s.data).find((p) => p.id === postId) ||
+      posts.find((p) => p.id === postId);
+
     try {
       if (reaction === null) {
         if (current?.hasLiked) {
           await toggleFeedPostLike(postId);
         }
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === postId
-              ? {
-                  ...p,
-                  reaction: null,
-                  hasLiked: false,
-                  likes: Math.max(0, p.likes - (current?.hasLiked ? 1 : 0)),
-                }
-              : p
-          )
+        dispatch(
+          patchFeedPostEngagement({
+            id: postId,
+            has_liked: false,
+            likes: Math.max(0, (current?.likes ?? 0) - (current?.hasLiked ? 1 : 0)),
+          })
         );
+        setReactionsById((prev) => ({ ...prev, [postId]: null }));
         return;
       }
       if (!current?.hasLiked) {
         await toggleFeedPostLike(postId);
+        dispatch(
+          patchFeedPostEngagement({
+            id: postId,
+            has_liked: true,
+            likes: (current?.likes ?? 0) + 1,
+          })
+        );
+      } else {
+        dispatch(patchFeedPostEngagement({ id: postId, has_liked: true }));
       }
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                reaction,
-                hasLiked: true,
-                likes: p.likes + (current?.hasLiked ? 0 : 1),
-              }
-            : p
-        )
-      );
+      setReactionsById((prev) => ({ ...prev, [postId]: reaction }));
+      if (reaction === 'love') playHeartBurst(postId);
     } catch {
-      void dispatch(fetchFeedPosts({ force: true, silent: true }));
-    }
-  };
-
-  const openLikesModal = async (post: Post, mode: 'all' | 'friends') => {
-    setLikesLoading(true);
-    try {
-      const likes = await getFeedPostLikes(post.id);
-      const users = mode === 'friends' ? likes.friendLikers : likes.likers;
-      setLikesModal({
-        title: mode === 'friends' ? 'Friends who liked' : 'Liked by',
-        users,
-        subtitle:
-          mode === 'friends'
-            ? `${likes.friendLikesCount} friends liked this`
-            : `${likes.likes} total likes`,
-      });
-    } catch (e) {
-      setLikesModal({
-        title: 'Liked by',
-        users: [],
-        subtitle: e instanceof Error ? e.message : 'Could not load likes',
-      });
-    } finally {
-      setLikesLoading(false);
+      // Keep optimistic reaction; avoid a hard feed refresh that can reshuffle posts.
     }
   };
 
@@ -475,225 +533,225 @@ export default function FeedScreen({ navigation, route }: any) {
     ]);
   };
 
-  const renderReactionIcon = (item: Post) => {
-    const active = item.hasLiked || item.reaction != null;
-    if (!active) {
-      return <Ionicons name="heart-outline" size={26} color="#374151" />;
-    }
-    const r = item.reaction || 'love';
-    switch (r) {
-      case 'like':
-        return <Text style={tw`text-2xl leading-none`}>👍</Text>;
-      case 'love':
-        return <Ionicons name="heart" size={26} color="#EF4444" />;
-      case 'laugh':
-        return <Text style={tw`text-2xl leading-none`}>😂</Text>;
-      case 'wow':
-        return <Text style={tw`text-2xl leading-none`}>😮</Text>;
-      case 'support':
-        return <Text style={tw`text-2xl leading-none`}>💪</Text>;
-      default:
-        return <Ionicons name="heart" size={26} color="#EF4444" />;
+  const openLikesModal = async (post: Post, mode: 'all' | 'friends') => {
+    setLikesLoading(true);
+    try {
+      const likes = await getFeedPostLikes(post.id);
+      const users = mode === 'friends' ? likes.friendLikers : likes.likers;
+      setLikesModal({
+        title: mode === 'friends' ? 'Friends who liked' : 'Liked by',
+        users,
+        subtitle:
+          mode === 'friends'
+            ? `${likes.friendLikesCount} friends liked this`
+            : `${likes.likes} total likes`,
+      });
+    } catch (e: unknown) {
+      setLikesModal({
+        title: 'Likes',
+        users: [],
+        subtitle: e instanceof Error ? e.message : 'Could not load likes',
+      });
+    } finally {
+      setLikesLoading(false);
     }
   };
 
+  const feedListHeader = (
+    <View style={tw`pb-2`}>
+      <View style={tw`mx-4 mb-3 px-4 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/70`}>
+        <Text style={tw`text-[11px] tracking-[2px] uppercase text-stone-500 font-semibold`}>
+          Your circle
+        </Text>
+        <Text style={tw`text-sm text-stone-600 mt-1 leading-5`}>
+          Progress from friends — and a few suggestions on your paths.
+        </Text>
+      </View>
+
+      {/* Stories */}
+      <ScrollView
+        horizontal
+        style={tw`mb-2`}
+        contentContainerStyle={tw`px-4 pr-4`}
+        {...horizontalScrollProps}
+      >
+        <TouchableOpacity
+          style={tw`items-center mr-4`}
+          onPress={() => {
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.navigate('CreateStory' as never);
+          }}
+        >
+          <View style={tw`w-14 h-14 rounded-full border-2 border-dashed border-stone-300 items-center justify-center bg-white/60`}>
+            <Ionicons name="add" size={22} color="#78716C" />
+          </View>
+          <Text style={tw`text-[11px] text-stone-600 mt-1`}>Your story</Text>
+        </TouchableOpacity>
+        {groupedStories.map((group) => {
+          const { user: storyUser, stories: userStories } = group;
+          const allViewed = userStories.every((s) => s.hasViewed);
+          const storyCount = userStories.length;
+
+          return (
+            <TouchableOpacity
+              key={storyUser.userId}
+              style={tw`items-center mr-4`}
+              onPress={() => {
+                const rootNavigation = navigation.getParent() || navigation;
+                const fullStories = userStories.map((s, idx) => ({
+                  ...s,
+                  image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+                  createdAt: new Date(
+                    Date.now() - (userStories.length - idx) * 3600000
+                  ).toISOString(),
+                  views: Math.floor(Math.random() * 100),
+                  hasViewed: !!s.hasViewed,
+                }));
+
+                const viewedIds = new Set(userStories.map((s) => s.id));
+                setStories((prev) =>
+                  prev.map((s) => (viewedIds.has(s.id) ? { ...s, hasViewed: true } : s))
+                );
+
+                rootNavigation.navigate('StoryViewer' as never, {
+                  stories: fullStories,
+                  initialIndex: 0,
+                  onStoriesUpdate: (updatedStories: typeof fullStories) => {
+                    const ids = updatedStories
+                      .filter((us) => us.hasViewed)
+                      .map((us) => us.id);
+                    if (ids.length > 0) {
+                      Promise.all(ids.map((id) => viewStory(id))).catch(() => undefined);
+                    }
+                    setStories((prev) =>
+                      prev.map((s) => {
+                        const updated = updatedStories.find((us) => us.id === s.id);
+                        if (!updated) return s;
+                        return { ...s, hasViewed: s.hasViewed || !!updated.hasViewed };
+                      })
+                    );
+                  },
+                } as never);
+              }}
+            >
+              <View style={tw`relative`}>
+                <View
+                  style={tw`w-14 h-14 rounded-full border-2 ${
+                    allViewed ? 'border-stone-300' : 'border-emerald-500'
+                  } items-center justify-center bg-emerald-50 p-0.5`}
+                >
+                  <Image
+                    source={{
+                      uri: resolveAvatarUri(
+                        storyUser.userId,
+                        storyUser.username,
+                        storyUser.avatar
+                      ),
+                    }}
+                    style={tw`w-full h-full rounded-full`}
+                    contentFit="cover"
+                  />
+                </View>
+                {storyCount > 1 && (
+                  <View
+                    style={tw`absolute -top-1 -right-1 bg-emerald-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
+                  >
+                    <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={tw`text-[11px] text-stone-600 mt-1 max-w-14`} numberOfLines={1}>
+                {storyUser.username}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <View style={tw`px-4 mt-1`}>
+        <CategoryCapsuleRow
+          items={pathCapsules}
+          selectedKey={selectedCategory}
+          onSelect={setSelectedCategory}
+        />
+      </View>
+
+      {!hasPostedToday && posts.length > 0 && (
+        <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
+          <View style={tw`flex-row items-center gap-2`}>
+            <Ionicons name="sparkles" size={18} color="#059669" />
+            <Text style={tw`text-xs text-emerald-900 flex-1`}>
+              Share today’s progress with your circle.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const rootNavigation = navigation.getParent() || navigation;
+                rootNavigation.navigate('Post');
+              }}
+              style={tw`px-3 py-1.5 rounded-full bg-emerald-600`}
+            >
+              <Text style={tw`text-xs font-semibold text-white`}>Post</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {feedStatus === 'failed' && (
+        <View style={tw`mx-4 mt-2 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50`}>
+          <View style={tw`flex-row items-center`}>
+            <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+            <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>
+              {feedError || 'Could not load your feed right now.'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => void retryFeed()}
+              disabled={retryingFeed}
+              style={tw`ml-2 px-3 py-1.5 rounded-full bg-red-600 ${retryingFeed ? 'opacity-70' : ''}`}
+            >
+              <Text style={tw`text-xs font-semibold text-white`}>
+                {retryingFeed ? 'Retrying...' : 'Retry'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
-      <View style={tw`flex-1`}>
-        {/* Header with Messages/Stories */}
-        <View
-          style={[
-            tw`px-4 pt-2 pb-3 bg-white border-b border-stone-100`,
-            Platform.OS === 'ios'
-              ? {
-                  shadowColor: '#0f172a',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.07,
-                  shadowRadius: 10,
-                }
-              : { elevation: 3 },
-          ]}
-        >
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-2xl font-bold text-brand-600`}>Growl</Text>
-          </View>
-
-          {/* Messages/Stories Section (Instagram-style) */}
-          <ScrollView
-            horizontal
-            style={tw`mb-3`}
-            contentContainerStyle={tw`px-2`}
-            {...horizontalScrollProps}
-          >
-            <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full bg-brand-50 border-2 border-brand-200 mr-4`}
-              onPress={() => {
-                // Navigate to messages screen
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Messages');
-              }}
-            >
-              <Ionicons name="chatbubbles" size={24} color="#059669" />
-              <Text style={tw`text-[10px] text-stone-600 mt-1`}>Inbox</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full bg-purple-50 border-2 border-purple-200 mr-4`}
-              onPress={() => {
-                // Navigate to reels screen
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('Reels');
-              }}
-            >
-              <Ionicons name="videocam" size={24} color="#A855F7" />
-              <Text style={tw`text-[10px] text-stone-600 mt-1`}>Reels</Text>
-            </TouchableOpacity>
-            {groupedStories.map((group) => {
-              const { user, stories: userStories } = group;
-              // Check if all stories from this user have been viewed
-              const allViewed = userStories.every((s) => s.hasViewed);
-              const storyCount = userStories.length;
-              
-              return (
-                <TouchableOpacity
-                  key={user.userId}
-                  style={tw`items-center mr-4`}
-                  onPress={() => {
-                    // Navigate to story viewer when clicking on story
-                    const rootNavigation = navigation.getParent() || navigation;
-                    
-                    // Create full story objects with images for the viewer
-                    const fullStories = userStories.map((s, idx) => ({
-                      ...s,
-                      image: resolveStoryDisplayUri(s.image, s.userId, s.id),
-                      createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(),
-                      views: Math.floor(Math.random() * 100),
-                    }));
-                    
-                    rootNavigation.navigate('StoryViewer' as never, {
-                      stories: fullStories,
-                      initialIndex: 0, // Always start from first story
-                      onStoriesUpdate: (updatedStories: typeof fullStories) => {
-                        // Update the main stories array with viewed status
-                        const viewedIds = updatedStories.filter((us) => us.hasViewed).map((us) => us.id);
-                        if (viewedIds.length > 0) {
-                          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
-                        }
-                        setStories((prev) =>
-                          prev.map((s) => {
-                            const updated = updatedStories.find((us) => us.id === s.id);
-                            return updated ? { ...s, hasViewed: updated.hasViewed } : s;
-                          })
-                        );
-                      },
-                    } as never);
-                  }}
-                >
-                  <View style={tw`relative`}>
-                    <View
-                      style={tw`w-16 h-16 rounded-full border-2 ${
-                        allViewed ? 'border-stone-300' : 'border-accent-600'
-                      } items-center justify-center bg-purple-100 p-0.5`}
-                    >
-                      <Image
-                        source={{ uri: resolveAvatarUri(user.userId, user.username, user.avatar) }}
-                        style={tw`w-full h-full rounded-full`}
-                        contentFit="cover"
-                      />
-                    </View>
-                    {/* Story count badge */}
-                    {storyCount > 1 && (
-                      <View
-                        style={tw`absolute -top-1 -right-1 bg-purple-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
-                      >
-                        <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={tw`text-xs text-stone-600 mt-1 max-w-16`} numberOfLines={1}>
-                    {user.username}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity
-              style={tw`items-center justify-center w-16 h-16 rounded-full border-2 border-dashed border-stone-300`}
-              onPress={() => {
-                const rootNavigation = navigation.getParent() || navigation;
-                rootNavigation.navigate('CreateStory' as never);
-              }}
-            >
-              <Ionicons name="add" size={24} color="#9CA3AF" />
-            </TouchableOpacity>
-          </ScrollView>
-
-          {/* Category Selector */}
-          {userCategories.length > 0 && (
-            <ScrollView horizontal contentContainerStyle={tw`px-2`} {...horizontalScrollProps}>
-              <Chip selected={selectedCategory === null} onPress={() => setSelectedCategory(null)}>
-                All
-              </Chip>
-              {userCategories.map((cat) => {
-                const category = CATEGORIES.find((c) => c.key === cat || c.key === cat.split(':')[0]);
-                const subcategory = cat.includes(':')
-                  ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
-                  : null;
-                const labelCandidate = subcategory ? subcategory.label : category?.label || cat;
-                const label = String(labelCandidate || '').trim() || 'Untitled';
-
-                return (
-                  <Chip key={cat} selected={selectedCategory === cat} onPress={() => setSelectedCategory(cat)}>
-                    {label}
-                  </Chip>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* Daily Post Reminder */}
-        {!hasPostedToday && posts.length > 0 && (
-          <View style={tw`bg-brand-50 border-b border-brand-200 px-4 py-3`}>
-            <View style={tw`flex-row items-center gap-3`}>
-              <Ionicons name="sparkles" size={20} color="#059669" />
-              <Text style={tw`text-sm text-brand-800 flex-1`}>
-                Share your progress today to stay connected with your community.
-              </Text>
-              <View style={tw`w-24`}>
-                <PrimaryButton
-                  label="Post"
-                  variant="soft"
-                  onPress={() => {
-                    const rootNavigation = navigation.getParent() || navigation;
-                    rootNavigation.navigate('Post');
-                  }}
-                />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {feedStatus === 'failed' && (
-          <View style={tw`mx-4 mt-3 mb-1 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
-              <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>
-                {feedError || 'Could not load your feed right now.'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => void retryFeed()}
-                disabled={retryingFeed}
-                style={tw`ml-2 px-3 py-1.5 rounded-full bg-red-600 ${retryingFeed ? 'opacity-70' : ''}`}
+      <View style={tw`flex-1 bg-surface-page`}>
+        <GrowChromeHeader
+          right={
+            <>
+              <Pressable
+                onPress={() => {
+                  triggerPressFeedback();
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Messages');
+                }}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Inbox"
               >
-                <Text style={tw`text-xs font-semibold text-white`}>
-                  {retryingFeed ? 'Retrying...' : 'Retry'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+                <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  triggerPressFeedback();
+                  const rootNavigation = navigation.getParent() || navigation;
+                  rootNavigation.navigate('Reels');
+                }}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Reels"
+              >
+                <Ionicons name="play-circle-outline" size={17} color="#059669" />
+              </Pressable>
+            </>
+          }
+        />
 
         {feedStatus === 'loading' && posts.length === 0 ? (
-          <View style={tw`px-4 pt-2`}>
+          <View style={tw`px-5 pt-2`}>
             <SkeletonCard />
             <SkeletonCard />
           </View>
@@ -704,12 +762,15 @@ export default function FeedScreen({ navigation, route }: any) {
           sections={feedSections}
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
+          ListHeaderComponent={feedListHeader}
           renderSectionHeader={({ section }) => (
-            <View style={tw`px-4 pt-4 pb-2`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>{section.title}</Text>
+            <View style={tw`px-5 pt-3 pb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+                {section.title}
+              </Text>
             </View>
           )}
-          contentContainerStyle={[tw`px-4 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+          contentContainerStyle={[tw`pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -722,17 +783,7 @@ export default function FeedScreen({ navigation, route }: any) {
           {...verticalScrollProps}
           renderItem={({ item }) => (
             <View
-              style={[
-                tw`bg-white mb-4 overflow-hidden rounded-2xl border border-stone-200`,
-                Platform.OS === 'ios'
-                  ? {
-                      shadowColor: '#0f172a',
-                      shadowOffset: { width: 0, height: 8 },
-                      shadowOpacity: 0.08,
-                      shadowRadius: 16,
-                    }
-                  : { elevation: 2 },
-              ]}
+              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70`}
             >
               {/* Post Header - Modern Style */}
               <View style={tw`flex-row items-center justify-between px-4 py-3`}>
@@ -770,12 +821,12 @@ export default function FeedScreen({ navigation, route }: any) {
                 <View style={tw`px-4 pb-2`}>
                   <View
                     style={tw`self-start rounded-full px-2.5 py-1 ${
-                      item.isOwn ? 'bg-emerald-100' : 'bg-indigo-100'
+                      item.isOwn ? 'bg-emerald-100' : 'bg-stone-100'
                     }`}
                   >
                     <Text
                       style={tw`text-[11px] font-semibold ${
-                        item.isOwn ? 'text-emerald-800' : 'text-indigo-800'
+                        item.isOwn ? 'text-emerald-800' : 'text-stone-700'
                       }`}
                     >
                       {item.isOwn ? 'Your post' : 'Friend'}
@@ -784,8 +835,8 @@ export default function FeedScreen({ navigation, route }: any) {
                 </View>
               )}
 
-              {/* Post Image - Modern Style */}
-              <View style={tw`w-full bg-stone-50`}>
+              {/* Post Image — double-tap to like */}
+              <Pressable onPress={() => handleMediaPress(item)} style={tw`relative w-full bg-stone-50`}>
                 {item.image && item.image.trim() !== '' ? (
                   <Image
                     source={{
@@ -809,19 +860,27 @@ export default function FeedScreen({ navigation, route }: any) {
                     <Text style={tw`text-gray-400 mt-2 text-sm`}>No image available</Text>
                   </View>
                 )}
-              </View>
+                <HeartBurst triggerKey={heartBurst[item.id] || 0} />
+              </Pressable>
 
               {/* Post Actions - Modern Style */}
               <View style={tw`px-4 py-3`}>
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View style={tw`flex-row items-center`}>
-                    <TouchableOpacity
-                      onPress={() => void toggleLike(item.id)}
-                      onLongPress={() => setShowReactionPicker(showReactionPicker === item.id ? null : item.id)}
-                      style={tw`mr-3`}
-                    >
-                      {renderReactionIcon(item)}
-                    </TouchableOpacity>
+                    <FeedLikeButton
+                      hasLiked={item.hasLiked}
+                      reaction={item.reaction}
+                      onPress={() => {
+                        if (showReactionPicker === item.id) {
+                          setShowReactionPicker(null);
+                          return;
+                        }
+                        void toggleLike(item.id);
+                      }}
+                      onLongPress={() =>
+                        setShowReactionPicker(showReactionPicker === item.id ? null : item.id)
+                      }
+                    />
                     <View style={tw`relative mr-3`}>
                       <TouchableOpacity onPress={() => setSelectedPost(item)}>
                         <Ionicons name="chatbubble-outline" size={24} color="#374151" />
@@ -839,27 +898,6 @@ export default function FeedScreen({ navigation, route }: any) {
                   </View>
                 </View>
 
-                {/* Reaction Picker */}
-                {showReactionPicker === item.id && (
-                  <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-gray-200 z-10`}>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'like')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>👍</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'love')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>❤️</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'laugh')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>😂</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'wow')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>😮</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void setReaction(item.id, 'support')} style={tw`mx-1`}>
-                      <Text style={tw`text-2xl`}>💪</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
                 {/* Likes Count */}
                 <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
                   <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
@@ -874,7 +912,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   </TouchableOpacity>
                 ) : null}
                 {(item.friendLikers?.length ?? 0) > 0 ? (
-                  <Text style={tw`text-xs text-indigo-700 mb-2`}>
+                  <Text style={tw`text-xs text-stone-600 mb-2`}>
                     Liked by friends: {item.friendLikers?.slice(0, 3).join(', ')}
                     {(item.friendLikers?.length ?? 0) > 3
                       ? ` +${(item.friendLikers?.length ?? 0) - 3} more`
@@ -939,21 +977,45 @@ export default function FeedScreen({ navigation, route }: any) {
             </View>
           )}
           ListEmptyComponent={
-            <EmptyState
-              icon="images-outline"
-              title={selectedCategory ? 'No posts in this category yet' : 'Your feed is quiet'}
-              description={
-                selectedCategory
-                  ? 'Try a different category or clear filters to discover more posts.'
-                  : feedStatus === 'failed'
-                    ? 'Could not load posts. Pull down to retry.'
-                    : 'Explore people in your growth areas or share your first post.'
-              }
-              actionLabel="Explore"
-              onAction={() => navigation.navigate('Explore')}
-            />
+            <View style={tw`px-5`}>
+              <EmptyState
+                icon="images-outline"
+                title={selectedCategory ? 'No posts in this category yet' : 'Your feed is quiet'}
+                description={
+                  selectedCategory
+                    ? 'Try a different category or clear filters to discover more posts.'
+                    : feedStatus === 'failed'
+                      ? 'Could not load posts. Pull down to retry.'
+                      : 'Explore people in your growth areas or share your first post.'
+                }
+                actionLabel="Explore"
+                onAction={() => navigation.navigate('Explore')}
+              />
+            </View>
           }
         />
+
+        {/* Reaction picker — tap outside to cancel */}
+        <Modal
+          visible={!!showReactionPicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowReactionPicker(null)}
+        >
+          <View style={tw`flex-1 justify-center items-center`}>
+            <Pressable
+              style={tw`absolute inset-0 bg-black/30`}
+              onPress={() => setShowReactionPicker(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss reactions"
+            />
+            <ReactionPickerBar
+              onPick={(r) => {
+                if (showReactionPicker) void setReaction(showReactionPicker, r);
+              }}
+            />
+          </View>
+        </Modal>
 
         {/* Comments Modal */}
         {selectedPost && (
@@ -969,12 +1031,17 @@ export default function FeedScreen({ navigation, route }: any) {
               postCaption={selectedPost.caption}
               onClose={() => setSelectedPost(null)}
               onCommentsChanged={(count) => {
+                dispatch(
+                  patchFeedPostEngagement({
+                    id: selectedPost.id,
+                    comments: count,
+                  })
+                );
                 setPosts((prev) =>
                   prev.map((post) =>
                     post.id === selectedPost.id ? { ...post, comments: count } : post
                   )
                 );
-                void dispatch(fetchFeedPosts({ force: true, silent: true }));
               }}
             />
           </Modal>

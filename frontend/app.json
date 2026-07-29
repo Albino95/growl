@@ -3,51 +3,6 @@
     "name": "Growl",
     "slug": "growl",
     "version": "0.4.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "updates": {
-      "fallbackToCacheTimeout": 0
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
-    },
-    "web": {
-      "bundler": "metro",
-      "favicon": "./assets/favicon.png",
-      "output": "static",
-      "name": "Growl",
-      "shortName": "Growl",
-      "lang": "en",
-      "description": "Growl - Your personal growth companion"
-    },
-    "plugins": [
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "The app accesses your photos to let you share them with your growth community.",
-          "cameraPermission": "The app accesses your camera to let you take photos for your posts."
-        }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "The app accesses your camera to let you take photos for your posts."
-        }
-      ]
-    ]
+    "_comment": "Legacy stub — native config lives in app.config.ts. Keep web.output in sync (single)."
   }
 }

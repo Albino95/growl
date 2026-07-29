@@ -43,6 +43,26 @@ export const verifyEmailSchema = z.object({
   code: z.string().min(6, 'Enter your verification code').max(64),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().email('Invalid email address'),
+    code: z.string().min(6, 'Enter your reset code').max(64),
+    password: strongPasswordSchema.optional(),
+    passwordHash: clientPasswordHashSchema.optional(),
+  })
+  .refine((data) => !!data.password || !!data.passwordHash, {
+    message: 'password or passwordHash is required',
+    path: ['password'],
+  });
+
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(20, 'refreshToken is required'),
+});
+
 export const ssoSchema = z
   .object({
     provider: z.enum(['google', 'facebook', 'apple']),
@@ -148,7 +168,19 @@ export const checkoutSessionSchema = z.object({
 export const updateUserSchema = z.object({
   username: z.string().min(3).optional(),
   avatar: z.string().url().optional(),
-  categories: z.array(z.string()).optional(),
+  categories: z
+    .array(z.string())
+    .optional()
+    .refine(
+      (cats) => {
+        if (!cats) return true;
+        const parents = new Set(cats.map((k) => (k.includes(':') ? k.split(':')[0] : k)));
+        return parents.size <= 3;
+      },
+      { message: 'You can select a maximum of 3 growth paths' }
+    ),
+  /** Post lifespan in days (1–365). Also accepted via metadata.decay_timer. */
+  decay_timer: z.number().int().min(1).max(365).optional(),
   metadata: z.record(z.any()).optional(),
 });
 

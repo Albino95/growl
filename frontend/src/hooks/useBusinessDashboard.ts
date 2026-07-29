@@ -24,9 +24,10 @@ export function useBusinessDashboard() {
 
   const setPeriod = useCallback(
     (next: BusinessPeriod) => {
+      if (next === period) return;
       dispatch(setBusinessPeriod(next));
     },
-    [dispatch]
+    [dispatch, period]
   );
 
   const refresh = useCallback(

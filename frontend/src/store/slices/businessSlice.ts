@@ -292,8 +292,9 @@ const businessSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchBusinessDashboard.fulfilled, (state, action) => {
+        // Ignore stale responses when the user already switched period.
+        if (action.payload.period !== state.period) return;
         state.status = 'succeeded';
-        state.period = action.payload.period;
         state.kpis = action.payload.kpis;
         state.timeseries = action.payload.timeseries;
         state.funnel = action.payload.funnel;
@@ -302,6 +303,9 @@ const businessSlice = createSlice({
       })
       .addCase(fetchBusinessDashboard.rejected, (state, action) => {
         if (action.meta.aborted || action.meta.condition) return;
+        // Don't surface errors from superseded period fetches.
+        const requested = action.meta.arg?.period;
+        if (requested && requested !== state.period) return;
         state.status = 'failed';
         state.error = typeof action.payload === 'string' ? action.payload : 'Failed to load dashboard';
       })

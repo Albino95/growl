@@ -1,6 +1,7 @@
 import { Env } from '../types';
 import { error, json } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
+import { checkRateLimit } from '../utils/rateLimit';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -43,6 +44,16 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const { allowed } = await checkRateLimit(
+    env,
+    `upload:${ctx.userId}`,
+    30,
+    3600
+  );
+  if (!allowed) {
+    return error('RATE_LIMITED', 'Too many uploads. Try again later.', 429);
   }
 
   let body: { dataUrl?: string; purpose?: string };

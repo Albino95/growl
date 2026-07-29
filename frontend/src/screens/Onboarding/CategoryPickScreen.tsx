@@ -4,7 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
 import Screen from '../../components/ui/Screen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
-import GrowthAreasPicker from '../../components/profile/GrowthAreasPicker';
+import GrowthAreasPicker, { clampGrowthPaths } from '../../components/profile/GrowthAreasPicker';
 import { useAuth } from '../../store/hooks';
 import { updateProfileOnServer } from '../../services/api/profile';
 import { syncCohortFriends } from '../../services/api/friends';
@@ -24,11 +24,11 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
 
   const handleContinue = async () => {
     if (selectedCategories.length === 0) {
-      alertMessage('Select at least one', 'Pick a growth area to continue.');
+      alertMessage('Select at least one', 'Pick a growth path to continue.');
       return;
     }
     try {
-      await updateProfileOnServer({ categories: selectedCategories });
+      await updateProfileOnServer({ categories: clampGrowthPaths(selectedCategories) });
       await syncCohortFriends();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';
@@ -48,13 +48,13 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
   return (
     <Screen background="page" edges={['top', 'bottom']}>
       <View style={tw`px-5 pt-4 pb-6 flex-1 max-w-md w-full self-center`}>
-        <View style={tw`mb-5 overflow-hidden rounded-3xl bg-brand-700 px-5 pt-8 pb-6`}>
-          <Text style={tw`text-brand-100 text-xs font-semibold tracking-widest uppercase mb-2`}>
-            Almost there
+        <View style={tw`mb-4`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            Grow!
           </Text>
-          <Text style={tw`text-3xl font-bold text-white mb-2`}>Choose your growth areas</Text>
-          <Text style={tw`text-brand-100 text-base leading-6`}>
-            Pick up to 3 paths. This personalizes your feed and who can endorse you as an instructor.
+          <Text style={tw`text-3xl font-bold text-stone-900 mt-1.5`}>Choose your paths</Text>
+          <Text style={tw`text-stone-500 text-base leading-6 mt-2`}>
+            Pick up to 3 growth areas (multiple focuses per area). This shapes your feed, shop ranking, and who can endorse you.
           </Text>
         </View>
 
@@ -63,7 +63,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
         </View>
 
         <PrimaryButton
-          label="Continue to Growl"
+          label="Continue to Grow!"
           onPress={handleContinue}
           disabled={selectedCategories.length === 0}
         />

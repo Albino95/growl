@@ -1,0 +1,121 @@
+@import 'tailwindcss';
+
+:root {
+  --brand: #059669;
+  --brand-deep: #047857;
+  --brand-dark: #064e3b;
+  --brand-glow: #34d399;
+  --stone-ink: #1c1917;
+  --stone-muted: #57534e;
+  --stone-soft: #a8a29e;
+  --surface: #f3eee4;
+  --surface-alt: #ebe6db;
+  --surface-deep: #0c1f17;
+  --nav-offset: 4.5rem;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .path-marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+body {
+  color: var(--stone-ink);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 35%, white);
+  color: var(--stone-ink);
+}
+
+.font-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* Fixed-nav clearance for in-page anchors */
+#about,
+#how,
+#paths,
+#features,
+#faq,
+#early-access {
+  scroll-margin-top: var(--nav-offset);
+}
+
+.hero-mesh {
+  background:
+    radial-gradient(ellipse 70% 55% at 78% 38%, rgba(52, 211, 153, 0.42), transparent 58%),
+    radial-gradient(ellipse 55% 45% at 18% 72%, rgba(5, 150, 105, 0.5), transparent 52%),
+    radial-gradient(ellipse 90% 70% at 50% 110%, rgba(6, 78, 59, 0.95), transparent 48%),
+    linear-gradient(165deg, #064e3b 0%, #0c1f17 42%, #022c22 100%);
+}
+
+.hero-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+}
+
+.path-marquee {
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.path-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: path-scroll 48s linear infinite;
+}
+
+.path-marquee:hover .path-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes path-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes hero-cue {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateY(6px);
+  }
+}
+
+.hero-scroll-cue {
+  animation: hero-cue 2.4s ease-in-out infinite;
+}

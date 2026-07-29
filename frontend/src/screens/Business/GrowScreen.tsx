@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
@@ -35,7 +34,10 @@ import {
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import { getAvatarUrl } from '../../utils/images';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
+import BusinessScreen from '../../components/business/BusinessScreen';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 
 type MainSegment = 'partners' | 'community';
@@ -57,7 +59,56 @@ function formatTimeAgo(dateString: string) {
 }
 
 function categoriesPreview(categories?: string[]) {
-  return categories && categories.length ? categories.slice(0, 2).join(', ') : 'General';
+  if (!categories?.length) return 'General';
+  return categories
+    .slice(0, 2)
+    .map((c) => getCategoryLabel(c))
+    .join(' · ');
+}
+
+function partnershipTerms(p: {
+  partnership_type?: string;
+  commission_rate?: number | null;
+  fixed_fee?: number | null;
+}) {
+  const type = p.partnership_type || 'commission';
+  if (type === 'fixed') return `$${Number(p.fixed_fee ?? 0).toFixed(0)} fixed`;
+  if (type === 'hybrid') {
+    return `${p.commission_rate ?? 0}% + $${Number(p.fixed_fee ?? 0).toFixed(0)}`;
+  }
+  return `${p.commission_rate ?? 0}% commission`;
+}
+
+function PartnerAvatar({
+  id,
+  name,
+  avatar,
+  size = 40,
+}: {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  size?: number;
+}) {
+  const uri =
+    avatar && (avatar.startsWith('http') || avatar.startsWith('data:'))
+      ? avatar
+      : getAvatarUrl(id, name);
+  const showEmoji = avatar && avatar.length <= 4 && !avatar.startsWith('http');
+  return (
+    <View
+      style={[
+        tw`overflow-hidden bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`,
+        { width: size, height: size, borderRadius: size / 2 },
+      ]}
+    >
+      {showEmoji ? (
+        <Text style={{ fontSize: size * 0.42 }}>{avatar}</Text>
+      ) : (
+        <Image source={{ uri }} style={{ width: size, height: size }} />
+      )}
+    </View>
+  );
 }
 
 export default function GrowScreen() {
@@ -175,12 +226,16 @@ export default function GrowScreen() {
     navigateFromRoot(navigation, 'PublicProfile', { userId: instructorId });
   };
 
-  const handleRequestAction = async (requestId: string, status: 'approved' | 'declined') => {
+  const handleRequestAction = async (requestId: string, status: 'declined') => {
     if (busyId) return;
+    const ok = await confirmAsync('Withdraw request?', 'The instructor will no longer see this request.', {
+      confirmLabel: 'Withdraw',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       setBusyId(requestId);
       await updatePartnershipRequest(requestId, status);
-      alertMessage(status === 'approved' ? 'Approved' : 'Declined', `Request ${status}.`);
       await dispatch(fetchBusinessGrow()).unwrap();
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not update request');
@@ -341,69 +396,58 @@ export default function GrowScreen() {
   const renderPartnerCard = (partner: PartnershipRecord) => {
     const perf = perfById.get(partner.id);
     const revenue = perf?.attributed_revenue ?? 0;
+    const statusColor =
+      partner.status === 'active'
+        ? 'text-emerald-700'
+        : partner.status === 'paused'
+          ? 'text-amber-700'
+          : 'text-stone-500';
     return (
       <TouchableOpacity
         key={partner.id}
-        style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}
+        style={tw`flex-row items-center py-3.5 border-b border-stone-200/80`}
         onPress={() => setSelectedPartner(partner)}
-        activeOpacity={0.85}
+        activeOpacity={0.7}
       >
-        <View style={tw`flex-row items-start`}>
-          <View style={tw`w-12 h-12 rounded-full bg-stone-100 items-center justify-center mr-3`}>
-            <Text style={tw`text-2xl`}>{partner.instructor_avatar || '👤'}</Text>
+        <PartnerAvatar
+          id={partner.instructor_id}
+          name={partner.instructor_name}
+          avatar={partner.instructor_avatar}
+        />
+        <View style={tw`flex-1 ml-3 pr-2`}>
+          <View style={tw`flex-row items-center`}>
+            <Text style={tw`font-semibold text-stone-900 flex-1`} numberOfLines={1}>
+              {partner.instructor_name}
+            </Text>
+            <Text style={tw`text-[11px] font-semibold uppercase tracking-wide ${statusColor}`}>
+              {partner.status}
+            </Text>
           </View>
-          <View style={tw`flex-1`}>
-            <View style={tw`flex-row items-center justify-between`}>
-              <Text style={tw`text-base font-bold text-stone-900`}>{partner.instructor_name}</Text>
-              <View
-                style={tw`px-2 py-0.5 rounded-full ${
-                  partner.status === 'active'
-                    ? 'bg-emerald-100'
-                    : partner.status === 'paused'
-                      ? 'bg-amber-100'
-                      : 'bg-stone-100'
-                }`}
-              >
-                <Text
-                  style={tw`text-xs font-semibold capitalize ${
-                    partner.status === 'active'
-                      ? 'text-emerald-800'
-                      : partner.status === 'paused'
-                        ? 'text-amber-800'
-                        : 'text-stone-600'
-                  }`}
-                >
-                  {partner.status}
-                </Text>
-              </View>
-            </View>
-            <Text style={tw`text-xs text-stone-500 mt-1`}>{categoriesPreview(partner.categories)}</Text>
-            <View style={tw`flex-row mt-2`}>
-              <Text style={tw`text-xs text-stone-500 mr-3`}>
-                {partner.commission_rate ?? 0}% commission
-              </Text>
-              <Text style={tw`text-xs font-semibold text-emerald-700`}>
-                ${revenue.toFixed(2)} attributed
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+          <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+            {categoriesPreview(partner.categories)} · {partnershipTerms(partner)}
+          </Text>
+          <Text style={tw`text-xs text-stone-600 mt-1`}>
+            ${revenue.toFixed(2)} attributed
+          </Text>
         </View>
+        <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
       </TouchableOpacity>
     );
   };
 
   const renderPartnersSegment = () => (
     <View style={tw`flex-1`}>
-      <View style={tw`flex-row bg-stone-100 rounded-xl p-1 mx-4 mt-3 mb-2`}>
+      <View style={tw`flex-row px-5 mt-2 border-b border-stone-200/80`}>
         {(['partners', 'discover'] as const).map((tab) => (
           <TouchableOpacity
             key={tab}
             onPress={() => setPartnerTab(tab)}
-            style={tw`flex-1 py-2 rounded-lg ${partnerTab === tab ? 'bg-white' : ''}`}
+            style={tw`mr-5 pb-2.5 border-b-2 ${
+              partnerTab === tab ? 'border-emerald-600' : 'border-transparent'
+            }`}
           >
             <Text
-              style={tw`text-center text-sm font-semibold ${
+              style={tw`text-sm font-semibold ${
                 partnerTab === tab ? 'text-emerald-700' : 'text-stone-500'
               }`}
             >
@@ -414,89 +458,91 @@ export default function GrowScreen() {
       </View>
 
       <ScrollView
-        style={tw`flex-1 px-4 pt-2`}
+        style={tw`flex-1`}
+        contentContainerStyle={tw`px-5 pt-3`}
         {...verticalScrollProps}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" colors={['#059669']} />
         }
       >
-        {loading ? (
-          <ActivityIndicator style={tw`mt-8`} color="#059669" />
-        ) : null}
+        {loading ? <ActivityIndicator style={tw`mt-8`} color="#059669" /> : null}
 
         {partnerTab === 'partners' ? (
           <>
-            <View style={tw`flex-row gap-2 mb-4`}>
-              <View style={tw`flex-1 bg-emerald-50 rounded-xl p-3 border border-emerald-100`}>
-                <Text style={tw`text-xs text-emerald-700`}>Active</Text>
-                <Text style={tw`text-xl font-bold text-emerald-900`}>{activePartners}</Text>
+            <View style={tw`flex-row border-b border-stone-200/80 mb-1`}>
+              <View style={tw`flex-1 py-3`}>
+                <Text style={tw`text-xl font-bold text-stone-900`}>{activePartners}</Text>
+                <Text style={tw`text-[11px] text-stone-500 uppercase tracking-wide mt-0.5`}>
+                  Active
+                </Text>
               </View>
-              <View style={tw`flex-1 bg-stone-50 rounded-xl p-3 border border-stone-100`}>
-                <Text style={tw`text-xs text-stone-500`}>Total</Text>
+              <View style={tw`flex-1 py-3`}>
                 <Text style={tw`text-xl font-bold text-stone-900`}>{partnerships.length}</Text>
+                <Text style={tw`text-[11px] text-stone-500 uppercase tracking-wide mt-0.5`}>
+                  Total
+                </Text>
               </View>
-              <View style={tw`flex-1 bg-amber-50 rounded-xl p-3 border border-amber-100`}>
-                <Text style={tw`text-xs text-amber-700`}>Pending</Text>
-                <Text style={tw`text-xl font-bold text-amber-900`}>{pendingRequests.length}</Text>
+              <View style={tw`flex-1 py-3`}>
+                <Text style={tw`text-xl font-bold text-stone-900`}>{pendingRequests.length}</Text>
+                <Text style={tw`text-[11px] text-stone-500 uppercase tracking-wide mt-0.5`}>
+                  Awaiting
+                </Text>
               </View>
             </View>
 
-            {partnershipRequests.length > 0 ? (
-              <View style={tw`mb-4`}>
-                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Request queue</Text>
-                {partnershipRequests.map((request) => (
+            {pendingRequests.length > 0 ? (
+              <View style={tw`mt-4 mb-2`}>
+                <Text
+                  style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1`}
+                >
+                  Sent requests
+                </Text>
+                <Text style={tw`text-xs text-stone-500 mb-2 leading-5`}>
+                  Waiting for the instructor to accept. You can withdraw anytime.
+                </Text>
+                {pendingRequests.map((request) => (
                   <View
                     key={request.id}
-                    style={tw`bg-white rounded-xl p-3 mb-2 border border-stone-100`}
+                    style={tw`flex-row items-center py-3.5 border-b border-stone-200/80`}
                   >
-                    <View style={tw`flex-row items-center justify-between`}>
-                      <Text style={tw`font-semibold text-stone-900`}>{request.instructor_name}</Text>
-                      <Text style={tw`text-xs text-stone-400`}>
-                        {new Date(request.created_at).toLocaleDateString()}
+                    <PartnerAvatar
+                      id={request.instructor_id}
+                      name={request.instructor_name}
+                      avatar={request.instructor_avatar}
+                      size={36}
+                    />
+                    <View style={tw`flex-1 ml-3 pr-2`}>
+                      <Text style={tw`font-semibold text-stone-900`} numberOfLines={1}>
+                        {request.instructor_name}
+                      </Text>
+                      <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+                        {partnershipTerms(request)} · {categoriesPreview(request.categories)}
                       </Text>
                     </View>
-                    <Text style={tw`text-xs text-stone-500 mt-1 mb-2`}>
-                      {categoriesPreview(request.categories)} · {request.commission_rate ?? 0}%
-                    </Text>
-                    {request.message ? (
-                      <Text style={tw`text-xs text-stone-600 mb-2 italic`}>"{request.message}"</Text>
-                    ) : null}
-                    {request.status === 'pending' ? (
-                      <View style={tw`flex-row`}>
-                        <TouchableOpacity
-                          style={tw`px-3 py-1.5 bg-emerald-100 rounded-lg mr-2`}
-                          disabled={busyId === request.id}
-                          onPress={() => void handleRequestAction(request.id, 'approved')}
-                        >
-                          <Text style={tw`text-xs font-semibold text-emerald-800`}>Approve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={tw`px-3 py-1.5 bg-red-100 rounded-lg`}
-                          disabled={busyId === request.id}
-                          onPress={() => void handleRequestAction(request.id, 'declined')}
-                        >
-                          <Text style={tw`text-xs font-semibold text-red-800`}>Decline</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <Text
-                        style={tw`text-xs font-semibold ${
-                          request.status === 'approved' ? 'text-emerald-700' : 'text-red-700'
-                        }`}
-                      >
-                        {request.status === 'approved' ? 'Approved' : 'Declined'}
+                    <TouchableOpacity
+                      disabled={busyId === request.id}
+                      onPress={() => void handleRequestAction(request.id, 'declined')}
+                      style={tw`px-3 py-1.5`}
+                    >
+                      <Text style={tw`text-xs font-semibold text-red-600`}>
+                        {busyId === request.id ? '…' : 'Withdraw'}
                       </Text>
-                    )}
+                    </TouchableOpacity>
                   </View>
                 ))}
               </View>
             ) : null}
 
+            <Text
+              style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-4 mb-1`}
+            >
+              Partnerships
+            </Text>
             {partnerships.length === 0 && !loading ? (
               <BusinessEmptyState
                 icon="people-outline"
                 title="No partners yet"
-                description="Discover instructors who align with your brand and send partnership requests."
+                description="Discover instructors who align with your brand and send a partnership request."
                 actionLabel="Discover instructors"
                 onAction={() => setPartnerTab('discover')}
               />
@@ -506,8 +552,8 @@ export default function GrowScreen() {
           </>
         ) : (
           <>
-            <Text style={tw`text-sm text-stone-500 mb-3`}>
-              Discover instructors who align with your brand
+            <Text style={tw`text-sm text-stone-500 mb-2 leading-5`}>
+              Instructors in your space. Send a request — they accept from their Instructor Hub.
             </Text>
             {discoverInstructors.length === 0 && !loading ? (
               <BusinessEmptyState
@@ -523,36 +569,39 @@ export default function GrowScreen() {
                 return (
                   <View
                     key={instructor.id}
-                    style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}
+                    style={tw`flex-row items-center py-3.5 border-b border-stone-200/80`}
                   >
-                    <View style={tw`flex-row items-start mb-3`}>
-                      <View style={tw`w-12 h-12 rounded-full bg-stone-100 items-center justify-center mr-3`}>
-                        <Text style={tw`text-2xl`}>{instructor.avatar || '👤'}</Text>
-                      </View>
-                      <View style={tw`flex-1`}>
-                        <TouchableOpacity onPress={() => openInstructorProfile(instructor.id)}>
-                          <Text style={tw`text-base font-bold text-stone-900`}>{instructor.username}</Text>
-                        </TouchableOpacity>
-                        <Text style={tw`text-xs text-stone-500 mt-1`}>
-                          {categoriesPreview(instructor.categories)}
-                        </Text>
-                        <View style={tw`flex-row items-center mt-2`}>
-                          <Ionicons name="people" size={14} color="#78716C" />
-                          <Text style={tw`text-xs text-stone-500 ml-1 mr-3`}>
-                            {instructor.vote_count.toLocaleString()} votes
-                          </Text>
-                          <Ionicons name="trending-up" size={14} color="#78716C" />
-                          <Text style={tw`text-xs text-stone-500 ml-1`}>{instructor.points} pts</Text>
-                        </View>
-                      </View>
-                    </View>
+                    <TouchableOpacity onPress={() => openInstructorProfile(instructor.id)}>
+                      <PartnerAvatar
+                        id={instructor.id}
+                        name={instructor.username}
+                        avatar={instructor.avatar}
+                      />
+                    </TouchableOpacity>
                     <TouchableOpacity
-                      style={tw`rounded-xl py-3 ${hasPending ? 'bg-stone-300' : 'bg-emerald-600'}`}
+                      onPress={() => openInstructorProfile(instructor.id)}
+                      style={tw`flex-1 ml-3 pr-2`}
+                    >
+                      <Text style={tw`font-semibold text-stone-900`} numberOfLines={1}>
+                        {instructor.username}
+                      </Text>
+                      <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+                        {categoriesPreview(instructor.categories)}
+                      </Text>
+                      <Text style={tw`text-xs text-stone-500 mt-1`}>
+                        {instructor.vote_count.toLocaleString()} endorsements · {instructor.points}{' '}
+                        pts
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       disabled={hasPending || !!busyId}
                       onPress={() => openDiscoverModal(instructor)}
+                      style={tw`px-3 py-1.5 rounded-full border border-stone-200/80 bg-white/60 ${
+                        hasPending ? 'opacity-50' : ''
+                      }`}
                     >
-                      <Text style={tw`text-white text-center font-semibold text-sm`}>
-                        {hasPending ? 'Request sent' : 'Send partnership request'}
+                      <Text style={tw`text-xs font-semibold text-emerald-700`}>
+                        {hasPending ? 'Sent' : 'Invite'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -561,7 +610,7 @@ export default function GrowScreen() {
             )}
           </>
         )}
-        <View style={tw`h-6`} />
+        <View style={tw`h-8`} />
       </ScrollView>
     </View>
   );
@@ -952,16 +1001,28 @@ export default function GrowScreen() {
   const selectedPerf = selectedPartner ? perfById.get(selectedPartner.id) : undefined;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-100`}>
-        <Text style={tw`text-2xl font-bold tracking-tight text-stone-900 mb-1`}>Grow</Text>
-        <Text style={tw`text-sm text-stone-500 mb-3`}>Partnerships & community marketing</Text>
-        <View style={tw`flex-row bg-stone-100 rounded-xl p-1`}>
+    <BusinessScreen
+      title="Grow"
+      subtitle="Partnerships, campaigns, promos, and community posts"
+      onSettings={() => stackNav.navigate('BusinessSettings')}
+      onMessages={() => stackNav.navigate('BusinessMessages')}
+      headerRight={
+        <TouchableOpacity
+          onPress={() => stackNav.navigate('BusinessCreatePost')}
+          style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+          accessibilityLabel="Create post"
+        >
+          <Ionicons name="create-outline" size={17} color="#059669" />
+        </TouchableOpacity>
+      }
+    >
+      <View style={tw`px-5 pb-3`}>
+        <View style={tw`flex-row bg-[#EAE4D6]/80 rounded-full p-1 border border-stone-200/60`}>
           {(['partners', 'community'] as const).map((seg) => (
             <TouchableOpacity
               key={seg}
               onPress={() => setMainSegment(seg)}
-              style={tw`flex-1 py-2.5 rounded-lg ${mainSegment === seg ? 'bg-white' : ''}`}
+              style={tw`flex-1 py-2.5 rounded-full ${mainSegment === seg ? 'bg-[#FFFcf7]' : ''}`}
             >
               <Text
                 style={tw`text-center text-sm font-semibold ${
@@ -981,92 +1042,106 @@ export default function GrowScreen() {
       <Modal visible={!!selectedPartner} animationType="slide" transparent onRequestClose={() => setSelectedPartner(null)}>
         <View style={tw`flex-1 bg-black/40 justify-end`}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={tw`bg-white rounded-t-3xl px-4 pt-4 pb-8 max-h-[85%]`}>
+            <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-4 pb-8 max-h-[85%]`}>
               {selectedPartner ? (
                 <ScrollView {...verticalScrollProps}>
-                  <View style={tw`flex-row items-center justify-between mb-4`}>
-                    <Text style={tw`text-xl font-bold text-stone-900`}>{selectedPartner.instructor_name}</Text>
+                  <View style={tw`flex-row items-start justify-between mb-4`}>
+                    <View style={tw`flex-row items-center flex-1 pr-3`}>
+                      <PartnerAvatar
+                        id={selectedPartner.instructor_id}
+                        name={selectedPartner.instructor_name}
+                        avatar={selectedPartner.instructor_avatar}
+                        size={48}
+                      />
+                      <View style={tw`ml-3 flex-1`}>
+                        <Text style={tw`text-lg font-bold text-stone-900`}>
+                          {selectedPartner.instructor_name}
+                        </Text>
+                        <Text style={tw`text-sm text-stone-500 mt-0.5`}>
+                          {categoriesPreview(selectedPartner.categories)}
+                        </Text>
+                      </View>
+                    </View>
                     <TouchableOpacity onPress={() => setSelectedPartner(null)}>
                       <Ionicons name="close" size={24} color="#78716C" />
                     </TouchableOpacity>
                   </View>
-                  <Text style={tw`text-sm text-stone-500 mb-4`}>
-                    {categoriesPreview(selectedPartner.categories)} · {selectedPartner.partnership_type}
-                  </Text>
-                  <View style={tw`bg-stone-50 rounded-xl p-4 mb-4 border border-stone-100`}>
-                    <View style={tw`flex-row justify-between mb-2`}>
-                      <Text style={tw`text-sm text-stone-500`}>Commission</Text>
-                      <Text style={tw`text-sm font-bold text-emerald-700`}>
-                        {selectedPartner.commission_rate ?? 0}%
+
+                  <View style={tw`border-t border-stone-200/80 py-3`}>
+                    <View style={tw`flex-row justify-between py-2`}>
+                      <Text style={tw`text-sm text-stone-500`}>Terms</Text>
+                      <Text style={tw`text-sm font-semibold text-stone-900`}>
+                        {partnershipTerms(selectedPartner)}
                       </Text>
                     </View>
-                    <View style={tw`flex-row justify-between mb-2`}>
+                    <View style={tw`flex-row justify-between py-2`}>
                       <Text style={tw`text-sm text-stone-500`}>Attributed revenue</Text>
-                      <Text style={tw`text-sm font-bold text-stone-900`}>
+                      <Text style={tw`text-sm font-semibold text-stone-900`}>
                         ${(selectedPerf?.attributed_revenue ?? 0).toFixed(2)}
                       </Text>
                     </View>
-                    <View style={tw`flex-row justify-between`}>
+                    <View style={tw`flex-row justify-between py-2`}>
                       <Text style={tw`text-sm text-stone-500`}>Status</Text>
                       <Text style={tw`text-sm font-semibold capitalize text-stone-900`}>
                         {selectedPartner.status}
                       </Text>
                     </View>
                   </View>
-                  <View style={tw`flex-row flex-wrap gap-2 mb-4`}>
+
+                  <View style={tw`flex-row mt-2 mb-3`}>
                     {selectedPartner.status === 'active' ? (
                       <>
                         <TouchableOpacity
-                          style={tw`flex-1 min-w-[40%] py-3 bg-amber-100 rounded-xl items-center`}
+                          style={tw`flex-1 mr-2 py-3 border border-stone-200/80 rounded-xl items-center bg-white/60`}
                           disabled={busyId === selectedPartner.id}
                           onPress={() =>
                             void handlePartnershipStatus(selectedPartner.id, 'paused')
                           }
                         >
-                          <Text style={tw`font-semibold text-amber-800`}>Pause</Text>
+                          <Text style={tw`font-semibold text-stone-700`}>Pause</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={tw`flex-1 min-w-[40%] py-3 bg-red-100 rounded-xl items-center`}
+                          style={tw`flex-1 ml-2 py-3 border border-red-200 rounded-xl items-center`}
                           disabled={busyId === selectedPartner.id}
                           onPress={() => void handlePartnershipStatus(selectedPartner.id, 'ended')}
                         >
-                          <Text style={tw`font-semibold text-red-800`}>End</Text>
+                          <Text style={tw`font-semibold text-red-600`}>End</Text>
                         </TouchableOpacity>
                       </>
                     ) : selectedPartner.status === 'paused' ? (
                       <>
                         <TouchableOpacity
-                          style={tw`flex-1 min-w-[40%] py-3 bg-emerald-100 rounded-xl items-center`}
+                          style={tw`flex-1 mr-2 py-3 bg-emerald-700 rounded-xl items-center`}
                           disabled={busyId === selectedPartner.id}
                           onPress={() =>
                             void handlePartnershipStatus(selectedPartner.id, 'active')
                           }
                         >
-                          <Text style={tw`font-semibold text-emerald-800`}>Reactivate</Text>
+                          <Text style={tw`font-semibold text-white`}>Resume</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={tw`flex-1 min-w-[40%] py-3 bg-red-100 rounded-xl items-center`}
+                          style={tw`flex-1 ml-2 py-3 border border-red-200 rounded-xl items-center`}
                           disabled={busyId === selectedPartner.id}
                           onPress={() => void handlePartnershipStatus(selectedPartner.id, 'ended')}
                         >
-                          <Text style={tw`font-semibold text-red-800`}>End</Text>
+                          <Text style={tw`font-semibold text-red-600`}>End</Text>
                         </TouchableOpacity>
                       </>
                     ) : (
                       <TouchableOpacity
-                        style={tw`flex-1 py-3 bg-emerald-100 rounded-xl items-center`}
+                        style={tw`flex-1 py-3 bg-emerald-700 rounded-xl items-center`}
                         disabled={busyId === selectedPartner.id}
                         onPress={() => void handlePartnershipStatus(selectedPartner.id, 'active')}
                       >
-                        <Text style={tw`font-semibold text-emerald-800`}>Reactivate</Text>
+                        <Text style={tw`font-semibold text-white`}>Reactivate</Text>
                       </TouchableOpacity>
                     )}
                   </View>
                   <TouchableOpacity
-                    style={tw`py-3 border border-stone-200 rounded-xl items-center`}
+                    style={tw`py-3 items-center`}
                     onPress={() => openInstructorProfile(selectedPartner.instructor_id)}
                   >
-                    <Text style={tw`font-semibold text-stone-700`}>View profile</Text>
+                    <Text style={tw`font-semibold text-emerald-700`}>View profile</Text>
                   </TouchableOpacity>
                 </ScrollView>
               ) : null}
@@ -1123,6 +1198,6 @@ export default function GrowScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </BusinessScreen>
   );
 }

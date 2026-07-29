@@ -10,6 +10,8 @@ export type FeedPost = {
   created_at: string;
   relevance_score?: number;
   feed_section?: 'following' | 'suggested';
+  points_awarded?: number;
+  points_total?: number;
   metadata?: {
     likes?: number;
     comments?: number;

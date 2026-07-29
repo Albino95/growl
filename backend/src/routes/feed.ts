@@ -5,6 +5,7 @@ import { validateRequest, createPostSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
 import { categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
+import { POINTS, awardPoints } from '../utils/points';
 
 const MOCK_USER_COUNT = 60;
 const MOCK_POSTS_PER_USER = 10;
@@ -367,6 +368,8 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       )
       .run();
 
+    const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CREATE_POST);
+
     console.log('[createPost] Post created successfully:', postId, 'for user:', ctx.userId);
 
     return json(
@@ -378,6 +381,8 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         category,
         subcategory,
         engagement_score: 0,
+        points_awarded: POINTS.CREATE_POST,
+        points_total: pointsTotal ?? undefined,
         created_at: new Date().toISOString(),
       },
       201

@@ -3,7 +3,8 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
 import { syncCategoryCohortFriends } from './friends';
-import { computeEligibility } from '../utils/instructorEligibility';
+import { computeEligibility, countEndorsements, countUserPosts } from '../utils/instructorEligibility';
+import { countEndorsementsGiven, computePostStreak } from '../utils/points';
 
 /**
  * GET /api/v1/profile/user/:userId
@@ -45,6 +46,8 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
       id: row.id,
       username: meta.username ?? null,
       avatar: meta.avatar ?? null,
+      bio: typeof meta.bio === 'string' ? meta.bio : null,
+      status: typeof meta.status === 'string' ? meta.status : null,
       points: row.points,
       is_instructor: !!row.is_instructor,
       is_business: !!row.is_business,
@@ -61,7 +64,7 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
 
 /**
  * GET /api/v1/profile
- * Get current user profile
+ * Fast by default (auth/boot). Pass ?stats=1 for achievement / eligibility counters.
  */
 export async function getProfile(request: Request, env: Env): Promise<Response> {
   const ctx = await getRequestContext(request, env);
@@ -69,16 +72,34 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
+  const url = new URL(request.url);
+  const wantStats = url.searchParams.get('stats') === '1';
+
   const metadata = JSON.parse(ctx.user.metadata || '{}');
   const categories = metadata.categories || [];
+  const decayTimer =
+    typeof metadata.decay_timer === 'number' && metadata.decay_timer >= 1
+      ? Math.min(365, Math.floor(metadata.decay_timer))
+      : 7;
 
-  let cohortFriendsLinked = 0;
-  if (categories.length > 0) {
-    try {
-      cohortFriendsLinked = await syncCategoryCohortFriends(env, ctx.userId);
-    } catch (syncErr) {
-      console.error('[getProfile] cohort friend sync failed:', syncErr);
-    }
+  const base = {
+    id: ctx.user.id,
+    email: ctx.user.email,
+    username: metadata.username,
+    avatar: metadata.avatar,
+    bio: typeof metadata.bio === 'string' ? metadata.bio : null,
+    status: typeof metadata.status === 'string' ? metadata.status : null,
+    points: Number(ctx.user.points) || 0,
+    is_instructor: ctx.user.is_instructor,
+    is_business: ctx.user.is_business,
+    categories,
+    notifications_prefs: metadata.notifications_prefs || {},
+    decay_timer: decayTimer,
+    created_at: ctx.user.created_at,
+  };
+
+  if (!wantStats) {
+    return json(base);
   }
 
   let instructor;
@@ -89,19 +110,22 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     instructor = undefined;
   }
 
+  const [endorsementsGiven, streakDays] = await Promise.all([
+    countEndorsementsGiven(env, ctx.userId),
+    computePostStreak(env, ctx.userId),
+  ]);
+
+  const postCount = instructor?.postCount ?? (await countUserPosts(env, ctx.userId));
+  const endorsementsReceived =
+    instructor?.endorsementsReceived ?? (await countEndorsements(env, ctx.userId));
+
   return json({
-    id: ctx.user.id,
-    email: ctx.user.email,
-    username: metadata.username,
-    avatar: metadata.avatar,
-    points: ctx.user.points,
-    is_instructor: ctx.user.is_instructor,
-    is_business: ctx.user.is_business,
-    categories,
-    notifications_prefs: metadata.notifications_prefs || {},
-    cohort_friends_linked: cohortFriendsLinked,
+    ...base,
     instructor,
-    created_at: ctx.user.created_at,
+    post_count: postCount,
+    endorsements_received: endorsementsReceived,
+    endorsements_given: endorsementsGiven,
+    streak_days: streakDays,
   });
 }
 
@@ -118,10 +142,9 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
   const validation = await validateRequest(request, updateUserSchema);
   if (!validation.success) return validation.response;
 
-  const { username, avatar, categories, metadata } = validation.data;
+  const { username, avatar, categories, metadata, decay_timer } = validation.data;
 
   try {
-    // Get current user metadata
     const user = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
       .bind(ctx.userId)
       .first<{ metadata: string }>();
@@ -131,13 +154,17 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
     }
 
     const currentMetadata = JSON.parse(user.metadata || '{}');
-    const updatedMetadata = {
+    const updatedMetadata: Record<string, unknown> = {
       ...currentMetadata,
+      ...(metadata || {}),
       ...(username && { username }),
       ...(avatar && { avatar }),
       ...(categories && { categories }),
-      ...(metadata && { ...currentMetadata, ...metadata }),
     };
+
+    if (typeof decay_timer === 'number') {
+      updatedMetadata.decay_timer = decay_timer;
+    }
 
     await env.DB.prepare('UPDATE users SET metadata = ?, updated_at = datetime("now") WHERE id = ?')
       .bind(JSON.stringify(updatedMetadata), ctx.userId)
@@ -156,6 +183,7 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       username: updatedMetadata.username,
       avatar: updatedMetadata.avatar,
       categories: updatedMetadata.categories || [],
+      decay_timer: updatedMetadata.decay_timer ?? 7,
       message: 'Profile updated successfully',
     });
   } catch (err) {

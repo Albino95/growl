@@ -1,6 +1,5 @@
 /**
- * Explore — single scroll: stories, shop picks, posts grid, people, reels.
- * Ranking: `utils/ranking/`
+ * Explore — discover people, stories, posts, and shop picks by growth path.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -13,6 +12,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -27,10 +27,40 @@ import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import { getProducts } from '../../services/api/marketplace';
 import tw from '../../lib/tw';
-import { feedListPerformanceProps, horizontalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import {
+  feedListPerformanceProps,
+  horizontalScrollProps,
+  TAB_SCREEN_BOTTOM_PADDING,
+} from '../../constants/scroll';
 import SearchField from '../../components/ui/SearchField';
-import Chip from '../../components/ui/Chip';
 import EmptyState from '../../components/ui/EmptyState';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
+import CATEGORIES from '../../data/categories';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
+
+function SectionTitle({
+  title,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={tw`flex-row items-end justify-between mb-3 mt-1`}>
+      <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+        {title}
+      </Text>
+      {actionLabel && onAction ? (
+        <Pressable onPress={onAction} hitSlop={8}>
+          <Text style={tw`text-sm font-semibold text-emerald-700`}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
 
 export default function ExploreScreen() {
   const navigation = useNavigation();
@@ -73,22 +103,24 @@ export default function ExploreScreen() {
         storiesRes.success && storiesRes.data?.grouped ? storiesRes.data.grouped : [];
       setStoryGroups(grouped);
 
-      const rankedPeople = rankDiscoverPeople(grouped, posts, userPaths, {
-        selfId: user?.id,
-        friendIds: fIds,
-      });
-      const rankedReels = rankDiscoverReelPosts(posts, userPaths, {
-        selfId: user?.id,
-        friendIds: fIds,
-      });
+      setPeople(
+        rankDiscoverPeople(grouped, posts, userPaths, {
+          selfId: user?.id,
+          friendIds: fIds,
+        })
+      );
+      setReels(
+        rankDiscoverReelPosts(posts, userPaths, {
+          selfId: user?.id,
+          friendIds: fIds,
+        })
+      );
 
-      setPeople(rankedPeople);
-      setReels(rankedReels);
-
-      const rankedShop = rankMarketplaceProducts(products, userPaths, {
-        userPoints: user?.points,
-      });
-      setShopPicks(rankedShop.slice(0, 4));
+      setShopPicks(
+        rankMarketplaceProducts(products, userPaths, {
+          userPoints: user?.points,
+        }).slice(0, 6)
+      );
 
       const rankedGrid = rankExploreRows(posts, [], userPaths, {
         friendIds: fIds,
@@ -120,20 +152,50 @@ export default function ExploreScreen() {
     void load();
   };
 
-  const subtitle = useMemo(() => {
-    if (!userPaths.length) {
-      return 'Meet people through their stories and reels — add friends in your growth areas.';
+  const pathCapsules: CapsuleItem[] = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of reels) {
+      if (p.category) counts[p.category] = (counts[p.category] || 0) + 1;
     }
-    return `People outside your friend list, ranked by shared growth areas (${userPaths.length} path${userPaths.length === 1 ? '' : 's'}).`;
-  }, [userPaths]);
+    for (const p of gridPosts) {
+      if (p.category) counts[p.category] = (counts[p.category] || 0) + 1;
+    }
+
+    // Prefer user's growth paths first, then any categories present in content.
+    const orderedKeys: string[] = [];
+    for (const key of userPaths) {
+      if (typeof key === 'string' && key && !orderedKeys.includes(key)) orderedKeys.push(key);
+    }
+    for (const key of Object.keys(counts)) {
+      if (!orderedKeys.includes(key)) orderedKeys.push(key);
+    }
+    // Always show full catalog of paths so Explore feels browsable even with sparse data.
+    for (const cat of CATEGORIES) {
+      if (!orderedKeys.includes(cat.key)) orderedKeys.push(cat.key);
+    }
+
+    return orderedKeys.slice(0, 12).map((key) => {
+      const meta = CATEGORIES.find((c) => c.key === key);
+      return {
+        key,
+        label: meta?.label || key,
+        icon: (meta?.icon || 'ellipse-outline') as keyof typeof Ionicons.glyphMap,
+        count: counts[key],
+      };
+    });
+  }, [reels, gridPosts, userPaths]);
+
+  const totalCapsuleCount = useMemo(
+    () => reels.length + gridPosts.length,
+    [reels.length, gridPosts.length]
+  );
 
   const filteredPeople = useMemo(() => {
     const q = query.trim().toLowerCase();
     return people.filter((p) => {
       if (q && !p.username.toLowerCase().includes(q)) return false;
       if (!selectedCategory) return true;
-      const cat = p.latestPost?.category;
-      return cat === selectedCategory;
+      return p.latestPost?.category === selectedCategory;
     });
   }, [people, query, selectedCategory]);
 
@@ -148,13 +210,20 @@ export default function ExploreScreen() {
     });
   }, [reels, query, selectedCategory]);
 
-  const availableCategories = useMemo(() => {
-    const uniq = new Set<string>();
-    for (const p of reels) {
-      if (p.category) uniq.add(p.category);
-    }
-    return Array.from(uniq).sort();
-  }, [reels]);
+  const filteredGrid = useMemo(() => {
+    if (!selectedCategory) return gridPosts;
+    return gridPosts.filter((p) => p.category === selectedCategory);
+  }, [gridPosts, selectedCategory]);
+
+  const filteredShop = useMemo(() => {
+    if (!selectedCategory) return shopPicks;
+    return shopPicks.filter((p) => (p.category || '').split(':')[0] === selectedCategory);
+  }, [shopPicks, selectedCategory]);
+
+  const storyPeople = useMemo(
+    () => filteredPeople.filter((p) => p.storyCount > 0).slice(0, 12),
+    [filteredPeople]
+  );
 
   const openProfile = (userId: string) => {
     const root = navigation.getParent?.() || navigation;
@@ -176,9 +245,7 @@ export default function ExploreScreen() {
       stories: fullStories,
       initialIndex: 0,
       onStoriesUpdate: (updatedStories: typeof fullStories) => {
-        const viewedIds = updatedStories
-          .filter((story) => story.hasViewed)
-          .map((story) => story.id);
+        const viewedIds = updatedStories.filter((story) => story.hasViewed).map((story) => story.id);
         if (viewedIds.length > 0) {
           Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
         }
@@ -213,6 +280,10 @@ export default function ExploreScreen() {
     (root as { navigate: (a: string) => void }).navigate('Reels');
   };
 
+  const openMarketplace = () => {
+    navigation.navigate('Marketplace' as never);
+  };
+
   const openPostDetail = (p: FeedPost) => {
     const username = p.metadata?.username || 'Member';
     const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
@@ -237,129 +308,64 @@ export default function ExploreScreen() {
     });
   };
 
-  const renderPersonCard = (person: DiscoverPerson) => {
-    const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
-    const ringUri = person.latestStoryImage
-      ? resolveStoryDisplayUri(person.latestStoryImage, person.userId)
-      : null;
-    const busy = addingId === person.userId;
-
-    return (
-      <View
-        key={person.userId}
-        style={tw`bg-white border border-stone-200 rounded-2xl p-4 mb-3`}
-      >
-        <View style={tw`flex-row items-center`}>
-          <TouchableOpacity
-            onPress={() => (person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId))}
-            style={tw`mr-3`}
-          >
-            <View
-              style={tw`w-16 h-16 rounded-full p-0.5 ${
-                person.storyCount > 0 ? 'border-2 border-accent-600' : 'border border-stone-200'
-              }`}
-            >
-              {ringUri ? (
-                <Image source={{ uri: ringUri }} style={tw`w-full h-full rounded-full`} contentFit="cover" />
-              ) : (
-                <Image source={{ uri: avatar }} style={tw`w-full h-full rounded-full`} contentFit="cover" />
-              )}
-            </View>
-            {person.storyCount > 0 ? (
-              <View style={tw`absolute -bottom-1 -right-1 bg-violet-600 rounded-full px-1.5 py-0.5`}>
-                <Text style={tw`text-[10px] text-white font-bold`}>{person.storyCount}</Text>
-              </View>
-            ) : null}
-          </TouchableOpacity>
-          <View style={tw`flex-1`}>
-            <Text style={tw`font-bold text-stone-900`}>{person.username}</Text>
-            <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-              {person.storyCount > 0
-                ? `${person.storyCount} active ${person.storyCount === 1 ? 'story' : 'stories'}`
-                : 'New in your cohort'}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => void onAddFriend(person.userId)}
-            disabled={busy || friendIds.has(person.userId)}
-            style={tw`bg-violet-600 px-3 py-2 rounded-xl ${busy ? 'opacity-60' : ''}`}
-          >
-            <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Request'}</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={tw`flex-row mt-3 gap-2`}>
-          <TouchableOpacity
-            onPress={() => openProfile(person.userId)}
-            style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
-          >
-            <Text style={tw`text-stone-700 text-sm font-semibold`}>Profile</Text>
-          </TouchableOpacity>
-          {person.storyCount > 0 ? (
-            <TouchableOpacity
-              onPress={() => openStoryViewer(person)}
-              style={tw`flex-1 py-2 rounded-xl bg-violet-50 items-center`}
-            >
-              <Text style={tw`text-violet-800 text-sm font-semibold`}>Stories</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-    );
-  };
-
   const ListHeader = (
     <>
-      <View style={tw`mb-4`}>
-        <View style={tw`flex-row items-center justify-between mb-2`}>
-          <Text style={tw`text-lg font-bold text-violet-900`}>Stories to meet</Text>
-          <TouchableOpacity onPress={openReels} style={tw`flex-row items-center`}>
-            <Ionicons name="play-circle" size={20} color="#7C3AED" />
-            <Text style={tw`text-violet-700 text-sm font-semibold ml-1`}>All reels</Text>
-          </TouchableOpacity>
-        </View>
-        {filteredPeople.filter((p) => p.storyCount > 0).length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} {...horizontalScrollProps}>
-            {filteredPeople
-              .filter((p) => p.storyCount > 0)
-              .slice(0, 12)
-              .map((person) => {
-                const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
-                const thumb = resolveStoryDisplayUri(
-                  person.latestStoryImage,
-                  person.userId
-                );
-                return (
-                  <TouchableOpacity
-                    key={person.userId}
-                    onPress={() => openStoryViewer(person)}
-                    style={tw`items-center mr-4 w-20`}
-                  >
-                    <View style={tw`w-16 h-16 rounded-full border-2 border-violet-500 p-0.5`}>
-                      <Image
-                        source={{ uri: thumb || avatar }}
-                        style={tw`w-full h-full rounded-full`}
-                        contentFit="cover"
-                      />
-                    </View>
-                    <Text style={tw`text-xs text-stone-600 mt-1 text-center`} numberOfLines={1}>
-                      {person.username.split(' ')[0]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-          </ScrollView>
-        ) : (
-          <Text style={tw`text-sm text-stone-500`}>No new story rings right now. Check reels below.</Text>
-        )}
-      </View>
-      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>Shop picks for you</Text>
-      {shopPicks.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-4`} {...horizontalScrollProps}>
-          {shopPicks.map((product) => (
+      {/* Stories */}
+      <SectionTitle title="Stories to meet" actionLabel="All reels" onAction={openReels} />
+      {storyPeople.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={tw`mb-5`}
+          {...horizontalScrollProps}
+        >
+          {storyPeople.map((person) => {
+            const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
+            const thumb = resolveStoryDisplayUri(person.latestStoryImage, person.userId);
+            return (
+              <TouchableOpacity
+                key={person.userId}
+                onPress={() => {
+                  triggerPressFeedback();
+                  openStoryViewer(person);
+                }}
+                style={tw`items-center mr-4 w-20`}
+              >
+                <View style={tw`w-16 h-16 rounded-full border-2 border-emerald-500 p-0.5`}>
+                  <Image
+                    source={{ uri: thumb || avatar }}
+                    style={tw`w-full h-full rounded-full`}
+                    contentFit="cover"
+                  />
+                </View>
+                <Text style={tw`text-xs text-stone-600 mt-1.5 text-center`} numberOfLines={1}>
+                  {person.username.split(' ')[0]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <Text style={tw`text-sm text-stone-500 mb-5`}>
+          No new story rings right now — browse clips below.
+        </Text>
+      )}
+
+      {/* Shop */}
+      <SectionTitle title="Shop picks" actionLabel="Open shop" onAction={openMarketplace} />
+      {filteredShop.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={tw`mb-5`}
+          {...horizontalScrollProps}
+        >
+          {filteredShop.map((product) => (
             <TouchableOpacity
               key={product.id}
-              style={tw`w-36 mr-3 bg-white border border-stone-200 rounded-2xl overflow-hidden`}
+              style={tw`w-36 mr-3 bg-white border border-stone-200/80 rounded-2xl overflow-hidden`}
               onPress={() => {
+                triggerPressFeedback();
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
                   productId: product.id,
@@ -367,17 +373,21 @@ export default function ExploreScreen() {
               }}
             >
               <Image
-                source={{ uri: product.image_url || `https://picsum.photos/seed/${product.id}/400/500` }}
+                source={{
+                  uri: product.image_url || `https://picsum.photos/seed/${product.id}/400/500`,
+                }}
                 style={tw`w-full h-44 bg-stone-100`}
                 contentFit="cover"
               />
-              <View style={tw`p-2`}>
+              <View style={tw`p-2.5`}>
                 <Text style={tw`text-xs font-semibold text-stone-900`} numberOfLines={2}>
                   {product.name}
                 </Text>
-                <Text style={tw`text-sm font-bold text-brand-700 mt-1`}>${product.price.toFixed(2)}</Text>
+                <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
+                  ${product.price.toFixed(2)}
+                </Text>
                 {product.matchLabel ? (
-                  <Text style={tw`text-[10px] text-brand-600 mt-0.5`} numberOfLines={1}>
+                  <Text style={tw`text-[10px] text-emerald-600 mt-0.5`} numberOfLines={1}>
                     {product.matchLabel}
                   </Text>
                 ) : null}
@@ -386,83 +396,163 @@ export default function ExploreScreen() {
           ))}
         </ScrollView>
       ) : (
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Marketplace' as never)}
-          style={tw`mb-4 p-4 rounded-2xl bg-brand-50 border border-brand-100`}
+        <Pressable
+          onPress={openMarketplace}
+          style={tw`mb-5 px-4 py-4 rounded-2xl bg-emerald-50 border border-emerald-100`}
         >
-          <Text style={tw`text-sm text-brand-800 font-semibold`}>Browse the marketplace →</Text>
-        </TouchableOpacity>
+          <Text style={tw`text-sm text-emerald-800 font-semibold`}>Browse the marketplace →</Text>
+        </Pressable>
       )}
-      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>Posts for you</Text>
-      {gridPosts.length > 0 ? (
-        <View style={tw`flex-row flex-wrap justify-between mb-4`}>
-          {gridPosts.slice(0, 4).map((p) => {
+
+      {/* Posts mosaic */}
+      <SectionTitle title="Posts for you" />
+      {filteredGrid.length > 0 ? (
+        <View style={tw`flex-row flex-wrap justify-between mb-5`}>
+          {filteredGrid.slice(0, 4).map((p) => {
             const image = resolvePostMediaUri(p.image_url, p.category, p.id);
             return (
               <TouchableOpacity
                 key={p.id}
                 onPress={() => openPostDetail(p)}
-                style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200 bg-white`}
+                style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-white`}
               >
                 <Image source={{ uri: image }} style={tw`w-full h-36`} contentFit="cover" />
-                <Text style={tw`p-2 text-xs font-semibold text-stone-800`} numberOfLines={2}>
+                <Text style={tw`p-2.5 text-xs font-semibold text-stone-800`} numberOfLines={2}>
                   {p.caption || p.metadata?.username || 'Post'}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
-      ) : null}
-      <Text style={tw`text-lg font-bold text-violet-900 mb-2`}>People to follow</Text>
-      {filteredPeople.length > 0 ? (
-        filteredPeople.slice(0, 5).map(renderPersonCard)
       ) : (
-        <Text style={tw`text-sm text-stone-500 mb-4`}>
-          Add growth paths in your profile to discover people in your cohort.
+        <Text style={tw`text-sm text-stone-500 mb-5`}>No posts in this path yet.</Text>
+      )}
+
+      {/* People */}
+      <SectionTitle title="People to meet" />
+      {filteredPeople.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={tw`mb-5`}
+          {...horizontalScrollProps}
+        >
+          {filteredPeople.slice(0, 8).map((person) => {
+            const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
+            const busy = addingId === person.userId;
+            return (
+              <View
+                key={person.userId}
+                style={tw`w-44 mr-3 bg-white border border-stone-200/80 rounded-2xl p-3`}
+              >
+                <TouchableOpacity
+                  onPress={() =>
+                    person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId)
+                  }
+                  style={tw`items-center mb-3`}
+                >
+                  <View
+                    style={tw`w-16 h-16 rounded-full p-0.5 ${
+                      person.storyCount > 0
+                        ? 'border-2 border-emerald-500'
+                        : 'border border-stone-200'
+                    }`}
+                  >
+                    <Image
+                      source={{ uri: avatar }}
+                      style={tw`w-full h-full rounded-full`}
+                      contentFit="cover"
+                    />
+                  </View>
+                  <Text style={tw`font-bold text-stone-900 mt-2 text-center`} numberOfLines={1}>
+                    {person.username}
+                  </Text>
+                  <Text style={tw`text-[11px] text-stone-500 mt-0.5 text-center`} numberOfLines={1}>
+                    {person.storyCount > 0
+                      ? `${person.storyCount} ${person.storyCount === 1 ? 'story' : 'stories'}`
+                      : 'In your growth areas'}
+                  </Text>
+                </TouchableOpacity>
+                <View style={tw`flex-row gap-2`}>
+                  <TouchableOpacity
+                    onPress={() => openProfile(person.userId)}
+                    style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
+                  >
+                    <Text style={tw`text-stone-700 text-xs font-semibold`}>Profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => void onAddFriend(person.userId)}
+                    disabled={busy || friendIds.has(person.userId)}
+                    style={tw`flex-1 py-2 rounded-xl bg-emerald-600 items-center ${
+                      busy ? 'opacity-60' : ''
+                    }`}
+                  >
+                    <Text style={tw`text-white text-xs font-bold`}>
+                      {busy ? '…' : 'Request'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <Text style={tw`text-sm text-stone-500 mb-5`}>
+          Add growth paths on your profile to discover people in your cohort.
         </Text>
       )}
-      <Text style={tw`text-lg font-bold text-violet-900 mb-2 mt-2`}>Reels & clips</Text>
+
+      <SectionTitle title="Clips & posts" />
     </>
   );
 
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
-      <View style={tw`px-5 pt-3 pb-2 border-b border-stone-100 bg-white`}>
-        <Text style={tw`text-2xl font-bold text-violet-800`}>Explore</Text>
-        <Text style={tw`text-sm text-stone-500 mt-1`}>{subtitle}</Text>
-        <View style={tw`mt-3`}>
-          <SearchField
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search people or captions"
+      <GrowChromeHeader
+        right={
+          <Pressable
+            onPress={openMarketplace}
+            style={tw`flex-row items-center bg-[#EAE4D6] border border-stone-200/80 rounded-full px-3 py-2`}
+          >
+            <Ionicons name="storefront-outline" size={16} color="#059669" />
+            <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Shop</Text>
+          </Pressable>
+        }
+      />
+
+      <View style={tw`px-5 pt-3 pb-2`}>
+        <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Explore</Text>
+        <Text style={tw`text-sm text-stone-500 mb-3`}>
+          {userPaths.length
+            ? `Discover people and progress outside your circle · ${userPaths.length} growth path${userPaths.length === 1 ? '' : 's'}`
+            : 'Meet people through stories, clips, and shared growth paths.'}
+        </Text>
+
+        <SearchField
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search people or captions"
+        />
+
+        <View style={tw`mt-2 -mx-1`}>
+          <CategoryCapsuleRow
+            items={pathCapsules}
+            selectedKey={selectedCategory}
+            onSelect={setSelectedCategory}
+            allCount={totalCapsuleCount || undefined}
           />
-          {availableCategories.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-1`}>
-              <Chip tone="accent" selected={selectedCategory === null} onPress={() => setSelectedCategory(null)}>
-                All
-              </Chip>
-              {availableCategories.map((cat) => (
-                <Chip
-                  key={cat}
-                  tone="accent"
-                  selected={selectedCategory === cat}
-                  onPress={() => setSelectedCategory(cat)}
-                >
-                  {cat}
-                </Chip>
-              ))}
-            </ScrollView>
-          ) : null}
         </View>
       </View>
+
       {loadError ? (
-        <View style={tw`mx-4 mt-3 px-3 py-2 rounded-xl border border-red-200 bg-red-50`}>
+        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl border border-red-200 bg-red-50`}>
           <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
         </View>
       ) : null}
+
       {loading && filteredPeople.length === 0 && filteredReels.length === 0 ? (
         <View style={tw`flex-1 items-center justify-center py-20`}>
-          <ActivityIndicator size="large" color="#7C3AED" />
+          <ActivityIndicator size="large" color="#059669" />
         </View>
       ) : (
         <FlatList
@@ -476,11 +566,15 @@ export default function ExploreScreen() {
             const isFriend = friendIds.has(p.user_id);
             return (
               <TouchableOpacity
-                style={tw`bg-white border border-stone-100 rounded-2xl overflow-hidden mb-3`}
+                style={tw`bg-white border border-stone-200/80 rounded-2xl overflow-hidden mb-3`}
                 activeOpacity={0.9}
                 onPress={() => openPostDetail(p)}
               >
-                <Image source={{ uri: image }} style={tw`w-full h-52 bg-stone-200`} contentFit="cover" />
+                <Image
+                  source={{ uri: image }}
+                  style={tw`w-full h-52 bg-stone-200`}
+                  contentFit="cover"
+                />
                 <View style={tw`p-3 flex-row items-center`}>
                   <Image source={{ uri: avatar }} style={tw`w-9 h-9 rounded-full mr-2`} />
                   <View style={tw`flex-1`}>
@@ -493,9 +587,9 @@ export default function ExploreScreen() {
                         e.stopPropagation?.();
                         void onAddFriend(p.user_id);
                       }}
-                      style={tw`bg-violet-100 px-2 py-1 rounded-lg`}
+                      style={tw`bg-emerald-50 px-2.5 py-1.5 rounded-lg`}
                     >
-                      <Text style={tw`text-violet-800 text-xs font-bold`}>+ Request</Text>
+                      <Text style={tw`text-emerald-800 text-xs font-bold`}>+ Request</Text>
                     </TouchableOpacity>
                   ) : (
                     <Ionicons name="checkmark-circle" size={22} color="#059669" />
@@ -509,20 +603,29 @@ export default function ExploreScreen() {
               </TouchableOpacity>
             );
           }}
-          contentContainerStyle={[tw`px-4 pt-3`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+          contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           {...feedListPerformanceProps}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#7C3AED" colors={['#7C3AED']} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#059669"
+              colors={['#059669']}
+            />
           }
           ListEmptyComponent={
             filteredPeople.length === 0 ? (
               <EmptyState
-                icon="people-outline"
-                title="No matching creators"
+                icon="compass-outline"
+                title="Nothing in this path yet"
                 description={
                   query || selectedCategory
-                    ? 'Try a broader search or reset category filters.'
-                    : 'No new creators found right now. Refresh after more community activity.'
+                    ? 'Try All, or clear search.'
+                    : 'Refresh after more community activity — or open Shop to browse gear.'
+                }
+                actionLabel={selectedCategory ? 'Show all' : 'Open shop'}
+                onAction={() =>
+                  selectedCategory ? setSelectedCategory(null) : openMarketplace()
                 }
               />
             ) : null

@@ -13,6 +13,7 @@ import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
 import EditProfileScreen from '../../screens/Profile/EditProfileScreen';
+import SettingsScreen from '../../screens/Profile/SettingsScreen';
 import NotificationPrefsScreen from '../../screens/Profile/NotificationPrefsScreen';
 import LegalHubScreen from '../../screens/Legal/LegalHubScreen';
 import LegalDocumentScreen from '../../screens/Legal/LegalDocumentScreen';
@@ -54,6 +55,7 @@ export type RootStackParamList = {
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
   EditProfile: undefined;
+  Settings: undefined;
   NotificationPrefs: undefined;
   Legal: undefined;
   LegalDocument: { documentId: 'terms' | 'privacy' | 'community' | 'support' };
@@ -154,6 +156,11 @@ export default function RootNavigator() {
           <Stack.Screen
             name="EditProfile"
             component={EditProfileScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Settings"
+            component={SettingsScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

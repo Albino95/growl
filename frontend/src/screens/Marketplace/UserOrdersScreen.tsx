@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { getOrders, type Order } from '../../services/api/marketplace';
+import { CategoryCapsule } from '../../components/ui/CategoryCapsule';
+import { horizontalScrollProps } from '../../constants/scroll';
 
 type OrderItem = {
   id: string;
@@ -15,14 +17,27 @@ type OrderItem = {
   product_image?: string;
 };
 
-const STATUS_COLORS = {
-  pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' },
-  processing: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-  shipped: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-  delivered: { bg: 'bg-brand-100', text: 'text-brand-700', border: 'border-brand-300' },
-  completed: { bg: 'bg-brand-100', text: 'text-brand-700', border: 'border-brand-300' },
-  cancelled: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' },
+const STATUS_META: Record<
+  string,
+  { label: string; icon: keyof typeof Ionicons.glyphMap; tint: string; chip: string }
+> = {
+  pending: { label: 'Pending', icon: 'time-outline', tint: 'text-amber-800', chip: 'bg-amber-100' },
+  processing: { label: 'Processing', icon: 'sync-outline', tint: 'text-sky-800', chip: 'bg-sky-100' },
+  shipped: { label: 'Shipped', icon: 'airplane-outline', tint: 'text-violet-800', chip: 'bg-violet-100' },
+  delivered: { label: 'Delivered', icon: 'checkmark-circle-outline', tint: 'text-emerald-800', chip: 'bg-emerald-100' },
+  completed: { label: 'Completed', icon: 'leaf-outline', tint: 'text-emerald-800', chip: 'bg-emerald-100' },
+  cancelled: { label: 'Cancelled', icon: 'close-circle-outline', tint: 'text-rose-800', chip: 'bg-rose-100' },
 };
+
+const FILTERS: { key: string; label: string; icon?: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending', icon: 'time-outline' },
+  { key: 'processing', label: 'Processing', icon: 'sync-outline' },
+  { key: 'shipped', label: 'Shipped', icon: 'airplane-outline' },
+  { key: 'delivered', label: 'Delivered', icon: 'checkmark-circle-outline' },
+  { key: 'completed', label: 'Done', icon: 'leaf-outline' },
+  { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline' },
+];
 
 export default function UserOrdersScreen() {
   const navigation = useNavigation();
@@ -60,161 +75,195 @@ export default function UserOrdersScreen() {
     loadOrders();
   };
 
-  const filteredOrders = statusFilter === 'all' 
-    ? orders 
-    : orders.filter(o => o.status === statusFilter);
+  const filteredOrders = useMemo(
+    () => (statusFilter === 'all' ? orders : orders.filter((o) => o.status === statusFilter)),
+    [orders, statusFilter]
+  );
 
   const totalSpent = orders
-    .filter(o => o.status !== 'cancelled')
+    .filter((o) => o.status !== 'cancelled')
     .reduce((sum, o) => sum + o.total, 0);
+
+  const activeCount = orders.filter((o) =>
+    ['pending', 'processing', 'shipped'].includes(o.status)
+  ).length;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-      {/* Header */}
-      <View style={tw`bg-white px-4 pt-4 pb-3 border-b border-stone-200`}>
-        <View style={tw`flex-row items-center mb-3`}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={tw`mr-3`}
-          >
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={tw`text-2xl font-bold text-stone-900 flex-1`}>My Orders</Text>
-        </View>
-        
-        {/* Stats */}
-        <View style={tw`flex-row gap-3 mb-3`}>
-          <View style={tw`flex-1 bg-brand-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-brand-600 mb-1`}>Total Spent</Text>
-            <Text style={tw`text-xl font-bold text-brand-900`}>${totalSpent.toFixed(2)}</Text>
-          </View>
-          <View style={tw`flex-1 bg-blue-50 rounded-lg p-3`}>
-            <Text style={tw`text-xs text-blue-600 mb-1`}>Total Orders</Text>
-            <Text style={tw`text-xl font-bold text-blue-900`}>{orders.length}</Text>
-          </View>
-        </View>
-
-        {/* Status Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`-mx-4 px-4`}>
-          <View style={tw`flex-row gap-2`}>
-            {['all', 'pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'].map((status) => (
-              <TouchableOpacity
-                key={status}
-                onPress={() => setStatusFilter(status)}
-                style={tw`px-4 py-2 rounded-full ${
-                  statusFilter === status ? 'bg-blue-600' : 'bg-gray-200'
-                }`}
-              >
-                <Text style={tw`text-sm font-semibold ${
-                  statusFilter === status ? 'text-white' : 'text-stone-700'
-                }`}>
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
-
-      {/* Orders List */}
       <ScrollView
-        style={tw`flex-1 px-4 pt-4`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        style={tw`flex-1`}
+        contentContainerStyle={tw`pb-10`}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" />}
       >
-        {loading && orders.length === 0 ? (
-          <View style={tw`items-center justify-center py-12`}>
-            <Text style={tw`text-stone-500`}>Loading orders...</Text>
-          </View>
-        ) : filteredOrders.length === 0 ? (
-          <View style={tw`items-center justify-center py-12`}>
-            <Ionicons name="receipt-outline" size={64} color="#9CA3AF" />
-            <Text style={tw`text-stone-500 mt-4 text-center`}>
-              {statusFilter === 'all' ? 'No orders yet' : `No ${statusFilter} orders`}
-            </Text>
+        <View style={tw`px-4 pt-3 pb-2`}>
+          <View style={tw`flex-row items-center mb-4`}>
             <TouchableOpacity
-              onPress={() => navigation.navigate('Marketplace' as never)}
-              style={tw`mt-4 px-6 py-3 bg-blue-600 rounded-full`}
+              onPress={() => navigation.goBack()}
+              style={tw`w-10 h-10 rounded-full bg-white border border-stone-200 items-center justify-center mr-3`}
+              accessibilityLabel="Go back"
             >
-              <Text style={tw`text-white font-semibold`}>Browse Marketplace</Text>
+              <Ionicons name="arrow-back" size={20} color="#1C1917" />
             </TouchableOpacity>
+            <View style={tw`flex-1`}>
+              <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-2xl font-bold text-stone-900`}>My Orders</Text>
+            </View>
           </View>
-        ) : (
-          filteredOrders.map((order) => {
-            const statusStyle = STATUS_COLORS[order.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
-            const orderDate = new Date(order.created_at).toLocaleDateString();
-            const shippingAddress = typeof order.shipping_address === 'string' 
-              ? JSON.parse(order.shipping_address) 
-              : order.shipping_address;
-            
-            return (
-              <View
-                key={order.id}
-                style={tw`bg-white rounded-xl p-4 mb-3 shadow-sm border border-stone-100`}
-              >
-                <View style={tw`flex-row items-center justify-between mb-3`}>
-                  <View>
-                    <Text style={tw`text-sm font-semibold text-stone-500`}>
-                      Order #{order.id.slice(-8).toUpperCase()}
-                    </Text>
-                    <Text style={tw`text-lg font-bold text-stone-900 mt-1`}>
-                      ${order.total.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View style={tw`px-3 py-1.5 rounded-full ${statusStyle.bg} border ${statusStyle.border}`}>
-                    <Text style={tw`text-xs font-semibold ${statusStyle.text}`}>
-                      {order.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
 
-                <View style={tw`border-t border-stone-100 pt-3 mb-3`}>
-                  {order.items && order.items.length > 0 ? (
-                    order.items.map((item: OrderItem, idx: number) => (
-                      <View key={item.id || idx} style={tw`flex-row items-center justify-between mb-2`}>
-                        <Text style={tw`text-sm text-stone-600 flex-1`}>
-                          {item.quantity}x {item.product_name || 'Product'}
-                        </Text>
-                        <Text style={tw`text-sm font-semibold text-stone-900`}>
-                          ${(item.quantity * item.price).toFixed(2)}
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={tw`text-sm text-stone-400`}>No items</Text>
-                  )}
-                </View>
-
-                {shippingAddress && (
-                  <View style={tw`border-t border-stone-100 pt-3 mb-3`}>
-                    <Text style={tw`text-xs font-semibold text-stone-500 mb-1`}>Shipping Address</Text>
-                    <Text style={tw`text-sm text-stone-700`}>
-                      {shippingAddress.name}
-                    </Text>
-                    <Text style={tw`text-sm text-stone-700`}>
-                      {shippingAddress.street}
-                    </Text>
-                    <Text style={tw`text-sm text-stone-700`}>
-                      {shippingAddress.city}, {shippingAddress.state} {shippingAddress.zip}
-                    </Text>
-                  </View>
-                )}
-
-                <View style={tw`flex-row items-center justify-between pt-3 border-t border-stone-100`}>
-                  <View style={tw`flex-row items-center`}>
-                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                    <Text style={tw`text-xs text-stone-500 ml-1`}>{orderDate}</Text>
-                  </View>
-                  {order.status === 'shipped' && (
-                    <TouchableOpacity style={tw`flex-row items-center`}>
-                      <Ionicons name="car-outline" size={16} color="#6B7280" />
-                      <Text style={tw`text-xs text-stone-500 ml-1`}>Track Order</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4 mb-4`}>
+            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              Your shop activity
+            </Text>
+            <View style={tw`flex-row mt-3`}>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-xs text-stone-500`}>Spent</Text>
+                <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>
+                  ${totalSpent.toFixed(2)}
+                </Text>
               </View>
-            );
-          })
-        )}
+              <View style={tw`w-px bg-stone-300/70 mx-1`} />
+              <View style={tw`flex-1 px-3`}>
+                <Text style={tw`text-xs text-stone-500`}>Orders</Text>
+                <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>{orders.length}</Text>
+              </View>
+              <View style={tw`w-px bg-stone-300/70 mx-1`} />
+              <View style={tw`flex-1 pl-3`}>
+                <Text style={tw`text-xs text-stone-500`}>In progress</Text>
+                <Text style={tw`text-2xl font-bold text-emerald-700 mt-0.5`}>{activeCount}</Text>
+              </View>
+            </View>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`pb-1`}
+            style={{ flexGrow: 0 }}
+            {...horizontalScrollProps}
+          >
+            {FILTERS.map((f) => (
+              <CategoryCapsule
+                key={f.key}
+                label={f.label}
+                icon={f.icon}
+                selected={statusFilter === f.key}
+                onPress={() => setStatusFilter(f.key)}
+                compact
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={tw`px-4 pt-3`}>
+          {loading && orders.length === 0 ? (
+            <View style={tw`items-center justify-center py-16`}>
+              <Text style={tw`text-stone-500`}>Loading orders...</Text>
+            </View>
+          ) : filteredOrders.length === 0 ? (
+            <View style={tw`items-center justify-center py-16 px-6`}>
+              <View style={tw`w-16 h-16 rounded-full bg-emerald-600/10 items-center justify-center mb-4`}>
+                <Ionicons name="bag-handle-outline" size={32} color="#059669" />
+              </View>
+              <Text style={tw`text-lg font-bold text-stone-900 text-center`}>
+                {statusFilter === 'all' ? 'No orders yet' : `No ${statusFilter} orders`}
+              </Text>
+              <Text style={tw`text-sm text-stone-500 text-center mt-2 leading-5`}>
+                When you check out from Grow! Shop, your orders will show up here.
+              </Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Marketplace' as never)}
+                style={tw`mt-5 px-6 py-3.5 bg-emerald-600 rounded-2xl`}
+              >
+                <Text style={tw`text-white font-semibold`}>Browse Shop</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            filteredOrders.map((order) => {
+              const meta = STATUS_META[order.status] || STATUS_META.pending;
+              const orderDate = new Date(order.created_at).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              });
+              const shippingAddress =
+                typeof order.shipping_address === 'string'
+                  ? JSON.parse(order.shipping_address)
+                  : order.shipping_address;
+
+              return (
+                <View
+                  key={order.id}
+                  style={tw`bg-white border border-stone-200/80 rounded-2xl p-4 mb-3`}
+                >
+                  <View style={tw`flex-row items-start justify-between mb-3`}>
+                    <View style={tw`flex-1 pr-3`}>
+                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-400 uppercase`}>
+                        Order · {order.id.slice(-8).toUpperCase()}
+                      </Text>
+                      <Text style={tw`text-xl font-bold text-stone-900 mt-1`}>
+                        ${order.total.toFixed(2)}
+                      </Text>
+                      <View style={tw`flex-row items-center mt-1.5`}>
+                        <Ionicons name="calendar-outline" size={14} color="#A8A29E" />
+                        <Text style={tw`text-xs text-stone-500 ml-1`}>{orderDate}</Text>
+                      </View>
+                    </View>
+                    <View style={tw`flex-row items-center px-2.5 py-1.5 rounded-full ${meta.chip}`}>
+                      <Ionicons name={meta.icon} size={14} color="#065F46" style={tw`mr-1`} />
+                      <Text style={tw`text-xs font-semibold ${meta.tint}`}>{meta.label}</Text>
+                    </View>
+                  </View>
+
+                  <View style={tw`border-t border-stone-100 pt-3`}>
+                    {order.items && order.items.length > 0 ? (
+                      order.items.map((item: OrderItem, idx: number) => (
+                        <View
+                          key={item.id || idx}
+                          style={tw`flex-row items-center justify-between mb-2`}
+                        >
+                          <Text style={tw`text-sm text-stone-600 flex-1 pr-3`} numberOfLines={2}>
+                            {item.quantity}× {item.product_name || 'Product'}
+                          </Text>
+                          <Text style={tw`text-sm font-semibold text-stone-900`}>
+                            ${(item.quantity * item.price).toFixed(2)}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={tw`text-sm text-stone-400`}>No items listed</Text>
+                    )}
+                  </View>
+
+                  {shippingAddress ? (
+                    <View style={tw`border-t border-stone-100 pt-3 mt-1`}>
+                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-400 uppercase mb-1`}>
+                        Ship to
+                      </Text>
+                      <Text style={tw`text-sm text-stone-700`}>{shippingAddress.name}</Text>
+                      <Text style={tw`text-sm text-stone-600`}>
+                        {shippingAddress.street}
+                        {shippingAddress.city
+                          ? `\n${shippingAddress.city}, ${shippingAddress.state} ${shippingAddress.zip}`
+                          : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {order.status === 'shipped' ? (
+                    <TouchableOpacity
+                      style={tw`mt-3 flex-row items-center justify-center py-2.5 rounded-xl bg-emerald-50`}
+                    >
+                      <Ionicons name="navigate-outline" size={16} color="#059669" />
+                      <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Track shipment</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

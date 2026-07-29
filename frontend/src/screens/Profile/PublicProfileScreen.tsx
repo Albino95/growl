@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import CATEGORIES from '../../data/categories';
+import { groupGrowthPaths } from '../../utils/categoryLabels';
 import tw from '../../lib/tw';
 import {
   addFriend,
@@ -135,7 +135,7 @@ async function fetchPublicJournalEntries(userId: string): Promise<JournalEntry[]
 }
 
 export default function PublicProfileScreen() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, updateUser } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PublicProfile'>>();
   const { userId } = route.params;
@@ -211,6 +211,9 @@ export default function PublicProfileScreen() {
     setEndorseBusy(true);
     try {
       const result = await endorseCandidate(userId);
+      if (typeof result.points_total_voter === 'number') {
+        updateUser({ points: result.points_total_voter });
+      }
       setEndorseStatus((prev) =>
         prev
           ? {
@@ -221,7 +224,7 @@ export default function PublicProfileScreen() {
             }
           : prev
       );
-      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement.`);
+      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement. You earned growth points too.`);
     } catch (e) {
       alertMessage('Could not endorse', e instanceof Error ? e.message : 'Try again later');
     } finally {
@@ -617,6 +620,13 @@ export default function PublicProfileScreen() {
             </View>
           </View>
 
+          {profileUser.status ? (
+            <Text style={tw`text-sm text-stone-800 mb-2 leading-5`}>{profileUser.status}</Text>
+          ) : null}
+          {profileUser.bio ? (
+            <Text style={tw`text-sm text-stone-500 mb-4 leading-5`}>{profileUser.bio}</Text>
+          ) : null}
+
           <View style={tw`flex-row justify-around mb-4 py-2`}>
             <View style={tw`items-center`}>
               <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.postsCount}</Text>
@@ -768,16 +778,14 @@ export default function PublicProfileScreen() {
           <View style={tw`px-4 py-4 border-b border-gray-200`}>
             <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Growth Areas</Text>
             <View style={tw`flex-row flex-wrap`}>
-              {profileUser.categories.map((cat, index) => {
-                const category = CATEGORIES.find((c) => c.key === cat || c.key === cat.split(':')[0]);
-                const subcategory = cat.includes(':')
-                  ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
-                  : null;
-                const label = subcategory ? subcategory.label : category?.label || cat;
-                
+              {groupGrowthPaths(profileUser.categories).map((group) => {
+                const label =
+                  group.focusLabels.length > 0
+                    ? `${group.parentLabel}: ${group.focusLabels.join(', ')}`
+                    : group.parentLabel;
                 return (
                   <View
-                    key={index}
+                    key={group.parentKey}
                     style={tw`bg-green-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
                   >
                     <Text style={tw`text-sm text-green-800 font-medium`}>{label}</Text>

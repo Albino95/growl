@@ -99,7 +99,7 @@ export default function KpiScreen() {
 
   if (loading && !kpis) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50 items-center justify-center`} edges={['bottom']}>
+      <SafeAreaView style={tw`flex-1 bg-surface-page items-center justify-center`} edges={['bottom']}>
         <ActivityIndicator size="large" color="#059669" />
         <Text style={tw`text-stone-500 mt-3`}>Loading analytics…</Text>
       </SafeAreaView>
@@ -107,10 +107,10 @@ export default function KpiScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['bottom']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['bottom']}>
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`px-4 pt-3 pb-10`}
+        contentContainerStyle={tw`px-5 pt-3 pb-10`}
         {...verticalScrollProps}
         refreshControl={
           <RefreshControl

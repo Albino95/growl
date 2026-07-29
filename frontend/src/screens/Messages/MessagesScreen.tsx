@@ -1,23 +1,24 @@
-import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   TextInput,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
   ActivityIndicator,
+  RefreshControl,
+  Alert,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl, getStoryImageUrl } from '../../utils/images';
-import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { getAvatarUrl } from '../../utils/images';
 import {
   getConversations,
   getMessages,
@@ -27,21 +28,45 @@ import {
   type ChatMessage,
 } from '../../services/api/messages';
 import tw from '../../lib/tw';
+import { CategoryCapsuleRow } from '../../components/ui/CategoryCapsule';
+import EmptyState from '../../components/ui/EmptyState';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
-type MessageType = 'Individual' | 'Store' | 'Instructor';
-
-type Story = {
-  id: string;
-  userId: string;
-  username: string;
-  avatar: string;
-  image?: string;
-  hasViewed: boolean;
-};
+type InboxTab = 'friends' | 'shop' | 'coaches';
 
 type ActiveConversation = ConversationSummary & {
   messages: ChatMessage[];
+  peer_last_read_at?: string | null;
 };
+
+function messageReceipt(
+  msg: ChatMessage,
+  peerLastReadAt?: string | null
+): 'sending' | 'sent' | 'seen' {
+  if (msg.id.startsWith('temp-')) return 'sending';
+  if (
+    peerLastReadAt &&
+    new Date(peerLastReadAt).getTime() >= new Date(msg.created_at).getTime()
+  ) {
+    return 'seen';
+  }
+  return 'sent';
+}
+
+function ReceiptTicks({
+  status,
+}: {
+  status: 'sending' | 'sent' | 'seen';
+}) {
+  if (status === 'sending') {
+    return <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />;
+  }
+  if (status === 'seen') {
+    return <Ionicons name="checkmark-done" size={14} color="#A7F3D0" />;
+  }
+  // Delivered to server — single tick; peer read upgrades to double emerald
+  return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.65)" />;
+}
 
 type MessagesRouteParams = {
   Messages: {
@@ -75,71 +100,90 @@ function formatMessageTime(iso: string): string {
 export default function MessagesScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<MessagesRouteParams, 'Messages'>>();
-  const [activeSection, setActiveSection] = useState<MessageType>('Individual');
+  const { user } = useAuth();
+
+  const [inboxTab, setInboxTab] = useState<InboxTab>('friends');
   const [selectedConversation, setSelectedConversation] = useState<ActiveConversation | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState('');
+  const [listError, setListError] = useState<string | null>(null);
   const messageInputRef = useRef<TextInput>(null);
   const bootedFromRouteRef = useRef(false);
-  const { user } = useAuth();
-  const [stories, setStories] = useState<Story[]>([]);
+  const selectedIdRef = useRef<string | null>(null);
 
-  const loadStories = useCallback(async () => {
-    try {
-      const response = await getStories();
-      if (response.success) {
-        setStories(
-          (response.data.stories || []).map((s: StoryItem) => ({
-            id: s.id,
-            userId: s.userId,
-            username: s.username,
-            avatar: s.avatar || getAvatarUrl(s.userId, s.username),
-            hasViewed: !!s.hasViewed,
-          }))
-        );
-      }
-    } catch {
-      setStories([]);
-    }
-  }, []);
+  selectedIdRef.current = selectedConversation?.id ?? null;
 
-  const loadConversations = useCallback(async () => {
-    setLoadingConversations(true);
+  const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoadingConversations(true);
     try {
       const res = await getConversations();
       setConversations(res.data?.conversations ?? []);
-    } catch {
-      setConversations([]);
+      setListError(null);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : 'Could not load conversations');
+      if (!opts?.silent) setConversations([]);
     } finally {
       setLoadingConversations(false);
+      setRefreshing(false);
     }
   }, []);
 
-  const openConversation = useCallback(
-    async (conversation: ConversationSummary) => {
-      setLoadingMessages(true);
-      try {
-        const res = await getMessages(conversation.id);
+  const openConversation = useCallback(async (conversation: ConversationSummary) => {
+    setLoadingMessages(true);
+    setSelectedConversation({ ...conversation, messages: [], unread: false });
+    try {
+      const res = await getMessages(conversation.id);
         setSelectedConversation({
           ...conversation,
+          unread: false,
           messages: res.data?.messages ?? [],
+          peer_last_read_at: res.data?.peer_last_read_at ?? null,
         });
-      } catch {
-        setSelectedConversation({ ...conversation, messages: [] });
-      } finally {
-        setLoadingMessages(false);
-      }
-    },
-    []
-  );
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversation.id ? { ...c, unread: false } : c))
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not load messages';
+      Alert.alert('Inbox', msg);
+      setSelectedConversation({ ...conversation, messages: [] });
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, []);
 
   useEffect(() => {
-    void loadStories();
     void loadConversations();
-  }, [loadStories, loadConversations]);
+  }, [loadConversations]);
+
+  // Poll conversation list while on inbox; poll thread while open.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (selectedIdRef.current) {
+        void getMessages(selectedIdRef.current)
+          .then((res) => {
+            const msgs = res.data?.messages ?? [];
+            setSelectedConversation((prev) =>
+              prev && prev.id === selectedIdRef.current
+                ? {
+                    ...prev,
+                    messages: msgs,
+                    unread: false,
+                    peer_last_read_at: res.data?.peer_last_read_at ?? prev.peer_last_read_at,
+                  }
+                : prev
+            );
+          })
+          .catch(() => undefined);
+      } else {
+        void loadConversations({ silent: true });
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [loadConversations]);
 
   useEffect(() => {
     const { conversationId, targetUserId } = route.params ?? {};
@@ -170,11 +214,13 @@ export default function MessagesScreen() {
       if (targetUserId) {
         try {
           const created = await createConversation(targetUserId);
-          const conv = created.data.conversation;
-          await openConversation(conv);
-          void loadConversations();
-        } catch {
-          // Conversation could not be opened
+          await openConversation(created.data.conversation);
+          void loadConversations({ silent: true });
+        } catch (e) {
+          Alert.alert(
+            'Cannot message',
+            e instanceof Error ? e.message : 'You can only message mutual friends.'
+          );
         }
       }
     };
@@ -182,25 +228,13 @@ export default function MessagesScreen() {
     void boot();
   }, [route.params, conversations, openConversation, loadConversations]);
 
-  const groupedStories = useMemo(() => {
-    const grouped = new Map<string, { user: Story; stories: Story[] }>();
-    stories.forEach((story) => {
-      if (!grouped.has(story.userId)) {
-        grouped.set(story.userId, { user: story, stories: [] });
-      }
-      grouped.get(story.userId)!.stories.push(story);
-    });
-    return Array.from(grouped.values());
-  }, [stories]);
-
-  const sections: MessageType[] = ['Individual', 'Store', 'Instructor'];
-
   const handleSendMessage = async () => {
     if (!messageText.trim() || !selectedConversation || sending) return;
 
     const body = messageText.trim();
     setMessageText('');
     setSending(true);
+    triggerPressFeedback();
 
     const optimistic: ChatMessage = {
       id: `temp-${Date.now()}`,
@@ -234,8 +268,8 @@ export default function MessagesScreen() {
           last_message_at: saved.created_at,
         };
       });
-      void loadConversations();
-    } catch {
+      void loadConversations({ silent: true });
+    } catch (e) {
       setSelectedConversation((prev) => {
         if (!prev) return prev;
         return {
@@ -244,25 +278,55 @@ export default function MessagesScreen() {
         };
       });
       setMessageText(body);
+      Alert.alert('Send failed', e instanceof Error ? e.message : 'Try again.');
     } finally {
       setSending(false);
     }
   };
 
+  const goBackRoot = () => {
+    // Prefer the navigator that pushed this screen (e.g. Business stack → BusinessMessages).
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    const parent = navigation.getParent();
+    if (parent?.canGoBack()) {
+      parent.goBack();
+      return;
+    }
+    try {
+      parent?.navigate('Individual' as never);
+    } catch {
+      /* ignore */
+    }
+  };
+
   if (selectedConversation) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
         <KeyboardAvoidingView
           style={tw`flex-1`}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200 bg-white`}>
-            <TouchableOpacity onPress={() => setSelectedConversation(null)} style={tw`mr-3`}>
-              <Ionicons name="arrow-back" size={24} color="#374151" />
+          <View style={tw`flex-row items-center px-4 py-3`}>
+            <TouchableOpacity
+              onPress={() => setSelectedConversation(null)}
+              style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+            >
+              <Ionicons name="arrow-back" size={20} color="#1C1917" />
             </TouchableOpacity>
-            <View style={tw`flex-row items-center flex-1`}>
-              <View style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center mr-3 overflow-hidden`}>
+            <Pressable
+              onPress={() => {
+                const root = navigation.getParent() || navigation;
+                (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', {
+                  userId: selectedConversation.peer.id,
+                });
+              }}
+              style={tw`flex-row items-center flex-1`}
+            >
+              <View style={tw`w-10 h-10 rounded-full bg-stone-100 overflow-hidden mr-3 border border-stone-200`}>
                 <Image
                   source={{
                     uri: getAvatarUrl(
@@ -276,73 +340,89 @@ export default function MessagesScreen() {
                 />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`font-semibold text-stone-900`}>{selectedConversation.peer.username}</Text>
-                <Text style={tw`text-xs text-stone-500`}>Friend</Text>
+                <Text style={tw`font-semibold text-stone-900`}>
+                  {selectedConversation.peer.username}
+                </Text>
+                <Text style={tw`text-xs text-stone-500`}>Friend · tap for profile</Text>
               </View>
-            </View>
+            </Pressable>
           </View>
 
-          {loadingMessages ? (
+          {loadingMessages && selectedConversation.messages.length === 0 ? (
             <View style={tw`flex-1 items-center justify-center`}>
-              <ActivityIndicator color="#10B981" />
+              <ActivityIndicator color="#059669" />
             </View>
           ) : (
             <FlatList
               data={selectedConversation.messages}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={tw`p-4`}
+              contentContainerStyle={tw`px-4 py-2 pb-4`}
               renderItem={({ item }) => (
-                <View style={tw`mb-2 flex-row ${item.is_own ? 'justify-end' : 'justify-start'}`}>
+                <View style={tw`mb-2.5 flex-row ${item.is_own ? 'justify-end' : 'justify-start'}`}>
                   <View
-                    style={tw`max-w-[75%] rounded-2xl px-4 py-2.5 ${
-                      item.is_own ? 'bg-brand-500 rounded-tr-sm' : 'bg-stone-100 rounded-tl-sm'
-                    } shadow-sm`}
+                    style={[
+                      tw`max-w-[78%] rounded-2xl px-4 py-2.5`,
+                      item.is_own
+                        ? tw`bg-emerald-600 rounded-tr-md`
+                        : tw`bg-white border border-stone-200/80 rounded-tl-md`,
+                    ]}
                   >
-                    <Text style={tw`text-base ${item.is_own ? 'text-white' : 'text-stone-900'}`}>
-                      {item.body}
-                    </Text>
                     <Text
-                      style={tw`text-xs mt-1 text-right ${
-                        item.is_own ? 'text-brand-100' : 'text-stone-500'
+                      style={tw`text-[15px] leading-5 ${
+                        item.is_own ? 'text-white' : 'text-stone-900'
                       }`}
                     >
-                      {formatMessageTime(item.created_at)}
+                      {item.body}
                     </Text>
+                    <View style={tw`flex-row items-center justify-end mt-1`}>
+                      <Text
+                        style={tw`text-[10px] mr-1 ${
+                          item.is_own ? 'text-emerald-100' : 'text-stone-400'
+                        }`}
+                      >
+                        {formatMessageTime(item.created_at)}
+                      </Text>
+                      {item.is_own ? (
+                        <ReceiptTicks
+                          status={messageReceipt(item, selectedConversation.peer_last_read_at)}
+                        />
+                      ) : null}
+                    </View>
                   </View>
                 </View>
               )}
               ListEmptyComponent={
-                <View style={tw`items-center py-12`}>
-                  <Text style={tw`text-stone-500`}>No messages yet. Say hello!</Text>
+                <View style={tw`items-center py-16 px-6`}>
+                  <Text style={tw`text-stone-600 text-center`}>
+                    No messages yet. Say hello — keep it kind.
+                  </Text>
                 </View>
               }
             />
           )}
 
-          <View style={tw`border-t border-stone-200 bg-white px-4 py-3`}>
-            <View style={tw`flex-row items-end`}>
-              <View style={tw`flex-1 bg-stone-100 rounded-full px-4 py-2.5 max-h-24 mr-2`}>
-                <TextInput
-                  ref={messageInputRef}
-                  placeholder="Message..."
-                  value={messageText}
-                  onChangeText={setMessageText}
-                  multiline
-                  style={tw`text-base text-stone-900`}
-                  placeholderTextColor="#9CA3AF"
-                  returnKeyType="default"
-                  blurOnSubmit={false}
-                />
-              </View>
+          <View style={tw`px-4 pb-3 pt-2 bg-[#F3EEE4]`}>
+            <View style={tw`flex-row items-end bg-white border border-stone-200 rounded-full px-3 py-1.5`}>
+              <TextInput
+                ref={messageInputRef}
+                placeholder="Message..."
+                value={messageText}
+                onChangeText={setMessageText}
+                multiline
+                style={tw`flex-1 text-base text-stone-900 max-h-24 py-2 px-1`}
+                placeholderTextColor="#A8A29E"
+                returnKeyType="default"
+                blurOnSubmit={false}
+              />
               {messageText.trim() ? (
                 <TouchableOpacity
                   onPress={() => void handleSendMessage()}
                   disabled={sending}
-                  style={tw`bg-brand-500 rounded-full w-10 h-10 items-center justify-center mb-1 ${
+                  style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center mb-0.5 ${
                     sending ? 'opacity-60' : ''
                   }`}
                 >
-                  <Ionicons name="send" size={20} color="#FFFFFF" />
+                  <Ionicons name="send" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -350,9 +430,9 @@ export default function MessagesScreen() {
                     messageInputRef.current?.blur();
                     Keyboard.dismiss();
                   }}
-                  style={tw`px-3 py-1.5 bg-brand-100 rounded-full mb-1`}
+                  style={tw`px-3 py-2 mb-0.5`}
                 >
-                  <Text style={tw`text-xs text-brand-700 font-semibold`}>Done</Text>
+                  <Text style={tw`text-xs text-stone-500 font-semibold`}>Done</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -363,147 +443,107 @@ export default function MessagesScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <View style={tw`flex-1`}>
-        <View style={tw`px-4 pt-4 pb-3 border-b border-stone-200 bg-white`}>
-          <View style={tw`flex-row items-center justify-between mb-4`}>
-            <View style={tw`flex-row items-center flex-1`}>
-              <TouchableOpacity
-                onPress={() => {
-                  const rootNavigation = navigation.getParent() || navigation;
-                  if (rootNavigation.canGoBack()) {
-                    rootNavigation.goBack();
-                  } else {
-                    rootNavigation.navigate('Individual' as never);
-                  }
-                }}
-                style={tw`mr-3`}
-              >
-                <Ionicons name="arrow-back" size={24} color="#374151" />
-              </TouchableOpacity>
-              <Text style={tw`text-3xl font-bold text-brand-600`}>Messages</Text>
-            </View>
-          </View>
-
-          {groupedStories.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={tw`mb-4`}
-              contentContainerStyle={tw`px-2`}
-            >
-              {groupedStories.map((group) => {
-                const { user: storyUser, stories: userStories } = group;
-                const allViewed = userStories.every((s) => s.hasViewed);
-                const storyCount = userStories.length;
-
-                return (
-                  <TouchableOpacity
-                    key={storyUser.userId}
-                    style={tw`items-center mr-4`}
-                    onPress={() => {
-                      const rootNavigation = navigation.getParent() || navigation;
-                      const fullStories = userStories.map((s, idx) => ({
-                        ...s,
-                        image: getStoryImageUrl(s.userId, s.id),
-                        createdAt: new Date(Date.now() - (userStories.length - idx) * 3600000).toISOString(),
-                        views: 0,
-                      }));
-                      rootNavigation.navigate('StoryViewer' as never, {
-                        stories: fullStories,
-                        initialIndex: 0,
-                        onStoriesUpdate: (updatedStories: typeof fullStories) => {
-                          const viewedIds = updatedStories.filter((us) => us.hasViewed).map((us) => us.id);
-                          if (viewedIds.length > 0) {
-                            Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
-                          }
-                          setStories((prev) =>
-                            prev.map((s) => {
-                              const updated = updatedStories.find((us) => us.id === s.id);
-                              return updated ? { ...s, hasViewed: updated.hasViewed } : s;
-                            })
-                          );
-                        },
-                      } as never);
-                    }}
-                  >
-                    <View style={tw`relative`}>
-                      <View
-                        style={tw`w-16 h-16 rounded-full border-2 ${
-                          allViewed ? 'border-stone-300' : 'border-purple-500'
-                        } items-center justify-center bg-purple-100 p-0.5`}
-                      >
-                        <View style={tw`w-full h-full rounded-full bg-white items-center justify-center overflow-hidden`}>
-                          <Image
-                            source={{ uri: storyUser.avatar }}
-                            style={tw`w-full h-full`}
-                            contentFit="cover"
-                          />
-                        </View>
-                      </View>
-                      {storyCount > 1 ? (
-                        <View
-                          style={tw`absolute -top-1 -right-1 bg-purple-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
-                        >
-                          <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={tw`text-xs text-stone-600 mt-1 max-w-16`} numberOfLines={1}>
-                      {storyUser.username}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          ) : null}
-
-          <View style={tw`flex-row border-b border-stone-200`}>
-            {sections.map((section) => (
-              <TouchableOpacity
-                key={section}
-                onPress={() => setActiveSection(section)}
-                style={tw`flex-1 py-3 items-center border-b-2 ${
-                  activeSection === section ? 'border-green-600' : 'border-transparent'
-                }`}
-              >
-                <Text
-                  style={tw`text-sm font-medium ${
-                    activeSection === section ? 'text-brand-600' : 'text-stone-500'
-                  }`}
-                >
-                  {section}
-                </Text>
-              </TouchableOpacity>
-            ))}
+    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+      <View style={tw`px-5 pt-3 pb-2`}>
+        <View style={tw`flex-row items-center mb-1`}>
+          <TouchableOpacity
+            onPress={goBackRoot}
+            style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+          >
+            <Ionicons name="arrow-back" size={20} color="#1C1917" />
+          </TouchableOpacity>
+          <View style={tw`flex-1`}>
+            <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
+              Grow!
+            </Text>
+            <Text style={tw`text-3xl text-stone-900 mt-0.5`}>Inbox</Text>
           </View>
         </View>
+        <Text style={tw`text-sm text-stone-500 mb-3 ml-13`}>
+          Message friends. Shop and coach threads open when you have a real connection.
+        </Text>
 
-        {activeSection !== 'Individual' ? (
-          <View style={tw`flex-1 items-center justify-center px-8`}>
-            <Ionicons name="chatbubbles-outline" size={64} color="#D1D5DB" />
-            <Text style={tw`text-stone-700 mt-4 text-center font-semibold text-lg`}>
-              {activeSection} messaging coming soon
-            </Text>
-            <Text style={tw`text-stone-500 mt-2 text-center`}>
-              Friend-to-friend chat is live under Individual. Store and instructor inboxes will ship in a later sprint.
-            </Text>
-          </View>
-        ) : loadingConversations ? (
-          <View style={tw`flex-1 items-center justify-center`}>
-            <ActivityIndicator color="#10B981" size="large" />
-          </View>
-        ) : (
-          <FlatList
-            data={conversations}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={tw`px-4`}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => void openConversation(item)}
-                style={tw`flex-row items-center py-4 border-b border-stone-100`}
-              >
-                <View style={tw`w-14 h-14 rounded-full bg-stone-100 items-center justify-center overflow-hidden`}>
+        <CategoryCapsuleRow
+          items={[
+            { key: 'friends', label: 'Friends', icon: 'people-outline' },
+            { key: 'shop', label: 'Shop', icon: 'storefront-outline' },
+            { key: 'coaches', label: 'Coaches', icon: 'school-outline' },
+          ]}
+          selectedKey={inboxTab}
+          onSelect={(key) => setInboxTab((key as InboxTab) || 'friends')}
+          showAll={false}
+          allowDeselect={false}
+        />
+      </View>
+
+      {listError ? (
+        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100`}>
+          <Text style={tw`text-sm text-red-700`}>{listError}</Text>
+        </View>
+      ) : null}
+
+      {inboxTab === 'shop' ? (
+        <EmptyState
+          icon="storefront-outline"
+          title="Shop messages"
+          description="When you order from a seller, you can message them here about shipping and support."
+          actionLabel="Browse shop"
+          onAction={() => {
+            const root = navigation.getParent() || navigation;
+            root.navigate('Individual' as never);
+            // Land on Marketplace tab via nested navigate after a tick is fragile; use Marketplace from stack if available
+            setTimeout(() => {
+              try {
+                (navigation as any).navigate('Individual', { screen: 'Marketplace' });
+              } catch {
+                /* ignore */
+              }
+            }, 0);
+          }}
+        />
+      ) : inboxTab === 'coaches' ? (
+        <EmptyState
+          icon="school-outline"
+          title="Coach messages"
+          description="Once you connect with an instructor, your coaching chats will live here."
+          actionLabel="Explore people"
+          onAction={() => {
+            try {
+              (navigation as any).navigate('Individual', { screen: 'Explore' });
+            } catch {
+              goBackRoot();
+            }
+          }}
+        />
+      ) : loadingConversations && conversations.length === 0 ? (
+        <View style={tw`flex-1 items-center justify-center`}>
+          <ActivityIndicator color="#059669" size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={conversations}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={tw`px-5 pb-10`}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void loadConversations();
+              }}
+              tintColor="#059669"
+            />
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => {
+                triggerPressFeedback();
+                void openConversation(item);
+              }}
+              style={tw`flex-row items-center py-3.5 mb-1 bg-white/70 border border-stone-200/80 rounded-2xl px-3`}
+            >
+              <View style={tw`relative`}>
+                <View style={tw`w-14 h-14 rounded-full bg-stone-100 overflow-hidden border border-stone-200`}>
                   <Image
                     source={{
                       uri: getAvatarUrl(item.peer.id, item.peer.username, item.peer.avatar),
@@ -512,34 +552,39 @@ export default function MessagesScreen() {
                     contentFit="cover"
                   />
                 </View>
-                <View style={tw`flex-1 ml-3`}>
-                  <View style={tw`flex-row items-center justify-between mb-1`}>
-                    <Text style={tw`font-semibold text-stone-900`}>{item.peer.username}</Text>
-                    <Text style={tw`text-xs text-stone-500`}>
-                      {formatRelativeTime(item.last_message_at)}
-                    </Text>
-                  </View>
-                  <Text style={tw`text-sm text-stone-600`} numberOfLines={1}>
-                    {item.last_message || 'Start a conversation'}
+                {item.unread ? (
+                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white`} />
+                ) : null}
+              </View>
+              <View style={tw`flex-1 ml-3`}>
+                <View style={tw`flex-row items-center justify-between mb-0.5`}>
+                  <Text
+                    style={tw`font-semibold ${item.unread ? 'text-stone-900' : 'text-stone-800'}`}
+                  >
+                    {item.peer.username}
+                  </Text>
+                  <Text style={tw`text-xs text-stone-400`}>
+                    {formatRelativeTime(item.last_message_at)}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#D1D5DB" style={tw`ml-2`} />
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <View style={tw`items-center justify-center py-12 px-6`}>
-                <Ionicons name="chatbubbles-outline" size={64} color="#D1D5DB" />
-                <Text style={tw`text-stone-700 mt-4 text-center font-semibold text-lg`}>
-                  No conversations yet
-                </Text>
-                <Text style={tw`text-stone-500 mt-2 text-center`}>
-                  Message a friend from their profile. Only mutual friends can chat here.
+                <Text
+                  style={tw`text-sm ${item.unread ? 'text-stone-800 font-medium' : 'text-stone-500'}`}
+                  numberOfLines={1}
+                >
+                  {item.last_message || 'Start a conversation'}
                 </Text>
               </View>
-            }
-          />
-        )}
-      </View>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={
+            <EmptyState
+              icon="chatbubbles-outline"
+              title="No conversations yet"
+              description="Message a friend from their profile. Only mutual friends can chat here."
+            />
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

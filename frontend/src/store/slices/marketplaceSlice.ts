@@ -68,7 +68,7 @@ export const fetchProducts = createAsyncThunk(
       category: normalized.category || undefined,
       subcategory: normalized.subcategory || undefined,
       search: normalized.search || undefined,
-      limit: 60,
+      limit: 100,
     });
     if (response.success && response.data?.products) {
       return response.data.products;

@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -18,15 +19,15 @@ import {
 } from '../../store/slices/businessSlice';
 import { markBusinessNotificationRead } from '../../services/api/business';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { verticalScrollProps } from '../../constants/scroll';
+import { verticalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import BusinessScreen from '../../components/business/BusinessScreen';
 import KpiCard from '../../components/business/KpiCard';
 import PeriodToggle from '../../components/business/PeriodToggle';
 import ActionInbox, { type ActionInboxItem } from '../../components/business/ActionInbox';
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import SkeletonCard from '../../components/ui/SkeletonCard';
-import SectionLabel from '../../components/ui/SectionLabel';
 import { parseShippingAddress } from '../../utils/safeJson';
+import { featureFlags } from '../../constants/featureFlags';
 
 function formatTimeAgo(dateString: string) {
   const date = new Date(dateString);
@@ -38,6 +39,29 @@ function formatTimeAgo(dateString: string) {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
+}
+
+function SectionHeading({
+  title,
+  action,
+  onAction,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={tw`flex-row items-center justify-between mb-2`}>
+      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+        {title}
+      </Text>
+      {action && onAction ? (
+        <TouchableOpacity onPress={onAction}>
+          <Text style={tw`text-sm font-semibold text-emerald-700`}>{action}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
 }
 
 export default function BizDashboard() {
@@ -54,6 +78,8 @@ export default function BizDashboard() {
   const openAnalytics = () => stackNav.navigate('BusinessAnalytics');
   const openSettings = () => stackNav.navigate('BusinessSettings');
   const openCustomers = () => stackNav.navigate('BusinessCustomers');
+  const openMessages = () => stackNav.navigate('BusinessMessages');
+  const openCreatePost = () => stackNav.navigate('BusinessCreatePost');
 
   useFocusEffect(
     useCallback(() => {
@@ -147,22 +173,75 @@ export default function BizDashboard() {
 
   const notificationBadge =
     unreadCount > 0 ? (
-      <View style={tw`mr-2 min-w-[22px] h-[22px] rounded-full bg-red-500 items-center justify-center px-1`}>
+      <View style={tw`min-w-[22px] h-[22px] rounded-full bg-red-500 items-center justify-center px-1`}>
         <Text style={tw`text-[11px] font-bold text-white`}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
       </View>
     ) : null;
 
+  const quickActions = [
+    {
+      label: 'Add product',
+      icon: 'add-circle-outline' as const,
+      onPress: () => navigation.navigate('Catalog', { openForm: true }),
+    },
+    {
+      label: 'Orders',
+      icon: 'receipt-outline' as const,
+      onPress: () => navigation.navigate('Orders'),
+    },
+    {
+      label: 'Customers',
+      icon: 'people-outline' as const,
+      onPress: openCustomers,
+    },
+    {
+      label: 'Messages',
+      icon: 'chatbubbles-outline' as const,
+      onPress: openMessages,
+    },
+    {
+      label: 'Post',
+      icon: 'create-outline' as const,
+      onPress: openCreatePost,
+    },
+    {
+      label: 'Partners',
+      icon: 'people-outline' as const,
+      onPress: () => navigation.navigate('Grow', { segment: 'partners' }),
+    },
+    {
+      label: 'Campaigns',
+      icon: 'megaphone-outline' as const,
+      onPress: () => navigation.navigate('Grow', { segment: 'community' }),
+    },
+    {
+      label: 'Analytics',
+      icon: 'analytics-outline' as const,
+      onPress: openAnalytics,
+    },
+    ...(featureFlags.enableKYC
+      ? [
+          {
+            label: 'Verify ID',
+            icon: 'shield-checkmark-outline' as const,
+            onPress: () => stackNav.navigate('BusinessKYC'),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <BusinessScreen
       title="Home"
-      subtitle="What needs attention & how the store is doing"
+      subtitle="What needs attention and how the store is doing"
       onAnalytics={openAnalytics}
       onSettings={openSettings}
+      onMessages={openMessages}
       headerRight={notificationBadge}
     >
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`pb-10`}
+        contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         {...verticalScrollProps}
         refreshControl={
           <RefreshControl
@@ -173,32 +252,31 @@ export default function BizDashboard() {
           />
         }
       >
-        <View style={tw`bg-white px-4 pb-3 border-b border-stone-100`}>
+        <View style={tw`px-5 mb-4`}>
           <PeriodToggle value={period} onChange={setPeriod} />
         </View>
 
-        <View style={tw`px-4 pt-4`}>
-          <SectionLabel>Action inbox</SectionLabel>
+        <View style={tw`px-5 mb-6`}>
+          <SectionHeading title="Action inbox" />
           {error ? (
-            <View style={tw`mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200`}>
-              <Text style={tw`text-sm text-red-700 mb-2`}>{error}</Text>
+            <View style={tw`mb-3 py-2`}>
+              <Text style={tw`text-sm text-red-700 mb-1`}>{error}</Text>
               <TouchableOpacity onPress={() => void refresh({ force: true })}>
-                <Text style={tw`text-sm font-semibold text-red-800`}>Retry</Text>
+                <Text style={tw`text-sm font-semibold text-emerald-700`}>Retry</Text>
               </TouchableOpacity>
             </View>
           ) : null}
           {loading ? <SkeletonCard variant="product" /> : <ActionInbox items={inboxItems} />}
         </View>
 
-        <View style={tw`px-4 pt-5`}>
-          <SectionLabel>Key metrics</SectionLabel>
+        <View style={tw`px-5 mb-6`}>
+          <SectionHeading title="Key metrics" action="Full analytics" onAction={openAnalytics} />
           {loading ? (
             <View style={tw`gap-3`}>
               <SkeletonCard variant="product" />
-              <SkeletonCard variant="product" />
             </View>
           ) : (
-            <View style={tw`flex-row flex-wrap gap-3`}>
+            <View style={tw`flex-row flex-wrap gap-2.5`}>
               <KpiCard
                 label="Net revenue"
                 value={`$${Number(net).toFixed(2)}`}
@@ -238,155 +316,111 @@ export default function BizDashboard() {
           )}
         </View>
 
-        <View style={tw`px-4 pt-5`}>
-          <SectionLabel>Payouts</SectionLabel>
-          <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
-            <View style={tw`flex-row gap-3 mb-3`}>
-              <View style={tw`flex-1 bg-emerald-50 rounded-xl p-3`}>
-                <Text style={tw`text-xs text-emerald-700`}>Available</Text>
-                <Text style={tw`text-lg font-bold text-emerald-900`}>${availablePayout.toFixed(2)}</Text>
-              </View>
-              <View style={tw`flex-1 bg-amber-50 rounded-xl p-3`}>
-                <Text style={tw`text-xs text-amber-700`}>Fee pending</Text>
-                <Text style={tw`text-lg font-bold text-amber-900`}>${feePending.toFixed(2)}</Text>
-              </View>
+        <View style={tw`px-5 mb-6`}>
+          <SectionHeading title="Payout balance" />
+          <View style={tw`flex-row`}>
+            <View style={tw`flex-1 pr-4`}>
+              <Text style={tw`text-xs text-stone-500`}>Available</Text>
+              <Text style={tw`text-xl font-bold text-emerald-700 mt-0.5`}>
+                ${availablePayout.toFixed(2)}
+              </Text>
             </View>
-            <Text style={tw`text-xs text-stone-500`}>Payouts via platform — Coming soon</Text>
+            <View style={tw`flex-1 border-l border-stone-200/80 pl-4`}>
+              <Text style={tw`text-xs text-stone-500`}>Platform fee hold</Text>
+              <Text style={tw`text-xl font-bold text-stone-800 mt-0.5`}>
+                ${feePending.toFixed(2)}
+              </Text>
+            </View>
           </View>
+          <Text style={tw`text-xs text-stone-500 mt-2 leading-4`}>
+            Estimated from net revenue this period. Transfers settle through your connected payout method.
+          </Text>
         </View>
 
-        <View style={tw`px-4 pt-5`}>
-          <View style={tw`flex-row items-center justify-between mb-2`}>
-            <Text style={tw`text-lg font-bold text-stone-900`}>Order rhythm</Text>
-            <TouchableOpacity onPress={openAnalytics}>
-              <Text style={tw`text-sm text-emerald-700 font-semibold`}>Full analytics</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={tw`bg-white rounded-2xl p-4 border border-stone-100`}>
-            {timeseries.length === 0 ? (
-              <Text style={tw`text-sm text-stone-500`}>No order volume in this period yet.</Text>
-            ) : (
-              <View style={tw`flex-row items-end justify-between h-28`}>
-                {timeseries.map((p) => {
-                  const h = Math.max(6, Math.round(((p.orders || 0) / maxSeries) * 96));
-                  const label = (p.day || '').slice(5) || p.day;
-                  return (
-                    <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
-                      <View style={[tw`w-full rounded-t-md bg-emerald-500`, { height: h }]} />
-                      <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
-                        {label}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View style={tw`px-4 pt-5`}>
-          <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-lg font-bold text-stone-900`}>Recent orders</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Orders')}>
-              <Text style={tw`text-sm text-emerald-700 font-semibold`}>View all</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={tw`bg-white rounded-2xl border border-stone-100 overflow-hidden`}>
-            {recent.length === 0 ? (
-              <View style={tw`p-6 items-center`}>
-                <Ionicons name="receipt-outline" size={40} color="#A8A29E" />
-                <Text style={tw`text-stone-500 mt-3 text-center text-sm`}>No orders in this period</Text>
-              </View>
-            ) : (
-              recent.map((order) => {
-                const shipping = parseShippingAddress(order.shipping_address);
+        <View style={tw`px-5 mb-6`}>
+          <SectionHeading title="Order rhythm" action="Analytics" onAction={openAnalytics} />
+          {timeseries.length === 0 ? (
+            <Text style={tw`text-sm text-stone-500`}>No order volume in this period yet.</Text>
+          ) : (
+            <View style={tw`flex-row items-end justify-between h-28`}>
+              {timeseries.map((p) => {
+                const h = Math.max(6, Math.round(((p.orders || 0) / maxSeries) * 96));
+                const label = (p.day || '').slice(5) || p.day;
                 return (
-                  <TouchableOpacity
-                    key={order.id}
-                    style={tw`px-4 py-3 border-b border-stone-100`}
-                    onPress={() =>
-                      stackNav.navigate('BusinessOrderDetail', { orderId: order.id })
-                    }
-                  >
-                    <View style={tw`flex-row items-center justify-between`}>
-                      <View style={tw`flex-1 pr-2`}>
-                        <Text style={tw`font-semibold text-stone-900`}>
-                          {shipping?.name || 'Customer'}
-                        </Text>
-                        <Text style={tw`text-xs text-stone-400 mt-0.5`}>
-                          {formatTimeAgo(order.created_at)}
-                        </Text>
-                      </View>
-                      <View style={tw`items-end`}>
-                        <Text style={tw`font-bold text-stone-900`}>
-                          ${Number(order.total || 0).toFixed(2)}
-                        </Text>
-                        <View style={tw`mt-1`}>
-                          <OrderStatusPill status={order.status || 'pending'} />
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
+                  <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
+                    <View style={[tw`w-full rounded-t-md bg-emerald-600/80`, { height: h }]} />
+                    <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
+                      {label}
+                    </Text>
+                  </View>
                 );
-              })
-            )}
-          </View>
+              })}
+            </View>
+          )}
         </View>
 
-        <View style={tw`px-4 pt-5`}>
-          <Text style={tw`text-lg font-bold text-stone-900 mb-3`}>Quick actions</Text>
-          <View style={tw`flex-row flex-wrap -mx-1.5`}>
-            {[
-              {
-                label: 'Add product',
-                icon: 'add-circle' as const,
-                color: '#059669',
-                bg: 'bg-emerald-50',
-                onPress: () => navigation.navigate('Catalog', { openForm: true }),
-              },
-              {
-                label: 'Orders',
-                icon: 'receipt' as const,
-                color: '#2563EB',
-                bg: 'bg-blue-50',
-                onPress: () => navigation.navigate('Orders'),
-              },
-              {
-                label: 'Customers',
-                icon: 'people' as const,
-                color: '#7C3AED',
-                bg: 'bg-violet-50',
-                onPress: openCustomers,
-              },
-              {
-                label: 'Discover',
-                icon: 'people' as const,
-                color: '#EA580C',
-                bg: 'bg-orange-50',
-                onPress: () => navigation.navigate('Grow', { segment: 'partners' }),
-              },
-              {
-                label: 'Analytics',
-                icon: 'analytics' as const,
-                color: '#0D9488',
-                bg: 'bg-teal-50',
-                onPress: openAnalytics,
-              },
-            ].map((action) => (
-              <TouchableOpacity key={action.label} style={tw`w-1/2 px-1.5 mb-3`} onPress={action.onPress}>
-                <View style={tw`bg-white rounded-2xl p-4 border border-stone-200 items-center`}>
-                  <View style={tw`w-12 h-12 ${action.bg} rounded-full items-center justify-center mb-2`}>
-                    <Ionicons name={action.icon} size={26} color={action.color} />
+        <View style={tw`px-5 mb-6`}>
+          <SectionHeading title="Recent orders" action="View all" onAction={() => navigation.navigate('Orders')} />
+          {recent.length === 0 ? (
+            <View style={tw`py-6 items-center`}>
+              <Ionicons name="receipt-outline" size={32} color="#A8A29E" />
+              <Text style={tw`text-stone-500 mt-2 text-sm`}>No orders in this period</Text>
+            </View>
+          ) : (
+            recent.map((order) => {
+              const shipping = parseShippingAddress(order.shipping_address);
+              return (
+                <TouchableOpacity
+                  key={order.id}
+                  style={tw`flex-row items-center py-3 border-b border-stone-200/70`}
+                  onPress={() => stackNav.navigate('BusinessOrderDetail', { orderId: order.id })}
+                >
+                  <View style={tw`flex-1 pr-2`}>
+                    <Text style={tw`font-semibold text-stone-900`}>
+                      {shipping?.name || 'Customer'}
+                    </Text>
+                    <Text style={tw`text-xs text-stone-400 mt-0.5`}>
+                      {formatTimeAgo(order.created_at)}
+                    </Text>
                   </View>
-                  <Text style={tw`text-sm font-semibold text-stone-900`}>{action.label}</Text>
+                  <View style={tw`items-end`}>
+                    <Text style={tw`font-bold text-stone-900`}>
+                      ${Number(order.total || 0).toFixed(2)}
+                    </Text>
+                    <View style={tw`mt-1`}>
+                      <OrderStatusPill status={order.status || 'pending'} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        <View style={tw`px-5 mb-4`}>
+          <SectionHeading title="Quick actions" />
+          <View style={tw`flex-row flex-wrap -mx-1`}>
+            {quickActions.map((action) => (
+              <Pressable
+                key={action.label}
+                onPress={action.onPress}
+                style={tw`w-1/3 px-1 mb-2`}
+              >
+                <View style={tw`items-center py-3`}>
+                  <View style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] items-center justify-center mb-1.5`}>
+                    <Ionicons name={action.icon} size={20} color="#059669" />
+                  </View>
+                  <Text style={tw`text-xs font-semibold text-stone-800 text-center`} numberOfLines={1}>
+                    {action.label}
+                  </Text>
                 </View>
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </View>
         </View>
 
         {status === 'loading' && kpis ? (
-          <Text style={tw`text-center text-xs text-stone-400 mt-2`}>Refreshing…</Text>
+          <Text style={tw`text-center text-xs text-stone-400 mb-4`}>Refreshing…</Text>
         ) : null}
       </ScrollView>
     </BusinessScreen>

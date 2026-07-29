@@ -54,12 +54,12 @@ export default function CustomersScreen() {
 
   const renderCustomer = ({ item }: { item: BusinessCustomer }) => (
     <TouchableOpacity
-      style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}
+      style={tw`py-4 border-b border-stone-200/70`}
       onPress={() => openCustomerOrders(item)}
       activeOpacity={0.85}
     >
       <View style={tw`flex-row items-center`}>
-        <View style={tw`w-11 h-11 rounded-full bg-emerald-50 items-center justify-center mr-3`}>
+        <View style={tw`w-11 h-11 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
           <Text style={tw`text-lg`}>{item.avatar || '👤'}</Text>
         </View>
         <View style={tw`flex-1 pr-2`}>
@@ -68,7 +68,7 @@ export default function CustomersScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
       </View>
-      <View style={tw`flex-row mt-3 pt-3 border-t border-stone-100`}>
+      <View style={tw`flex-row mt-3`}>
         <View style={tw`flex-1`}>
           <Text style={tw`text-xs text-stone-500`}>LTV</Text>
           <Text style={tw`text-sm font-bold text-emerald-700`}>${Number(item.total_spent).toFixed(2)}</Text>
@@ -86,14 +86,14 @@ export default function CustomersScreen() {
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['bottom']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['bottom']}>
       <FlatList
         style={tw`flex-1`}
         data={customers}
         keyExtractor={(item) => item.user_id}
         renderItem={renderCustomer}
         contentContainerStyle={[
-          tw`px-4 pt-4`,
+          tw`px-5 pt-2`,
           customers.length === 0 ? tw`flex-grow` : null,
           { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
         ]}

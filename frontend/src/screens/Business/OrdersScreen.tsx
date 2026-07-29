@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
@@ -15,6 +14,7 @@ import { fetchBusinessOrders, patchLocalOrderStatus, setOrdersFilter } from '../
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import BusinessStatStrip from '../../components/business/BusinessStatStrip';
+import BusinessScreen from '../../components/business/BusinessScreen';
 import SearchField from '../../components/ui/SearchField';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
@@ -118,7 +118,7 @@ export default function OrdersScreen() {
         : null;
 
     return (
-      <View style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}>
+      <View style={tw`py-4 border-b border-stone-200/70`}>
         <TouchableOpacity
           onPress={() =>
             navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })
@@ -129,7 +129,7 @@ export default function OrdersScreen() {
               <Text style={tw`text-xs text-stone-400 font-semibold`}>
                 ORD-{order.id.slice(-8).toUpperCase()}
               </Text>
-              <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>{customer}</Text>
+              <Text style={tw`text-base font-bold text-stone-900 mt-0.5`}>{customer}</Text>
               <Text style={tw`text-sm text-stone-500 mt-1`}>
                 {itemCount} item{itemCount === 1 ? '' : 's'} ·{' '}
                 {new Date(order.created_at).toLocaleDateString()}
@@ -141,7 +141,7 @@ export default function OrdersScreen() {
               ) : null}
             </View>
             <View style={tw`items-end`}>
-              <Text style={tw`text-xl font-bold text-stone-900`}>
+              <Text style={tw`text-lg font-bold text-stone-900`}>
                 ${Number(order.total || 0).toFixed(2)}
               </Text>
               <View style={tw`mt-1`}>
@@ -152,7 +152,7 @@ export default function OrdersScreen() {
         </TouchableOpacity>
         {next ? (
           <TouchableOpacity
-            style={tw`mt-2 bg-emerald-600 rounded-xl py-3 items-center ${
+            style={tw`mt-1 bg-emerald-600 rounded-xl py-3 items-center ${
               advancingId === order.id ? 'opacity-50' : ''
             }`}
             disabled={advancingId === order.id}
@@ -168,12 +168,16 @@ export default function OrdersScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
-      <View style={tw`bg-white px-4 pt-3 pb-3 border-b border-stone-100`}>
-        <Text style={tw`text-2xl font-bold text-stone-900 mb-3 tracking-tight`}>Orders</Text>
+    <BusinessScreen
+      title="Orders"
+      subtitle="Fulfill, ship, and track marketplace orders"
+      onSettings={() => navigation.getParent()?.navigate('BusinessSettings')}
+      onMessages={() => navigation.getParent()?.navigate('BusinessMessages')}
+    >
+      <View style={tw`px-5 pb-3`}>
         <BusinessStatStrip
           items={[
-            { label: 'All-time revenue', value: `$${totalRevenue.toFixed(2)}`, tone: 'emerald' },
+            { label: 'Revenue', value: `$${totalRevenue.toFixed(2)}`, tone: 'emerald' },
             { label: 'To fulfill', value: String(pendingCount), tone: 'amber' },
             { label: 'Total', value: String(orders.length), tone: 'stone' },
           ]}
@@ -185,16 +189,22 @@ export default function OrdersScreen() {
             placeholder="Search customer or order ID…"
           />
         </View>
-        <ScrollView horizontal {...horizontalScrollProps} showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal {...horizontalScrollProps} showsHorizontalScrollIndicator={false} style={tw`mt-3`}>
           <View style={tw`flex-row gap-2 pr-4`}>
             {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
               <TouchableOpacity
                 key={status}
                 onPress={() => dispatch(setOrdersFilter(status))}
-                style={tw`px-4 py-2 rounded-full ${statusFilter === status ? 'bg-emerald-600' : 'bg-stone-100'}`}
+                style={tw`px-3.5 py-2 rounded-full ${
+                  statusFilter === status
+                    ? 'bg-emerald-600'
+                    : 'bg-[#EAE4D6]/80 border border-stone-200/60'
+                }`}
               >
                 <Text
-                  style={tw`text-sm font-semibold ${statusFilter === status ? 'text-white' : 'text-stone-600'}`}
+                  style={tw`text-sm font-semibold ${
+                    statusFilter === status ? 'text-white' : 'text-stone-600'
+                  }`}
                 >
                   {status === 'pending' ? 'To fulfill' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
@@ -210,7 +220,7 @@ export default function OrdersScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderOrder}
         contentContainerStyle={[
-          tw`px-4 pt-4`,
+          tw`px-5 pt-1`,
           filteredOrders.length === 0 ? tw`flex-grow` : null,
           { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
         ]}
@@ -239,6 +249,6 @@ export default function OrdersScreen() {
           )
         }
       />
-    </SafeAreaView>
+    </BusinessScreen>
   );
 }

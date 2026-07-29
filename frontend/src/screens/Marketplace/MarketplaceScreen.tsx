@@ -22,9 +22,12 @@ import EmptyState from '../../components/ui/EmptyState';
 import SearchField from '../../components/ui/SearchField';
 import SectionLabel from '../../components/ui/SectionLabel';
 import SkeletonCard from '../../components/ui/SkeletonCard';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import MarketplaceCategoryBar from '../../components/marketplace/MarketplaceCategoryBar';
 import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import CATEGORIES from '../../data/categories';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
@@ -38,20 +41,22 @@ export default function MarketplaceScreen() {
   const [failedProductImages, setFailedProductImages] = useState<Record<string, boolean>>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [onMyPathsOnly, setOnMyPathsOnly] = useState(false);
+  const [minPrice, setMinPrice] = useState<number | null>(null);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<'relevance' | 'price_asc' | 'price_desc' | 'newest'>('relevance');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  /** Search hits the API; category chips filter the loaded catalog client-side. */
   const fetchParams = useMemo(
     () => ({
-      category: selectedCategory ?? undefined,
-      subcategory: selectedSubcategory ?? undefined,
       search: debouncedSearch || undefined,
     }),
-    [selectedCategory, selectedSubcategory, debouncedSearch]
+    [debouncedSearch]
   );
 
   useEffect(() => {
@@ -59,7 +64,6 @@ export default function MarketplaceScreen() {
   }, [dispatch, fetchParams]);
 
   const onRefresh = async () => {
-    console.log('[Marketplace] Pull to refresh triggered');
     setRefreshing(true);
     await dispatch(fetchProducts(fetchParams));
     setRefreshing(false);
@@ -70,11 +74,28 @@ export default function MarketplaceScreen() {
     dispatch(setSelectedCategory(category));
   };
 
-  const subcategoryOptions = useMemo(() => {
-    if (!selectedCategory) return [];
-    const cat = CATEGORIES.find((c) => c.key === selectedCategory);
-    return cat?.subcategories || [];
-  }, [selectedCategory]);
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of products) {
+      const parent = (p.category || '').split(':')[0];
+      if (!parent) continue;
+      counts[parent] = (counts[parent] || 0) + 1;
+    }
+    return counts;
+  }, [products]);
+
+  const subcategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!selectedCategory) return counts;
+    for (const p of products) {
+      const parent = (p.category || '').split(':')[0];
+      if (parent !== selectedCategory) continue;
+      const sub = (p.subcategory || '').toLowerCase();
+      if (!sub) continue;
+      counts[sub] = (counts[sub] || 0) + 1;
+    }
+    return counts;
+  }, [products, selectedCategory]);
 
   const recommendedProducts = useMemo(() => {
     const userCategories = user?.categories || [];
@@ -83,17 +104,15 @@ export default function MarketplaceScreen() {
     });
 
     let filtered = selectedCategory
-      ? ranked.filter(
-          (p) => p.category === selectedCategory || p.category.includes(selectedCategory.split(':')[0])
-        )
+      ? ranked.filter((p) => {
+          const parent = (p.category || '').split(':')[0];
+          return parent === selectedCategory;
+        })
       : ranked;
 
     if (selectedSubcategory) {
       filtered = filtered.filter(
-        (p) =>
-          (p.subcategory || '').toLowerCase() === selectedSubcategory.toLowerCase() ||
-          `${p.category}:${p.subcategory || ''}`.toLowerCase() ===
-            `${selectedCategory || ''}:${selectedSubcategory}`.toLowerCase()
+        (p) => (p.subcategory || '').toLowerCase() === selectedSubcategory.toLowerCase()
       );
     }
 
@@ -106,25 +125,58 @@ export default function MarketplaceScreen() {
   );
 
   const searchFiltered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    let list = recommendedProducts;
+    let list = [...recommendedProducts];
     if (inStockOnly) {
       list = list.filter((p) => p.stock > 0);
+    }
+    if (onMyPathsOnly) {
+      const parents = new Set<string>();
+      user?.categories?.forEach((cat: string) => {
+        if (cat.includes(':')) parents.add(cat.split(':')[0]);
+        else if (cat) parents.add(cat);
+      });
+      if (parents.size > 0) {
+        list = list.filter((p) => parents.has((p.category || '').split(':')[0]));
+      }
+    }
+    if (minPrice != null) {
+      list = list.filter((p) => p.price >= minPrice);
     }
     if (maxPrice != null) {
       list = list.filter((p) => p.price <= maxPrice);
     }
-    if (!q) return list;
-    return list.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        p.category.toLowerCase().includes(q) ||
-        !!(p.subcategory && p.subcategory.toLowerCase().includes(q))
-    );
-  }, [recommendedProducts, searchQuery, inStockOnly, maxPrice]);
+    if (sortBy === 'price_asc') {
+      list.sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price_desc') {
+      list.sort((a, b) => b.price - a.price);
+    } else if (sortBy === 'newest') {
+      list.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    }
+    return list;
+  }, [
+    recommendedProducts,
+    inStockOnly,
+    onMyPathsOnly,
+    minPrice,
+    maxPrice,
+    sortBy,
+    user?.categories,
+  ]);
 
   const priceTiers = useMemo(() => [25, 50, 100, 250], []);
+  const minPriceTiers = useMemo(() => [10, 25, 50], []);
+  const hasActiveFilters =
+    inStockOnly || onMyPathsOnly || minPrice != null || maxPrice != null || sortBy !== 'relevance';
+
+  const clearShopFilters = () => {
+    setInStockOnly(false);
+    setOnMyPathsOnly(false);
+    setMinPrice(null);
+    setMaxPrice(null);
+    setSortBy('relevance');
+  };
 
   /** Always show catalog parents; put the user's growth areas first when present. */
   const categories = useMemo(() => {
@@ -134,120 +186,71 @@ export default function MarketplaceScreen() {
       else if (cat) userParents.add(cat);
     });
     const catalog = CATEGORIES.map((c) => c.key);
-    const prioritized = [
+    return [
       ...catalog.filter((k) => userParents.has(k)),
       ...catalog.filter((k) => !userParents.has(k)),
     ];
-    return prioritized;
   }, [user?.categories]);
 
+  const clearCategoryFilters = () => {
+    setSelectedSubcategory(null);
+    dispatch(setSelectedCategory(null));
+  };
+
+  const emptyDescription = (() => {
+    if (selectedCategory && selectedSubcategory) {
+      return `Nothing in ${getCategoryLabel(`${selectedCategory}:${selectedSubcategory}`)} yet. Try another subcategory or clear the filter.`;
+    }
+    if (selectedCategory) {
+      return `No products in ${getCategoryLabel(selectedCategory)} yet. Clear the category or check back soon.`;
+    }
+    return 'When sellers publish SKUs, they’ll appear here ranked for your growth path.';
+  })();
+
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <View style={tw`flex-1`}>
-        <View style={tw`px-5 pt-3 pb-3 border-b border-stone-100 bg-white`}>
-          <View style={tw`flex-row items-center justify-between mb-1`}>
-            <Text style={tw`text-2xl font-bold tracking-tight text-emerald-700`}>Marketplace</Text>
-            <View style={tw`flex-row items-center`}>
+        <GrowChromeHeader
+          right={
+            <>
               <TouchableOpacity
                 onPress={() => setFilterOpen(true)}
-                style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center mr-2`}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Open filters"
               >
-                <Ionicons name="options-outline" size={22} color="#059669" />
+                <Ionicons name="options-outline" size={17} color="#059669" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
                   rootNavigation.navigate('UserOrders' as never);
                 }}
-                style={tw`w-10 h-10 rounded-full bg-stone-100 items-center justify-center`}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Your orders"
               >
-                <Ionicons name="receipt-outline" size={22} color="#059669" />
+                <Ionicons name="receipt-outline" size={17} color="#059669" />
               </TouchableOpacity>
-            </View>
-          </View>
-          <Text style={tw`text-sm text-stone-500`}>
-            Keyword search hits the catalog API; category pills filter locally and sync with your interests.
+            </>
+          }
+        />
+
+        <View style={tw`px-5 pt-3 pb-2`}>
+          <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Shop</Text>
+          <Text style={tw`text-sm text-stone-500 mb-2`}>
+            Gear ranked for your growth paths — filter with the capsules below.
           </Text>
         </View>
 
-        <ScrollView
-          horizontal
-          style={tw`border-b border-stone-100 bg-white`}
-          contentContainerStyle={tw`px-4 py-3`}
-          {...horizontalScrollProps}
-        >
-          <TouchableOpacity
-            onPress={() => handleCategoryChange(null)}
-            style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
-              selectedCategory === null ? 'bg-emerald-600' : 'bg-stone-100'
-            }`}
-          >
-            <Text
-              style={tw`font-semibold text-[15px] ${
-                selectedCategory === null ? 'text-white' : 'text-stone-600'
-              }`}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-          {categories.map((cat) => {
-            const label = CATEGORIES.find((c) => c.key === cat)?.label || cat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => handleCategoryChange(cat)}
-                style={tw`px-5 py-2.5 rounded-full mr-2 min-h-[42px] items-center justify-center ${
-                  selectedCategory === cat ? 'bg-emerald-600' : 'bg-stone-100'
-                }`}
-              >
-                <Text
-                  style={tw`font-semibold text-[15px] ${
-                    selectedCategory === cat ? 'text-white' : 'text-stone-600'
-                  }`}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {selectedCategory && subcategoryOptions.length > 0 ? (
-          <ScrollView
-            horizontal
-            style={tw`border-b border-stone-100 bg-white`}
-            contentContainerStyle={tw`px-4 py-2`}
-            {...horizontalScrollProps}
-          >
-            <TouchableOpacity
-              onPress={() => setSelectedSubcategory(null)}
-              style={tw`px-4 py-2 rounded-full mr-2 min-h-[38px] items-center justify-center ${selectedSubcategory === null ? 'bg-emerald-100' : 'bg-stone-100'}`}
-            >
-              <Text
-                style={tw`text-sm font-semibold ${selectedSubcategory === null ? 'text-emerald-800' : 'text-stone-600'}`}
-              >
-                All in category
-              </Text>
-            </TouchableOpacity>
-            {subcategoryOptions.map((sub) => (
-              <TouchableOpacity
-                key={sub.key}
-                onPress={() => setSelectedSubcategory(sub.key)}
-                style={tw`px-4 py-2 rounded-full mr-2 min-h-[38px] items-center justify-center ${
-                  selectedSubcategory === sub.key ? 'bg-emerald-600' : 'bg-stone-100'
-                }`}
-              >
-                <Text
-                  style={tw`text-sm font-semibold ${
-                    selectedSubcategory === sub.key ? 'text-white' : 'text-stone-600'
-                  }`}
-                >
-                  {sub.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
+        <MarketplaceCategoryBar
+          categoryKeys={categories}
+          selectedCategory={selectedCategory}
+          selectedSubcategory={selectedSubcategory}
+          counts={categoryCounts}
+          subcategoryCounts={subcategoryCounts}
+          totalCount={products.length}
+          onSelectCategory={handleCategoryChange}
+          onSelectSubcategory={setSelectedSubcategory}
+        />
 
         {isLoading && products.length === 0 ? (
           <View style={tw`flex-1 px-4 pt-3`}>
@@ -274,7 +277,7 @@ export default function MarketplaceScreen() {
                 <View style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
                   <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
                   <Text style={tw`text-emerald-100 text-sm mt-1`}>
-                    Products ranked by your interests, journal tags, and community picks.
+                    Products ranked by your interests and community picks.
                   </Text>
                 </View>
                 <SearchField
@@ -282,16 +285,37 @@ export default function MarketplaceScreen() {
                   onChangeText={setSearchQuery}
                   placeholder="Search products"
                 />
-                {(inStockOnly || maxPrice != null) && (
+                {hasActiveFilters && (
                   <View style={tw`flex-row flex-wrap mt-2`}>
                     {inStockOnly ? (
                       <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
                         <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
                       </View>
                     ) : null}
+                    {onMyPathsOnly ? (
+                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                        <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
+                      </View>
+                    ) : null}
+                    {minPrice != null ? (
+                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                        <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
+                      </View>
+                    ) : null}
                     {maxPrice != null ? (
                       <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
                         <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
+                      </View>
+                    ) : null}
+                    {sortBy !== 'relevance' ? (
+                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                        <Text style={tw`text-xs text-emerald-800 font-medium`}>
+                          {sortBy === 'price_asc'
+                            ? 'Price ↑'
+                            : sortBy === 'price_desc'
+                              ? 'Price ↓'
+                              : 'Newest'}
+                        </Text>
                       </View>
                     ) : null}
                   </View>
@@ -303,6 +327,7 @@ export default function MarketplaceScreen() {
                       horizontal
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={tw`pt-2 pb-1`}
+                      style={{ flexGrow: 0 }}
                       {...horizontalScrollProps}
                     >
                       {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
@@ -349,7 +374,15 @@ export default function MarketplaceScreen() {
                     </ScrollView>
                   </View>
                 ) : null}
-                <SectionLabel variant="caps">All products</SectionLabel>
+                <SectionLabel variant="caps">
+                  {selectedCategory
+                    ? getCategoryLabel(
+                        selectedSubcategory
+                          ? `${selectedCategory}:${selectedSubcategory}`
+                          : selectedCategory
+                      )
+                    : 'All products'}
+                </SectionLabel>
               </>
             }
             renderItem={({ item }) => {
@@ -433,11 +466,19 @@ export default function MarketplaceScreen() {
                   actionLabel="Clear search"
                   onAction={() => setSearchQuery('')}
                 />
+              ) : selectedCategory ? (
+                <EmptyState
+                  icon="filter-outline"
+                  title="No products in this path"
+                  description={emptyDescription}
+                  actionLabel="Clear category"
+                  onAction={clearCategoryFilters}
+                />
               ) : (
                 <EmptyState
                   icon="storefront-outline"
                   title="No products yet"
-                  description="When sellers publish SKUs, they’ll appear here with smart ranking for your journey."
+                  description={emptyDescription}
                 />
               )
             }
@@ -447,61 +488,148 @@ export default function MarketplaceScreen() {
 
       <Modal visible={filterOpen} animationType="slide" transparent onRequestClose={() => setFilterOpen(false)}>
         <View style={tw`flex-1 justify-end bg-black/40`}>
-          <View style={tw`bg-white rounded-t-3xl px-5 pt-5 pb-10`}>
+          <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-5 pb-10 max-h-[88%]`}>
             <View style={tw`flex-row items-center justify-between mb-4`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
+              <View>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                  Grow! Shop
+                </Text>
+                <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
+              </View>
               <TouchableOpacity onPress={() => setFilterOpen(false)}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-100`}>
-              <Text style={tw`text-base text-stone-800`}>In stock only</Text>
-              <Switch
-                value={inStockOnly}
-                onValueChange={setInStockOnly}
-                trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
-                thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
-              />
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+                <Text style={tw`text-base text-stone-800`}>In stock only</Text>
+                <Switch
+                  value={inStockOnly}
+                  onValueChange={setInStockOnly}
+                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
+                  thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
+                />
+              </View>
 
-            <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
-            <View style={tw`flex-row flex-wrap`}>
-              <TouchableOpacity
-                onPress={() => setMaxPrice(null)}
-                style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${maxPrice == null ? 'bg-emerald-600' : 'bg-stone-100'}`}
-              >
-                <Text style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-stone-600'}`}>Any</Text>
-              </TouchableOpacity>
-              {priceTiers.map((tier) => (
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+                <View style={tw`flex-1 pr-4`}>
+                  <Text style={tw`text-base text-stone-800`}>On my growth paths</Text>
+                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>Only products in your interest areas</Text>
+                </View>
+                <Switch
+                  value={onMyPathsOnly}
+                  onValueChange={setOnMyPathsOnly}
+                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
+                  thumbColor={onMyPathsOnly ? '#059669' : '#F5F5F4'}
+                />
+              </View>
+
+              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Sort by</Text>
+              <View style={tw`flex-row flex-wrap`}>
+                {(
+                  [
+                    { key: 'relevance', label: 'For you' },
+                    { key: 'newest', label: 'Newest' },
+                    { key: 'price_asc', label: 'Price ↑' },
+                    { key: 'price_desc', label: 'Price ↓' },
+                  ] as const
+                ).map((opt) => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => setSortBy(opt.key)}
+                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                      sortBy === opt.key ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-medium ${
+                        sortBy === opt.key ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Min price</Text>
+              <View style={tw`flex-row flex-wrap`}>
                 <TouchableOpacity
-                  key={tier}
-                  onPress={() => setMaxPrice(tier)}
-                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${maxPrice === tier ? 'bg-emerald-600' : 'bg-stone-100'}`}
+                  onPress={() => setMinPrice(null)}
+                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                    minPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                  }`}
                 >
-                  <Text style={tw`text-sm font-medium ${maxPrice === tier ? 'text-white' : 'text-stone-600'}`}>
-                    Under ${tier}
+                  <Text
+                    style={tw`text-sm font-medium ${minPrice == null ? 'text-white' : 'text-stone-600'}`}
+                  >
+                    Any
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+                {minPriceTiers.map((tier) => (
+                  <TouchableOpacity
+                    key={tier}
+                    onPress={() => setMinPrice(tier)}
+                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                      minPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-medium ${
+                        minPrice === tier ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
+                      ${tier}+
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <TouchableOpacity
-              onPress={() => {
-                setInStockOnly(false);
-                setMaxPrice(null);
-              }}
-              style={tw`mt-4 py-3 items-center`}
-            >
-              <Text style={tw`text-brand-700 font-semibold`}>Clear filters</Text>
-            </TouchableOpacity>
+              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
+              <View style={tw`flex-row flex-wrap`}>
+                <TouchableOpacity
+                  onPress={() => setMaxPrice(null)}
+                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                    maxPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-stone-600'}`}
+                  >
+                    Any
+                  </Text>
+                </TouchableOpacity>
+                {priceTiers.map((tier) => (
+                  <TouchableOpacity
+                    key={tier}
+                    onPress={() => setMaxPrice(tier)}
+                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
+                      maxPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-sm font-medium ${
+                        maxPrice === tier ? 'text-white' : 'text-stone-600'
+                      }`}
+                    >
+                      Under ${tier}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <TouchableOpacity
-              onPress={() => setFilterOpen(false)}
-              style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center`}
-            >
-              <Text style={tw`text-white font-semibold`}>Show results</Text>
-            </TouchableOpacity>
+              <TouchableOpacity onPress={clearShopFilters} style={tw`mt-4 py-3 items-center`}>
+                <Text style={tw`text-emerald-700 font-semibold`}>Clear filters</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setFilterOpen(false)}
+                style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center mb-2`}
+              >
+                <Text style={tw`text-white font-semibold`}>Show results</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>

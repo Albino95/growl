@@ -6,6 +6,9 @@ import {
   signInSchema,
   ssoSchema,
   verifyEmailSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  refreshTokenSchema,
 } from '../utils/validation';
 import {
   hashPassword,
@@ -14,19 +17,42 @@ import {
   generateVerificationToken,
   hashVerificationToken,
 } from '../utils/password';
-import { signAccessToken } from '../utils/jwt';
 import { getRequestContext, userAuthPayload } from '../utils/auth';
 import { generateId } from '../utils/id';
-import { sendVerificationEmail } from '../utils/email';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
+import { verifyAppleIdToken } from '../utils/appleAuth';
+import { checkRateLimit, clientIp } from '../utils/rateLimit';
+import {
+  issueSessionTokens,
+  rotateRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserRefreshTokens,
+} from '../utils/sessions';
 
-function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env: Env) {
+async function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env: Env) {
   const base = userAuthPayload(user);
-  return signAccessToken(user.id, env).then((token) =>
-    json({
-      ...base,
-      token,
-    })
-  );
+  const tokens = await issueSessionTokens(env, user.id);
+  return json({
+    ...base,
+    token: tokens.token,
+    refreshToken: tokens.refreshToken,
+    expiresIn: tokens.expiresIn,
+  });
+}
+
+async function rateLimitOrError(
+  request: Request,
+  env: Env,
+  action: string,
+  limit: number,
+  windowSeconds: number
+): Promise<Response | null> {
+  const ip = clientIp(request);
+  const { allowed } = await checkRateLimit(env, `${action}:${ip}`, limit, windowSeconds);
+  if (!allowed) {
+    return error('RATE_LIMITED', 'Too many requests. Try again later.', 429);
+  }
+  return null;
 }
 
 /**
@@ -37,6 +63,9 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
     return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
   }
+
+  const limited = await rateLimitOrError(request, env, 'signup', 10, 3600);
+  if (limited) return limited;
 
   try {
     const validation = await validateRequest(request, signUpSchema);
@@ -105,7 +134,9 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
         requiresEmailVerification: true,
         email: normalizedEmail,
         message: 'Check your email for a verification code, then confirm before signing in.',
-        ...(env.ENVIRONMENT === 'development' ? { devVerificationCode: verifyToken } : {}),
+        ...(env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'qa'
+          ? { devVerificationCode: verifyToken }
+          : {}),
       },
       201
     );
@@ -181,6 +212,9 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
     return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
   }
 
+  const limited = await rateLimitOrError(request, env, 'signin', 30, 900);
+  if (limited) return limited;
+
   try {
     const validation = await validateRequest(request, signInSchema);
     if (!validation.success) return validation.response;
@@ -235,11 +269,27 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
     return sessionResponse(user as unknown as Parameters<typeof userAuthPayload>[0], env);
   } catch (err) {
     console.error('[signIn] Error:', err);
+    if (err instanceof Error && /JWT_SECRET/.test(err.message)) {
+      return error('AUTH_MISCONFIGURED', 'Authentication is not configured', 503);
+    }
     return error('INTERNAL_ERROR', 'An error occurred during sign in', 500);
   }
 }
 
 export async function signOut(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = (await request.json().catch(() => ({}))) as { refreshToken?: string };
+    if (body.refreshToken) {
+      await revokeRefreshToken(env, body.refreshToken);
+    } else {
+      const ctx = await getRequestContext(request, env);
+      if (ctx.userId) {
+        await revokeAllUserRefreshTokens(env, ctx.userId);
+      }
+    }
+  } catch (err) {
+    console.error('[signOut] Error:', err);
+  }
   return json({ message: 'Signed out successfully' });
 }
 
@@ -255,47 +305,33 @@ async function verifyGoogleIdToken(idToken: string, env: Env): Promise<{ email: 
 }
 
 async function verifyFacebookAccessToken(
-  accessToken: string
+  accessToken: string,
+  env: Env
 ): Promise<{ email: string; name?: string }> {
   const res = await fetch(
     `https://graph.facebook.com/me?fields=email,name&access_token=${encodeURIComponent(accessToken)}`
   );
   if (!res.ok) throw new Error('Invalid Facebook token');
-  const data = (await res.json()) as { email?: string; name?: string; error?: { message: string } };
+  const data = (await res.json()) as { email?: string; name?: string; error?: { message: string }; id?: string };
   if (data.error) throw new Error(data.error.message);
   if (!data.email) throw new Error('Facebook account must share email to use Growl');
+
+  if (env.FACEBOOK_APP_ID) {
+    const dbg = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`
+    );
+    if (dbg.ok) {
+      const info = (await dbg.json()) as { data?: { app_id?: string; is_valid?: boolean } };
+      if (info.data?.app_id && info.data.app_id !== env.FACEBOOK_APP_ID) {
+        throw new Error('Facebook token audience mismatch');
+      }
+      if (info.data && info.data.is_valid === false) {
+        throw new Error('Facebook token invalid');
+      }
+    }
+  }
+
   return { email: data.email.toLowerCase(), name: data.name };
-}
-
-/** Decode Apple identity JWT payload (signature verification should use Apple JWKS in production). */
-function verifyAppleIdToken(
-  idToken: string,
-  env: Env
-): { email: string; name?: string; sub: string } {
-  const parts = idToken.split('.');
-  if (parts.length !== 3) throw new Error('Invalid Apple identity token');
-
-  let payload: { email?: string; sub?: string; aud?: string; iss?: string };
-  try {
-    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
-    payload = JSON.parse(json) as typeof payload;
-  } catch {
-    throw new Error('Invalid Apple identity token payload');
-  }
-
-  if (payload.iss !== 'https://appleid.apple.com') {
-    throw new Error('Apple token issuer mismatch');
-  }
-  if (env.APPLE_CLIENT_ID && payload.aud && payload.aud !== env.APPLE_CLIENT_ID) {
-    throw new Error('Apple token audience mismatch');
-  }
-  if (!payload.sub) throw new Error('Apple token missing subject');
-
-  const email = payload.email?.toLowerCase();
-  if (!email) {
-    return { email: `${payload.sub}@privaterelay.appleid.com`, sub: payload.sub };
-  }
-  return { email, sub: payload.sub };
 }
 
 /**
@@ -305,6 +341,9 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
   if (request.method !== 'POST') {
     return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
   }
+
+  const limited = await rateLimitOrError(request, env, 'sso', 30, 900);
+  if (limited) return limited;
 
   try {
     const validation = await validateRequest(request, ssoSchema);
@@ -322,12 +361,12 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
       username = profile.name;
     } else if (provider === 'apple') {
       if (!idToken) return error('VALIDATION_ERROR', 'idToken required for Apple', 400);
-      const profile = verifyAppleIdToken(idToken, env);
+      const profile = await verifyAppleIdToken(idToken, env);
       email = profile.email;
       username = profile.email.split('@')[0];
     } else {
       if (!accessToken) return error('VALIDATION_ERROR', 'accessToken required for Facebook', 400);
-      const profile = await verifyFacebookAccessToken(accessToken);
+      const profile = await verifyFacebookAccessToken(accessToken, env);
       email = profile.email;
       username = profile.name;
     }
@@ -374,8 +413,146 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
   }
 }
 
-type UserRow = Parameters<typeof userAuthPayload>[0];
+type UserRow = Parameters<typeof userAuthPayload>[0] & { email_verified?: number };
 
+/**
+ * POST /api/v1/auth/refresh
+ */
 export async function refresh(request: Request, env: Env): Promise<Response> {
-  return error('NOT_IMPLEMENTED', 'Token refresh not implemented', 501);
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
+  const validation = await validateRequest(request, refreshTokenSchema);
+  if (!validation.success) return validation.response;
+
+  const rotated = await rotateRefreshToken(env, validation.data.refreshToken);
+  if (!rotated) {
+    return error('INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired', 401);
+  }
+
+  const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?')
+    .bind(rotated.userId)
+    .first<UserRow>();
+
+  if (!user) {
+    return error('INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired', 401);
+  }
+
+  const base = userAuthPayload(user);
+  return json({
+    ...base,
+    token: rotated.token,
+    refreshToken: rotated.refreshToken,
+    expiresIn: rotated.expiresIn,
+  });
+}
+
+/**
+ * POST /api/v1/auth/forgot-password
+ * Always returns success to avoid email enumeration.
+ */
+export async function forgotPassword(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
+  const limited = await rateLimitOrError(request, env, 'forgot', 5, 3600);
+  if (limited) return limited;
+
+  const validation = await validateRequest(request, forgotPasswordSchema);
+  if (!validation.success) return validation.response;
+
+  const normalizedEmail = validation.data.email.trim().toLowerCase();
+  const generic = {
+    message: 'If an account exists for that email, a reset code has been sent.',
+  };
+
+  const user = await env.DB.prepare('SELECT id, email_verified FROM users WHERE email = ?')
+    .bind(normalizedEmail)
+    .first<{ id: string; email_verified: number }>();
+
+  if (!user || !user.email_verified) {
+    return json(generic);
+  }
+
+  const resetCode = generateVerificationToken();
+  const tokenHash = await hashVerificationToken(resetCode);
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  await env.DB.prepare(
+    `UPDATE users SET password_reset_token_hash = ?, password_reset_expires_at = ?,
+     updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(tokenHash, expiresAt, user.id)
+    .run();
+
+  try {
+    await sendPasswordResetEmail(env, normalizedEmail, resetCode);
+  } catch (mailErr) {
+    console.error('[forgotPassword] Email send failed:', mailErr);
+    if (env.ENVIRONMENT === 'production') {
+      return error('EMAIL_SEND_FAILED', 'Could not send reset email. Try again later.', 503);
+    }
+  }
+
+  return json({
+    ...generic,
+    ...((env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'qa') && {
+      devResetCode: resetCode,
+    }),
+  });
+}
+
+/**
+ * POST /api/v1/auth/reset-password
+ */
+export async function resetPassword(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
+  const limited = await rateLimitOrError(request, env, 'reset', 10, 3600);
+  if (limited) return limited;
+
+  const validation = await validateRequest(request, resetPasswordSchema);
+  if (!validation.success) return validation.response;
+
+  const { email, code, password, passwordHash } = validation.data;
+  const normalizedEmail = email.trim().toLowerCase();
+  const tokenHash = await hashVerificationToken(code.trim().replace(/\s/g, ''));
+
+  const user = await env.DB.prepare(
+    `SELECT id, password_reset_expires_at FROM users
+     WHERE email = ? AND password_reset_token_hash = ?`
+  )
+    .bind(normalizedEmail, tokenHash)
+    .first<{ id: string; password_reset_expires_at: string }>();
+
+  if (!user) {
+    return error('INVALID_CODE', 'Invalid or expired reset code', 400);
+  }
+
+  const expires = new Date(user.password_reset_expires_at).getTime();
+  if (Number.isNaN(expires) || expires < Date.now()) {
+    return error('CODE_EXPIRED', 'Reset code expired. Request a new one.', 400);
+  }
+
+  const credentialSecret = passwordHash || password;
+  if (!credentialSecret) {
+    return error('VALIDATION_ERROR', 'Password is required', 400);
+  }
+
+  const passwordHashToStore = await hashPassword(credentialSecret);
+
+  await env.DB.prepare(
+    `UPDATE users SET password_hash = ?, password_reset_token_hash = NULL,
+     password_reset_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(passwordHashToStore, user.id)
+    .run();
+
+  await revokeAllUserRefreshTokens(env, user.id);
+
+  return json({ message: 'Password updated. You can sign in with your new password.' });
 }

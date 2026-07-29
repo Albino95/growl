@@ -4,6 +4,8 @@ import { getRequestContext } from '../utils/auth';
 import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
 import { createBusinessNotification } from './business';
+import { stripeRequest, verifyStripeWebhookSignature } from '../utils/stripe';
+import { checkRateLimit, clientIp } from '../utils/rateLimit';
 
 function isPaymentsEnabled(env: Env): boolean {
   return Boolean(env.STRIPE_SECRET_KEY?.trim());
@@ -19,7 +21,7 @@ export async function getPaymentConfig(_request: Request, env: Env): Promise<Res
 
 /**
  * POST /api/v1/marketplace/checkout-session
- * Creates a Stripe Checkout session (stub URL when Stripe is not configured).
+ * Creates a pending order + real Stripe Checkout Session.
  */
 export async function createCheckoutSession(request: Request, env: Env): Promise<Response> {
   const ctx = await getRequestContext(request, env);
@@ -31,38 +33,232 @@ export async function createCheckoutSession(request: Request, env: Env): Promise
     return error('PAYMENTS_DISABLED', 'Marketplace payments are not available', 503);
   }
 
+  const { allowed } = await checkRateLimit(env, `checkout:${clientIp(request)}`, 20, 3600);
+  if (!allowed) {
+    return error('RATE_LIMITED', 'Too many checkout attempts. Try again later.', 429);
+  }
+
   const validation = await validateRequest(request, checkoutSessionSchema);
   if (!validation.success) return validation.response;
 
-  const { items } = validation.data;
+  const { items, shipping_address, success_url, cancel_url } = validation.data;
 
-  // Validate products exist and calculate total
   let total = 0;
+  const lineItems: Array<{ name: string; amountCents: number; quantity: number; product_id: string }> =
+    [];
+  const businessIds = new Set<string>();
+
   for (const item of items) {
-    const product = await env.DB.prepare('SELECT price, stock, name FROM products WHERE id = ?')
+    const product = await env.DB.prepare(
+      'SELECT id, name, price, stock, user_id FROM products WHERE id = ?'
+    )
       .bind(item.product_id)
-      .first<{ price: number; stock: number; name: string }>();
+      .first<{ id: string; name: string; price: number; stock: number; user_id: string }>();
 
     if (!product) {
       return error('PRODUCT_NOT_FOUND', `Product ${item.product_id} not found`, 404);
     }
-
     if (product.stock < item.quantity) {
       return error('INSUFFICIENT_STOCK', `Insufficient stock for product ${product.name}`, 400);
     }
 
     total += product.price * item.quantity;
+    businessIds.add(product.user_id);
+    lineItems.push({
+      name: product.name,
+      amountCents: Math.round(product.price * 100),
+      quantity: item.quantity,
+      product_id: product.id,
+    });
   }
 
-  const sessionId = `cs_test_${generateId('checkout')}`;
-  const url = `https://checkout.stripe.com/c/pay/${sessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0`;
+  const orderId = generateId('order');
+  const businessId = businessIds.size === 1 ? Array.from(businessIds)[0] : null;
+  const orderMeta = {
+    payment_method: 'stripe',
+    payment_confirmed: false,
+    source: 'organic',
+  };
+
+  await env.DB.prepare(
+    `INSERT INTO orders (id, user_id, business_id, status, total, shipping_address, metadata, payment_status, source, created_at, updated_at)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?, 'unpaid', 'organic', datetime('now'), datetime('now'))`
+  )
+    .bind(
+      orderId,
+      ctx.userId,
+      businessId,
+      total,
+      JSON.stringify(shipping_address),
+      JSON.stringify(orderMeta)
+    )
+    .run();
+
+  for (const item of lineItems) {
+    const orderItemId = generateId('order_item');
+    await env.DB.prepare(
+      `INSERT INTO order_items (id, order_id, product_id, quantity, price, created_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`
+    )
+      .bind(orderItemId, orderId, item.product_id, item.quantity, item.amountCents / 100)
+      .run();
+  }
+
+  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://growl.app').replace(/\/$/, '');
+  // Stripe requires https success/cancel URLs. Native apps can listen for universal links
+  // or open growl:// from a thin https landing page on growl.app.
+  const success =
+    success_url ||
+    `${appBase}/checkout/success?order_id=${encodeURIComponent(orderId)}&session_id={CHECKOUT_SESSION_ID}`;
+  const cancel =
+    cancel_url || `${appBase}/checkout/cancel?order_id=${encodeURIComponent(orderId)}`;
+
+  const body: Record<string, string> = {
+    mode: 'payment',
+    success_url: success,
+    cancel_url: cancel,
+    client_reference_id: orderId,
+    'metadata[order_id]': orderId,
+    'metadata[user_id]': ctx.userId,
+  };
+
+  lineItems.forEach((li, i) => {
+    body[`line_items[${i}][price_data][currency]`] = 'usd';
+    body[`line_items[${i}][price_data][product_data][name]`] = li.name;
+    body[`line_items[${i}][price_data][unit_amount]`] = String(li.amountCents);
+    body[`line_items[${i}][quantity]`] = String(li.quantity);
+  });
+
+  const stripeRes = await stripeRequest(env, '/checkout/sessions', { body });
+  const session = (await stripeRes.json()) as {
+    id?: string;
+    url?: string;
+    error?: { message?: string };
+  };
+
+  if (!stripeRes.ok || !session.id || !session.url) {
+    console.error('[createCheckoutSession] Stripe error:', session);
+    await env.DB.prepare(`UPDATE orders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?`)
+      .bind(orderId)
+      .run();
+    return error(
+      'STRIPE_ERROR',
+      session.error?.message || 'Failed to create Stripe checkout session',
+      502
+    );
+  }
+
+  await env.DB.prepare(
+    `UPDATE orders SET metadata = ?, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(
+      JSON.stringify({
+        ...orderMeta,
+        stripe_checkout_session_id: session.id,
+      }),
+      orderId
+    )
+    .run();
 
   return json({
-    session_id: sessionId,
-    url,
+    session_id: session.id,
+    url: session.url,
+    order_id: orderId,
     amount_total: total,
     currency: 'usd',
   });
+}
+
+/**
+ * POST /api/v1/marketplace/webhook
+ * Stripe webhook — marks orders paid after checkout.session.completed.
+ */
+export async function handleStripeWebhook(request: Request, env: Env): Promise<Response> {
+  const secret = env.STRIPE_WEBHOOK_SECRET?.trim();
+  if (!secret) {
+    return error('WEBHOOK_NOT_CONFIGURED', 'Stripe webhook secret not set', 503);
+  }
+
+  const payload = await request.text();
+  const signature = request.headers.get('Stripe-Signature');
+  const valid = await verifyStripeWebhookSignature(payload, signature, secret);
+  if (!valid) {
+    return error('INVALID_SIGNATURE', 'Invalid Stripe webhook signature', 400);
+  }
+
+  let event: { type?: string; data?: { object?: Record<string, unknown> } };
+  try {
+    event = JSON.parse(payload);
+  } catch {
+    return error('INVALID_PAYLOAD', 'Invalid JSON', 400);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data?.object || {};
+    const orderId =
+      (session.metadata as { order_id?: string } | undefined)?.order_id ||
+      (typeof session.client_reference_id === 'string' ? session.client_reference_id : null);
+    const sessionId = typeof session.id === 'string' ? session.id : null;
+
+    if (orderId) {
+      await finalizePaidOrder(env, orderId, sessionId);
+    }
+  }
+
+  return json({ received: true });
+}
+
+async function finalizePaidOrder(
+  env: Env,
+  orderId: string,
+  sessionId: string | null
+): Promise<void> {
+  const order = await env.DB.prepare('SELECT * FROM orders WHERE id = ?')
+    .bind(orderId)
+    .first<Order & { payment_status?: string; metadata?: string; business_id?: string | null; total?: number }>();
+
+  if (!order) {
+    console.error('[webhook] Unknown order', orderId);
+    return;
+  }
+  if (order.payment_status === 'paid') {
+    return;
+  }
+
+  const meta = JSON.parse(order.metadata || '{}') as Record<string, unknown>;
+  meta.payment_confirmed = true;
+  if (sessionId) meta.stripe_checkout_session_id = sessionId;
+
+  await env.DB.prepare(
+    `UPDATE orders SET payment_status = 'paid', metadata = ?, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(JSON.stringify(meta), orderId)
+    .run();
+
+  const items = await env.DB.prepare(
+    'SELECT product_id, quantity FROM order_items WHERE order_id = ?'
+  )
+    .bind(orderId)
+    .all<{ product_id: string; quantity: number }>();
+
+  for (const item of items.results || []) {
+    await env.DB.prepare(
+      'UPDATE products SET stock = CASE WHEN stock >= ? THEN stock - ? ELSE 0 END WHERE id = ?'
+    )
+      .bind(item.quantity, item.quantity, item.product_id)
+      .run();
+  }
+
+  if (order.business_id) {
+    await createBusinessNotification(
+      env,
+      order.business_id,
+      'new_order',
+      'New order received',
+      `Order ${orderId} for $${Number(order.total || 0).toFixed(2)}`,
+      { ref_type: 'order', ref_id: orderId }
+    );
+  }
 }
 
 /**
@@ -422,11 +618,33 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
 
   const { items, shipping_address, metadata, promo_code } = validation.data;
 
-  if (!metadata?.payment_confirmed) {
+  // When Stripe is enabled, orders are created via checkout-session + webhook.
+  // Direct createOrder must include a paid Stripe session id that we verify server-side.
+  if (isPaymentsEnabled(env)) {
+    const sessionId = metadata?.stripe_checkout_session_id;
+    if (!sessionId) {
+      return error(
+        'PAYMENT_REQUIRED',
+        'Use Stripe Checkout to place orders. Direct payment_confirmed is not accepted.',
+        403
+      );
+    }
+    const stripeRes = await stripeRequest(env, `/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+    });
+    const session = (await stripeRes.json()) as {
+      payment_status?: string;
+      metadata?: { order_id?: string };
+      status?: string;
+    };
+    if (!stripeRes.ok || session.payment_status !== 'paid') {
+      return error('PAYMENT_REQUIRED', 'Stripe session is not paid', 403);
+    }
+  } else if (!metadata?.payment_confirmed) {
     return error(
-      'PAYMENT_REQUIRED',
-      'Direct orders require confirmed payment. Complete checkout via Stripe first.',
-      403
+      'PAYMENTS_DISABLED',
+      'Marketplace payments are not available',
+      503
     );
   }
 

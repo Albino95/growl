@@ -1,17 +1,17 @@
 # Mobile build guide
 
-This document covers native iOS/Android builds for Growl using EAS Build.
+Growl is an **Expo SDK 54** project built as a **native app** (EAS Build, Xcode, or Android Studio). Day-to-day work is **not** Expo Go — build a development client or release binary and fix errors from the native runtime.
 
 ## Prerequisites
 
 - Node.js ≥ 20.19.4
 - [EAS CLI](https://docs.expo.dev/build/setup/): `npm install -g eas-cli`
-- Expo account and Apple Developer / Google Play accounts for store submission
-- Run `npm install` in `frontend/` (includes `expo-apple-authentication`)
+- Apple Developer / Google Play accounts for store submission
+- `cd frontend && npm install` (includes `@sentry/react-native` when using crash reporting)
 
 ## App identifiers
 
-Configured in `frontend/app.config.ts`:
+Configured in `frontend/app.config.ts` (canonical — `app.json` is a stub):
 
 | Platform | Field | Value |
 |----------|-------|-------|
@@ -20,74 +20,69 @@ Configured in `frontend/app.config.ts`:
 | Deep link | `scheme` | `growl` |
 | Encryption | `ITSAppUsesNonExemptEncryption` | `false` |
 
-## Assets
+## Native build workflows
 
-Placeholder brand assets are committed under `frontend/assets/` (`icon.png`, `splash.png`, `adaptive-icon.png`, `favicon.png`). Replace with final brand artwork before store submission.
-
-| File | Size | Notes |
-|------|------|-------|
-| `icon.png` | 1024×1024 | App Store icon |
-| `splash.png` | 1284×2778 | Launch screen |
-| `adaptive-icon.png` | 1024×1024 | Android foreground |
-| `favicon.png` | 48×48 | Web |
-
-## Device acceptance testing
-
-Before submitting, verify on **iOS simulator**, **Android emulator**, and **one physical device**:
-
-1. **Feed** — For You sections load; suggested posts appear for new users with categories
-2. **Explore** — All sections render (stories, shop picks, posts grid, people, reels) or show CTAs
-3. **Marketplace** — Carousel, filters, product detail gallery + related products; checkout gated without Stripe
-4. **Journal** — Public community tab + private tab CRUD; report on others' public entries
-5. **Messages** — Friend threads only; Message CTA on friend profiles
-6. **Profile** — Edit profile, notification prefs, legal hub, delete account + export
-7. **Auth** — Sign in with Apple on iOS; no demo accounts in production build
-
-See [STORE_SUBMISSION.md](./STORE_SUBMISSION.md) for the full checklist.
-
-## EAS profiles
-
-See `frontend/eas.json`:
-
-- **development** — dev client, iOS simulator
-- **preview** — internal distribution (APK on Android)
-- **production** — store builds; demo accounts disabled via env
-
-## Build commands
+### EAS (recommended)
 
 ```bash
 cd frontend
 eas login
-eas build:configure   # first time only
-eas build --profile preview --platform ios
-eas build --profile production --platform all
+eas build:configure   # first time
+
+# Dev client (simulator / device)
+npm run eas:build:dev
+
+# QA / TestFlight / internal Play — demos ON
+npm run eas:build:qa
+
+# Store candidate — demos OFF
+npm run eas:build:prod
 ```
 
-## Environment variables
+Point profiles at the correct Workers via `eas.json` `env.API_BASE_URL` (update hosts after company Cloudflare cutover).
 
-Set in EAS secrets or `eas.json` production env:
-
-- `API_BASE_URL` — production API
-- `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID`
-- `FACEBOOK_APP_ID`
-- `EAS_PROJECT_ID`
-
-Production builds set `SHOW_DEMO_ACCOUNTS=false` and `SHOW_DEV_TOOLS=false` automatically.
-
-## OAuth redirect
-
-OAuth uses `makeRedirectUri({ scheme: 'growl', path: 'oauth' })`. Register `growl://oauth` (and your Expo auth proxy if used) in Google/Facebook console.
-
-## Sign in with Apple
-
-- iOS plugin: `expo-apple-authentication` in `app.config.ts` plugins
-- Enable **Sign in with Apple** capability in Apple Developer for `app.growl.mobile`
-- Set backend secret: `wrangler secret put APPLE_CLIENT_ID`
-
-## Local development
+### Local Xcode / Android Studio
 
 ```bash
-cd frontend && npm start
+cd frontend
+# Ensure API_BASE_URL matches the Worker you are hitting
+API_BASE_URL=https://growl-backend-qa..../api/v1 npx expo prebuild
+# Then open ios/ in Xcode or android/ in Android Studio and Run
 ```
 
-Demo accounts appear only in `__DEV__` or when `SHOW_DEMO_ACCOUNTS=true` in app config extra.
+Read build/runtime logs in Xcode / Logcat — that is the primary debug loop.
+
+## EAS profile matrix
+
+| Profile | Purpose | Demos | Typical API |
+|---------|---------|-------|-------------|
+| `development` | Dev client | Yes | `growl-backend-dev` |
+| `preview` | QA / review | Yes | `growl-backend-qa` |
+| `production` | App Store / Play | No | `growl-backend-production` |
+
+Also set: OAuth client IDs, `EAS_PROJECT_ID`, `SENTRY_DSN` (qa/prod).
+
+## Deep links
+
+- Auth OAuth: `growl://oauth`
+- Password reset email: `growl://reset-password?...`
+- Stripe return: `growl://checkout/success`, `growl://checkout/cancel`
+
+## Device acceptance testing
+
+1. Auth — email, verify, forgot password, Apple SSO (iOS)
+2. Feed / Explore / Journal / Messages / Marketplace
+3. Checkout on qa with Stripe test keys + webhook
+4. Legal + delete account + export
+5. Confirm production build hides demo account buttons
+
+See [STORE_SUBMISSION.md](./STORE_SUBMISSION.md).
+
+## Submit
+
+Fill `eas.json` submit credentials, then:
+
+```bash
+eas submit --platform ios --profile production
+eas submit --platform android --profile production
+```

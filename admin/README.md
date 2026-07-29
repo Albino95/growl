@@ -1,44 +1,44 @@
-# Growl Admin Dashboard
+# Grow! Admin & Seller Portal
 
-Web admin panel for trust & safety, user management, and business account provisioning.
+Web console for Trust & Safety / ops **and** a scoped **Seller** portal for business accounts.
 
 ## Requirements
 
 - Node.js **18+** (`nvm use 20` recommended)
-- Backend API with admin routes deployed and D1 migrations applied
+- Backend API with admin + business routes deployed and D1 migrations applied
 
-## Quick start (real production users)
-
-Local `npm run dev` uses [`.env.development`](dashboard/.env.development), which points at the **production API** and **remote D1** (where real app signups live).
+## Quick start
 
 ```bash
 cd admin/dashboard
-nvm use 20          # if needed
+nvm use 20
 npm install
 npm run dev         # http://localhost:5174
 ```
 
-Log in with your **production admin** credentials. The Users page lists all rows from the remote `users` table.
+### Login tabs
+
+| Tab | Who | Credentials |
+|-----|-----|-------------|
+| **Staff** | Platform admins (`admin_users`) | Local: `admin@growl.app` / `GrowlAdmin123!` |
+| **Seller** | Business users (`users.is_business`) | Demo: `business@growl.app` / `GrowlDemo123!` |
+
+Sellers land on `/seller` (KPIs, products, orders, reports, settings). They never see moderation, users, privacy, or audit routes.
+
+Staff keep the existing ops shell. Business Accounts provision sellers who can use the **Seller** tab or the Grow! mobile app.
 
 ### Default API URLs
 
-| Mode | Config | Users you see |
-|------|--------|----------------|
-| **Default local dev** | `.env.development` → production API | Real app signups |
-| **Offline local stack** | Copy `.env.local.example` → `.env.local` | Demo seeds only |
+| Mode | Config | Data |
+|------|--------|------|
+| **Default local dev** | `.env.development` → production API | Real remote D1 |
+| **Offline local stack** | `.env.local` from example | Demo seeds |
 
-Check the sidebar **API:** label — an amber warning appears when connected to `localhost` (demo data only).
+Sidebar shows **API:** host; amber warning when talking to `localhost`.
 
-## Credentials
+## Credentials setup
 
-### Admin panel login
-
-| Environment | Email | Password |
-|-------------|-------|----------|
-| Production (remote D1) | Set when you seed remote admin | Your chosen password |
-| Local D1 only | `admin@growl.app` | `GrowlAdmin123!` |
-
-Seed local admin:
+### Staff admin
 
 ```bash
 cd backend
@@ -46,40 +46,33 @@ npm run migrate:local
 npm run seed:admin:local
 ```
 
-Seed production admin (one-time):
+Production (one-time):
 
 ```bash
 cd backend
 npm run migrate
-node scripts/seed-admin-user.js   # omit --local for remote
+node scripts/seed-admin-user.js
 ```
 
-### Mobile app demo users (not admin)
+### Seller demo (local/QA)
 
-Seeded via `npm run seed:core:local` / `demo:remote` — password `GrowlDemo123!`.
+Seeded via `npm run seed:core:local` / demo scripts — password `GrowlDemo123!`.
 
-## Environment variables
+Do **not** delete `business@growl.app` / `demo-core-business` during QA.
+
+## Environment
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_API_BASE_URL` | Backend API base, e.g. `https://growl-backend.albino-ndreu.workers.dev/api/v1` |
+| `VITE_API_BASE_URL` | Backend API base, e.g. `https://….workers.dev/api/v1` |
 
-See [`dashboard/.env.example`](dashboard/.env.example).
+## Seller portal routes
 
-## Verify real users in D1
-
-```bash
-cd backend
-npx wrangler d1 execute growl-db --remote --command \
-  "SELECT email, created_at FROM users ORDER BY created_at DESC LIMIT 20;"
-```
-
-Search a specific account:
-
-```bash
-npx wrangler d1 execute growl-db --remote --command \
-  "SELECT id, email FROM users WHERE email LIKE '%albino%';"
-```
+- `/seller` — KPI dashboard
+- `/seller/products` — catalog CRUD
+- `/seller/orders` — fulfillment (no platform refunds)
+- `/seller/reports` — CSV exports (orders, products, sales)
+- `/seller/settings` — store profile
 
 ## Deploy
 
@@ -88,9 +81,8 @@ cd admin/dashboard
 npm run pages:deploy
 ```
 
-Production build uses [`.env.production`](dashboard/.env.production).
-
 ## Related
 
 - Backend admin API: `backend/src/routes/admin/`
-- Business account provisioning: **Ops → Business Accounts**
+- Backend business API: `backend/src/routes/business.ts`
+- Mobile business shell: `frontend/src/screens/Business/`
