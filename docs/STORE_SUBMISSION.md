@@ -26,7 +26,7 @@ Use this checklist when submitting Growl to the Apple App Store and Google Play.
 ## Legal & privacy (required)
 
 - [ ] In-app legal hub: Profile → Legal & Support
-- [ ] Hosted policies live at `https://growl.app` (privacy, terms, delete-account)
+- [ ] Hosted policies live at `https://letsgrow.lu` (privacy, terms, delete-account)
 - [ ] Privacy Policy URL in store listing
 - [ ] Account deletion: Profile → Delete Account
 - [ ] Data export available from delete-account flow
@@ -83,9 +83,9 @@ Use this checklist when submitting Growl to the Apple App Store and Google Play.
 
 ## Support contacts
 
-- Support: support@growl.app
-- Privacy: privacy@growl.app
-- Legal: legal@growl.app
+- Support: support@letsgrow.lu
+- Privacy: privacy@letsgrow.lu
+- Legal: legal@letsgrow.lu
 
 ## Submit
 

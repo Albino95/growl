@@ -40,7 +40,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: 'Contact',
-        body: 'Questions about these terms: legal@growl.app',
+        body: 'Questions about these terms: legal@letsgrow.lu',
       },
     ],
   },
@@ -76,7 +76,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: 'Contact',
-        body: 'Privacy requests: privacy@growl.app',
+        body: 'Privacy requests: privacy@letsgrow.lu',
       },
     ],
   },
@@ -112,7 +112,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     sections: [
       {
         heading: 'Get help',
-        body: 'Email support@growl.app with your account email and a description of the issue. We typically respond within 2 business days.',
+        body: 'Email support@letsgrow.lu with your account email and a description of the issue. We typically respond within 2 business days.',
       },
       {
         heading: 'Account access',
@@ -122,7 +122,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: 'Safety',
         body:
-          'Block or report users and posts that make you uncomfortable. For urgent safety concerns, contact local authorities and support@growl.app.',
+          'Block or report users and posts that make you uncomfortable. For urgent safety concerns, contact local authorities and support@letsgrow.lu.',
       },
     ],
   },
@@ -135,5 +135,5 @@ export const LEGAL_HUB_ITEMS = [
   { id: 'support' as const, title: 'Help & Support', icon: 'help-circle-outline' as const },
 ];
 
-export const SUPPORT_EMAIL = 'support@growl.app';
-export const LEGAL_WEB_BASE = 'https://growl.app';
+export const SUPPORT_EMAIL = 'support@letsgrow.lu';
+export const LEGAL_WEB_BASE = 'https://letsgrow.lu';

@@ -104,7 +104,7 @@ export async function createCheckoutSession(request: Request, env: Env): Promise
       .run();
   }
 
-  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://growl.app').replace(/\/$/, '');
+  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://letsgrow.lu').replace(/\/$/, '');
   // Stripe requires https success/cancel URLs. Native apps can listen for universal links
   // or open growl:// from a thin https landing page on growl.app.
   const success =

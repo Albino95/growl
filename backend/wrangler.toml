@@ -80,7 +80,7 @@ preview_id = "536de44686804dfaa0f27e5a523b596e"
 
 [env.production]
 name = "growl-backend-production"
-vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https://growl.app,https://www.growl.app,https://admin.growl.app" }
+vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https://letsgrow.lu,https://www.letsgrow.lu,https://growl.app,https://www.growl.app,https://admin.growl.app" }
 
 [[env.production.d1_databases]]
 binding = "DB"

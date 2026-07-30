@@ -42,7 +42,7 @@ export async function sendVerificationEmail(
   verifyToken: string,
   baseUrl?: string
 ): Promise<void> {
-  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://growl.app';
+  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://letsgrow.lu';
   const link = `${appBase}/verify-email?email=${encodeURIComponent(to)}&token=${verifyToken}`;
 
   const html = `
@@ -72,7 +72,7 @@ export async function sendPasswordResetEmail(
   resetCode: string,
   baseUrl?: string
 ): Promise<void> {
-  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://growl.app';
+  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://letsgrow.lu';
   const link = `${appBase}/reset-password?email=${encodeURIComponent(to)}&code=${encodeURIComponent(resetCode)}`;
   const deepLink = `growl://reset-password?email=${encodeURIComponent(to)}&code=${encodeURIComponent(resetCode)}`;
 

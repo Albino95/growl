@@ -63,7 +63,7 @@ export default function SiteFooter() {
             >
               Delete account
             </a>
-            <a href="mailto:support@grow.app" className="transition hover:text-white">
+            <a href="mailto:support@letsgrow.lu" className="transition hover:text-white">
               Support
             </a>
           </nav>
