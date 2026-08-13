@@ -9,37 +9,31 @@ port = 8787
 
 # ---------------------------------------------------------------------------
 # Default / local bindings (used by `wrangler dev` without --env)
-# Replace IDs when cutting over to the company Cloudflare account.
-# Secrets (JWT_SECRET, RESEND_*, STRIPE_*, OAuth) live in `.dev.vars` locally
-# and `wrangler secret put --env <env>` remotely — never in [vars].
+# Company Cloudflare account (admin@letsgrow.lu / b98d4f2eafd8dc9db7ee6b2755ac02ab)
+# Secrets: `.dev.vars` locally, `wrangler secret put --env <env>` remotely.
 # ---------------------------------------------------------------------------
 [[d1_databases]]
 binding = "DB"
-database_name = "growl-db"
-database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+database_name = "growl-db-dev"
+database_id = "d8f27281-2230-402c-9ca5-622da947c436"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "acb4474069c041bd838e3c2f6de54257"
-preview_id = "536de44686804dfaa0f27e5a523b596e"
+id = "e614800d570f45b1abead81eee44f111"
+preview_id = "e614800d570f45b1abead81eee44f111"
 
-# Uncomment after R2 is enabled and buckets exist (see DEPLOY_NEW_CLOUDFLARE_ACCOUNT.md).
-# [[r2_buckets]]
-# binding = "R2"
-# bucket_name = "growl-media"
-# preview_bucket_name = "growl-media-preview"
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "growl-media-dev"
 
 [vars]
 ENVIRONMENT = "development"
 API_VERSION = "v1"
-# Comma-separated. Empty / * = allow all (local only). Production must set an allowlist.
 CORS_ORIGINS = "*"
 
 # ---------------------------------------------------------------------------
-# Remote envs: isolated D1 / KV / R2 per environment.
-# Until company-account cutover, IDs below still point at the current personal
-# resources — replace with growl-db-dev|qa|prod IDs after `wrangler d1 create`.
-# Dropped legacy `staging` — use qa for pre-release.
+# Remote envs: isolated D1 / KV / R2
+# KV: growl-backend-KV_DEV | KV_QA | KV_PROD
 # ---------------------------------------------------------------------------
 
 [env.dev]
@@ -49,16 +43,16 @@ vars = { ENVIRONMENT = "development", API_VERSION = "v1", CORS_ORIGINS = "*" }
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "growl-db-dev"
-database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+database_id = "d8f27281-2230-402c-9ca5-622da947c436"
 
 [[env.dev.kv_namespaces]]
 binding = "KV"
-id = "acb4474069c041bd838e3c2f6de54257"
-preview_id = "536de44686804dfaa0f27e5a523b596e"
+id = "e614800d570f45b1abead81eee44f111"
+preview_id = "e614800d570f45b1abead81eee44f111"
 
-# [[env.dev.r2_buckets]]
-# binding = "R2"
-# bucket_name = "growl-media-dev"
+[[env.dev.r2_buckets]]
+binding = "R2"
+bucket_name = "growl-media-dev"
 
 [env.qa]
 name = "growl-backend-qa"
@@ -67,16 +61,16 @@ vars = { ENVIRONMENT = "qa", API_VERSION = "v1", CORS_ORIGINS = "*" }
 [[env.qa.d1_databases]]
 binding = "DB"
 database_name = "growl-db-qa"
-database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+database_id = "6a8f9ac6-25a9-4c5b-86d4-7c47ecb86dcc"
 
 [[env.qa.kv_namespaces]]
 binding = "KV"
-id = "acb4474069c041bd838e3c2f6de54257"
-preview_id = "536de44686804dfaa0f27e5a523b596e"
+id = "ee718b42c43049ba8987d63b13f2bd82"
+preview_id = "ee718b42c43049ba8987d63b13f2bd82"
 
-# [[env.qa.r2_buckets]]
-# binding = "R2"
-# bucket_name = "growl-media-qa"
+[[env.qa.r2_buckets]]
+binding = "R2"
+bucket_name = "growl-media-qa"
 
 [env.production]
 name = "growl-backend-production"
@@ -85,12 +79,12 @@ vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https:/
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "growl-db-prod"
-database_id = "be2fe4d4-4f8c-474f-ba82-1c083b3cb1ef"
+database_id = "0c99eb86-899f-43cb-8060-62c03cc6ef13"
 
 [[env.production.kv_namespaces]]
 binding = "KV"
-id = "acb4474069c041bd838e3c2f6de54257"
+id = "a8ab7ccfebc548bb99eba5517b636d74"
 
-# [[env.production.r2_buckets]]
-# binding = "R2"
-# bucket_name = "growl-media-prod"
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "growl-media-prod"

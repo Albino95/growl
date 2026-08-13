@@ -85,7 +85,7 @@ const defineConfig = (): ExpoConfig => ({
     API_BASE_URL:
       process.env.API_BASE_URL ||
       process.env.EXPO_PUBLIC_API_BASE_URL ||
-      'https://growl-backend.albino-ndreu.workers.dev/api/v1',
+      'https://growl-backend-qa.wispy-leaf-4e8b.workers.dev/api/v1',
     APP_ENV: appEnv,
     ENV: appEnv,
     SHOW_DEMO_ACCOUNTS: process.env.SHOW_DEMO_ACCOUNTS === 'true',
