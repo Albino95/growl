@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,17 @@ import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { getProduct, createCheckoutSession, getPaymentConfig, OrderItem, ShippingAddress } from '../../services/api/marketplace';
 import { getProductImageUrl } from '../../utils/images';
 import type { Product } from '../../services/api/marketplace';
+import LocationPickerSheet, {
+  type LocationOption,
+} from '../../components/marketplace/LocationPickerSheet';
+import {
+  getAllCountriesSorted,
+  getStatesForCountry,
+  getCitiesForState,
+  getCitiesForCountry,
+  subdivisionLabel,
+  postalLabel,
+} from '../../data/geoLocations';
 
 type CheckoutRouteParams = {
   Checkout: {
@@ -53,11 +64,93 @@ export default function CheckoutScreen() {
     zip: '',
     country: 'United States',
   });
+  const [countryCode, setCountryCode] = useState('US');
+  const [stateCode, setStateCode] = useState('');
+  const [picker, setPicker] = useState<'country' | 'state' | 'city' | null>(null);
+  const [cityManual, setCityManual] = useState(false);
+
+  const countries = useMemo(() => getAllCountriesSorted(), []);
+  const states = useMemo(() => getStatesForCountry(countryCode), [countryCode]);
+  const cities = useMemo(() => {
+    if (!countryCode) return [];
+    if (stateCode) return getCitiesForState(countryCode, stateCode);
+    if (states.length === 0) return getCitiesForCountry(countryCode);
+    return [];
+  }, [countryCode, stateCode, states.length]);
+
+  const countryOptions: LocationOption[] = useMemo(
+    () =>
+      countries.map((c) => ({
+        key: c.isoCode,
+        label: `${c.flag} ${c.name}`,
+        subtitle: c.isoCode,
+      })),
+    [countries]
+  );
+
+  const stateOptions: LocationOption[] = useMemo(
+    () =>
+      states.map((s) => ({
+        key: s.isoCode,
+        label: s.name,
+        subtitle: s.isoCode,
+      })),
+    [states]
+  );
+
+  const cityOptions: LocationOption[] = useMemo(
+    () =>
+      cities.map((c) => ({
+        key: `${c.stateCode}:${c.name}`,
+        label: c.name,
+        subtitle: c.stateCode || undefined,
+      })),
+    [cities]
+  );
+
+  const regionLabel = subdivisionLabel(countryCode);
+  const zipLabel = postalLabel(countryCode);
+  const needsState = states.length > 0;
+  const canPickCity = cities.length > 0 && !cityManual;
 
   useEffect(() => {
     loadPaymentConfig();
     loadCartItems();
   }, []);
+
+  const selectCountry = (option: LocationOption) => {
+    const next = countries.find((c) => c.isoCode === option.key);
+    if (!next) return;
+    setCountryCode(next.isoCode);
+    setStateCode('');
+    setCityManual(false);
+    setShipping((prev) => ({
+      ...prev,
+      country: next.name,
+      state: '',
+      city: '',
+    }));
+  };
+
+  const selectState = (option: LocationOption) => {
+    const next = states.find((s) => s.isoCode === option.key);
+    if (!next) return;
+    setStateCode(next.isoCode);
+    setCityManual(false);
+    setShipping((prev) => ({
+      ...prev,
+      state: next.name,
+      city: '',
+    }));
+  };
+
+  const selectCity = (option: LocationOption) => {
+    setCityManual(false);
+    setShipping((prev) => ({
+      ...prev,
+      city: option.label,
+    }));
+  };
 
   const loadPaymentConfig = async () => {
     try {
@@ -119,16 +212,20 @@ export default function CheckoutScreen() {
       Alert.alert('Validation Error', 'Please enter your street address');
       return false;
     }
-    if (!shipping.city.trim()) {
-      Alert.alert('Validation Error', 'Please enter your city');
+    if (!shipping.country.trim() || !countryCode) {
+      Alert.alert('Validation Error', 'Please select your country');
       return false;
     }
-    if (!shipping.state.trim()) {
-      Alert.alert('Validation Error', 'Please enter your state');
+    if (needsState && !shipping.state.trim()) {
+      Alert.alert('Validation Error', `Please select your ${regionLabel.toLowerCase()}`);
+      return false;
+    }
+    if (!shipping.city.trim()) {
+      Alert.alert('Validation Error', 'Please select or enter your city');
       return false;
     }
     if (!shipping.zip.trim()) {
-      Alert.alert('Validation Error', 'Please enter your ZIP code');
+      Alert.alert('Validation Error', `Please enter your ${zipLabel.toLowerCase()}`);
       return false;
     }
     if (cartItems.length === 0) {
@@ -137,6 +234,12 @@ export default function CheckoutScreen() {
     }
     return true;
   };
+
+  const shippingPayload = (): ShippingAddress => ({
+    ...shipping,
+    // Backend requires a non-empty state; use N/A when the country has no subdivisions.
+    state: shipping.state.trim() || 'N/A',
+  });
 
   const handlePlaceOrder = async () => {
     if (!paymentsEnabled) return;
@@ -164,7 +267,7 @@ export default function CheckoutScreen() {
           product_id: item.product_id,
           quantity: item.quantity,
         })),
-        shipping_address: shipping,
+        shipping_address: shippingPayload(),
       });
 
       if (response.success && response.data?.url) {
@@ -293,31 +396,113 @@ export default function CheckoutScreen() {
               onChangeText={(text) => setShipping({ ...shipping, street: text })}
               style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-3`}
             />
-            <View style={tw`flex-row`}>
-              <TextInput
-                placeholder="City"
-                value={shipping.city}
-                onChangeText={(text) => setShipping({ ...shipping, city: text })}
-                style={tw`flex-1 bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mr-2`}
-              />
-              <TextInput
-                placeholder="State"
-                value={shipping.state}
-                onChangeText={(text) => setShipping({ ...shipping, state: text })}
-                style={tw`flex-1 bg-surface-page border border-stone-300 rounded-lg px-4 py-3 ml-2`}
-              />
-            </View>
+
+            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+              Country
+            </Text>
+            <TouchableOpacity
+              onPress={() => setPicker('country')}
+              style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-3 flex-row items-center justify-between`}
+            >
+              <Text style={tw`text-[15px] ${shipping.country ? 'text-stone-900' : 'text-stone-400'}`}>
+                {shipping.country
+                  ? `${countries.find((c) => c.isoCode === countryCode)?.flag || ''} ${shipping.country}`.trim()
+                  : 'Select country'}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color="#78716C" />
+            </TouchableOpacity>
+
+            {needsState ? (
+              <>
+                <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+                  {regionLabel}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setPicker('state')}
+                  disabled={!countryCode}
+                  style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-3 flex-row items-center justify-between ${
+                    !countryCode ? 'opacity-50' : ''
+                  }`}
+                >
+                  <Text style={tw`text-[15px] ${shipping.state ? 'text-stone-900' : 'text-stone-400'}`}>
+                    {shipping.state || `Select ${regionLabel.toLowerCase()}`}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color="#78716C" />
+                </TouchableOpacity>
+              </>
+            ) : countryCode ? (
+              <>
+                <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+                  {regionLabel} (optional)
+                </Text>
+                <TextInput
+                  placeholder={`District / area (optional)`}
+                  value={shipping.state === 'N/A' ? '' : shipping.state}
+                  onChangeText={(text) => setShipping({ ...shipping, state: text })}
+                  style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-3`}
+                />
+              </>
+            ) : null}
+
+            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+              City
+            </Text>
+            {canPickCity ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => setPicker('city')}
+                  disabled={needsState && !stateCode}
+                  style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-2 flex-row items-center justify-between ${
+                    needsState && !stateCode ? 'opacity-50' : ''
+                  }`}
+                >
+                  <Text style={tw`text-[15px] ${shipping.city ? 'text-stone-900' : 'text-stone-400'}`}>
+                    {shipping.city || 'Select city'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color="#78716C" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setCityManual(true);
+                    setShipping((prev) => ({ ...prev, city: '' }));
+                  }}
+                  style={tw`mb-3`}
+                >
+                  <Text style={tw`text-sm text-emerald-700 font-medium`}>City not listed? Enter it</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  placeholder="City / Town"
+                  value={shipping.city}
+                  onChangeText={(text) => setShipping({ ...shipping, city: text })}
+                  style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mb-2`}
+                />
+                {cities.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setCityManual(false);
+                      setShipping((prev) => ({ ...prev, city: '' }));
+                    }}
+                    style={tw`mb-3`}
+                  >
+                    <Text style={tw`text-sm text-emerald-700 font-medium`}>Pick from city list</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={tw`mb-3`} />
+                )}
+              </>
+            )}
+
+            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+              {zipLabel}
+            </Text>
             <TextInput
-              placeholder="ZIP Code"
+              placeholder={zipLabel}
               value={shipping.zip}
               onChangeText={(text) => setShipping({ ...shipping, zip: text })}
-              keyboardType="numeric"
-              style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3 mt-3 mb-3`}
-            />
-            <TextInput
-              placeholder="Country"
-              value={shipping.country}
-              onChangeText={(text) => setShipping({ ...shipping, country: text })}
+              autoCapitalize="characters"
               style={tw`bg-surface-page border border-stone-300 rounded-lg px-4 py-3`}
             />
           </View>
@@ -389,6 +574,36 @@ export default function CheckoutScreen() {
           .
         </Text>
       </View>
+
+      <LocationPickerSheet
+        visible={picker === 'country'}
+        title="Select country"
+        placeholder="Search countries…"
+        options={countryOptions}
+        selectedKey={countryCode}
+        onClose={() => setPicker(null)}
+        onSelect={selectCountry}
+      />
+      <LocationPickerSheet
+        visible={picker === 'state'}
+        title={`Select ${regionLabel.toLowerCase()}`}
+        placeholder={`Search ${regionLabel.toLowerCase()}…`}
+        options={stateOptions}
+        selectedKey={stateCode}
+        emptyMessage="No regions found for this country."
+        onClose={() => setPicker(null)}
+        onSelect={selectState}
+      />
+      <LocationPickerSheet
+        visible={picker === 'city'}
+        title="Select city"
+        placeholder="Search cities…"
+        options={cityOptions}
+        selectedKey={shipping.city ? `${stateCode}:${shipping.city}` : undefined}
+        emptyMessage="No cities found. You can enter your city manually."
+        onClose={() => setPicker(null)}
+        onSelect={selectCity}
+      />
     </SafeAreaView>
   );
 }
