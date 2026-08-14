@@ -105,13 +105,32 @@ export function getStoryImageUrl(userId: string, storyId?: string): string {
 
 /**
  * Post image URL from API may be https, device URI, or legacy bare paths — normalize for Image source.
+ * Also rewrites media URLs that were wrongly saved with APP_PUBLIC_URL (marketing site) to the API host.
  */
+export function rewriteMediaUrlToApiHost(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return s;
+  try {
+    const u = new URL(s);
+    const path = u.pathname || '';
+    if (!/\/api\/[^/]+\/media\//i.test(path)) return s;
+    // Lazy require avoids circular imports at module init in some bundlers.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getApiBaseUrl } = require('../services/api/http') as { getApiBaseUrl: () => string };
+    const apiBase = getApiBaseUrl();
+    const api = new URL(apiBase);
+    return `${api.origin}${path}${u.search}`;
+  } catch {
+    return s;
+  }
+}
+
 export function resolvePostMediaUri(
   raw: string | null | undefined,
   category: string,
   postId: string
 ): string {
-  const s = (raw || '').trim();
+  const s = rewriteMediaUrlToApiHost((raw || '').trim());
   if (!s) return getPostImageUrl(category, postId);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
@@ -162,7 +181,7 @@ export function resolveStoryDisplayUri(
 
 /** Avatar from metadata may be emoji or invalid — prefer remote URL or pravatar fallback */
 export function resolveAvatarUri(userId: string, username?: string, raw?: string | null): string {
-  const s = (raw || '').trim();
+  const s = rewriteMediaUrlToApiHost((raw || '').trim());
   if (!s) return getAvatarUrl(userId, username);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;

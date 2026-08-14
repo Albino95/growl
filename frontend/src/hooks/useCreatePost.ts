@@ -124,18 +124,24 @@ export function useCreatePost(onSuccess?: () => void) {
       });
 
       if (created?.data) {
+        const serverMeta = created.data.metadata || {};
         dispatch(
           prependFeedPost({
             ...created.data,
+            image_url: created.data.image_url || imageUrl,
             feed_section: 'following',
             metadata: {
-              ...(created.data.metadata || {}),
               ...metadata,
-              username: user?.username || 'You',
-              avatar: user?.avatar,
-              likes: 0,
-              comments: 0,
-              has_liked: false,
+              ...serverMeta,
+              username:
+                serverMeta.username ||
+                user?.username ||
+                user?.email?.split('@')[0] ||
+                'You',
+              avatar: serverMeta.avatar || user?.avatar,
+              likes: Number(serverMeta.likes ?? 0),
+              comments: Number(serverMeta.comments ?? 0),
+              has_liked: !!serverMeta.has_liked,
             },
           })
         );

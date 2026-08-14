@@ -38,13 +38,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 export default function EditProfileScreen() {
   const navigation = useNavigation();
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, updateUser } = useAuth();
 
-  const fallbackUsername = user?.email?.split('@')[0] || '';
+  const fallbackUsername = user?.username || user?.email?.split('@')[0] || '';
   const [username, setUsername] = useState(fallbackUsername);
-  const [avatar, setAvatar] = useState('');
-  const [bio, setBio] = useState('');
-  const [status, setStatus] = useState('');
+  const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [bio, setBio] = useState(user?.bio || '');
+  const [status, setStatus] = useState(user?.status || '');
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(true);
 
@@ -106,6 +106,12 @@ export default function EditProfileScreen() {
       }
 
       await updateProfileOnServer(payload);
+      updateUser({
+        username: trimmedUsername,
+        avatar: trimmedAvatar || undefined,
+        bio: trimmedBio || null,
+        status: trimmedStatus || null,
+      });
       try {
         await withTimeout(Promise.resolve(refreshProfile()), FETCH_MS);
       } catch {

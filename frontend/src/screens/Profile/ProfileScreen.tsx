@@ -182,6 +182,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           endorsementsGiven: me.endorsements_given ?? 0,
           streakDays: me.streak_days ?? 0,
           bio: me.bio ?? null,
+          status: me.status ?? null,
+          username: me.username,
+          avatar: me.avatar,
           categories: me.categories,
           isInstructor: me.is_instructor,
         });
@@ -409,8 +412,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               source={{
                 uri: resolveAvatarUri(
                   user?.id || 'default',
-                  profileMeta.username || user?.email?.split('@')[0],
-                  profileMeta.avatar
+                  profileMeta.username || user?.username || user?.email?.split('@')[0],
+                  profileMeta.avatar || user?.avatar
                 ),
               }}
               style={tw`w-20 h-20 rounded-full mr-4 border-2 border-white`}
@@ -418,7 +421,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             />
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {profileMeta.username || user?.email?.split('@')[0] || 'User'}
+                {profileMeta.username || user?.username || user?.email?.split('@')[0] || 'User'}
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>

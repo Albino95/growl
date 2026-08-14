@@ -362,7 +362,32 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
   const postId = generateId('post');
   console.log('[createPost] Generated post ID:', postId);
 
+  const userRow = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
+    .bind(ctx.userId)
+    .first<{ metadata: string; is_instructor: number }>();
+  let userMeta: Record<string, unknown> = {};
   try {
+    userMeta = JSON.parse(userRow?.metadata || '{}');
+  } catch {
+    userMeta = {};
+  }
+  const username =
+    typeof userMeta.username === 'string' && userMeta.username.trim()
+      ? userMeta.username.trim()
+      : undefined;
+  const avatar =
+    typeof userMeta.avatar === 'string' && userMeta.avatar.trim()
+      ? userMeta.avatar.trim()
+      : undefined;
+
+  try {
+    const postMetadata = {
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+      ...(username ? { username } : {}),
+      ...(avatar ? { avatar } : {}),
+      isInstructor: !!userRow?.is_instructor,
+    };
+
     await env.DB.prepare(
       `INSERT INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))`
@@ -374,7 +399,7 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         caption || null,
         category,
         subcategory || null,
-        JSON.stringify(metadata || {})
+        JSON.stringify(postMetadata)
       )
       .run();
 
@@ -394,6 +419,15 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         points_awarded: POINTS.CREATE_POST,
         points_total: pointsTotal ?? undefined,
         created_at: new Date().toISOString(),
+        metadata: {
+          ...postMetadata,
+          likes: 0,
+          comments: 0,
+          has_liked: false,
+          username,
+          avatar,
+          isInstructor: !!userRow?.is_instructor,
+        },
       },
       201
     );

@@ -24,7 +24,9 @@ function parseImageDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array; 
 }
 
 function mediaUrlFromRequest(request: Request, env: Env, key: string): string {
-  const base = env.APP_PUBLIC_URL?.trim() || new URL(request.url).origin;
+  // Always use the Worker origin. APP_PUBLIC_URL is the marketing/app site (e.g. letsgrow.lu)
+  // and does not serve /api/v1/media — using it made every uploaded post image blank.
+  const base = new URL(request.url).origin;
   const apiPrefix = `/api/${env.API_VERSION || 'v1'}`;
   return `${base}${apiPrefix}/media/${encodeURIComponent(key)}`;
 }
