@@ -119,12 +119,15 @@ export function resolvePostMediaUri(
   if (lower.startsWith('blob:')) {
     return getPostImageUrl(category, postId);
   }
+  // Device-local URIs only work on the creating device — fall back so Explore/Feed stay visible.
   if (
     lower.startsWith('file://') ||
     lower.startsWith('content://') ||
-    lower.startsWith('ph://') ||
-    lower.startsWith('data:')
+    lower.startsWith('ph://')
   ) {
+    return getPostImageUrl(category, postId);
+  }
+  if (lower.startsWith('data:')) {
     return s;
   }
   return getPostImageUrl(category, postId);

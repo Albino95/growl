@@ -19,7 +19,7 @@ import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplay
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
+import { getConnections, syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -139,15 +139,21 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     status?: string | null;
   }>({});
 
-  /** Loads posts, stories, cohort connections, and instructor eligibility. */
+  /** Loads posts, stories, connections, and instructor eligibility. */
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, cohort, elig, me] = await Promise.all([
+      // Lightweight GET connections — avoid POST sync-cohort on every focus (that walks all users).
+      const [postList, storyList, connections, elig, me] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
-        syncCohortFriends(),
+        getConnections().catch(() => ({
+          following: [] as FriendSummary[],
+          followers: [] as FriendSummary[],
+          followingCount: 0,
+          followersCount: 0,
+        })),
         getInstructorEligibility().catch(() => null),
         fetchCurrentProfile({ stats: true }).catch(() => null),
       ]);
@@ -156,8 +162,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
-      setFollowing(cohort.following);
-      setFollowers(cohort.followers);
+      setFollowing(connections.following);
+      setFollowers(connections.followers);
       if (me) {
         setProfileMeta({
           username: me.username,

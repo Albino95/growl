@@ -160,9 +160,13 @@ export default function PublicProfileScreen() {
 
   const isOwnProfile = currentUser?.id === userId;
 
-  // Reload profile shell when route user changes.
+  // Reload profile shell + first tab content together when route user changes.
   useEffect(() => {
-    loadProfile();
+    setPosts([]);
+    setStories([]);
+    setJournalEntries([]);
+    void loadProfile();
+    void prefetchPrimaryContent();
   }, [userId]);
 
   // Relationship status drives follow button and moderation toggle labels.
@@ -287,11 +291,11 @@ export default function PublicProfileScreen() {
     }
   };
 
-  // Lazily load tab-specific content only after profile metadata is available.
+  // Load tab content when switching tabs (posts are prefetched with the profile).
   useEffect(() => {
-    if (profileUser) {
-      loadContent();
-    }
+    if (!profileUser) return;
+    if (activeTab === 'posts') return;
+    void loadContent();
   }, [profileUser, activeTab, isBlocked]);
 
   useEffect(() => {
@@ -312,6 +316,20 @@ export default function PublicProfileScreen() {
       setProfileUser(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** Prefetch posts while profile metadata loads so the grid appears faster. */
+  const prefetchPrimaryContent = async () => {
+    if (isBlocked) return;
+    try {
+      setLoadingContent(true);
+      const userPosts = await fetchUserPosts(userId);
+      setPosts(userPosts);
+    } catch (error) {
+      console.error('Error prefetching posts:', error);
+    } finally {
+      setLoadingContent(false);
     }
   };
 

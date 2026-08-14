@@ -119,7 +119,7 @@ export default function ExploreScreen() {
       setShopPicks(
         rankMarketplaceProducts(products, userPaths, {
           userPoints: user?.points,
-        }).slice(0, 6)
+        }).slice(0, 8)
       );
 
       const rankedGrid = rankExploreRows(posts, [], userPaths, {
@@ -128,7 +128,7 @@ export default function ExploreScreen() {
       })
         .filter((r): r is { kind: 'post'; post: FeedPost; score: number } => r.kind === 'post')
         .map((r) => r.post);
-      setGridPosts(rankedGrid.slice(0, 8));
+      setGridPosts(rankedGrid.slice(0, 24));
     } catch (e) {
       console.warn('[Explore] load failed', e);
       setLoadError('Could not refresh explore content. Pull to retry.');
@@ -260,7 +260,7 @@ export default function ExploreScreen() {
       const result = await addFriend(userId);
       setFriendIds((prev) => new Set([...prev, userId]));
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
-      setReels((prev) => prev.filter((p) => p.user_id !== userId));
+      // Keep posts visible so users can still open them after sending a request.
       Alert.alert(
         result.connected ? 'Friends' : 'Request sent',
         result.connected
@@ -408,7 +408,7 @@ export default function ExploreScreen() {
       <SectionTitle title="Posts for you" />
       {filteredGrid.length > 0 ? (
         <View style={tw`flex-row flex-wrap justify-between mb-5`}>
-          {filteredGrid.slice(0, 4).map((p) => {
+          {filteredGrid.slice(0, 12).map((p) => {
             const image = resolvePostMediaUri(p.image_url, p.category, p.id);
             return (
               <TouchableOpacity

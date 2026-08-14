@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { createStory } from '../../services/api/stories';
 import { uploadMediaApi } from '../../services/api/media';
+import { isRemoteMediaUrl, uriToDataUrl } from '../../utils/mediaUri';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StickyFooter from '../../components/ui/StickyFooter';
@@ -110,11 +111,21 @@ export default function CreateStoryScreen({ navigation }: Props) {
       }
 
       let imageUrl = persistable;
-      if (persistable.toLowerCase().startsWith('data:')) {
+      if (!isRemoteMediaUrl(persistable)) {
         try {
-          imageUrl = await uploadMediaApi(persistable, 'story');
-        } catch {
-          imageUrl = persistable;
+          const dataUrl = persistable.toLowerCase().startsWith('data:')
+            ? persistable
+            : await uriToDataUrl(persistable);
+          imageUrl = await uploadMediaApi(dataUrl, 'story');
+        } catch (uploadErr: unknown) {
+          const msg =
+            uploadErr instanceof Error ? uploadErr.message : 'Image upload failed';
+          if (Platform.OS === 'web') {
+            alert(`Image upload failed\n${msg}`);
+          } else {
+            Alert.alert('Image upload failed', msg);
+          }
+          return;
         }
       }
 
