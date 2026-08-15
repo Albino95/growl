@@ -1,6 +1,6 @@
 import { request, getApiBaseUrl } from './http';
 
-type UploadPurpose = 'post' | 'product' | 'story';
+type UploadPurpose = 'post' | 'product' | 'story' | 'avatar';
 
 type UploadMediaResponse = {
   success: boolean;

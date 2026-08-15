@@ -167,7 +167,8 @@ export const checkoutSessionSchema = z.object({
 
 export const updateUserSchema = z.object({
   username: z.string().min(3).optional(),
-  avatar: z.string().url().optional(),
+  /** HTTPS media URL, or empty string to clear the avatar. */
+  avatar: z.union([z.string().url(), z.literal('')]).optional(),
   categories: z
     .array(z.string())
     .optional()

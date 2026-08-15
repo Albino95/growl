@@ -33,7 +33,7 @@ function mediaUrlFromRequest(request: Request, env: Env, key: string): string {
 
 /**
  * POST /api/v1/media/upload
- * Body: { dataUrl: string, purpose?: "post" | "product" | "story" }
+ * Body: { dataUrl: string, purpose?: "post" | "product" | "story" | "avatar" }
  */
 export async function uploadMedia(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
@@ -79,7 +79,10 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
 
   // Purpose keeps object keys organized so cleanup/reporting is easier later.
   const purpose =
-    body.purpose === 'product' || body.purpose === 'story' || body.purpose === 'post'
+    body.purpose === 'product' ||
+    body.purpose === 'story' ||
+    body.purpose === 'post' ||
+    body.purpose === 'avatar'
       ? body.purpose
       : 'post';
   const key = `${purpose}/${ctx.userId}/${Date.now()}-${crypto.randomUUID()}.${parsed.ext}`;

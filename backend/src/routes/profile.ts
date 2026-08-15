@@ -158,9 +158,12 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       ...currentMetadata,
       ...(metadata || {}),
       ...(username && { username }),
-      ...(avatar && { avatar }),
       ...(categories && { categories }),
     };
+
+    if (avatar !== undefined) {
+      updatedMetadata.avatar = avatar || null;
+    }
 
     if (typeof decay_timer === 'number') {
       updatedMetadata.decay_timer = decay_timer;
