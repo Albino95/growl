@@ -2,7 +2,9 @@
 const ERROR_MESSAGES: Record<string, string> = {
   USER_EXISTS: 'An account with this email already exists. Sign in instead.',
   INVALID_CREDENTIALS: 'Invalid email or password.',
-  EMAIL_NOT_VERIFIED: 'Confirm your email before signing in. Check your inbox for the code.',
+  EMAIL_NOT_VERIFIED: 'Confirm your email before signing in. Enter the code we sent you.',
+  CODE_EXPIRED: 'This verification code expired after 24 hours. Sign up again.',
+  SIGNUP_EXPIRED: 'This signup expired after 24 hours. Create your account again.',
   VALIDATION_ERROR: 'Please check your email and password.',
   WEAK_PASSWORD: 'Password does not meet security requirements.',
   EMAIL_SEND_FAILED: 'Could not send verification email. Try again later.',
@@ -33,6 +35,9 @@ export function messageFromApiError(data: unknown, httpStatus?: number): string 
   }
   if (httpStatus === 403) {
     return ERROR_MESSAGES.EMAIL_NOT_VERIFIED;
+  }
+  if (httpStatus === 410) {
+    return ERROR_MESSAGES.SIGNUP_EXPIRED;
   }
   return `Request failed${httpStatus ? ` (${httpStatus})` : ''}`;
 }

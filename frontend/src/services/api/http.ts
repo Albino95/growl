@@ -35,6 +35,7 @@ function isAuthBootstrapPath(path: string): boolean {
     path.startsWith('/auth/forgot-password') ||
     path.startsWith('/auth/reset-password') ||
     path.startsWith('/auth/verify-email') ||
+    path.startsWith('/auth/resend-verification') ||
     path.startsWith('/auth/sso') ||
     path.startsWith('/auth/sign-out')
   );

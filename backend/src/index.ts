@@ -20,6 +20,7 @@ import * as adminPrivacyRoutes from './routes/admin/privacy';
 import * as adminBusinessRoutes from './routes/admin/business';
 import * as adminAuditRoutes from './routes/admin/audit';
 import * as adminDashboardRoutes from './routes/admin/dashboard';
+import { purgeExpiredUnverifiedUsers } from './jobs/purgeUnverifiedUsers';
 
 /**
  * Main request handler
@@ -28,6 +29,15 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const response = await handleRequest(request, env, ctx);
     return attachCors(request, env, response);
+  },
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      purgeExpiredUnverifiedUsers(env).then((removed) => {
+        if (removed > 0) {
+          console.log(`[cron] Purged ${removed} expired unverified signup(s)`);
+        }
+      })
+    );
   },
 };
 
@@ -112,6 +122,9 @@ async function handleRequest(
       }
       if (path === `${apiPrefix}/auth/verify-email` && request.method === 'POST') {
         return authRoutes.verifyEmail(request, env);
+      }
+      if (path === `${apiPrefix}/auth/resend-verification` && request.method === 'POST') {
+        return authRoutes.resendVerification(request, env);
       }
       if (path === `${apiPrefix}/auth/refresh` && request.method === 'POST') {
         return authRoutes.refresh(request, env);

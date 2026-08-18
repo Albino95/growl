@@ -31,6 +31,9 @@ ENVIRONMENT = "development"
 API_VERSION = "v1"
 CORS_ORIGINS = "*"
 
+[triggers]
+crons = ["20 * * * *"]
+
 # ---------------------------------------------------------------------------
 # Remote envs: isolated D1 / KV / R2
 # KV: growl-backend-KV_DEV | KV_QA | KV_PROD
@@ -39,6 +42,7 @@ CORS_ORIGINS = "*"
 [env.dev]
 name = "growl-backend-dev"
 vars = { ENVIRONMENT = "development", API_VERSION = "v1", CORS_ORIGINS = "*" }
+triggers = { crons = ["20 * * * *"] }
 
 [[env.dev.d1_databases]]
 binding = "DB"
@@ -57,6 +61,7 @@ bucket_name = "growl-media-dev"
 [env.qa]
 name = "growl-backend-qa"
 vars = { ENVIRONMENT = "qa", API_VERSION = "v1", CORS_ORIGINS = "*" }
+triggers = { crons = ["20 * * * *"] }
 
 [[env.qa.d1_databases]]
 binding = "DB"
@@ -75,6 +80,7 @@ bucket_name = "growl-media-qa"
 [env.production]
 name = "growl-backend-production"
 vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https://letsgrow.lu,https://www.letsgrow.lu,https://growl.app,https://www.growl.app,https://admin.growl.app" }
+triggers = { crons = ["20 * * * *"] }
 
 [[env.production.d1_databases]]
 binding = "DB"

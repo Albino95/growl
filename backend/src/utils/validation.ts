@@ -43,6 +43,10 @@ export const verifyEmailSchema = z.object({
   code: z.string().min(6, 'Enter your verification code').max(64),
 });
 
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
 export const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
 });
