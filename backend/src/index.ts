@@ -25,13 +25,17 @@ import * as adminDashboardRoutes from './routes/admin/dashboard';
  * Main request handler
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const response = await handleRequest(request, env);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const response = await handleRequest(request, env, ctx);
     return attachCors(request, env, response);
   },
 };
 
-async function handleRequest(request: Request, env: Env): Promise<Response> {
+async function handleRequest(
+  request: Request,
+  env: Env,
+  executionCtx: ExecutionContext
+): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return cors(request, env);
@@ -517,7 +521,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
 
       if (path === `${apiPrefix}/social/friends/sync-cohort` && request.method === 'POST') {
-        return friendsRoutes.syncCohortFriendsRoute(request, env);
+        return friendsRoutes.syncCohortFriendsRoute(request, env, executionCtx);
       }
       if (path === `${apiPrefix}/social/friends/connections` && request.method === 'GET') {
         return friendsRoutes.listConnections(request, env);
@@ -556,7 +560,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         return profileRoutes.getProfile(request, env);
       }
       if (path === `${apiPrefix}/profile` && request.method === 'PUT') {
-        return profileRoutes.updateProfile(request, env);
+        return profileRoutes.updateProfile(request, env, executionCtx);
       }
 
       // Admin routes

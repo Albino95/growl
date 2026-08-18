@@ -383,6 +383,9 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.user = action.payload.user;
         state.isLoading = false;
+        if (action.payload.user && !action.payload.user.hasCompletedOnboarding) {
+          state.shouldCompleteSignupOnboarding = true;
+        }
       })
       .addCase(signIn.rejected, (state, action) => {
         state.isLoading = false;
@@ -398,6 +401,9 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.user = action.payload.user;
         state.isLoading = false;
+        if (action.payload.user && !action.payload.user.hasCompletedOnboarding) {
+          state.shouldCompleteSignupOnboarding = true;
+        }
       })
       .addCase(signInWithSSO.rejected, (state, action) => {
         state.isLoading = false;

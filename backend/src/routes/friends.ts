@@ -183,13 +183,27 @@ export async function areFriends(env: Env, a: string, b: string): Promise<boolea
 }
 
 /** Authenticated route wrapper for cohort-based friend synchronization. */
-export async function syncCohortFriendsRoute(request: Request, env: Env): Promise<Response> {
+export async function syncCohortFriendsRoute(
+  request: Request,
+  env: Env,
+  executionCtx?: Pick<ExecutionContext, 'waitUntil'>
+): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
   try {
-    const linked = await syncCategoryCohortFriends(env, ctx.userId);
+    const syncWork = syncCategoryCohortFriends(env, ctx.userId).catch((err) => {
+      console.error('[syncCohortFriends] background sync failed:', err);
+    });
+
+    if (executionCtx) {
+      executionCtx.waitUntil(syncWork);
+      const connections = await listConnectionsPayload(env, ctx.userId);
+      return json({ linked: 0, ...connections, cohortSync: 'scheduled' });
+    }
+
+    const linked = await syncWork;
     const connections = await listConnectionsPayload(env, ctx.userId);
     return json({ linked, ...connections });
   } catch (err) {
