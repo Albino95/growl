@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { getFeedPosts, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { getForYouFeed, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { resolveAvatarUri, resolveStoryDisplayUri } from '../../utils/images';
 import tw from '../../lib/tw';
 
@@ -28,6 +28,60 @@ function formatCompact(n: number): string {
   return String(n);
 }
 
+function ReelsHeader({
+  onBack,
+  onCreate,
+}: {
+  onBack: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <SafeAreaView edges={['top']} style={tw`bg-black border-b border-white/10`}>
+      <View style={tw`flex-row items-center justify-between px-4 py-2`}>
+        <TouchableOpacity
+          onPress={onBack}
+          hitSlop={12}
+          style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
+        <TouchableOpacity
+          onPress={onCreate}
+          hitSlop={12}
+          style={tw`w-10 h-10 rounded-full bg-brand-600 items-center justify-center`}
+          accessibilityLabel="Create reel"
+        >
+          <Ionicons name="add" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function ReelsEmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <View style={tw`flex-1 items-center justify-center px-8 bg-black`}>
+      <View style={tw`w-20 h-20 rounded-full bg-white/10 items-center justify-center mb-5`}>
+        <Ionicons name="film-outline" size={36} color="#34D399" />
+      </View>
+      <Text style={tw`text-white text-center text-xl font-bold mb-2`}>No reels yet</Text>
+      <Text style={tw`text-white/60 text-center mb-8 leading-5`}>
+        Create a vertical clip with looks, crop, text overlays, and cinematic edges.
+      </Text>
+      <TouchableOpacity
+        onPress={onCreate}
+        style={tw`bg-brand-600 px-6 py-3.5 rounded-full flex-row items-center gap-2`}
+        accessibilityLabel="Create your first reel"
+      >
+        <Ionicons name="add-circle-outline" size={20} color="#fff" />
+        <Text style={tw`text-white font-bold text-base`}>Create Reel</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function ReelsScreen() {
   const navigation = useNavigation();
   const [items, setItems] = useState<ReelRow[]>([]);
@@ -35,15 +89,39 @@ export default function ReelsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
+  const goBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    const root = navigation.getParent?.() || navigation;
+    (root as { navigate: (a: string) => void }).navigate('Individual');
+  }, [navigation]);
+
+  const openCreateReel = useCallback(() => {
+    const root = navigation.getParent?.() || navigation;
+    (root as { navigate: (a: string) => void }).navigate('CreateReel');
+  }, [navigation]);
+
   const load = useCallback(async () => {
     try {
-      const res = await getFeedPosts();
-      const posts = res.success && Array.isArray(res.data) ? res.data : [];
-      const reels = posts
-        .map((p) => ({
-          ...p,
-          liked: false,
-        }))
+      const res = await getForYouFeed();
+      if (!res.success || !res.data) {
+        setItems([]);
+        return;
+      }
+      const following = Array.isArray(res.data.following) ? res.data.following : [];
+      const suggested = Array.isArray(res.data.suggested) ? res.data.suggested : [];
+      const seen = new Set<string>();
+      const merged: FeedPost[] = [];
+      for (const p of [...following, ...suggested]) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        merged.push(p);
+      }
+
+      const reels = merged
+        .map((p) => ({ ...p, liked: false }))
         .sort((a, b) => {
           const aReel = a.metadata?.format === 'reel' ? 1 : 0;
           const bReel = b.metadata?.format === 'reel' ? 1 : 0;
@@ -131,28 +209,6 @@ export default function ReelsScreen() {
           <View style={tw`absolute inset-0 bg-black/25`} />
         </TouchableOpacity>
 
-        <SafeAreaView style={tw`absolute top-0 left-0 right-0 z-10`} edges={['top']}>
-          <View style={tw`flex-row items-center justify-between px-4 pt-2`}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              hitSlop={12}
-              style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
-              accessibilityLabel="Go back"
-            >
-              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={tw`text-white font-bold text-lg`}>Clips</Text>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              hitSlop={12}
-              style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
-              accessibilityLabel="Close"
-            >
-              <Ionicons name="close" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-
         <View style={tw`absolute bottom-0 left-0 right-0 pb-10 px-4`}>
           <View style={tw`flex-row items-end justify-between`}>
             <View style={tw`flex-1 mr-4`}>
@@ -227,49 +283,27 @@ export default function ReelsScreen() {
 
   if (loading && items.length === 0) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-black`} edges={['top']}>
-        <View style={tw`flex-row items-center px-4 pt-2`}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={tw`w-10 h-10 rounded-full bg-white/15 items-center justify-center`}
-          >
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+      <View style={tw`flex-1 bg-black`}>
+        <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator color="#fff" size="large" />
           <Text style={tw`text-white/70 mt-4`}>Loading clips…</Text>
         </View>
-      </SafeAreaView>
+      </View>
+    );
+  }
+
+  if (!loading && items.length === 0) {
+    return (
+      <View style={tw`flex-1 bg-black`}>
+        <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
+        <ReelsEmptyState onCreate={openCreateReel} />
+      </View>
     );
   }
 
   return (
     <View style={tw`flex-1 bg-black`}>
-      <SafeAreaView
-        edges={['top']}
-        style={tw`absolute top-0 left-0 right-0 z-20 flex-row items-center justify-between px-4 pt-1`}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={tw`w-10 h-10 rounded-full bg-black/40 items-center justify-center`}
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
-        <TouchableOpacity
-          onPress={() => {
-            const root = navigation.getParent?.() || navigation;
-            (root as { navigate: (a: string) => void }).navigate('CreateReel');
-          }}
-          style={tw`w-10 h-10 rounded-full bg-brand-600 items-center justify-center`}
-          accessibilityLabel="Create reel"
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </SafeAreaView>
-
       <FlatList
         ref={flatListRef}
         data={items}
@@ -281,25 +315,14 @@ export default function ReelsScreen() {
         decelerationRate="fast"
         viewabilityConfig={viewabilityConfig}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-        ListEmptyComponent={
-          <View style={[tw`items-center justify-center px-8`, { height: SCREEN_HEIGHT }]}>
-            <Text style={tw`text-white text-center text-lg mb-2`}>No reels yet</Text>
-            <Text style={tw`text-white/60 text-center mb-6`}>
-              Create a vertical clip with the pro photo editor — looks, crop, text, and cinematic edges.
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                const root = navigation.getParent?.() || navigation;
-                (root as { navigate: (a: string) => void }).navigate('CreateReel');
-              }}
-              style={tw`bg-brand-600 px-5 py-3 rounded-full flex-row items-center gap-2`}
-            >
-              <Ionicons name="film-outline" size={18} color="#fff" />
-              <Text style={tw`text-white font-semibold`}>Create Reel</Text>
-            </TouchableOpacity>
-          </View>
-        }
       />
+      <SafeAreaView
+        edges={['top']}
+        pointerEvents="box-none"
+        style={tw`absolute top-0 left-0 right-0`}
+      >
+        <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
+      </SafeAreaView>
     </View>
   );
 }

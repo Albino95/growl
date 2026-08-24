@@ -26,7 +26,8 @@ import type {
   TextOverlayStyle,
 } from './types';
 import { DEFAULT_ADJUSTMENTS, TEXT_COLORS } from './types';
-import { FILTER_CATEGORIES, getPresetsForCategory } from './presets';
+import { getPresetsForCategory } from './presets';
+import FilterCategoryBar from './FilterCategoryBar';
 import {
   AUTO_ENHANCE_ADJUSTMENTS,
   AUTO_REEL_ADJUSTMENTS,
@@ -134,19 +135,27 @@ function FilterThumb({
   return (
     <Pressable onPress={onPress} style={tw`items-center mr-3`}>
       <View
-        style={tw`w-[72px] h-[72px] rounded-xl overflow-hidden border-2 ${
-          active ? 'border-brand-500' : 'border-stone-700'
-        }`}
+        style={[
+          tw`w-[76px] h-[76px] rounded-2xl overflow-hidden`,
+          active
+            ? tw`border-2 border-brand-400`
+            : tw`border border-stone-600`,
+        ]}
       >
         <Image
           source={{ uri }}
           style={[tw`w-full h-full`, filterCss !== 'none' ? ({ filter: filterCss } as object) : null]}
           contentFit="cover"
         />
+        {active && (
+          <View style={tw`absolute bottom-1.5 right-1.5 w-5 h-5 rounded-full bg-brand-500 items-center justify-center border border-white/80`}>
+            <Ionicons name="checkmark" size={12} color="#fff" />
+          </View>
+        )}
       </View>
       <Text
-        style={tw`text-[10px] mt-1.5 text-center ${
-          active ? 'text-brand-400 font-semibold' : 'text-stone-400'
+        style={tw`text-[10px] mt-2 text-center max-w-[76px] ${
+          active ? 'text-brand-300 font-bold' : 'text-stone-400 font-medium'
         }`}
         numberOfLines={1}
       >
@@ -701,34 +710,12 @@ export default function PhotoEditor({
 
         <View style={tw`flex-1 bg-stone-900`}>
           {activeTab === 'looks' && (
-            <View style={tw`flex-1 pt-3`}>
+            <View style={tw`flex-1 pt-1`}>
+              <FilterCategoryBar active={activeCategory} onSelect={setActiveCategory} />
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={tw`px-4 pb-2`}
-              >
-                {FILTER_CATEGORIES.map((cat) => (
-                  <Pressable
-                    key={cat.id}
-                    onPress={() => setActiveCategory(cat.id)}
-                    style={tw`px-3 py-1.5 rounded-full mr-2 ${
-                      activeCategory === cat.id ? 'bg-brand-600' : 'bg-stone-800'
-                    }`}
-                  >
-                    <Text
-                      style={tw`text-xs font-semibold ${
-                        activeCategory === cat.id ? 'text-white' : 'text-stone-400'
-                      }`}
-                    >
-                      {cat.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={tw`px-4 py-2`}
+                contentContainerStyle={tw`px-4 py-3`}
               >
                 {visiblePresets.map((preset) => {
                   const thumbFilter = buildCssFilter(

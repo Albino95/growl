@@ -244,26 +244,28 @@ emitInsert(userHeader, userRows, 20);
 
 // Posts
 const postHeader = [
-  'INSERT OR IGNORE INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at) VALUES',
+  'INSERT OR REPLACE INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at) VALUES',
 ];
 const postRows = [];
 for (let i = 1; i <= POST_COUNT; i++) {
   const userIdx = ((i - 1) % USER_COUNT) + 1;
   const userId = uid(userIdx);
   const pathKey = CATEGORY_PATHS[(i - 1) % CATEGORY_PATHS.length];
-  const hoursAgo = (i % 168) + 1;
+  const hoursAgo = (i % 120) + 1;
   const caption = STATUSES[i % STATUSES.length];
   const image = POST_IMAGES[i % POST_IMAGES.length];
   const username = usernameFor(userIdx);
   const avatar = avatarUrl(userIdx);
   const likes = 2 + (i % 40);
   const comments = i % 7;
+  const isReel = i % 7 === 0;
   const meta = JSON.stringify({
     username,
     avatar,
     likes,
     comments,
     isInstructor: userIdx <= 18,
+    ...(isReel ? { format: 'reel' } : {}),
   });
   const sub = subCat(pathKey);
   postRows.push(
@@ -274,7 +276,7 @@ emitInsert(postHeader, postRows, 25);
 
 // Stories
 const storyHeader = [
-  'INSERT OR IGNORE INTO stories (id, user_id, image_url, caption, views, expires_at, created_at, updated_at) VALUES',
+  'INSERT OR REPLACE INTO stories (id, user_id, image_url, caption, views, expires_at, created_at, updated_at) VALUES',
 ];
 const storyRows = [];
 for (let i = 1; i <= STORY_COUNT; i++) {

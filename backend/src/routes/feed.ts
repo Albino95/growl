@@ -152,8 +152,9 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   // Pull a recent post window and hydrate engagement counters in one query.
   // Explore needs a wider window so discovery isn't empty after a quiet week.
-  const recencyWindow = isExploreMode ? '-30 days' : '-7 days';
-  const feedLimit = isExploreMode ? 80 : 40;
+  // Home uses 21 days so seeded / quieter accounts still see a populated feed.
+  const recencyWindow = isExploreMode ? '-45 days' : '-21 days';
+  const feedLimit = isExploreMode ? 80 : 50;
   let query = `
     SELECT 
       p.*,
