@@ -8,6 +8,7 @@ import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { createStory } from '../../services/api/stories';
 import { uploadMediaApi } from '../../services/api/media';
 import { isRemoteMediaUrl, uriToDataUrl } from '../../utils/mediaUri';
+import PhotoEditor from '../../components/ui/PhotoEditor';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StickyFooter from '../../components/ui/StickyFooter';
@@ -24,6 +25,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
   const [image, setImage] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   const blobToOptimizedDataUrl = async (uri: string): Promise<string> => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
@@ -63,12 +65,13 @@ export default function CreateStoryScreen({ navigation }: Props) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.9,
     });
 
     if (!result.canceled && result.assets[0]) {
       setImage(result.assets[0].uri);
+      setShowEditor(true);
     }
   };
 
@@ -80,12 +83,13 @@ export default function CreateStoryScreen({ navigation }: Props) {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.9,
     });
 
     if (!result.canceled && result.assets[0]) {
       setImage(result.assets[0].uri);
+      setShowEditor(true);
     }
   };
 
@@ -152,6 +156,22 @@ export default function CreateStoryScreen({ navigation }: Props) {
     }
   };
 
+  if (showEditor && image) {
+    return (
+      <PhotoEditor
+        imageUri={image}
+        title="Edit Story"
+        preferredAspect="9:16"
+        enableOverlays
+        onSave={(editedUri) => {
+          setImage(editedUri);
+          setShowEditor(false);
+        }}
+        onCancel={() => setShowEditor(false)}
+      />
+    );
+  }
+
   return (
     <Screen background="card" edges={['top', 'bottom']}>
       <ScreenHeader title="Create Story" onBack={() => navigation.goBack()} backIcon="close" />
@@ -160,12 +180,22 @@ export default function CreateStoryScreen({ navigation }: Props) {
         {image ? (
           <View style={tw`relative mb-4`}>
             <Image source={{ uri: image }} style={tw`w-full h-96 rounded-2xl`} contentFit="cover" />
-            <TouchableOpacity
-              style={tw`absolute top-3 right-3 bg-black/40 rounded-full p-2`}
-              onPress={() => setImage(null)}
-            >
-              <Ionicons name="trash-outline" size={20} color="#fff" />
-            </TouchableOpacity>
+            <View style={tw`absolute top-3 right-3 flex-row gap-2`}>
+              <TouchableOpacity
+                style={tw`bg-black/40 rounded-full p-2`}
+                onPress={() => setShowEditor(true)}
+                accessibilityLabel="Edit photo"
+              >
+                <Ionicons name="color-filter-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={tw`bg-black/40 rounded-full p-2`}
+                onPress={() => setImage(null)}
+                accessibilityLabel="Remove photo"
+              >
+                <Ionicons name="trash-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <TouchableOpacity

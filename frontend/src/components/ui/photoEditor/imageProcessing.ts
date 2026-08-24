@@ -1,9 +1,13 @@
 import { Image, Platform } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import jpeg from 'jpeg-js';
-import type { CropAspect } from './types';
-import type { EditAdjustments } from './types';
+import type { CropAspect, EditAdjustments, TextOverlay } from './types';
 import { isAdjustmentsNeutral, sanitizeAdjustments } from './filterEngine';
+import {
+  applyCinematicEdges,
+  bakeTextOverlaysOnBuffer,
+  bakeTextOverlaysOnCanvas,
+} from './overlayBake';
 
 async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
   if (typeof document !== 'undefined') {
@@ -18,7 +22,10 @@ async function getImageDimensions(uri: string): Promise<{ width: number; height:
 function computeCropRect(
   width: number,
   height: number,
-  aspect: CropAspect
+  aspect: CropAspect,
+  /** Normalized −1…1 shift within the available slack. */
+  offsetX = 0,
+  offsetY = 0
 ): { originX: number; originY: number; cropW: number; cropH: number } {
   const [wR, hR] = aspect.split(':').map(Number);
   const targetRatio = wR / hR;
@@ -33,17 +40,33 @@ function computeCropRect(
     cropH = Math.round(width / targetRatio);
   }
 
+  const maxOffsetX = Math.max(0, (width - cropW) / 2);
+  const maxOffsetY = Math.max(0, (height - cropH) / 2);
+  const clampedX = Math.max(-1, Math.min(1, offsetX));
+  const clampedY = Math.max(-1, Math.min(1, offsetY));
+
   return {
-    originX: Math.round((width - cropW) / 2),
-    originY: Math.round((height - cropH) / 2),
+    originX: Math.round(maxOffsetX + clampedX * maxOffsetX),
+    originY: Math.round(maxOffsetY + clampedY * maxOffsetY),
     cropW,
     cropH,
   };
 }
 
-async function cropToAspectWeb(uri: string, aspect: CropAspect): Promise<string> {
+async function cropToAspectWeb(
+  uri: string,
+  aspect: CropAspect,
+  offsetX = 0,
+  offsetY = 0
+): Promise<string> {
   const img = await loadHtmlImage(uri);
-  const { originX, originY, cropW, cropH } = computeCropRect(img.width, img.height, aspect);
+  const { originX, originY, cropW, cropH } = computeCropRect(
+    img.width,
+    img.height,
+    aspect,
+    offsetX,
+    offsetY
+  );
 
   const canvas = document.createElement('canvas');
   canvas.width = cropW;
@@ -55,19 +78,72 @@ async function cropToAspectWeb(uri: string, aspect: CropAspect): Promise<string>
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
-export async function cropToAspect(uri: string, aspect: CropAspect): Promise<string> {
+export async function cropToAspect(
+  uri: string,
+  aspect: CropAspect,
+  offsetX = 0,
+  offsetY = 0
+): Promise<string> {
   if (aspect === 'free') return uri;
 
   if (typeof document !== 'undefined') {
-    return cropToAspectWeb(uri, aspect);
+    return cropToAspectWeb(uri, aspect, offsetX, offsetY);
   }
 
   const { width, height } = await getImageDimensions(uri);
-  const { originX, originY, cropW, cropH } = computeCropRect(width, height, aspect);
+  const { originX, originY, cropW, cropH } = computeCropRect(
+    width,
+    height,
+    aspect,
+    offsetX,
+    offsetY
+  );
 
   const result = await ImageManipulator.manipulateAsync(
     uri,
     [{ crop: { originX, originY, width: cropW, height: cropH } }],
+    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
+  );
+  return result.uri;
+}
+
+/**
+ * Straighten by a small angle (−15…15°), then center-crop to remove empty corners.
+ */
+export async function straightenImage(uri: string, degrees: number): Promise<string> {
+  const angle = Math.max(-15, Math.min(15, degrees));
+  if (Math.abs(angle) < 0.4) return uri;
+
+  const { width: srcW, height: srcH } = await getImageDimensions(uri);
+  const rotated = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ rotate: angle }],
+    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
+  );
+
+  const { width, height } = await getImageDimensions(rotated.uri);
+  const rad = (Math.abs(angle) * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const cos = Math.cos(rad);
+  // Inscribed axis-aligned rectangle after rotation
+  const cropW = Math.max(1, Math.round(srcW * cos - srcH * sin));
+  const cropH = Math.max(1, Math.round(srcH * cos - srcW * sin));
+  const safeW = Math.min(cropW, width);
+  const safeH = Math.min(cropH, height);
+  if (safeW < 8 || safeH < 8) return rotated.uri;
+
+  const result = await ImageManipulator.manipulateAsync(
+    rotated.uri,
+    [
+      {
+        crop: {
+          originX: Math.round((width - safeW) / 2),
+          originY: Math.round((height - safeH) / 2),
+          width: safeW,
+          height: safeH,
+        },
+      },
+    ],
     { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
   );
   return result.uri;
@@ -160,6 +236,29 @@ function applyPixelAdjustments(buffer: PixelBuffer, adj: EditAdjustments) {
     r = lum + (r - lum) * sat;
     g = lum + (g - lum) * sat;
     b = lum + (b - lum) * sat;
+
+    // Tone curve: highlights / shadows
+    if (a.highlights !== 0 || a.shadows !== 0) {
+      const t = lum / 255;
+      const hi = a.highlights / 100;
+      const sh = a.shadows / 100;
+      const hiW = Math.max(0, (t - 0.45) / 0.55);
+      const shW = Math.max(0, (0.55 - t) / 0.55);
+      const lift = hi * hiW * 40 + sh * shW * 40;
+      r += lift;
+      g += lift;
+      b += lift;
+    }
+
+    // Clarity ≈ mild midtone contrast
+    if (a.clarity !== 0) {
+      const mid = lum / 255;
+      const midW = 1 - Math.abs(mid - 0.5) * 2;
+      const c = 1 + (a.clarity / 120) * midW;
+      r = ((r / 255 - 0.5) * c + 0.5) * 255;
+      g = ((g / 255 - 0.5) * c + 0.5) * 255;
+      b = ((b / 255 - 0.5) * c + 0.5) * 255;
+    }
 
     if (sepiaMix > 0) {
       const sr = 0.393 * r + 0.769 * g + 0.189 * b;
@@ -264,18 +363,27 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return output;
 }
 
-/** Bake all color edits into a JPEG data URL (web canvas + native jpeg-js). */
+export type ExportOptions = {
+  overlays?: TextOverlay[];
+};
+
+/** Bake all color edits (+ optional text overlays) into a JPEG data URL. */
 export async function exportEditedImage(
   uri: string,
-  adjustments: EditAdjustments
+  adjustments: EditAdjustments,
+  options?: ExportOptions
 ): Promise<string> {
   if (typeof document !== 'undefined') {
-    return exportViaCanvas(uri, adjustments);
+    return exportViaCanvas(uri, adjustments, options);
   }
-  return exportViaJpegJs(uri, adjustments);
+  return exportViaJpegJs(uri, adjustments, options);
 }
 
-async function exportViaCanvas(uri: string, adjustments: EditAdjustments): Promise<string> {
+async function exportViaCanvas(
+  uri: string,
+  adjustments: EditAdjustments,
+  options?: ExportOptions
+): Promise<string> {
   const img = await loadHtmlImage(uri);
   const maxDim = 1600;
   const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
@@ -293,10 +401,19 @@ async function exportViaCanvas(uri: string, adjustments: EditAdjustments): Promi
   processPixelBuffer(imageData, adjustments);
   ctx.putImageData(imageData, 0, 0);
 
+  const overlays = (options?.overlays || []).filter((o) => o.text.trim());
+  if (overlays.length) {
+    bakeTextOverlaysOnCanvas(ctx, width, height, overlays);
+  }
+
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
-async function exportViaJpegJs(uri: string, adjustments: EditAdjustments): Promise<string> {
+async function exportViaJpegJs(
+  uri: string,
+  adjustments: EditAdjustments,
+  options?: ExportOptions
+): Promise<string> {
   try {
     let sourceUri = uri;
     if (Platform.OS !== 'web' && !uri.toLowerCase().includes('.jpg') && !uri.toLowerCase().includes('.jpeg')) {
@@ -317,6 +434,11 @@ async function exportViaJpegJs(uri: string, adjustments: EditAdjustments): Promi
     };
     processPixelBuffer(pixelBuffer, adjustments);
 
+    const overlays = (options?.overlays || []).filter((o) => o.text.trim());
+    if (overlays.length) {
+      bakeTextOverlaysOnBuffer(pixelBuffer, overlays);
+    }
+
     const encoded = jpeg.encode(
       { data: pixelBuffer.data, width: pixelBuffer.width, height: pixelBuffer.height },
       90
@@ -335,6 +457,7 @@ function processPixelBuffer(buffer: PixelBuffer, adjustments: EditAdjustments) {
   applyPixelAdjustments(buffer, adj);
   applySharpen(buffer, adj.sharpen);
   applyVignette(buffer, adj.vignette);
+  applyCinematicEdges(buffer, adj.cinematic);
   applyGrain(buffer, adj.grain);
 }
 

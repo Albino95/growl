@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 
 const links = [
-  { href: '#about', label: 'About' },
-  { href: '#how', label: 'How it works' },
-  { href: '#paths', label: 'Paths' },
-  { href: '#features', label: 'Features' },
-  { href: '#faq', label: 'FAQ' },
+  { href: '/#about', label: 'About' },
+  { href: '/#how', label: 'How it works' },
+  { href: '/#paths', label: 'Paths' },
+  { href: '/#features', label: 'Features' },
+  { href: '/#faq', label: 'FAQ' },
 ];
 
 export default function SiteNav() {
@@ -70,7 +70,7 @@ export default function SiteNav() {
             </a>
           ))}
           <a
-            href="#early-access"
+            href="/#early-access"
             className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300"
           >
             Early access
@@ -123,7 +123,7 @@ export default function SiteNav() {
               </a>
             ))}
             <a
-              href="#early-access"
+              href="/#early-access"
               className="mt-3 rounded-2xl bg-emerald-400 px-4 py-3.5 text-center text-sm font-semibold text-emerald-950"
               onClick={() => setOpen(false)}
             >

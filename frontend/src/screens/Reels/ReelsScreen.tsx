@@ -39,11 +39,17 @@ export default function ReelsScreen() {
     try {
       const res = await getFeedPosts();
       const posts = res.success && Array.isArray(res.data) ? res.data : [];
-      const reels = posts.map((p) => ({
-        ...p,
-        liked: false,
-      }));
-      reels.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const reels = posts
+        .map((p) => ({
+          ...p,
+          liked: false,
+        }))
+        .sort((a, b) => {
+          const aReel = a.metadata?.format === 'reel' ? 1 : 0;
+          const bReel = b.metadata?.format === 'reel' ? 1 : 0;
+          if (aReel !== bReel) return bReel - aReel;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
       setItems(reels);
     } catch (e) {
       console.warn('[Reels] load failed', e);
@@ -240,6 +246,30 @@ export default function ReelsScreen() {
 
   return (
     <View style={tw`flex-1 bg-black`}>
+      <SafeAreaView
+        edges={['top']}
+        style={tw`absolute top-0 left-0 right-0 z-20 flex-row items-center justify-between px-4 pt-1`}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={tw`w-10 h-10 rounded-full bg-black/40 items-center justify-center`}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
+        <TouchableOpacity
+          onPress={() => {
+            const root = navigation.getParent?.() || navigation;
+            (root as { navigate: (a: string) => void }).navigate('CreateReel');
+          }}
+          style={tw`w-10 h-10 rounded-full bg-brand-600 items-center justify-center`}
+          accessibilityLabel="Create reel"
+        >
+          <Ionicons name="add" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </SafeAreaView>
+
       <FlatList
         ref={flatListRef}
         data={items}
@@ -254,9 +284,19 @@ export default function ReelsScreen() {
         ListEmptyComponent={
           <View style={[tw`items-center justify-center px-8`, { height: SCREEN_HEIGHT }]}>
             <Text style={tw`text-white text-center text-lg mb-2`}>No reels yet</Text>
-            <Text style={tw`text-white/60 text-center`}>
-              Seed demo posts or publish from the app — reels use your live feed images as vertical clips.
+            <Text style={tw`text-white/60 text-center mb-6`}>
+              Create a vertical clip with the pro photo editor — looks, crop, text, and cinematic edges.
             </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const root = navigation.getParent?.() || navigation;
+                (root as { navigate: (a: string) => void }).navigate('CreateReel');
+              }}
+              style={tw`bg-brand-600 px-5 py-3 rounded-full flex-row items-center gap-2`}
+            >
+              <Ionicons name="film-outline" size={18} color="#fff" />
+              <Text style={tw`text-white font-semibold`}>Create Reel</Text>
+            </TouchableOpacity>
           </View>
         }
       />

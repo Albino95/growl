@@ -24,6 +24,8 @@ export type FeedPost = {
     isInstructor?: boolean;
     audio_url?: string;
     audio_title?: string;
+    /** Vertical clip published via Create Reel. */
+    format?: 'reel' | 'post' | string;
   };
 };
 

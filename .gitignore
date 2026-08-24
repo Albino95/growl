@@ -237,6 +237,9 @@ public
 # Sentry
 .sentryclirc
 
+# Play Console submit key — never commit
+**/google-play-service-account.json
+
 # Misc
 *.pem
 *.key

@@ -11,12 +11,17 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   terms: {
     id: 'terms',
     title: 'Terms of Service',
-    updatedAt: '2026-07-08',
+    updatedAt: '2026-08-18',
     sections: [
       {
         heading: 'Acceptance',
         body:
-          'By creating an account or using Growl, you agree to these Terms of Service. If you do not agree, do not use the app.',
+          'By creating an account or using Grow!, you agree to these Terms of Service. If you do not agree, do not use the app.',
+      },
+      {
+        heading: 'Eligibility',
+        body:
+          'You must be at least 13 years old. If you are under the age of majority where you live, you need a parent or guardian’s permission.',
       },
       {
         heading: 'Your account',
@@ -26,12 +31,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: 'Community content',
         body:
-          'You retain ownership of content you post. You grant Growl a non-exclusive license to host, display, and distribute your content within the service. Do not post unlawful, harassing, or infringing material.',
+          'You retain ownership of content you post. You grant Grow! a non-exclusive license to host, display, and distribute your content within the service. Do not post unlawful, harassing, or infringing material.',
       },
       {
-        heading: 'Marketplace',
+        heading: 'Marketplace and refunds',
         body:
-          'Purchases through Growl are subject to seller policies and applicable law. Growl may facilitate payments but is not the seller of record unless stated otherwise.',
+          'Purchases of physical goods are made from independent sellers. Grow! may facilitate payment through Stripe but is not the seller of record unless stated otherwise. Request refunds from the seller first; if you cannot resolve it, email support@letsgrow.lu with your order ID.',
       },
       {
         heading: 'Termination',
@@ -47,17 +52,17 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   privacy: {
     id: 'privacy',
     title: 'Privacy Policy',
-    updatedAt: '2026-07-08',
+    updatedAt: '2026-08-18',
     sections: [
       {
         heading: 'Overview',
         body:
-          'Growl collects information you provide (email, profile, posts) and usage data needed to operate the service. We do not sell your personal information.',
+          'Grow! collects information you provide (email, profile, posts) and usage data needed to operate the service. We do not sell your personal information. Contact: privacy@letsgrow.lu.',
       },
       {
         heading: 'Data we collect',
         body:
-          'Account data (email, username, avatar), content you create (posts, comments, stories), social graph (friends, blocks), marketplace orders, and device/log data for security and reliability.',
+          'Account data (email, username, avatar), content you create (posts, comments, stories), social graph (friends, blocks), marketplace orders, and device/log data for security and reliability. Unverified signups are kept for 24 hours, then deleted if you never confirm your email.',
       },
       {
         heading: 'How we use data',
@@ -72,7 +77,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: 'Third parties',
         body:
-          'We use infrastructure providers (e.g. Cloudflare) and optional sign-in providers (Google, Facebook, Apple). Payment processing uses Stripe when checkout is enabled.',
+          'We use infrastructure providers (Cloudflare), transactional email (Resend), optional sign-in providers (Google, Facebook, Apple), and Stripe when checkout is enabled. Crash reports may go to Sentry when enabled on store builds.',
+      },
+      {
+        heading: 'Children',
+        body:
+          'Grow! is not directed at children under 13. If we learn that we collected data from a child under 13, we will delete the account.',
       },
       {
         heading: 'Contact',
@@ -83,7 +93,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   community: {
     id: 'community',
     title: 'Community Guidelines',
-    updatedAt: '2026-07-08',
+    updatedAt: '2026-08-18',
     sections: [
       {
         heading: 'Be respectful',
@@ -108,7 +118,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   support: {
     id: 'support',
     title: 'Help & Support',
-    updatedAt: '2026-07-08',
+    updatedAt: '2026-08-18',
     sections: [
       {
         heading: 'Get help',

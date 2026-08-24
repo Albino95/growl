@@ -42,24 +42,18 @@ export default function SiteFooter() {
             <a
               href={`${siteUrl}/privacy`}
               className="transition hover:text-white"
-              target="_blank"
-              rel="noopener noreferrer"
             >
               Privacy
             </a>
-            <a
-              href={`${siteUrl}/terms`}
-              className="transition hover:text-white"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a href={`${siteUrl}/terms`} className="transition hover:text-white">
               Terms
+            </a>
+            <a href={`${siteUrl}/community`} className="transition hover:text-white">
+              Guidelines
             </a>
             <a
               href={`${siteUrl}/delete-account`}
               className="transition hover:text-white"
-              target="_blank"
-              rel="noopener noreferrer"
             >
               Delete account
             </a>

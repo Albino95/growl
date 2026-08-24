@@ -204,6 +204,11 @@ export default function AuthScreen() {
     };
   }, []);
 
+  const showApple = isAppleSignInAvailable();
+  const showGoogle = isGoogleOAuthConfigured();
+  const showFacebook = isFacebookOAuthConfigured();
+  const showSocialAuth = showApple || showGoogle || showFacebook;
+
   const passwordRuleStatus = useMemo(
     () => PASSWORD_RULES.map((r) => ({ ...r, ok: r.test(password) })),
     [password]
@@ -764,37 +769,45 @@ export default function AuthScreen() {
           loading={busy}
         />
 
-        <View style={tw`flex-row items-center my-7`}>
-          <View style={tw`flex-1 h-px bg-stone-200`} />
-          <Text style={tw`mx-4 text-stone-400 text-sm`}>or continue with</Text>
-          <View style={tw`flex-1 h-px bg-stone-200`} />
-        </View>
+        {showSocialAuth ? (
+          <>
+            <View style={tw`flex-row items-center my-7`}>
+              <View style={tw`flex-1 h-px bg-stone-200`} />
+              <Text style={tw`mx-4 text-stone-400 text-sm`}>or continue with</Text>
+              <View style={tw`flex-1 h-px bg-stone-200`} />
+            </View>
 
-        <View style={tw`flex-row gap-3 mb-2`}>
-          {isAppleSignInAvailable() ? (
-            <TouchableOpacity
-              onPress={() => void handleApple()}
-              disabled={busy}
-              style={tw`flex-1 flex-row items-center justify-center border border-stone-800 rounded-2xl py-3.5 bg-stone-900`}
-            >
-              <Ionicons name="logo-apple" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            onPress={() => void handleGoogle()}
-            disabled={busy}
-            style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
-          >
-            <Ionicons name="logo-google" size={22} color="#4285F4" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => void handleFacebook()}
-            disabled={busy}
-            style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
-          >
-            <Ionicons name="logo-facebook" size={22} color="#1877F2" />
-          </TouchableOpacity>
-        </View>
+            <View style={tw`flex-row gap-3 mb-2`}>
+              {showApple ? (
+                <TouchableOpacity
+                  onPress={() => void handleApple()}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center border border-stone-800 rounded-2xl py-3.5 bg-stone-900`}
+                >
+                  <Ionicons name="logo-apple" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
+              {showGoogle ? (
+                <TouchableOpacity
+                  onPress={() => void handleGoogle()}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
+                >
+                  <Ionicons name="logo-google" size={22} color="#4285F4" />
+                </TouchableOpacity>
+              ) : null}
+              {showFacebook ? (
+                <TouchableOpacity
+                  onPress={() => void handleFacebook()}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
+                >
+                  <Ionicons name="logo-facebook" size={22} color="#1877F2" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </>
+        ) : null}
 
         {featureFlags.showDemoAccounts ? (
           <View style={tw`mt-10 pt-6 border-t border-stone-200/80`}>

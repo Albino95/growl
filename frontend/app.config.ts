@@ -7,12 +7,13 @@ import type { ExpoConfig } from '@expo/config';
 const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
 
 const defineConfig = (): ExpoConfig => ({
-  name: 'Growl',
+  name: 'Grow!',
   slug: 'growl',
   version: '0.4.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'growl',
+  userInterfaceStyle: 'light',
   splash: {
     image: './assets/splash.png',
     resizeMode: 'contain',
@@ -28,6 +29,10 @@ const defineConfig = (): ExpoConfig => ({
     buildNumber: '1',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription: 'Grow! uses the camera so you can take photos for posts, stories, and your profile.',
+      NSPhotoLibraryUsageDescription:
+        'Grow! accesses your photo library so you can share photos with your growth community.',
+      NSPhotoLibraryAddUsageDescription: 'Grow! may save images you export from your account.',
     },
     usesAppleSignIn: true,
     privacyManifests: {
@@ -35,6 +40,18 @@ const defineConfig = (): ExpoConfig => ({
         {
           NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryUserDefaults',
           NSPrivacyAccessedAPITypeReasons: ['CA92.1'],
+        },
+        {
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryFileTimestamp',
+          NSPrivacyAccessedAPITypeReasons: ['C617.1'],
+        },
+        {
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryDiskSpace',
+          NSPrivacyAccessedAPITypeReasons: ['E174.1'],
+        },
+        {
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategorySystemBootTime',
+          NSPrivacyAccessedAPITypeReasons: ['35F9.1'],
         },
       ],
     },
@@ -46,6 +63,8 @@ const defineConfig = (): ExpoConfig => ({
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#ffffff',
     },
+    permissions: ['CAMERA', 'READ_MEDIA_IMAGES'],
+    blockedPermissions: ['android.permission.AD_ID'],
     intentFilters: [
       {
         action: 'VIEW',
@@ -59,10 +78,10 @@ const defineConfig = (): ExpoConfig => ({
     bundler: 'metro',
     favicon: './assets/favicon.png',
     output: 'single',
-    name: 'Growl',
-    shortName: 'Growl',
+    name: 'Grow!',
+    shortName: 'Grow!',
     lang: 'en',
-    description: 'Growl - Your personal growth companion',
+    description: 'Grow! — grow by scrolling with purpose.',
   },
   plugins: [
     [
@@ -90,9 +109,8 @@ const defineConfig = (): ExpoConfig => ({
     ENV: appEnv,
     SHOW_DEMO_ACCOUNTS: process.env.SHOW_DEMO_ACCOUNTS === 'true',
     SHOW_DEV_TOOLS: process.env.SHOW_DEV_TOOLS === 'true',
-    // Default ON so business tooling is available; set ENABLE_*=false to gate off
-    ENABLE_KYC: process.env.ENABLE_KYC !== 'false',
-    ENABLE_PUSH_PREFS: process.env.ENABLE_PUSH_PREFS !== 'false',
+    ENABLE_KYC: process.env.ENABLE_KYC === 'true',
+    ENABLE_PUSH_PREFS: process.env.ENABLE_PUSH_PREFS === 'true',
     SENTRY_DSN: process.env.SENTRY_DSN,
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID,
     googleIosClientId: process.env.GOOGLE_IOS_CLIENT_ID,
