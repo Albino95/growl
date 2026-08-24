@@ -124,6 +124,14 @@ export default function IndividualTabs() {
       navigateFromRoot(navigation, 'Post');
       return;
     }
+    if (action === 'reel') {
+      navigateFromRoot(navigation, 'CreateReel');
+      return;
+    }
+    if (action === 'story') {
+      navigateFromRoot(navigation, 'CreateStory');
+      return;
+    }
     tabNavRef.current?.navigate('Journal', { openCompose: true });
   };
 

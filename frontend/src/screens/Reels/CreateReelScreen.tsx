@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  Alert,
+  Pressable,
+  ActivityIndicator,
+  Dimensions,
   ScrollView,
   Platform,
-  TextInput,
-  Pressable,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,16 +19,41 @@ import { isRemoteMediaUrl, uriToDataUrl } from '../../utils/mediaUri';
 import { useAuth, useAppDispatch } from '../../store/hooks';
 import { prependFeedPost } from '../../store/slices/feedSlice';
 import PhotoEditor from '../../components/ui/PhotoEditor';
-import PrimaryButton from '../../components/ui/PrimaryButton';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import StickyFooter from '../../components/ui/StickyFooter';
-import Screen from '../../components/ui/Screen';
-import PostCategorySheet, { getCategoryLabel } from '../Post/components/PostCategorySheet';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import PostComposerLayout from '../Post/components/PostComposerLayout';
+import PostCaptionOverlay from '../Post/components/PostCaptionOverlay';
+import PostCategorySheet from '../Post/components/PostCategorySheet';
+import PostStickyBar from '../Post/components/PostStickyBar';
 import tw from '../../lib/tw';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
-
 type Props = { navigation: Nav };
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const STAGE_HEIGHT = Math.min(Math.round(SCREEN_WIDTH * (16 / 9)), Math.round(SCREEN_HEIGHT * 0.62));
+const HEADER_OFFSET = 56;
+
+function ToolChip({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={tw`flex-row items-center rounded-full px-3 py-2 mr-2 bg-white/15 border border-white/20`}
+      hitSlop={6}
+    >
+      <Ionicons name={icon} size={16} color="#FFFFFF" />
+      <Text style={tw`text-white text-xs font-semibold ml-1.5`}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export default function CreateReelScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
@@ -44,11 +68,26 @@ export default function CreateReelScreen({ navigation }: Props) {
   const [posting, setPosting] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const captionInputRef = useRef<import('react-native').TextInput>(null);
+  const openEditorAfterPick = useRef(false);
+
+  useEffect(() => {
+    if (image && openEditorAfterPick.current) {
+      openEditorAfterPick.current = false;
+      setShowEditor(true);
+      return;
+    }
+    if (image && !showEditor) {
+      const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [image, showEditor]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow library access to create a reel.');
+      alertMessage('Permission needed', 'Allow library access to create a reel.');
       return;
     }
 
@@ -56,18 +95,19 @@ export default function CreateReelScreen({ navigation }: Props) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
       quality: 0.92,
+      allowsMultipleSelection: false,
     });
 
     if (!result.canceled && result.assets[0]) {
+      openEditorAfterPick.current = true;
       setImage(result.assets[0].uri);
-      setShowEditor(true);
     }
   };
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow camera access to capture a reel.');
+      alertMessage('Permission needed', 'Allow camera access to capture a reel.');
       return;
     }
 
@@ -77,23 +117,40 @@ export default function CreateReelScreen({ navigation }: Props) {
     });
 
     if (!result.canceled && result.assets[0]) {
+      openEditorAfterPick.current = true;
       setImage(result.assets[0].uri);
-      setShowEditor(true);
     }
   };
 
-  const showPicker = () => {
-    Alert.alert('Create reel', 'Choose an image source', [
-      { text: 'Take Photo', onPress: takePhoto },
-      { text: 'Choose from Library', onPress: pickImage },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const handleRemove = async () => {
+    const confirmed = await confirmAsync(
+      'Remove clip?',
+      'This clears the image and caption for this reel draft.',
+      { confirmLabel: 'Remove', destructive: true }
+    );
+    if (!confirmed) return;
+    setImage(null);
+    setCaption('');
+  };
+
+  const handleClose = async () => {
+    if (!image && !caption.trim()) {
+      navigation.goBack();
+      return;
+    }
+    const confirmed = await confirmAsync(
+      'Discard reel?',
+      'Your draft will be lost.',
+      { confirmLabel: 'Discard', destructive: true }
+    );
+    if (!confirmed) return;
+    navigation.goBack();
   };
 
   const publishReel = async () => {
     if (!image || posting) return;
     if (!selectedCategory) {
-      Alert.alert('Category required', 'Pick a growth path category for this reel.');
+      alertMessage('Category required', 'Pick a growth path category for this reel.');
       setShowCategorySheet(true);
       return;
     }
@@ -181,19 +238,11 @@ export default function CreateReelScreen({ navigation }: Props) {
         }
       }
 
-      if (Platform.OS === 'web') {
-        alert('Reel published.');
-      } else {
-        Alert.alert('Reel published', 'Your vertical clip is live.');
-      }
-      navigation.goBack();
+      setShowSuccess(true);
+      setTimeout(() => navigation.goBack(), 600);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to publish reel';
-      if (Platform.OS === 'web') {
-        alert(msg);
-      } else {
-        Alert.alert('Error', msg);
-      }
+      alertMessage('Error', msg);
     } finally {
       setPosting(false);
     }
@@ -218,91 +267,142 @@ export default function CreateReelScreen({ navigation }: Props) {
   const canPublish = Boolean(image && selectedCategory && !posting);
 
   return (
-    <Screen background="card" edges={['top', 'bottom']}>
-      <ScreenHeader title="Create Reel" onBack={() => navigation.goBack()} backIcon="close" />
-
-      <ScrollView
-        style={tw`flex-1`}
-        contentContainerStyle={tw`p-4 pb-6`}
-        keyboardShouldPersistTaps="handled"
-      >
-        {image ? (
-          <View style={tw`relative mb-4 self-center w-full max-w-sm`}>
-            <View
-              style={[
-                tw`rounded-2xl overflow-hidden bg-black w-full`,
-                { aspectRatio: 9 / 16, maxHeight: 420 },
-              ]}
+    <PostComposerLayout
+      footer={
+        image ? (
+          <PostStickyBar
+            selectedCategory={selectedCategory}
+            hasImage
+            isPosting={posting}
+            canPost={canPublish}
+            onOpenCategory={() => setShowCategorySheet(true)}
+            onSubmit={() => void publishReel()}
+            submitLabel="Publish Reel"
+          />
+        ) : null
+      }
+    >
+      <ScreenHeader
+        title="Create Reel"
+        onBack={() => void handleClose()}
+        backIcon="close"
+        transparent
+        light
+        style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-20`}
+        rightAction={
+          image ? (
+            <Pressable
+              onPress={() => void handleRemove()}
+              hitSlop={8}
+              style={tw`w-10 h-10 items-center justify-center`}
+              accessibilityLabel="Remove clip"
             >
-              <Image source={{ uri: image }} style={tw`w-full h-full`} contentFit="cover" />
-            </View>
-            <View style={tw`absolute top-3 right-3 flex-row gap-2`}>
-              <TouchableOpacity
-                style={tw`bg-black/45 rounded-full p-2`}
-                onPress={() => setShowEditor(true)}
-                accessibilityLabel="Edit reel"
-              >
-                <Ionicons name="color-filter-outline" size={20} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={tw`bg-black/45 rounded-full p-2`}
-                onPress={() => setImage(null)}
-                accessibilityLabel="Remove"
-              >
-                <Ionicons name="trash-outline" size={20} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={showPicker}
-            style={[
-              tw`w-full self-center max-w-sm rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50 items-center justify-center mb-4`,
-              { aspectRatio: 9 / 16, maxHeight: 420 },
-            ]}
-          >
-            <Ionicons name="film-outline" size={44} color="#059669" />
-            <Text style={tw`text-stone-700 font-semibold mt-2`}>Add vertical clip</Text>
-            <Text style={tw`text-stone-500 text-sm mt-1`}>Opens the photo editor · 9:16</Text>
-          </TouchableOpacity>
-        )}
+              <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+            </Pressable>
+          ) : undefined
+        }
+      />
 
-        <Pressable
-          onPress={() => setShowCategorySheet(true)}
-          style={tw`flex-row items-center justify-between bg-stone-100 rounded-xl px-4 py-3.5 mb-4`}
+      {showSuccess && (
+        <View style={tw`absolute inset-0 z-50 bg-brand-600/90 items-center justify-center`}>
+          <View style={tw`bg-white rounded-full p-4 mb-3`}>
+            <Text style={tw`text-3xl`}>✓</Text>
+          </View>
+          <Text style={tw`text-white text-xl font-bold`}>Reel live!</Text>
+        </View>
+      )}
+
+      {!image ? (
+        <View
+          style={[
+            tw`flex-1 items-center justify-center px-6 bg-brand-900`,
+            { minHeight: STAGE_HEIGHT },
+          ]}
         >
-          <View style={tw`flex-row items-center gap-2 flex-1`}>
-            <Ionicons name="grid-outline" size={18} color="#57534E" />
-            <Text style={tw`text-stone-800 font-medium`} numberOfLines={1}>
-              {selectedCategory
-                ? getCategoryLabel(selectedCategory)
-                : 'Choose category'}
+          <View style={tw`items-center mb-10`}>
+            <View style={tw`bg-white/15 rounded-full p-5 mb-4 border border-white/20`}>
+              <Ionicons name="film-outline" size={48} color="#FFFFFF" />
+            </View>
+            <Text style={tw`text-white text-2xl font-bold mb-2 text-center`}>
+              Create a vertical clip
+            </Text>
+            <Text style={tw`text-white/70 text-base text-center px-4`}>
+              Shoot or pick a photo — then edit in 9:16 with looks, text, and cinematic edges
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-        </Pressable>
+          <View style={tw`flex-row gap-3 w-full`}>
+            <Pressable
+              onPress={() => void takePhoto()}
+              style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-brand-600`}
+            >
+              <Ionicons name="camera" size={22} color="#FFFFFF" style={tw`mr-2`} />
+              <Text style={tw`font-semibold text-base text-white`}>Camera</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void pickImage()}
+              style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-white/15 border border-white/25`}
+            >
+              <Ionicons name="images" size={22} color="#FFFFFF" style={tw`mr-2`} />
+              <Text style={tw`font-semibold text-base text-white`}>Library</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <View style={tw`flex-1`}>
+          <View style={[tw`w-full relative bg-black`, { height: STAGE_HEIGHT }]}>
+            <Image
+              source={{ uri: image }}
+              style={tw`w-full h-full`}
+              contentFit="cover"
+              transition={200}
+            />
+            <View style={tw`absolute bottom-0 left-0 right-0 h-32 bg-black/40`} pointerEvents="none" />
+            {posting && (
+              <View style={tw`absolute inset-0 bg-black/50 items-center justify-center z-30`}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+                <Text style={tw`text-white mt-3 font-medium`}>Publishing…</Text>
+              </View>
+            )}
+            <View
+              style={[tw`absolute right-3 flex-row`, { top: HEADER_OFFSET, zIndex: 30 }]}
+              pointerEvents="box-none"
+            >
+              <Pressable
+                onPress={() => setShowEditor(true)}
+                style={tw`rounded-full p-2.5 bg-black/55 mr-2`}
+                hitSlop={8}
+                accessibilityLabel="Edit reel"
+              >
+                <Ionicons name="color-wand-outline" size={20} color="#FFFFFF" />
+              </Pressable>
+              <Pressable
+                onPress={() => void handleRemove()}
+                style={tw`rounded-full p-2.5 bg-red-500/85`}
+                hitSlop={8}
+                accessibilityLabel="Remove clip"
+              >
+                <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </View>
 
-        <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Caption (optional)</Text>
-        <TextInput
-          value={caption}
-          onChangeText={setCaption}
-          placeholder="Say something about this reel..."
-          placeholderTextColor="#A8A29E"
-          multiline
-          maxLength={220}
-          style={tw`bg-stone-100 rounded-xl p-4 min-h-24 text-stone-800`}
-        />
-        <Text style={tw`text-xs text-stone-400 mt-2`}>{caption.length}/220</Text>
-      </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`px-4 py-3`}
+            style={tw`flex-grow-0`}
+          >
+            <ToolChip icon="color-wand-outline" label="Edit" onPress={() => setShowEditor(true)} />
+            <ToolChip icon="images-outline" label="Replace" onPress={() => void pickImage()} />
+          </ScrollView>
 
-      <StickyFooter>
-        <PrimaryButton
-          label="Publish Reel"
-          onPress={publishReel}
-          disabled={!canPublish}
-          loading={posting}
-        />
-      </StickyFooter>
+          <PostCaptionOverlay
+            caption={caption}
+            onChangeCaption={setCaption}
+            inputRef={captionInputRef}
+          />
+        </View>
+      )}
 
       <PostCategorySheet
         visible={showCategorySheet}
@@ -311,6 +411,6 @@ export default function CreateReelScreen({ navigation }: Props) {
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
       />
-    </Screen>
+    </PostComposerLayout>
   );
 }
