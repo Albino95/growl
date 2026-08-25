@@ -1,6 +1,11 @@
+import { Platform } from 'react-native';
 import { request, getApiBaseUrl } from './http';
+import { getSecureItem } from '../storage/secureStore';
+import { getToken, setToken } from '../storage/tokenManager';
+import { messageFromApiError } from './apiErrors';
 
-type UploadPurpose = 'post' | 'product' | 'story' | 'avatar';
+export type UploadPurpose = 'post' | 'product' | 'story' | 'avatar' | 'reel';
+export type MediaKind = 'image' | 'video';
 
 type UploadMediaResponse = {
   success: boolean;
@@ -9,6 +14,7 @@ type UploadMediaResponse = {
     url: string;
     size: number;
     contentType: string;
+    mediaType?: MediaKind;
   };
 };
 
@@ -29,8 +35,20 @@ function normalizeUploadedMediaUrl(url: string, key?: string): string {
   return url;
 }
 
+async function readAccessToken(): Promise<string | null> {
+  let token: string | null = getToken();
+  if (!token) {
+    try {
+      token = await getSecureItem('auth_token');
+      if (token) setToken(token);
+    } catch {
+      /* ignore */
+    }
+  }
+  return token;
+}
+
 export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): Promise<string> {
-  // Returns a backend-served URL (R2-backed when configured).
   const res = await request<UploadMediaResponse>('/media/upload', {
     method: 'POST',
     body: JSON.stringify({ dataUrl, purpose }),
@@ -38,4 +56,103 @@ export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): P
   const url = res.data?.url;
   if (!url) throw new Error('Upload succeeded but no media URL was returned');
   return normalizeUploadedMediaUrl(url, res.data?.key);
+}
+
+/**
+ * Multipart upload — preferred for video (avoids huge base64 JSON bodies).
+ * Returns hosted URL + detected media kind.
+ */
+export async function uploadMediaFile(
+  uri: string,
+  purpose: UploadPurpose,
+  opts?: { mimeType?: string; fileName?: string }
+): Promise<{ url: string; mediaType: MediaKind; contentType: string }> {
+  const mimeType = opts?.mimeType || guessMimeFromUri(uri);
+  const fileName =
+    opts?.fileName ||
+    `upload.${mimeType.includes('png') ? 'png' : mimeType.includes('webm') ? 'webm' : mimeType.includes('quicktime') || uri.toLowerCase().includes('.mov') ? 'mov' : mimeType.startsWith('video/') ? 'mp4' : 'jpg'}`;
+
+  const form = new FormData();
+  form.append('purpose', purpose);
+
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    const typed =
+      blob.type && blob.type !== 'application/octet-stream'
+        ? blob
+        : new Blob([blob], { type: mimeType });
+    form.append('file', typed, fileName);
+  } else {
+    // React Native FormData file shape
+    form.append('file', {
+      uri,
+      name: fileName,
+      type: mimeType,
+    } as unknown as Blob);
+  }
+
+  const token = await readAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  // Do NOT set Content-Type — fetch sets multipart boundary.
+
+  const endpoint = `${getApiBaseUrl()}/media/upload`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+
+  let data: UploadMediaResponse | null = null;
+  try {
+    data = (await response.json()) as UploadMediaResponse;
+  } catch {
+    throw new Error(messageFromApiError(null, response.status));
+  }
+
+  if (!response.ok || !data?.success || !data.data?.url) {
+    throw new Error(messageFromApiError(data, response.status));
+  }
+
+  const mediaType: MediaKind =
+    data.data.mediaType ||
+    (data.data.contentType?.startsWith('video/') ? 'video' : 'image');
+
+  return {
+    url: normalizeUploadedMediaUrl(data.data.url, data.data.key),
+    mediaType,
+    contentType: data.data.contentType || mimeType,
+  };
+}
+
+function guessMimeFromUri(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.includes('.png') || lower.startsWith('data:image/png')) return 'image/png';
+  if (lower.includes('.webp') || lower.startsWith('data:image/webp')) return 'image/webp';
+  if (lower.includes('.webm') || lower.startsWith('data:video/webm')) return 'video/webm';
+  if (lower.includes('.mov') || lower.startsWith('data:video/quicktime')) return 'video/quicktime';
+  if (
+    lower.includes('.mp4') ||
+    lower.includes('.m4v') ||
+    lower.startsWith('data:video/mp4') ||
+    lower.includes('video')
+  ) {
+    return 'video/mp4';
+  }
+  return 'image/jpeg';
+}
+
+export function isVideoMedia(opts: {
+  uri?: string | null;
+  mediaType?: string | null;
+  contentType?: string | null;
+}): boolean {
+  if (opts.mediaType === 'video') return true;
+  if (opts.contentType?.toLowerCase().startsWith('video/')) return true;
+  const u = (opts.uri || '').toLowerCase();
+  return (
+    u.startsWith('data:video/') ||
+    /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)
+  );
 }

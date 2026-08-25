@@ -3310,6 +3310,11 @@ expo-auth-session@^7.0.8:
     expo-web-browser "~15.0.7"
     invariant "^2.2.4"
 
+expo-av@~16.0.8:
+  version "16.0.8"
+  resolved "https://registry.npmjs.org/expo-av/-/expo-av-16.0.8.tgz"
+  integrity sha512-cmVPftGR/ca7XBgs7R6ky36lF3OC0/MM/lpgX/yXqfv0jASTsh7AYX9JxHCwFmF+Z6JEB1vne9FDx4GiLcGreQ==
+
 expo-camera@^17.0.9:
   version "17.0.9"
   resolved "https://registry.npmjs.org/expo-camera/-/expo-camera-17.0.9.tgz"

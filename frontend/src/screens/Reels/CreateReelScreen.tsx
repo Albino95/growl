@@ -7,15 +7,17 @@ import {
   Dimensions,
   ScrollView,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { createFeedPost } from '../../services/api/feed';
-import { uploadMediaApi } from '../../services/api/media';
-import { isRemoteMediaUrl, uriToDataUrl } from '../../utils/mediaUri';
+import { uploadMediaApi, uploadMediaFile, isVideoMedia } from '../../services/api/media';
+import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { useAuth, useAppDispatch } from '../../store/hooks';
 import { prependFeedPost } from '../../store/slices/feedSlice';
 import PhotoEditor from '../../components/ui/PhotoEditor';
@@ -29,6 +31,7 @@ import tw from '../../lib/tw';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
 type Props = { navigation: Nav };
+type MediaKind = 'image' | 'video';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STAGE_HEIGHT = Math.min(Math.round(SCREEN_WIDTH * (16 / 9)), Math.round(SCREEN_HEIGHT * 0.62));
@@ -55,12 +58,24 @@ function ToolChip({
   );
 }
 
+function assetKind(asset: ImagePicker.ImagePickerAsset): MediaKind {
+  const type = (asset.type || '').toLowerCase();
+  if (type === 'video') return 'video';
+  if (type === 'image') return 'image';
+  const mime = (asset.mimeType || '').toLowerCase();
+  if (mime.startsWith('video/')) return 'video';
+  if (isVideoMedia({ uri: asset.uri, contentType: mime })) return 'video';
+  return 'image';
+}
+
 export default function CreateReelScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
   const { user, updateUser } = useAuth();
   const userCategories = user?.categories || [];
 
-  const [image, setImage] = useState<string | null>(null);
+  const [mediaUri, setMediaUri] = useState<string | null>(null);
+  const [mediaKind, setMediaKind] = useState<MediaKind>('image');
+  const [mimeType, setMimeType] = useState<string | undefined>();
   const [caption, setCaption] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     userCategories[0] || null
@@ -73,18 +88,27 @@ export default function CreateReelScreen({ navigation }: Props) {
   const openEditorAfterPick = useRef(false);
 
   useEffect(() => {
-    if (image && openEditorAfterPick.current) {
+    if (mediaUri && mediaKind === 'image' && openEditorAfterPick.current) {
       openEditorAfterPick.current = false;
       setShowEditor(true);
       return;
     }
-    if (image && !showEditor) {
+    openEditorAfterPick.current = false;
+    if (mediaUri && !showEditor) {
       const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
       return () => clearTimeout(timer);
     }
-  }, [image, showEditor]);
+  }, [mediaUri, mediaKind, showEditor]);
 
-  const pickImage = async () => {
+  const applyAsset = (asset: ImagePicker.ImagePickerAsset) => {
+    const kind = assetKind(asset);
+    setMediaKind(kind);
+    setMimeType(asset.mimeType || undefined);
+    setMediaUri(asset.uri);
+    openEditorAfterPick.current = kind === 'image';
+  };
+
+  const pickFromLibrary = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       alertMessage('Permission needed', 'Allow library access to create a reel.');
@@ -92,19 +116,19 @@ export default function CreateReelScreen({ navigation }: Props) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsEditing: false,
       quality: 0.92,
+      videoMaxDuration: 60,
       allowsMultipleSelection: false,
     });
 
     if (!result.canceled && result.assets[0]) {
-      openEditorAfterPick.current = true;
-      setImage(result.assets[0].uri);
+      applyAsset(result.assets[0]);
     }
   };
 
-  const takePhoto = async () => {
+  const captureMedia = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       alertMessage('Permission needed', 'Allow camera access to capture a reel.');
@@ -112,29 +136,36 @@ export default function CreateReelScreen({ navigation }: Props) {
     }
 
     const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsEditing: false,
       quality: 0.92,
+      videoMaxDuration: 60,
     });
 
     if (!result.canceled && result.assets[0]) {
-      openEditorAfterPick.current = true;
-      setImage(result.assets[0].uri);
+      applyAsset(result.assets[0]);
     }
+  };
+
+  const clearMedia = () => {
+    setMediaUri(null);
+    setMediaKind('image');
+    setMimeType(undefined);
+    setCaption('');
   };
 
   const handleRemove = async () => {
     const confirmed = await confirmAsync(
       'Remove clip?',
-      'This clears the image and caption for this reel draft.',
+      'This clears the media and caption for this reel draft.',
       { confirmLabel: 'Remove', destructive: true }
     );
     if (!confirmed) return;
-    setImage(null);
-    setCaption('');
+    clearMedia();
   };
 
   const handleClose = async () => {
-    if (!image && !caption.trim()) {
+    if (!mediaUri && !caption.trim()) {
       navigation.goBack();
       return;
     }
@@ -148,7 +179,7 @@ export default function CreateReelScreen({ navigation }: Props) {
   };
 
   const publishReel = async () => {
-    if (!image || posting) return;
+    if (!mediaUri || posting) return;
     if (!selectedCategory) {
       alertMessage('Category required', 'Pick a growth path category for this reel.');
       setShowCategorySheet(true);
@@ -157,45 +188,62 @@ export default function CreateReelScreen({ navigation }: Props) {
 
     setPosting(true);
     try {
-      let persistable = image;
-      if (Platform.OS === 'web' && image.toLowerCase().startsWith('blob:')) {
-        try {
-          const res = await fetch(image);
-          const blob = await res.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          try {
-            const imageEl = await new Promise<HTMLImageElement>((resolve, reject) => {
-              const img = new window.Image();
-              img.onload = () => resolve(img);
-              img.onerror = () => reject(new Error('decode failed'));
-              img.src = objectUrl;
-            });
-            const maxDim = 1600;
-            const scale = Math.min(1, maxDim / Math.max(imageEl.width, imageEl.height));
-            const width = Math.max(1, Math.round(imageEl.width * scale));
-            const height = Math.max(1, Math.round(imageEl.height * scale));
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(imageEl, 0, 0, width, height);
-              persistable = canvas.toDataURL('image/jpeg', 0.88);
-            }
-          } finally {
-            URL.revokeObjectURL(objectUrl);
-          }
-        } catch {
-          // keep original
-        }
-      }
+      let mediaUrl = mediaUri;
+      let uploadedKind: MediaKind = mediaKind;
+      let contentType = mimeType;
 
-      let imageUrl = persistable;
-      if (!isRemoteMediaUrl(persistable)) {
-        const dataUrl = persistable.toLowerCase().startsWith('data:')
-          ? persistable
-          : await uriToDataUrl(persistable);
-        imageUrl = await uploadMediaApi(dataUrl, 'post');
+      if (!isRemoteMediaUrl(mediaUri)) {
+        if (mediaKind === 'video') {
+          const uploaded = await uploadMediaFile(mediaUri, 'reel', {
+            mimeType: mimeType || 'video/mp4',
+          });
+          mediaUrl = uploaded.url;
+          uploadedKind = uploaded.mediaType;
+          contentType = uploaded.contentType;
+        } else {
+          let persistable = mediaUri;
+          if (Platform.OS === 'web' && mediaUri.toLowerCase().startsWith('blob:')) {
+            try {
+              const res = await fetch(mediaUri);
+              const blob = await res.blob();
+              const objectUrl = URL.createObjectURL(blob);
+              try {
+                const imageEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+                  const img = new window.Image();
+                  img.onload = () => resolve(img);
+                  img.onerror = () => reject(new Error('decode failed'));
+                  img.src = objectUrl;
+                });
+                const maxDim = 1600;
+                const scale = Math.min(1, maxDim / Math.max(imageEl.width, imageEl.height));
+                const width = Math.max(1, Math.round(imageEl.width * scale));
+                const height = Math.max(1, Math.round(imageEl.height * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(imageEl, 0, 0, width, height);
+                  persistable = canvas.toDataURL('image/jpeg', 0.88);
+                }
+              } finally {
+                URL.revokeObjectURL(objectUrl);
+              }
+            } catch {
+              // keep original
+            }
+          }
+
+          if (persistable.toLowerCase().startsWith('data:')) {
+            mediaUrl = await uploadMediaApi(persistable, 'reel');
+          } else {
+            const uploaded = await uploadMediaFile(persistable, 'reel', {
+              mimeType: mimeType || 'image/jpeg',
+            });
+            mediaUrl = uploaded.url;
+            contentType = uploaded.contentType;
+          }
+        }
       }
 
       const category = selectedCategory.split(':')[0];
@@ -204,11 +252,15 @@ export default function CreateReelScreen({ navigation }: Props) {
         : undefined;
 
       const created = await createFeedPost({
-        image_url: imageUrl,
+        image_url: mediaUrl,
         caption: caption.trim() || '',
         category,
         subcategory,
-        metadata: { format: 'reel' },
+        metadata: {
+          format: 'reel',
+          media_type: uploadedKind,
+          content_type: contentType,
+        },
       });
 
       if (created?.data) {
@@ -216,10 +268,12 @@ export default function CreateReelScreen({ navigation }: Props) {
         dispatch(
           prependFeedPost({
             ...created.data,
-            image_url: created.data.image_url || imageUrl,
+            image_url: created.data.image_url || mediaUrl,
             feed_section: 'following',
             metadata: {
               format: 'reel',
+              media_type: uploadedKind,
+              content_type: contentType,
               ...serverMeta,
               username:
                 serverMeta.username ||
@@ -248,15 +302,15 @@ export default function CreateReelScreen({ navigation }: Props) {
     }
   };
 
-  if (showEditor && image) {
+  if (showEditor && mediaUri && mediaKind === 'image') {
     return (
       <PhotoEditor
-        imageUri={image}
+        imageUri={mediaUri}
         title="Edit Reel"
         preferredAspect="9:16"
         enableOverlays
         onSave={(editedUri) => {
-          setImage(editedUri);
+          setMediaUri(editedUri);
           setShowEditor(false);
         }}
         onCancel={() => setShowEditor(false)}
@@ -264,12 +318,12 @@ export default function CreateReelScreen({ navigation }: Props) {
     );
   }
 
-  const canPublish = Boolean(image && selectedCategory && !posting);
+  const canPublish = Boolean(mediaUri && selectedCategory && !posting);
 
   return (
     <PostComposerLayout
       footer={
-        image ? (
+        mediaUri ? (
           <PostStickyBar
             selectedCategory={selectedCategory}
             hasImage
@@ -290,7 +344,7 @@ export default function CreateReelScreen({ navigation }: Props) {
         light
         style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-20`}
         rightAction={
-          image ? (
+          mediaUri ? (
             <Pressable
               onPress={() => void handleRemove()}
               hitSlop={8}
@@ -312,7 +366,7 @@ export default function CreateReelScreen({ navigation }: Props) {
         </View>
       )}
 
-      {!image ? (
+      {!mediaUri ? (
         <View
           style={[
             tw`flex-1 items-center justify-center px-6 bg-brand-900`,
@@ -327,19 +381,19 @@ export default function CreateReelScreen({ navigation }: Props) {
               Create a vertical clip
             </Text>
             <Text style={tw`text-white/70 text-base text-center px-4`}>
-              Shoot or pick a photo — then edit in 9:16 with looks, text, and cinematic edges
+              Record or pick a video (up to 60s), or use a photo and edit in 9:16
             </Text>
           </View>
           <View style={tw`flex-row gap-3 w-full`}>
             <Pressable
-              onPress={() => void takePhoto()}
+              onPress={() => void captureMedia()}
               style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-brand-600`}
             >
-              <Ionicons name="camera" size={22} color="#FFFFFF" style={tw`mr-2`} />
+              <Ionicons name="videocam" size={22} color="#FFFFFF" style={tw`mr-2`} />
               <Text style={tw`font-semibold text-base text-white`}>Camera</Text>
             </Pressable>
             <Pressable
-              onPress={() => void pickImage()}
+              onPress={() => void pickFromLibrary()}
               style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-white/15 border border-white/25`}
             >
               <Ionicons name="images" size={22} color="#FFFFFF" style={tw`mr-2`} />
@@ -350,31 +404,47 @@ export default function CreateReelScreen({ navigation }: Props) {
       ) : (
         <View style={tw`flex-1`}>
           <View style={[tw`w-full relative bg-black`, { height: STAGE_HEIGHT }]}>
-            <Image
-              source={{ uri: image }}
-              style={tw`w-full h-full`}
-              contentFit="cover"
-              transition={200}
-            />
+            {mediaKind === 'video' ? (
+              <Video
+                source={{ uri: mediaUri }}
+                style={StyleSheet.absoluteFillObject}
+                resizeMode={ResizeMode.COVER}
+                shouldPlay
+                isLooping
+                isMuted={false}
+                useNativeControls
+              />
+            ) : (
+              <Image
+                source={{ uri: mediaUri }}
+                style={tw`w-full h-full`}
+                contentFit="cover"
+                transition={200}
+              />
+            )}
             <View style={tw`absolute bottom-0 left-0 right-0 h-32 bg-black/40`} pointerEvents="none" />
             {posting && (
               <View style={tw`absolute inset-0 bg-black/50 items-center justify-center z-30`}>
                 <ActivityIndicator size="large" color="#FFFFFF" />
-                <Text style={tw`text-white mt-3 font-medium`}>Publishing…</Text>
+                <Text style={tw`text-white mt-3 font-medium`}>
+                  {mediaKind === 'video' ? 'Uploading video…' : 'Publishing…'}
+                </Text>
               </View>
             )}
             <View
               style={[tw`absolute right-3 flex-row`, { top: HEADER_OFFSET, zIndex: 30 }]}
               pointerEvents="box-none"
             >
-              <Pressable
-                onPress={() => setShowEditor(true)}
-                style={tw`rounded-full p-2.5 bg-black/55 mr-2`}
-                hitSlop={8}
-                accessibilityLabel="Edit reel"
-              >
-                <Ionicons name="color-wand-outline" size={20} color="#FFFFFF" />
-              </Pressable>
+              {mediaKind === 'image' && (
+                <Pressable
+                  onPress={() => setShowEditor(true)}
+                  style={tw`rounded-full p-2.5 bg-black/55 mr-2`}
+                  hitSlop={8}
+                  accessibilityLabel="Edit reel"
+                >
+                  <Ionicons name="color-wand-outline" size={20} color="#FFFFFF" />
+                </Pressable>
+              )}
               <Pressable
                 onPress={() => void handleRemove()}
                 style={tw`rounded-full p-2.5 bg-red-500/85`}
@@ -384,6 +454,11 @@ export default function CreateReelScreen({ navigation }: Props) {
                 <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
               </Pressable>
             </View>
+            {mediaKind === 'video' && (
+              <View style={tw`absolute left-3 bottom-3 bg-black/55 px-2.5 py-1 rounded-full`}>
+                <Text style={tw`text-white text-xs font-semibold`}>Video</Text>
+              </View>
+            )}
           </View>
 
           <ScrollView
@@ -392,8 +467,10 @@ export default function CreateReelScreen({ navigation }: Props) {
             contentContainerStyle={tw`px-4 py-3`}
             style={tw`flex-grow-0`}
           >
-            <ToolChip icon="color-wand-outline" label="Edit" onPress={() => setShowEditor(true)} />
-            <ToolChip icon="images-outline" label="Replace" onPress={() => void pickImage()} />
+            {mediaKind === 'image' && (
+              <ToolChip icon="color-wand-outline" label="Edit" onPress={() => setShowEditor(true)} />
+            )}
+            <ToolChip icon="images-outline" label="Replace" onPress={() => void pickFromLibrary()} />
           </ScrollView>
 
           <PostCaptionOverlay

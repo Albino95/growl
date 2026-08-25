@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, createElement } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,6 @@ import {
   Dimensions,
   StyleSheet,
   PanResponder,
-  TextInput,
-  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -24,11 +22,12 @@ import type {
   EditorTab,
   PhotoEditorProps,
   TextOverlay,
-  TextOverlayStyle,
 } from './types';
-import { DEFAULT_ADJUSTMENTS, TEXT_COLORS } from './types';
+import { DEFAULT_ADJUSTMENTS } from './types';
 import { getPresetsForCategory } from './presets';
 import FilterCategoryBar from './FilterCategoryBar';
+import TextOverlayPanel from './TextOverlayPanel';
+import { AdjustSlider } from './AdjustSlider';
 import {
   AUTO_ENHANCE_ADJUSTMENTS,
   AUTO_REEL_ADJUSTMENTS,
@@ -68,13 +67,6 @@ const CROP_OPTIONS: { id: CropAspect; label: string }[] = [
   { id: '9:16', label: '9:16' },
 ];
 
-const TEXT_STYLES: { id: TextOverlayStyle; label: string }[] = [
-  { id: 'plain', label: 'Plain' },
-  { id: 'bold', label: 'Bold' },
-  { id: 'outline', label: 'Outline' },
-  { id: 'pill', label: 'Pill' },
-];
-
 type AdjustKey = keyof EditAdjustments;
 
 const ADJUST_SLIDERS: { key: AdjustKey; label: string; min: number; max: number }[] = [
@@ -108,15 +100,16 @@ type EditorSnapshot = {
 
 const HISTORY_LIMIT = 24;
 
-function newOverlay(): TextOverlay {
+function newOverlay(text = 'GROW'): TextOverlay {
   return {
     id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    text: 'GROW',
+    text,
     x: 0.5,
     y: 0.5,
     color: '#FFFFFF',
     style: 'outline',
     scale: 1,
+    align: 'center',
   };
 }
 
@@ -163,101 +156,6 @@ function FilterThumb({
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-function AdjustSlider({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-  onSlidingStart,
-  onSlidingComplete,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (v: number) => void;
-  onSlidingStart?: () => void;
-  onSlidingComplete?: () => void;
-}) {
-  // Keep a local thumb value so 0 (center of ± ranges) isn't lost to controlled-slider quirks.
-  const safeValue = Number.isFinite(value) ? snapSliderValue(value) : 0;
-  const [live, setLive] = useState(safeValue);
-  const sliding = useRef(false);
-
-  useEffect(() => {
-    if (!sliding.current) setLive(safeValue);
-  }, [safeValue]);
-
-  const commit = (raw: number) => {
-    const snapped = snapSliderValue(Number.isFinite(raw) ? raw : 0);
-    setLive(snapped);
-    if (snapped !== safeValue) onChange(snapped);
-  };
-
-  return (
-    <View style={tw`mb-4`}>
-      <View style={tw`flex-row justify-between mb-1`}>
-        <Text style={tw`text-stone-300 text-sm font-medium`}>{label}</Text>
-        <Text style={tw`text-stone-500 text-sm`}>{live}</Text>
-      </View>
-      {Platform.OS === 'web' ? (
-        createElement('input', {
-          type: 'range',
-          min,
-          max,
-          step: 1,
-          value: live,
-          onMouseDown: () => {
-            sliding.current = true;
-            onSlidingStart?.();
-          },
-          onTouchStart: () => {
-            sliding.current = true;
-            onSlidingStart?.();
-          },
-          onChange: (e: { target: { value: string } }) => commit(Number(e.target.value)),
-          onMouseUp: () => {
-            sliding.current = false;
-            onSlidingComplete?.();
-          },
-          onTouchEnd: () => {
-            sliding.current = false;
-            onSlidingComplete?.();
-          },
-          style: {
-            width: '100%',
-            height: 32,
-            accentColor: '#10B981',
-            cursor: 'pointer',
-          },
-        })
-      ) : (
-        <Slider
-          style={tw`w-full h-8`}
-          minimumValue={min}
-          maximumValue={max}
-          value={live}
-          onSlidingStart={() => {
-            sliding.current = true;
-            onSlidingStart?.();
-          }}
-          onValueChange={commit}
-          onSlidingComplete={(raw) => {
-            commit(raw);
-            sliding.current = false;
-            onSlidingComplete?.();
-          }}
-          minimumTrackTintColor="#059669"
-          maximumTrackTintColor="#44403C"
-          thumbTintColor="#10B981"
-          step={1}
-        />
-      )}
-    </View>
   );
 }
 
@@ -482,13 +380,16 @@ export default function PhotoEditor({
     }
   }, [workingUri, selectedCrop, cropOffsetX, cropOffsetY, straighten, pushHistory]);
 
-  const addTextOverlay = useCallback(() => {
-    pushHistory();
-    const o = newOverlay();
-    setOverlays((prev) => [...prev.slice(0, 4), o]);
-    setActiveOverlayId(o.id);
-    setActiveTab('overlay');
-  }, [pushHistory]);
+  const addTextOverlay = useCallback(
+    (text?: string) => {
+      pushHistory();
+      const o = newOverlay(text || 'GROW');
+      setOverlays((prev) => [...prev.slice(0, 4), o]);
+      setActiveOverlayId(o.id);
+      setActiveTab('overlay');
+    },
+    [pushHistory]
+  );
 
   const updateActiveOverlay = useCallback(
     (patch: Partial<TextOverlay>) => {
@@ -673,31 +574,41 @@ export default function PhotoEditor({
                         left: `${o.x * 100}%`,
                         top: `${o.y * 100}%`,
                         transform: [
-                          { translateX: -40 },
-                          { translateY: -14 },
+                          { translateX: -50 },
+                          { translateY: -16 },
                           { scale: o.scale },
                         ],
                         backgroundColor:
-                          o.style === 'pill' ? 'rgba(0,0,0,0.55)' : 'transparent',
-                        borderRadius: o.style === 'pill' ? 999 : 0,
+                          o.style === 'pill' || o.style === 'banner'
+                            ? 'rgba(0,0,0,0.55)'
+                            : 'transparent',
+                        borderRadius: o.style === 'pill' ? 999 : o.style === 'banner' ? 4 : 0,
+                        paddingHorizontal: o.style === 'banner' ? 14 : 4,
+                        paddingVertical: o.style === 'banner' ? 6 : 2,
+                        borderWidth: activeOverlayId === o.id ? 1 : 0,
+                        borderColor: '#34D399',
                       },
                     ]}
                   >
                     <Text
                       style={{
                         color: o.color,
-                        fontSize: 22,
-                        fontWeight: '800',
-                        textAlign: 'center',
+                        fontSize: o.style === 'bold' ? 24 : 20,
+                        fontWeight: o.style === 'plain' ? '600' : '800',
+                        textAlign: o.align || 'center',
+                        letterSpacing: o.style === 'neon' ? 1.2 : 0.2,
                         textShadowColor:
-                          o.style === 'outline' || o.style === 'bold'
-                            ? 'rgba(0,0,0,0.9)'
+                          o.style === 'outline' ||
+                          o.style === 'bold' ||
+                          o.style === 'neon' ||
+                          o.style === 'shadow'
+                            ? o.style === 'neon'
+                              ? o.color
+                              : 'rgba(0,0,0,0.9)'
                             : 'transparent',
-                        textShadowOffset: { width: 0, height: 1 },
-                        textShadowRadius: o.style === 'outline' || o.style === 'bold' ? 4 : 0,
-                        borderWidth: activeOverlayId === o.id ? 1 : 0,
-                        borderColor: '#34D399',
-                        paddingHorizontal: 4,
+                        textShadowOffset: { width: 0, height: o.style === 'shadow' ? 3 : 1 },
+                        textShadowRadius:
+                          o.style === 'neon' ? 10 : o.style === 'outline' || o.style === 'bold' ? 4 : o.style === 'shadow' ? 6 : 0,
                       }}
                     >
                       {o.text}
@@ -814,124 +725,16 @@ export default function PhotoEditor({
           )}
 
           {activeTab === 'overlay' && enableOverlays && (
-            <ScrollView style={tw`flex-1 px-4 pt-3`} showsVerticalScrollIndicator={false}>
-              <Pressable
-                onPress={addTextOverlay}
-                style={tw`flex-row items-center justify-center gap-2 bg-brand-600 py-3 rounded-xl mb-4`}
-              >
-                <Ionicons name="add" size={20} color="#fff" />
-                <Text style={tw`text-white font-semibold`}>Add text</Text>
-              </Pressable>
-
-              {overlays.length > 0 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={tw`mb-3`}
-                >
-                  {overlays.map((o, idx) => (
-                    <Pressable
-                      key={o.id}
-                      onPress={() => setActiveOverlayId(o.id)}
-                      style={tw`px-3 py-2 rounded-lg mr-2 ${
-                        activeOverlayId === o.id ? 'bg-brand-600' : 'bg-stone-800'
-                      }`}
-                    >
-                      <Text style={tw`text-white text-xs font-semibold`}>
-                        {o.text.trim() || `Text ${idx + 1}`}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              )}
-
-              {activeOverlay ? (
-                <>
-                  <Text style={tw`text-stone-400 text-xs mb-1`}>Label</Text>
-                  <TextInput
-                    value={activeOverlay.text}
-                    onChangeText={(t) => updateActiveOverlay({ text: t.slice(0, 48) })}
-                    placeholder="Your text"
-                    placeholderTextColor="#78716C"
-                    style={tw`bg-stone-800 text-white rounded-xl px-4 py-3 mb-3`}
-                    maxLength={48}
-                  />
-
-                  <Text style={tw`text-stone-400 text-xs mb-2`}>Style</Text>
-                  <View style={tw`flex-row flex-wrap gap-2 mb-3`}>
-                    {TEXT_STYLES.map((s) => (
-                      <Pressable
-                        key={s.id}
-                        onPress={() => updateActiveOverlay({ style: s.id })}
-                        style={tw`px-3 py-2 rounded-lg border ${
-                          activeOverlay.style === s.id
-                            ? 'bg-brand-600 border-brand-500'
-                            : 'bg-stone-800 border-stone-700'
-                        }`}
-                      >
-                        <Text style={tw`text-white text-xs font-semibold`}>{s.label}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-
-                  <Text style={tw`text-stone-400 text-xs mb-2`}>Color</Text>
-                  <View style={tw`flex-row gap-3 mb-3`}>
-                    {TEXT_COLORS.map((c) => (
-                      <Pressable
-                        key={c}
-                        onPress={() => updateActiveOverlay({ color: c })}
-                        style={[
-                          tw`w-9 h-9 rounded-full border-2`,
-                          {
-                            backgroundColor: c,
-                            borderColor: activeOverlay.color === c ? '#34D399' : '#44403C',
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-
-                  <Text style={tw`text-stone-300 text-sm font-medium mb-1`}>Size</Text>
-                  <Slider
-                    style={tw`w-full h-8 mb-3`}
-                    minimumValue={0.7}
-                    maximumValue={1.8}
-                    value={activeOverlay.scale}
-                    onValueChange={(v) => updateActiveOverlay({ scale: Math.round(v * 10) / 10 })}
-                    minimumTrackTintColor="#059669"
-                    maximumTrackTintColor="#44403C"
-                    thumbTintColor="#10B981"
-                    step={0.1}
-                  />
-
-                  <Pressable
-                    onPress={removeActiveOverlay}
-                    style={tw`self-start flex-row items-center gap-2 py-2 mb-4`}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#F87171" />
-                    <Text style={tw`text-red-400 font-semibold text-sm`}>Remove text</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Text style={tw`text-stone-500 text-sm mb-4`}>
-                  Add a sticker-style label for stories and reels. Drag it on the preview.
-                </Text>
-              )}
-
-              <View style={tw`border-t border-stone-800 pt-3 mb-4`}>
-                <Text style={tw`text-stone-300 text-sm font-medium mb-1`}>Cinematic edges</Text>
-                <Text style={tw`text-stone-500 text-xs mb-2`}>
-                  Darken frame edges — great for vertical clips.
-                </Text>
-                <AdjustSlider
-                  label="Amount"
-                  value={manualAdjust.cinematic}
-                  min={0}
-                  max={50}
-                  onChange={(v) => setAdjust('cinematic', v)}
-                />
-              </View>
-            </ScrollView>
+            <TextOverlayPanel
+              overlays={overlays}
+              activeOverlay={activeOverlay}
+              cinematic={manualAdjust.cinematic}
+              onSelectOverlay={setActiveOverlayId}
+              onAdd={(text) => addTextOverlay(text)}
+              onUpdate={updateActiveOverlay}
+              onRemove={removeActiveOverlay}
+              onCinematicChange={(v) => setAdjust('cinematic', v)}
+            />
           )}
 
           {activeTab === 'crop' && (

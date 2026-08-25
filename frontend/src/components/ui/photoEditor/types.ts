@@ -4,7 +4,16 @@ export type FilterCategory = 'natural' | 'portrait' | 'film' | 'moody' | 'bw' | 
 
 export type CropAspect = 'free' | '1:1' | '4:5' | '16:9' | '9:16' | '3:2' | '2:3';
 
-export type TextOverlayStyle = 'plain' | 'bold' | 'outline' | 'pill';
+export type TextOverlayStyle =
+  | 'plain'
+  | 'bold'
+  | 'outline'
+  | 'pill'
+  | 'neon'
+  | 'shadow'
+  | 'banner';
+
+export type TextAlign = 'left' | 'center' | 'right';
 
 export interface TextOverlay {
   id: string;
@@ -17,6 +26,7 @@ export interface TextOverlay {
   style: TextOverlayStyle;
   /** Relative size multiplier (0.7–1.8). */
   scale: number;
+  align?: TextAlign;
 }
 
 export interface EditAdjustments {
@@ -63,7 +73,35 @@ export const DEFAULT_ADJUSTMENTS: EditAdjustments = {
   cinematic: 0,
 };
 
-export const TEXT_COLORS = ['#FFFFFF', '#FBBF24', '#34D399', '#F472B6', '#000000'] as const;
+export const TEXT_COLORS = [
+  '#FFFFFF',
+  '#F8FAFC',
+  '#FBBF24',
+  '#F59E0B',
+  '#34D399',
+  '#10B981',
+  '#38BDF8',
+  '#818CF8',
+  '#F472B6',
+  '#FB7185',
+  '#000000',
+  '#1C1917',
+] as const;
+
+export const TEXT_QUICK_PHRASES = [
+  'GROW',
+  'Day 1',
+  'Still going',
+  'Progress > Perfect',
+  'Small wins',
+  'Show up',
+  'Focus mode',
+  'Grateful',
+  'One more rep',
+  'New chapter',
+  'Becoming',
+  'Lets grow',
+] as const;
 
 export interface FilterPreset {
   id: string;

@@ -29,10 +29,11 @@ const defineConfig = (): ExpoConfig => ({
     buildNumber: '1',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
-      NSCameraUsageDescription: 'Grow! uses the camera so you can take photos for posts, stories, and your profile.',
+      NSCameraUsageDescription: 'Grow! uses the camera so you can take photos and videos for posts, stories, reels, and your profile.',
       NSPhotoLibraryUsageDescription:
-        'Grow! accesses your photo library so you can share photos with your growth community.',
+        'Grow! accesses your photo library so you can share photos and videos with your growth community.',
       NSPhotoLibraryAddUsageDescription: 'Grow! may save images you export from your account.',
+      NSMicrophoneUsageDescription: 'Grow! uses the microphone when you record video for reels.',
     },
     usesAppleSignIn: true,
     privacyManifests: {
@@ -63,7 +64,7 @@ const defineConfig = (): ExpoConfig => ({
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#ffffff',
     },
-    permissions: ['CAMERA', 'READ_MEDIA_IMAGES'],
+    permissions: ['CAMERA', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'RECORD_AUDIO'],
     blockedPermissions: ['android.permission.AD_ID'],
     intentFilters: [
       {

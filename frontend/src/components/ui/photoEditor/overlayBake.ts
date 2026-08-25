@@ -135,9 +135,20 @@ export type BakeTextOverlay = {
   /** Normalized 0–1 center Y */
   y: number;
   color: string;
-  style: 'plain' | 'bold' | 'outline' | 'pill';
+  style: 'plain' | 'bold' | 'outline' | 'pill' | 'neon' | 'shadow' | 'banner';
   scale: number;
+  align?: 'left' | 'center' | 'right';
 };
+
+function textOriginX(
+  cx: number,
+  totalW: number,
+  align: BakeTextOverlay['align']
+): number {
+  if (align === 'left') return Math.round(cx);
+  if (align === 'right') return Math.round(cx - totalW);
+  return Math.round(cx - totalW / 2);
+}
 
 /** Draw overlay stickers into a pixel buffer (native jpeg-js path). */
 export function bakeTextOverlaysOnBuffer(
@@ -158,11 +169,16 @@ export function bakeTextOverlaysOnBuffer(
     const totalW = text.length * glyphW;
     const cx = Math.round(overlay.x * width);
     const cy = Math.round(overlay.y * height);
-    let startX = Math.round(cx - totalW / 2);
+    let startX = textOriginX(cx, totalW, overlay.align);
     const startY = Math.round(cy - glyphH / 2);
     const color = parseHexColor(overlay.color || '#FFFFFF');
+    const withStroke =
+      overlay.style === 'outline' ||
+      overlay.style === 'bold' ||
+      overlay.style === 'neon' ||
+      overlay.style === 'shadow';
 
-    if (overlay.style === 'pill') {
+    if (overlay.style === 'pill' || overlay.style === 'banner') {
       fillRect(
         data,
         width,
@@ -178,19 +194,34 @@ export function bakeTextOverlaysOnBuffer(
       );
     }
 
+    if (overlay.style === 'shadow') {
+      let shadowX = startX + Math.max(1, Math.round(scale * 0.35));
+      for (const ch of text) {
+        const cols = FONT_5X7[ch] || FONT_5X7['?'];
+        drawGlyph(data, width, height, cols, shadowX, startY + Math.max(1, Math.round(scale * 0.35)), scale, {
+          r: 0,
+          g: 0,
+          b: 0,
+        });
+        shadowX += glyphW;
+      }
+    }
+
+    if (overlay.style === 'neon') {
+      let glowX = startX;
+      for (const ch of text) {
+        const cols = FONT_5X7[ch] || FONT_5X7['?'];
+        drawGlyph(data, width, height, cols, glowX - 1, startY, scale, color);
+        drawGlyph(data, width, height, cols, glowX + 1, startY, scale, color);
+        drawGlyph(data, width, height, cols, glowX, startY - 1, scale, color);
+        drawGlyph(data, width, height, cols, glowX, startY + 1, scale, color);
+        glowX += glyphW;
+      }
+    }
+
     for (const ch of text) {
       const cols = FONT_5X7[ch] || FONT_5X7['?'];
-      drawGlyph(
-        data,
-        width,
-        height,
-        cols,
-        startX,
-        startY,
-        scale,
-        color,
-        overlay.style === 'outline' || overlay.style === 'bold'
-      );
+      drawGlyph(data, width, height, cols, startX, startY, scale, color, withStroke && overlay.style !== 'neon');
       startX += glyphW;
     }
   }
@@ -209,21 +240,25 @@ export function bakeTextOverlaysOnCanvas(
     const cx = overlay.x * width;
     const cy = overlay.y * height;
     const fontSize = Math.max(18, Math.round(Math.min(width, height) * 0.055 * (overlay.scale || 1)));
+    const align = overlay.align || 'center';
+    const weight = overlay.style === 'plain' ? '600' : '800';
     ctx.save();
-    ctx.textAlign = 'center';
+    ctx.textAlign = align;
     ctx.textBaseline = 'middle';
-    ctx.font = `700 ${fontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `${weight} ${fontSize}px system-ui, -apple-system, sans-serif`;
 
-    if (overlay.style === 'pill') {
+    if (overlay.style === 'pill' || overlay.style === 'banner') {
       const metrics = ctx.measureText(text);
-      const padX = fontSize * 0.55;
-      const padY = fontSize * 0.4;
+      const padX = fontSize * (overlay.style === 'banner' ? 0.7 : 0.55);
+      const padY = fontSize * (overlay.style === 'banner' ? 0.45 : 0.4);
       const tw = metrics.width + padX * 2;
       const th = fontSize + padY * 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      const r = th / 2;
-      const x = cx - tw / 2;
+      const r = overlay.style === 'pill' ? th / 2 : 4;
+      let x = cx - tw / 2;
+      if (align === 'left') x = cx - padX;
+      if (align === 'right') x = cx - tw + padX;
       const y = cy - th / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.beginPath();
       ctx.moveTo(x + r, y);
       ctx.arcTo(x + tw, y, x + tw, y + th, r);
@@ -234,12 +269,27 @@ export function bakeTextOverlaysOnCanvas(
       ctx.fill();
     }
 
+    if (overlay.style === 'shadow') {
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillText(text, cx + fontSize * 0.06, cy + fontSize * 0.08);
+    }
+
+    if (overlay.style === 'neon') {
+      ctx.shadowColor = overlay.color || '#FFFFFF';
+      ctx.shadowBlur = fontSize * 0.55;
+      ctx.lineWidth = Math.max(2, fontSize * 0.08);
+      ctx.strokeStyle = overlay.color || '#FFFFFF';
+      ctx.strokeText(text, cx, cy);
+    }
+
     if (overlay.style === 'outline' || overlay.style === 'bold') {
       ctx.lineWidth = Math.max(3, fontSize * 0.12);
       ctx.strokeStyle = 'rgba(0,0,0,0.85)';
       ctx.strokeText(text, cx, cy);
     }
 
+    ctx.shadowBlur = overlay.style === 'neon' ? fontSize * 0.35 : 0;
+    ctx.shadowColor = overlay.style === 'neon' ? overlay.color || '#FFFFFF' : 'transparent';
     ctx.fillStyle = overlay.color || '#FFFFFF';
     ctx.fillText(text, cx, cy);
     ctx.restore();

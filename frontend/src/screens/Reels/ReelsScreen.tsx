@@ -7,12 +7,15 @@ import {
   Dimensions,
   ActivityIndicator,
   RefreshControl,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getForYouFeed, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { isVideoMedia } from '../../services/api/media';
 import { resolveAvatarUri, resolveStoryDisplayUri } from '../../utils/images';
 import tw from '../../lib/tw';
 
@@ -68,7 +71,7 @@ function ReelsEmptyState({ onCreate }: { onCreate: () => void }) {
       </View>
       <Text style={tw`text-white text-center text-xl font-bold mb-2`}>No reels yet</Text>
       <Text style={tw`text-white/60 text-center mb-8 leading-5`}>
-        Create a vertical clip with looks, crop, text overlays, and cinematic edges.
+        Record a video or edit a photo into a vertical clip — looks, text, and cinematic edges.
       </Text>
       <TouchableOpacity
         onPress={onCreate}
@@ -87,7 +90,15 @@ export default function ReelsScreen() {
   const [items, setItems] = useState<ReelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: ReelRow }> }) => {
+      const first = viewableItems[0]?.item;
+      if (first?.id) setActiveId(first.id);
+    }
+  ).current;
 
   const goBack = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -123,12 +134,13 @@ export default function ReelsScreen() {
       const reels = merged
         .map((p) => ({ ...p, liked: false }))
         .sort((a, b) => {
-          const aReel = a.metadata?.format === 'reel' ? 1 : 0;
-          const bReel = b.metadata?.format === 'reel' ? 1 : 0;
+          const aReel = a.metadata?.format === 'reel' || a.metadata?.media_type === 'video' ? 1 : 0;
+          const bReel = b.metadata?.format === 'reel' || b.metadata?.media_type === 'video' ? 1 : 0;
           if (aReel !== bReel) return bReel - aReel;
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         });
       setItems(reels);
+      if (reels[0]?.id) setActiveId(reels[0].id);
     } catch (e) {
       console.warn('[Reels] load failed', e);
       setItems([]);
@@ -178,6 +190,12 @@ export default function ReelsScreen() {
     const uri = mediaUri;
     const likes = item.metadata?.likes ?? 0;
     const comments = item.metadata?.comments ?? 0;
+    const isVideo = isVideoMedia({
+      uri,
+      mediaType: item.metadata?.media_type,
+      contentType: item.metadata?.content_type,
+    });
+    const isActive = activeId === item.id;
 
     return (
       <View style={[tw`bg-black`, { height: SCREEN_HEIGHT }]}>
@@ -205,8 +223,20 @@ export default function ReelsScreen() {
             });
           }}
         >
-          <Image source={{ uri }} style={tw`absolute inset-0 w-full h-full`} contentFit="cover" transition={200} />
-          <View style={tw`absolute inset-0 bg-black/25`} />
+          {isVideo ? (
+            <Video
+              source={{ uri }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={isActive}
+              isLooping
+              isMuted={false}
+              useNativeControls={false}
+            />
+          ) : (
+            <Image source={{ uri }} style={tw`absolute inset-0 w-full h-full`} contentFit="cover" transition={200} />
+          )}
+          <View style={tw`absolute inset-0 bg-black/25`} pointerEvents="none" />
         </TouchableOpacity>
 
         <View style={tw`absolute bottom-0 left-0 right-0 pb-10 px-4`}>
@@ -279,8 +309,6 @@ export default function ReelsScreen() {
     );
   };
 
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
-
   if (loading && items.length === 0) {
     return (
       <View style={tw`flex-1 bg-black`}>
@@ -314,6 +342,7 @@ export default function ReelsScreen() {
         snapToInterval={SCREEN_HEIGHT}
         decelerationRate="fast"
         viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
       />
       <SafeAreaView

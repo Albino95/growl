@@ -26,6 +26,8 @@ export type FeedPost = {
     audio_title?: string;
     /** Vertical clip published via Create Reel. */
     format?: 'reel' | 'post' | string;
+    media_type?: 'image' | 'video' | string;
+    content_type?: string;
   };
 };
 
