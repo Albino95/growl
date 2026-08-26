@@ -96,7 +96,11 @@ const defineConfig = (): ExpoConfig => ({
     [
       'expo-camera',
       {
-        cameraPermission: 'The app accesses your camera to let you take photos for your posts.',
+        cameraPermission:
+          'Grow! uses the camera so you can take photos and videos for posts, stories, and reels.',
+        microphonePermission:
+          'Grow! uses the microphone when you record video for reels and stories.',
+        recordAudioAndroid: true,
       },
     ],
     'expo-apple-authentication',

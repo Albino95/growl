@@ -24,6 +24,7 @@ import VideoEditor, {
   DEFAULT_VIDEO_EDIT,
   type VideoEditSettings,
 } from '../../components/ui/VideoEditor';
+import ReelCameraCapture from '../../components/ui/videoEditor/ReelCameraCapture';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import PostComposerLayout from '../Post/components/PostComposerLayout';
@@ -90,6 +91,7 @@ export default function CreateReelScreen({ navigation }: Props) {
   const [posting, setPosting] = useState(false);
   const [showPhotoEditor, setShowPhotoEditor] = useState(false);
   const [showVideoEditor, setShowVideoEditor] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const [videoEdit, setVideoEdit] = useState<VideoEditSettings>(DEFAULT_VIDEO_EDIT);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -140,22 +142,20 @@ export default function CreateReelScreen({ navigation }: Props) {
   };
 
   const captureMedia = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      await alertMessage('Permission needed', 'Allow camera access to capture a reel.');
-      return;
-    }
+    setShowCamera(true);
+  };
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: false,
-      quality: 0.92,
-      videoMaxDuration: 60,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      applyAsset(result.assets[0]);
-    }
+  const onCameraCaptured = (result: {
+    uri: string;
+    kind: 'image' | 'video';
+    mimeType?: string;
+  }) => {
+    setShowCamera(false);
+    setMediaKind(result.kind);
+    setMimeType(result.mimeType);
+    setMediaUri(result.uri);
+    setVideoEdit(DEFAULT_VIDEO_EDIT);
+    openEditorAfterPick.current = true;
   };
 
   const clearMedia = () => {
@@ -397,7 +397,7 @@ export default function CreateReelScreen({ navigation }: Props) {
               Create a vertical clip
             </Text>
             <Text style={tw`text-white/70 text-base text-center px-4`}>
-              Record or pick a video (up to 60s), then trim, style, and caption it
+              Tap for a photo, hold for video — then trim, style, and caption
             </Text>
           </View>
           <View style={tw`flex-row gap-3 w-full`}>
@@ -405,7 +405,7 @@ export default function CreateReelScreen({ navigation }: Props) {
               onPress={() => void captureMedia()}
               style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-brand-600`}
             >
-              <Ionicons name="videocam" size={22} color="#FFFFFF" style={tw`mr-2`} />
+              <Ionicons name="camera" size={22} color="#FFFFFF" style={tw`mr-2`} />
               <Text style={tw`font-semibold text-base text-white`}>Camera</Text>
             </Pressable>
             <Pressable
@@ -510,6 +510,12 @@ export default function CreateReelScreen({ navigation }: Props) {
         userCategories={userCategories}
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
+      />
+
+      <ReelCameraCapture
+        visible={showCamera}
+        onClose={() => setShowCamera(false)}
+        onCaptured={onCameraCaptured}
       />
     </PostComposerLayout>
   );

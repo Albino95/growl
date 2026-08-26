@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,12 @@ import {
   ActivityIndicator,
   LayoutChangeEvent,
   StyleSheet,
-  GestureResponderEvent,
 } from 'react-native';
 import tw from '../../../lib/tw';
 import { extractVideoFrames, type FrameThumb } from './extractFrames';
 
-const STRIP_H = 72;
-const HANDLE_W = 18;
+const STRIP_H = 76;
+const HANDLE_W = 22;
 const MIN_TRIM_MS = 500;
 
 function formatMs(ms: number): string {
@@ -33,11 +32,10 @@ type Props = {
   onSeek: (ms: number) => void;
 };
 
-type DragMode = 'start' | 'end' | 'window' | null;
-
 /**
- * Instagram-style trimmer: filmstrip of frames + draggable selection window.
- * Uses a single PanResponder (capture) so ScrollView parents don't steal gestures.
+ * Instagram-style filmstrip trimmer.
+ * Start / end / window each own a PanResponder so parent ScrollViews can't steal the gesture.
+ * Drag math uses gesture.dx (stable) instead of locationX (flaky on web).
  */
 export default function FilmstripTrimmer({
   videoUri,
@@ -62,20 +60,18 @@ export default function FilmstripTrimmer({
   widthRef.current = width;
   const durationRef = useRef(duration);
   durationRef.current = duration;
-  const dragMode = useRef<DragMode>(null);
-  const dragOrigin = useRef({ start: 0, end: 0, x0: 0 });
   const onChangeTrimRef = useRef(onChangeTrim);
   const onSeekRef = useRef(onSeek);
   onChangeTrimRef.current = onChangeTrim;
   onSeekRef.current = onSeek;
+  const dragOrigin = useRef({ start: 0, end: 0 });
 
   useEffect(() => {
     let cancelled = false;
     if (!videoUri || width <= 0) return;
 
     setLoading(true);
-    const count = Math.max(7, Math.min(11, Math.round(width / 40)));
-    // Don't block forever on duration — extractor reads media duration itself.
+    const count = Math.max(8, Math.min(12, Math.round(width / 36)));
     void extractVideoFrames(videoUri, Math.max(durationMs, 1000), count).then((next) => {
       if (cancelled) return;
       setFrames(next);
@@ -92,24 +88,9 @@ export default function FilmstripTrimmer({
     if (w > 0 && Math.abs(w - width) > 1) setWidth(w);
   };
 
-  const msToX = useCallback((ms: number) => (ms / durationRef.current) * widthRef.current, []);
-  const xToMs = useCallback((x: number) => {
-    const w = widthRef.current;
-    const d = durationRef.current;
-    if (!w) return 0;
-    return Math.max(0, Math.min(d, (x / w) * d));
-  }, []);
+  const msToX = (ms: number) => (width > 0 ? (ms / duration) * width : 0);
 
-  const hitTest = (x: number): DragMode => {
-    const s = msToX(trimRef.current.start);
-    const e = msToX(trimRef.current.end);
-    if (Math.abs(x - s) <= HANDLE_W + 6) return 'start';
-    if (Math.abs(x - e) <= HANDLE_W + 6) return 'end';
-    if (x >= s && x <= e) return 'window';
-    return null;
-  };
-
-  const pan = useRef(
+  const makeHandlePan = (mode: 'start' | 'end' | 'window') =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onStartShouldSetPanResponderCapture: () => true,
@@ -117,27 +98,21 @@ export default function FilmstripTrimmer({
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
-      onPanResponderGrant: (evt: GestureResponderEvent) => {
-        const x = evt.nativeEvent.locationX;
-        const mode = hitTest(x) || 'window';
-        dragMode.current = mode;
+      onPanResponderGrant: () => {
         dragOrigin.current = {
           start: trimRef.current.start,
           end: trimRef.current.end,
-          x0: x,
         };
         if (mode === 'start') onSeekRef.current(trimRef.current.start);
         else if (mode === 'end') onSeekRef.current(trimRef.current.end);
-        else onSeekRef.current(xToMs(x));
       },
-      onPanResponderMove: (evt: GestureResponderEvent) => {
+      onPanResponderMove: (_evt, gesture) => {
         const w = widthRef.current;
         const d = durationRef.current;
-        if (!w || !dragMode.current) return;
-        const x = evt.nativeEvent.locationX;
-        const deltaMs = ((x - dragOrigin.current.x0) / w) * d;
+        if (!w) return;
+        const deltaMs = (gesture.dx / w) * d;
 
-        if (dragMode.current === 'start') {
+        if (mode === 'start') {
           const nextStart = Math.max(
             0,
             Math.min(dragOrigin.current.start + deltaMs, dragOrigin.current.end - MIN_TRIM_MS)
@@ -146,7 +121,7 @@ export default function FilmstripTrimmer({
           onSeekRef.current(nextStart);
           return;
         }
-        if (dragMode.current === 'end') {
+        if (mode === 'end') {
           const nextEnd = Math.min(
             d,
             Math.max(dragOrigin.current.end + deltaMs, dragOrigin.current.start + MIN_TRIM_MS)
@@ -155,7 +130,7 @@ export default function FilmstripTrimmer({
           onSeekRef.current(nextEnd);
           return;
         }
-        // window
+
         const span = dragOrigin.current.end - dragOrigin.current.start;
         let nextStart = dragOrigin.current.start + deltaMs;
         let nextEnd = dragOrigin.current.end + deltaMs;
@@ -169,34 +144,29 @@ export default function FilmstripTrimmer({
         }
         onChangeTrimRef.current(nextStart, nextEnd);
       },
-      onPanResponderRelease: () => {
-        dragMode.current = null;
-      },
-      onPanResponderTerminate: () => {
-        dragMode.current = null;
-      },
-    })
-  ).current;
+    });
 
-  const startX = width > 0 ? msToX(start) : 0;
-  const endX = width > 0 ? msToX(end) : 0;
-  const playX = width > 0 ? msToX(Math.max(start, Math.min(end, positionMs))) : 0;
+  const startPan = useRef(makeHandlePan('start')).current;
+  const endPan = useRef(makeHandlePan('end')).current;
+  const windowPan = useRef(makeHandlePan('window')).current;
+
+  const startX = msToX(start);
+  const endX = msToX(end);
+  const playX = msToX(Math.max(start, Math.min(end, positionMs)));
   const selWidth = Math.max(HANDLE_W * 2, endX - startX);
+  const frameCount = frames.length || 8;
 
   return (
     <View style={tw`w-full`} collapsable={false}>
       <View style={tw`flex-row justify-between mb-2`}>
         <Text style={tw`text-white text-xs font-bold`}>{formatMs(start)}</Text>
-        <Text style={tw`text-stone-400 text-xs`}>
-          {formatMs(Math.max(0, end - start))} selected
-        </Text>
+        <Text style={tw`text-stone-400 text-xs`}>{formatMs(Math.max(0, end - start))} selected</Text>
         <Text style={tw`text-white text-xs font-bold`}>{formatMs(end)}</Text>
       </View>
 
       <View
         onLayout={onLayout}
         collapsable={false}
-        {...pan.panHandlers}
         style={[
           tw`rounded-xl bg-stone-900 border border-stone-600`,
           { height: STRIP_H, overflow: 'hidden' },
@@ -215,58 +185,77 @@ export default function FilmstripTrimmer({
                   <Text style={tw`text-stone-500 text-[10px] mt-1`}>Loading frames…</Text>
                 </View>
               ) : (
-                (frames.length ? frames : Array.from({ length: 8 }, () => null)).map(
-                  (f, i) => {
-                    const cellW = width / (frames.length || 8);
-                    if (!f) {
-                      return (
-                        <View
-                          key={`ph-${i}`}
-                          style={{
-                            width: cellW,
-                            height: STRIP_H,
-                            backgroundColor: i % 2 === 0 ? '#44403C' : '#292524',
-                          }}
-                        />
-                      );
-                    }
+                Array.from({ length: frameCount }, (_, i) => {
+                  const f = frames[i];
+                  const cellW = width / frameCount;
+                  if (!f || f.placeholder || !f.uri) {
+                    const sec = Math.floor(
+                      ((i / Math.max(1, frameCount - 1)) * duration) / 1000
+                    );
                     return (
-                      <Image
-                        key={`${f.timeMs}-${i}`}
-                        source={{ uri: f.uri }}
-                        style={{ width: cellW, height: STRIP_H }}
-                        resizeMode="cover"
-                      />
+                      <View
+                        key={`ph-${i}`}
+                        style={{
+                          width: cellW,
+                          height: STRIP_H,
+                          backgroundColor: i % 2 === 0 ? '#44403C' : '#292524',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={tw`text-stone-500 text-[9px] font-semibold`}>{sec}s</Text>
+                      </View>
                     );
                   }
-                )
+                  return (
+                    <Image
+                      key={`${f.timeMs}-${i}`}
+                      source={{ uri: f.uri }}
+                      style={{ width: cellW, height: STRIP_H }}
+                      resizeMode="cover"
+                    />
+                  );
+                })
               )}
             </View>
 
-            {/* Dim outside selection */}
             <View pointerEvents="none" style={[styles.dim, { left: 0, width: Math.max(0, startX) }]} />
             <View
               pointerEvents="none"
               style={[styles.dim, { left: endX, width: Math.max(0, width - endX) }]}
             />
 
-            {/* Selection window */}
+            {/* Middle window — drag to slide clip */}
             <View
-              pointerEvents="none"
-              style={[styles.window, { left: startX, width: selWidth }]}
+              collapsable={false}
+              {...windowPan.panHandlers}
+              style={[
+                styles.windowHit,
+                {
+                  left: startX + HANDLE_W * 0.5,
+                  width: Math.max(24, selWidth - HANDLE_W),
+                },
+              ]}
             >
-              <View style={styles.windowBorder} />
+              <View pointerEvents="none" style={styles.windowBorder} />
             </View>
 
-            {/* Handles */}
+            {/* Start handle */}
             <View
-              pointerEvents="none"
-              style={[styles.handle, { left: Math.max(0, startX - HANDLE_W / 2) }]}
+              collapsable={false}
+              {...startPan.panHandlers}
+              style={[
+                styles.handle,
+                { left: Math.max(0, startX - HANDLE_W / 2) },
+              ]}
             >
               <View style={styles.handleBar} />
             </View>
+
+            {/* End handle */}
             <View
-              pointerEvents="none"
+              collapsable={false}
+              {...endPan.panHandlers}
               style={[
                 styles.handle,
                 { left: Math.min(width - HANDLE_W, endX - HANDLE_W / 2) },
@@ -275,7 +264,6 @@ export default function FilmstripTrimmer({
               <View style={styles.handleBar} />
             </View>
 
-            {/* Playhead */}
             <View
               pointerEvents="none"
               style={[styles.playhead, { left: Math.max(0, Math.min(width - 2, playX)) }]}
@@ -285,7 +273,7 @@ export default function FilmstripTrimmer({
       </View>
 
       <Text style={tw`text-stone-500 text-[11px] mt-2 text-center`}>
-        Drag white handles to trim · Drag the middle to move
+        Drag white handles to trim · Drag the middle to move the window
       </Text>
     </View>
   );
@@ -298,10 +286,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  window: {
+  windowHit: {
     position: 'absolute',
     top: 0,
     bottom: 0,
+    zIndex: 3,
   },
   windowBorder: {
     flex: 1,
@@ -315,14 +304,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: HANDLE_W,
     backgroundColor: '#FFFFFF',
-    borderRadius: 4,
+    borderRadius: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
+    zIndex: 8,
+    elevation: 8,
   },
   handleBar: {
     width: 3,
-    height: 26,
+    height: 28,
     borderRadius: 2,
     backgroundColor: '#111827',
   },
@@ -332,6 +322,6 @@ const styles = StyleSheet.create({
     bottom: -2,
     width: 2,
     backgroundColor: '#FBBF24',
-    zIndex: 6,
+    zIndex: 9,
   },
 });

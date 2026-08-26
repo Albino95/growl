@@ -30,7 +30,9 @@ import {
 import FilmstripTrimmer from './FilmstripTrimmer';
 import {
   POST_MUSIC_TRACKS,
+  MUSIC_GENRE_FILTERS,
   getMusicTrackById,
+  getPrimaryMusicTracks,
   type PostMusicTrack,
 } from '../../../constants/postMusic';
 
@@ -123,8 +125,12 @@ export default function VideoEditor({
   const [activeOverlayId, setActiveOverlayId] = useState<string | null>(
     initial.overlays[0]?.id ?? null
   );
+  const [musicGenre, setMusicGenre] = useState<(typeof MUSIC_GENRE_FILTERS)[number]>('All');
 
   const selectedTrack = getMusicTrackById(audioTrackId);
+  const libraryTracks = getPrimaryMusicTracks().filter(
+    (t) => musicGenre === 'All' || t.genre === musicGenre
+  );
   const hasSoundtrack = Boolean(selectedTrack);
   const look = getVideoLook(lookId);
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
@@ -416,7 +422,7 @@ export default function VideoEditor({
           <Pressable
             onPress={() => void togglePlay()}
             hitSlop={8}
-            style={tw`absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/55 items-center justify-center z-20`}
+            style={tw`absolute top-3 right-3 w-11 h-11 rounded-full bg-black/55 items-center justify-center z-20`}
           >
             <Ionicons name={playing ? 'pause' : 'play'} size={20} color="#fff" />
           </Pressable>
@@ -427,27 +433,30 @@ export default function VideoEditor({
             </View>
           ) : null}
 
-          {overlays.map((o) =>
-            o.text.trim() ? (
-              <DraggableTextOverlay
-                key={o.id}
-                overlay={o}
-                selected={activeOverlayId === o.id}
-                containerW={previewSize.w}
-                containerH={previewSize.h}
-                editable={tab === 'text'}
-                onSelect={() => {
-                  setActiveOverlayId(o.id);
-                  setTab('text');
-                }}
-                onMove={(x, y) => {
-                  setOverlays((prev) =>
-                    prev.map((item) => (item.id === o.id ? { ...item, x, y } : item))
-                  );
-                }}
-              />
-            ) : null
-          )}
+          {/* Text always draggable — not gated on the Text tab */}
+          <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+            {overlays.map((o) =>
+              o.text.trim() ? (
+                <DraggableTextOverlay
+                  key={o.id}
+                  overlay={o}
+                  selected={activeOverlayId === o.id}
+                  containerW={previewSize.w}
+                  containerH={previewSize.h}
+                  editable
+                  onSelect={() => {
+                    setActiveOverlayId(o.id);
+                    setTab('text');
+                  }}
+                  onMove={(x, y) => {
+                    setOverlays((prev) =>
+                      prev.map((item) => (item.id === o.id ? { ...item, x, y } : item))
+                    );
+                  }}
+                />
+              ) : null
+            )}
+          </View>
         </View>
 
         {/* Timeline readout */}
@@ -514,9 +523,9 @@ export default function VideoEditor({
           >
             {tab === 'look' && (
               <View style={tw`pt-2`}>
-                <Text style={tw`text-white text-sm font-bold mb-1`}>Color grade</Text>
+                <Text style={tw`text-white text-sm font-bold mb-1`}>Looks</Text>
                 <Text style={tw`text-stone-500 text-xs mb-3`}>
-                  Multi-layer cinematic looks — preview updates live
+                  20 cinematic grades — film, neon, bleach, dusk, and more
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {VIDEO_LOOKS.map((l) => {
@@ -605,6 +614,34 @@ export default function VideoEditor({
                 <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
                   Music library
                 </Text>
+                <Text style={tw`text-stone-500 text-[11px] mb-2`}>
+                  Royalty-free tracks styled like popular moods — not licensed chart hits
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                  {MUSIC_GENRE_FILTERS.map((g) => {
+                    const selected = musicGenre === g;
+                    return (
+                      <Pressable
+                        key={g}
+                        onPress={() => setMusicGenre(g)}
+                        style={[
+                          tw`px-3 py-1.5 rounded-full mr-2 border`,
+                          selected
+                            ? tw`bg-brand-600/30 border-brand-500`
+                            : tw`bg-stone-900 border-stone-700`,
+                        ]}
+                      >
+                        <Text
+                          style={tw`text-[11px] font-bold ${
+                            selected ? 'text-brand-300' : 'text-stone-300'
+                          }`}
+                        >
+                          {g}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
                 <Pressable
                   onPress={() => selectTrack(null)}
                   style={[
@@ -623,7 +660,7 @@ export default function VideoEditor({
                   ) : null}
                 </Pressable>
 
-                {POST_MUSIC_TRACKS.map((track) => {
+                {libraryTracks.map((track) => {
                   const active = selectedTrack?.id === track.id;
                   return (
                     <Pressable
@@ -649,6 +686,7 @@ export default function VideoEditor({
                         <Text style={tw`text-stone-500 text-xs mt-0.5`}>
                           {track.artist}
                           {track.mood ? ` · ${track.mood}` : ''}
+                          {track.genre ? ` · ${track.genre}` : ''}
                         </Text>
                       </View>
                       {active ? (
@@ -676,7 +714,7 @@ export default function VideoEditor({
               <View style={tw`pt-2`}>
                 <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-3 py-3 mb-3`}>
                   <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
-                    Press and drag text on the preview to place it
+                    Drag text anywhere on the preview — works from any tab
                   </Text>
                 </View>
                 <View style={tw`flex-row items-center justify-between mb-3`}>
@@ -757,6 +795,13 @@ export default function VideoEditor({
                         />
                       ))}
                     </View>
+                    <AdjustSlider
+                      label="Size"
+                      value={Math.round((activeOverlay.scale || 1) * 100)}
+                      min={70}
+                      max={180}
+                      onChange={(v) => updateActive({ scale: v / 100 })}
+                    />
                     <Pressable onPress={removeActive} style={tw`flex-row items-center gap-2 py-2`}>
                       <Ionicons name="trash-outline" size={18} color="#F87171" />
                       <Text style={tw`text-red-400 font-semibold text-sm`}>Remove text</Text>

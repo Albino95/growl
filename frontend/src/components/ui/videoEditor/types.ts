@@ -11,7 +11,16 @@ export type VideoLookId =
   | 'muted'
   | 'sunset'
   | 'forest'
-  | 'chrome';
+  | 'chrome'
+  | 'bleach'
+  | 'neon'
+  | 'film'
+  | 'dusk'
+  | 'heat'
+  | 'candy'
+  | 'steel'
+  | 'ember'
+  | 'lavender';
 
 export type VideoEditSettings = {
   /**
@@ -103,78 +112,125 @@ export const VIDEO_LOOKS: VideoLook[] = [
     id: 'golden',
     label: 'Golden',
     hint: 'Hour',
-    cssFilter: 'contrast(1.08) saturate(1.18) sepia(0.22) brightness(1.04)',
+    cssFilter: 'contrast(1.1) saturate(1.22) sepia(0.28) brightness(1.05)',
     layers: [
-      { color: 'rgba(251, 191, 36, 0.2)' },
-      { color: 'rgba(249, 115, 22, 0.1)' },
+      { color: 'rgba(251, 191, 36, 0.22)' },
+      { color: 'rgba(249, 115, 22, 0.12)' },
     ],
-    vignette: 0.22,
+    vignette: 0.24,
     swatch: '#F59E0B',
   },
   {
     id: 'arctic',
     label: 'Arctic',
     hint: 'Cool',
-    cssFilter: 'contrast(1.12) saturate(0.85) brightness(1.05) hue-rotate(190deg)',
+    cssFilter: 'contrast(1.14) saturate(0.8) brightness(1.06) hue-rotate(195deg)',
     layers: [
-      { color: 'rgba(56, 189, 248, 0.18)' },
-      { color: 'rgba(15, 23, 42, 0.12)' },
+      { color: 'rgba(56, 189, 248, 0.2)' },
+      { color: 'rgba(15, 23, 42, 0.14)' },
     ],
-    vignette: 0.18,
+    vignette: 0.2,
     swatch: '#38BDF8',
   },
   {
     id: 'cinema',
     label: 'Cinema',
     hint: 'Teal',
-    cssFilter: 'contrast(1.22) saturate(0.88) brightness(0.92)',
+    cssFilter: 'contrast(1.28) saturate(0.82) brightness(0.9)',
     layers: [
-      { color: 'rgba(15, 118, 110, 0.16)' },
-      { color: 'rgba(120, 53, 15, 0.1)' },
+      { color: 'rgba(15, 118, 110, 0.18)' },
+      { color: 'rgba(120, 53, 15, 0.12)' },
     ],
-    vignette: 0.35,
-    cinematic: 0.55,
+    vignette: 0.38,
+    cinematic: 0.6,
     swatch: '#0F766E',
   },
   {
     id: 'noir',
     label: 'Noir',
     hint: 'B&W',
-    cssFilter: 'grayscale(1) contrast(1.28) brightness(0.95)',
-    layers: [{ color: 'rgba(0, 0, 0, 0.28)' }],
-    vignette: 0.45,
-    cinematic: 0.35,
+    cssFilter: 'grayscale(1) contrast(1.35) brightness(0.92)',
+    layers: [{ color: 'rgba(0, 0, 0, 0.32)' }],
+    vignette: 0.5,
+    cinematic: 0.4,
     swatch: '#1C1917',
+  },
+  {
+    id: 'film',
+    label: '35mm',
+    hint: 'Grain',
+    cssFilter: 'contrast(1.18) saturate(0.92) sepia(0.18) brightness(0.96)',
+    layers: [
+      { color: 'rgba(120, 113, 108, 0.16)' },
+      { color: 'rgba(254, 243, 199, 0.1)' },
+    ],
+    vignette: 0.42,
+    cinematic: 0.45,
+    swatch: '#A8A29E',
+  },
+  {
+    id: 'bleach',
+    label: 'Bleach',
+    hint: 'Fade',
+    cssFilter: 'contrast(0.85) saturate(0.55) brightness(1.18)',
+    layers: [
+      { color: 'rgba(255, 255, 255, 0.22)' },
+      { color: 'rgba(214, 211, 209, 0.12)' },
+    ],
+    swatch: '#E7E5E4',
+  },
+  {
+    id: 'neon',
+    label: 'Neon',
+    hint: 'Night',
+    cssFilter: 'contrast(1.25) saturate(1.55) brightness(0.95) hue-rotate(-12deg)',
+    layers: [
+      { color: 'rgba(236, 72, 153, 0.16)' },
+      { color: 'rgba(34, 211, 238, 0.12)' },
+    ],
+    vignette: 0.35,
+    swatch: '#EC4899',
   },
   {
     id: 'rose',
     label: 'Rose',
     hint: 'Soft',
-    cssFilter: 'contrast(0.95) saturate(1.15) brightness(1.06) sepia(0.12)',
+    cssFilter: 'contrast(0.95) saturate(1.18) brightness(1.06) sepia(0.14)',
     layers: [
-      { color: 'rgba(244, 114, 182, 0.2)' },
+      { color: 'rgba(244, 114, 182, 0.22)' },
       { color: 'rgba(255, 255, 255, 0.08)' },
     ],
-    vignette: 0.12,
+    vignette: 0.14,
     swatch: '#F472B6',
   },
   {
     id: 'vivid',
     label: 'Vivid',
     hint: 'Punch',
-    cssFilter: 'contrast(1.2) saturate(1.45) brightness(1.03)',
-    layers: [{ color: 'rgba(236, 72, 153, 0.08)' }],
-    vignette: 0.1,
-    swatch: '#EC4899',
+    cssFilter: 'contrast(1.25) saturate(1.55) brightness(1.04)',
+    layers: [{ color: 'rgba(236, 72, 153, 0.1)' }],
+    vignette: 0.12,
+    swatch: '#F43F5E',
+  },
+  {
+    id: 'candy',
+    label: 'Candy',
+    hint: 'Pop',
+    cssFilter: 'contrast(1.12) saturate(1.4) brightness(1.08) hue-rotate(8deg)',
+    layers: [
+      { color: 'rgba(251, 113, 133, 0.14)' },
+      { color: 'rgba(167, 139, 250, 0.1)' },
+    ],
+    swatch: '#FB7185',
   },
   {
     id: 'muted',
     label: 'Muted',
     hint: 'Matte',
-    cssFilter: 'contrast(0.88) saturate(0.7) brightness(1.08)',
+    cssFilter: 'contrast(0.86) saturate(0.65) brightness(1.1)',
     layers: [
-      { color: 'rgba(255, 255, 255, 0.14)' },
-      { color: 'rgba(120, 113, 108, 0.12)' },
+      { color: 'rgba(255, 255, 255, 0.16)' },
+      { color: 'rgba(120, 113, 108, 0.14)' },
     ],
     swatch: '#A8A29E',
   },
@@ -182,38 +238,100 @@ export const VIDEO_LOOKS: VideoLook[] = [
     id: 'sunset',
     label: 'Sunset',
     hint: 'Glow',
-    cssFilter: 'contrast(1.1) saturate(1.25) sepia(0.28) brightness(1.02)',
+    cssFilter: 'contrast(1.12) saturate(1.3) sepia(0.32) brightness(1.02)',
     layers: [
-      { color: 'rgba(251, 113, 133, 0.18)' },
-      { color: 'rgba(251, 146, 60, 0.16)' },
+      { color: 'rgba(251, 113, 133, 0.2)' },
+      { color: 'rgba(251, 146, 60, 0.18)' },
     ],
-    vignette: 0.2,
+    vignette: 0.22,
     swatch: '#FB7185',
+  },
+  {
+    id: 'dusk',
+    label: 'Dusk',
+    hint: 'Purple',
+    cssFilter: 'contrast(1.15) saturate(1.05) brightness(0.92) hue-rotate(-25deg)',
+    layers: [
+      { color: 'rgba(91, 33, 182, 0.2)' },
+      { color: 'rgba(251, 146, 60, 0.1)' },
+    ],
+    vignette: 0.3,
+    cinematic: 0.3,
+    swatch: '#7C3AED',
+  },
+  {
+    id: 'heat',
+    label: 'Heat',
+    hint: 'Warm',
+    cssFilter: 'contrast(1.16) saturate(1.35) sepia(0.2) brightness(1.04)',
+    layers: [
+      { color: 'rgba(239, 68, 68, 0.16)' },
+      { color: 'rgba(251, 146, 60, 0.14)' },
+    ],
+    vignette: 0.18,
+    swatch: '#EF4444',
+  },
+  {
+    id: 'ember',
+    label: 'Ember',
+    hint: 'Fire',
+    cssFilter: 'contrast(1.2) saturate(1.15) brightness(0.94) sepia(0.35)',
+    layers: [
+      { color: 'rgba(194, 65, 12, 0.22)' },
+      { color: 'rgba(0, 0, 0, 0.12)' },
+    ],
+    vignette: 0.4,
+    cinematic: 0.35,
+    swatch: '#C2410C',
   },
   {
     id: 'forest',
     label: 'Forest',
     hint: 'Green',
-    cssFilter: 'contrast(1.14) saturate(0.95) hue-rotate(55deg) brightness(0.96)',
+    cssFilter: 'contrast(1.16) saturate(0.95) hue-rotate(55deg) brightness(0.95)',
     layers: [
-      { color: 'rgba(22, 163, 74, 0.16)' },
+      { color: 'rgba(22, 163, 74, 0.18)' },
       { color: 'rgba(15, 23, 42, 0.14)' },
     ],
-    vignette: 0.28,
-    cinematic: 0.25,
+    vignette: 0.3,
+    cinematic: 0.28,
     swatch: '#16A34A',
+  },
+  {
+    id: 'steel',
+    label: 'Steel',
+    hint: 'Cool',
+    cssFilter: 'contrast(1.22) saturate(0.45) brightness(1.05)',
+    layers: [
+      { color: 'rgba(148, 163, 184, 0.22)' },
+      { color: 'rgba(30, 41, 59, 0.16)' },
+    ],
+    vignette: 0.28,
+    swatch: '#64748B',
   },
   {
     id: 'chrome',
     label: 'Chrome',
     hint: 'Metal',
-    cssFilter: 'contrast(1.3) saturate(0.55) brightness(1.08)',
+    cssFilter: 'contrast(1.32) saturate(0.5) brightness(1.1)',
     layers: [
-      { color: 'rgba(148, 163, 184, 0.2)' },
-      { color: 'rgba(15, 23, 42, 0.15)' },
+      { color: 'rgba(148, 163, 184, 0.22)' },
+      { color: 'rgba(15, 23, 42, 0.16)' },
     ],
-    vignette: 0.3,
+    vignette: 0.32,
     swatch: '#94A3B8',
+  },
+  {
+    id: 'lavender',
+    label: 'Lavender',
+    hint: 'Dream',
+    cssFilter: 'contrast(0.98) saturate(1.1) brightness(1.05) hue-rotate(-40deg)',
+    layers: [
+      { color: 'rgba(196, 181, 253, 0.22)' },
+      { color: 'rgba(255, 255, 255, 0.08)' },
+    ],
+    vignette: 0.16,
+    swatch: '#C4B5FD',
   },
 ];
 

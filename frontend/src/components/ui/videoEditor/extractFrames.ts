@@ -35,23 +35,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
   });
 }
 
-function makePlaceholderDataUri(label: string, tone: number): string {
-  // Tiny SVG data URI — works on web + RN Image
-  const bg = tone % 2 === 0 ? '#44403C' : '#292524';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="64">
-    <rect width="80" height="64" fill="${bg}"/>
-    <text x="40" y="36" text-anchor="middle" fill="#A8A29E" font-size="11" font-family="sans-serif">${label}</text>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
 function buildPlaceholders(durationMs: number, count: number): FrameThumb[] {
   const duration = Math.max(durationMs, 1000);
   return Array.from({ length: count }, (_, i) => {
     const t = count === 1 ? 0 : Math.round((i / (count - 1)) * Math.max(0, duration - 40));
-    const sec = Math.floor(t / 1000);
     return {
-      uri: makePlaceholderDataUri(`${sec}s`, i),
+      uri: '',
       timeMs: t,
       placeholder: true,
     };
