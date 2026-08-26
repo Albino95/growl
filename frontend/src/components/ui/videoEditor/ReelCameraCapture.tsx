@@ -27,18 +27,22 @@ type Props = {
   onCaptured: (result: ReelCaptureResult) => void;
 };
 
+type CaptureMode = 'photo' | 'video';
+
 const HOLD_MS = 280;
 const MAX_VIDEO_SEC = 60;
 
 /**
- * Instagram-style capture: tap shutter = photo, hold shutter = record video.
- * Native uses expo-camera. Web falls back to ImagePicker for video hold.
+ * Instagram-style capture:
+ * - Photo mode: tap = photo, hold = record video
+ * - Video mode: tap = start / stop recording
  */
 export default function ReelCameraCapture({ visible, onClose, onCaptured }: Props) {
   const cameraRef = useRef<CameraView>(null);
   const [camPerm, requestCamPerm] = useCameraPermissions();
   const [micPerm, requestMicPerm] = useMicrophonePermissions();
   const [facing, setFacing] = useState<'back' | 'front'>('back');
+  const [mode, setMode] = useState<CaptureMode>('photo');
   const [ready, setReady] = useState(false);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -49,6 +53,8 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
   const recordingRef = useRef(false);
   const pressActive = useRef(false);
   const holdTriggered = useRef(false);
+  /** True when recording was started by Video-mode tap (release should not stop). */
+  const tapRecordMode = useRef(false);
 
   const clearHold = () => {
     if (holdTimer.current) {
@@ -108,11 +114,12 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
     }
   };
 
-  const startRecording = async () => {
+  const startRecording = async (fromTapMode: boolean) => {
     if (!cameraRef.current || recordingRef.current || busy) return;
 
+    tapRecordMode.current = fromTapMode;
+
     if (Platform.OS === 'web') {
-      // expo-camera web has no recordAsync — use system video camera
       try {
         const result = await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -131,6 +138,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
         const msg = e instanceof Error ? e.message : 'Could not record video';
         await alertMessage('Camera', msg);
       }
+      tapRecordMode.current = false;
       return;
     }
 
@@ -154,6 +162,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
       clearTick();
       recordingRef.current = false;
       setRecording(false);
+      tapRecordMode.current = false;
       if (result?.uri) {
         onCaptured({ uri: result.uri, kind: 'video', mimeType: 'video/mp4' });
       }
@@ -161,6 +170,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
       clearTick();
       recordingRef.current = false;
       setRecording(false);
+      tapRecordMode.current = false;
       const msg = e instanceof Error ? e.message : 'Could not record video';
       await alertMessage('Camera', msg);
     }
@@ -175,26 +185,45 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
     }
   };
 
-  const onPressIn = () => {
+  const switchMode = (next: CaptureMode) => {
+    if (recordingRef.current) return;
+    setMode(next);
+  };
+
+  /** Video mode: tap toggles record on/off */
+  const onVideoShutterPress = () => {
+    if (!ready || busy) return;
+    if (recordingRef.current) {
+      void stopRecording();
+      return;
+    }
+    void startRecording(true);
+  };
+
+  /** Photo mode: tap = photo, hold = video (release stops) */
+  const onPhotoPressIn = () => {
+    if (mode !== 'photo' || !ready || busy) return;
     pressActive.current = true;
     holdTriggered.current = false;
     clearHold();
     holdTimer.current = setTimeout(() => {
       holdTimer.current = null;
       holdTriggered.current = true;
-      if (pressActive.current) void startRecording();
+      if (pressActive.current) void startRecording(false);
     }, HOLD_MS);
   };
 
-  const onPressOut = () => {
+  const onPhotoPressOut = () => {
+    if (mode !== 'photo') return;
     pressActive.current = false;
     const shortTap = !holdTriggered.current;
     clearHold();
-    if (recordingRef.current) {
+    // Hold-to-record: release stops. Tap-to-record (video mode) ignores release.
+    if (recordingRef.current && !tapRecordMode.current) {
       void stopRecording();
       return;
     }
-    if (shortTap) void takePhoto();
+    if (shortTap && !recordingRef.current) void takePhoto();
   };
 
   if (!visible) return null;
@@ -210,6 +239,16 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
   }
 
   const needsPerm = !camPerm.granted;
+  const hint =
+    mode === 'video'
+      ? recording
+        ? 'Tap to stop'
+        : Platform.OS === 'web'
+          ? 'Tap to open video camera'
+          : 'Tap to start recording'
+      : Platform.OS === 'web'
+        ? 'Tap photo · Hold opens video camera'
+        : 'Tap photo · Hold for video';
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -261,12 +300,11 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                     </Text>
                   </View>
                 ) : (
-                  <Text style={tw`text-white/80 text-xs font-semibold`}>
-                    Tap photo · Hold video
-                  </Text>
+                  <View style={tw`w-10`} />
                 )}
                 <Pressable
                   onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+                  disabled={recording}
                   style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
                 >
                   <Ionicons name="camera-reverse-outline" size={22} color="#fff" />
@@ -275,36 +313,94 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
 
               <View style={tw`flex-1`} />
 
-              <View style={tw`items-center pb-10`}>
+              <View style={tw`items-center pb-8`}>
+                {/* Photo / Video mode switch */}
+                <View
+                  style={tw`flex-row mb-5 bg-black/50 rounded-full p-1 border border-white/15`}
+                >
+                  <Pressable
+                    onPress={() => switchMode('photo')}
+                    disabled={recording}
+                    style={[
+                      tw`px-5 py-2 rounded-full`,
+                      mode === 'photo' ? tw`bg-white` : tw`bg-transparent`,
+                    ]}
+                  >
+                    <Text
+                      style={tw`text-xs font-bold ${
+                        mode === 'photo' ? 'text-black' : 'text-white/80'
+                      }`}
+                    >
+                      Photo
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => switchMode('video')}
+                    disabled={recording}
+                    style={[
+                      tw`px-5 py-2 rounded-full`,
+                      mode === 'video' ? tw`bg-white` : tw`bg-transparent`,
+                    ]}
+                  >
+                    <Text
+                      style={tw`text-xs font-bold ${
+                        mode === 'video' ? 'text-black' : 'text-white/80'
+                      }`}
+                    >
+                      Video
+                    </Text>
+                  </Pressable>
+                </View>
+
                 {!ready || busy ? (
                   <ActivityIndicator color="#fff" style={tw`mb-4`} />
                 ) : null}
-                <Pressable
-                  onPressIn={onPressIn}
-                  onPressOut={onPressOut}
-                  disabled={!ready || busy}
-                  style={[
-                    tw`w-[78px] h-[78px] rounded-full items-center justify-center border-4`,
-                    {
-                      borderColor: recording ? '#EF4444' : '#FFFFFF',
-                      backgroundColor: recording ? 'rgba(239,68,68,0.35)' : 'transparent',
-                    },
-                  ]}
-                >
-                  <View
+
+                {mode === 'video' ? (
+                  <Pressable
+                    onPress={onVideoShutterPress}
+                    disabled={!ready || busy}
                     style={[
-                      tw`rounded-full`,
-                      recording
-                        ? tw`w-8 h-8 bg-red-500 rounded-lg`
-                        : tw`w-[62px] h-[62px] bg-white`,
+                      tw`w-[78px] h-[78px] rounded-full items-center justify-center border-4`,
+                      {
+                        borderColor: recording ? '#EF4444' : '#EF4444',
+                        backgroundColor: recording ? 'rgba(239,68,68,0.35)' : 'transparent',
+                      },
                     ]}
-                  />
-                </Pressable>
-                <Text style={tw`text-white/70 text-xs mt-3 font-medium`}>
-                  {Platform.OS === 'web'
-                    ? 'Hold opens video camera on web'
-                    : 'Keep holding to record up to 60s'}
-                </Text>
+                  >
+                    <View
+                      style={[
+                        recording
+                          ? tw`w-8 h-8 bg-red-500 rounded-lg`
+                          : tw`w-[62px] h-[62px] rounded-full bg-red-500`,
+                      ]}
+                    />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPressIn={onPhotoPressIn}
+                    onPressOut={onPhotoPressOut}
+                    disabled={!ready || busy}
+                    style={[
+                      tw`w-[78px] h-[78px] rounded-full items-center justify-center border-4`,
+                      {
+                        borderColor: recording ? '#EF4444' : '#FFFFFF',
+                        backgroundColor: recording ? 'rgba(239,68,68,0.35)' : 'transparent',
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        tw`rounded-full`,
+                        recording
+                          ? tw`w-8 h-8 bg-red-500 rounded-lg`
+                          : tw`w-[62px] h-[62px] bg-white`,
+                      ]}
+                    />
+                  </Pressable>
+                )}
+
+                <Text style={tw`text-white/70 text-xs mt-3 font-medium`}>{hint}</Text>
               </View>
             </SafeAreaView>
           </>
