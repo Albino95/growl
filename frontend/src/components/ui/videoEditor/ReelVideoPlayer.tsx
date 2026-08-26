@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { Video, AVPlaybackStatus, ResizeMode } from 'expo-av';
+import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import type { TextOverlay } from '../photoEditor/types';
 import type { VideoEditSettings } from './types';
 import { DEFAULT_VIDEO_EDIT, getVideoLook } from './types';
@@ -14,7 +14,7 @@ type Props = {
   useNativeControls?: boolean;
 };
 
-/** Shared reel video surface — applies mute, speed, trim loop, look, and text. */
+/** Shared reel video surface — applies mute, speed, trim loop, look, text, soundtrack. */
 export default function ReelVideoPlayer({
   uri,
   settings,
@@ -23,6 +23,7 @@ export default function ReelVideoPlayer({
   useNativeControls = false,
 }: Props) {
   const videoRef = useRef<Video>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
   const edit: VideoEditSettings = {
     ...DEFAULT_VIDEO_EDIT,
     ...settings,
@@ -31,6 +32,7 @@ export default function ReelVideoPlayer({
   const look = getVideoLook(edit.lookId);
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
+  const hasSoundtrack = Boolean(edit.audioUrl?.trim());
 
   const onStatus = useCallback(
     (status: AVPlaybackStatus) => {
@@ -38,42 +40,84 @@ export default function ReelVideoPlayer({
       const end = trimEnd > 0 ? trimEnd : status.durationMillis || 0;
       if (end > 0 && (status.positionMillis || 0) >= end - 80) {
         void videoRef.current?.setPositionAsync(trimStart);
+        if (soundRef.current) {
+          void soundRef.current.setPositionAsync(0);
+        }
       }
     },
     [trimEnd, trimStart]
   );
 
   useEffect(() => {
-    void videoRef.current?.setIsMutedAsync(edit.muted);
-  }, [edit.muted]);
+    // Mute camera audio when a soundtrack is attached.
+    void videoRef.current?.setIsMutedAsync(edit.muted || hasSoundtrack);
+  }, [edit.muted, hasSoundtrack]);
 
   useEffect(() => {
     void videoRef.current?.setRateAsync(edit.speed || 1, true);
   }, [edit.speed]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadSound = async () => {
+      if (soundRef.current) {
+        try {
+          await soundRef.current.unloadAsync();
+        } catch {
+          /* ignore */
+        }
+        soundRef.current = null;
+      }
+      if (!edit.audioUrl?.trim()) return;
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          allowsRecordingIOS: false,
+        });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: edit.audioUrl.trim() },
+          {
+            shouldPlay: shouldPlay,
+            isLooping: true,
+            volume: edit.audioVolume ?? 0.85,
+          }
+        );
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        soundRef.current = sound;
+      } catch {
+        soundRef.current = null;
+      }
+    };
+    void loadSound();
+    return () => {
+      cancelled = true;
+      if (soundRef.current) {
+        void soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, [edit.audioUrl, edit.audioVolume, shouldPlay]);
+
+  useEffect(() => {
     if (!shouldPlay) {
       void videoRef.current?.pauseAsync();
+      void soundRef.current?.pauseAsync();
       return;
     }
     void (async () => {
       await videoRef.current?.setPositionAsync(trimStart);
       await videoRef.current?.playAsync();
+      if (soundRef.current) {
+        await soundRef.current.setPositionAsync(0);
+        await soundRef.current.playAsync();
+      }
     })();
   }, [shouldPlay, trimStart, uri]);
 
-  const webFilter =
-    Platform.OS === 'web'
-      ? look.grayscale
-        ? 'grayscale(1) contrast(1.15)'
-        : edit.lookId === 'pop'
-          ? 'saturate(1.35) contrast(1.1)'
-          : edit.lookId === 'fade'
-            ? 'contrast(0.92) brightness(1.06)'
-            : edit.lookId === 'cine'
-              ? 'contrast(1.12) saturate(0.9) brightness(0.95)'
-              : undefined
-      : undefined;
+  const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
 
   return (
     <View style={[tw`overflow-hidden bg-black`, style]}>
@@ -84,20 +128,43 @@ export default function ReelVideoPlayer({
         resizeMode={ResizeMode.COVER}
         shouldPlay={shouldPlay}
         isLooping={false}
-        isMuted={edit.muted}
+        isMuted={edit.muted || hasSoundtrack}
         onPlaybackStatusUpdate={onStatus}
         useNativeControls={useNativeControls}
       />
-      {look.wash ? (
+      {look.layers.map((layer, i) => (
+        <View
+          key={`${look.id}-${i}`}
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: layer.color, opacity: layer.opacity ?? 1 },
+          ]}
+        />
+      ))}
+      {(look.vignette || 0) > 0 ? (
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: look.wash }]}
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(0,0,0,${(look.vignette || 0) * 0.35})` },
+          ]}
         />
       ) : null}
-      {look.cinematic ? (
+      {(look.cinematic || 0) > 0 ? (
         <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-          <View style={tw`absolute top-0 left-0 right-0 h-14 bg-black/45`} />
-          <View style={tw`absolute bottom-0 left-0 right-0 h-16 bg-black/50`} />
+          <View
+            style={[
+              tw`absolute top-0 left-0 right-0`,
+              { height: `${12 + (look.cinematic || 0) * 18}%`, backgroundColor: 'rgba(0,0,0,0.55)' },
+            ]}
+          />
+          <View
+            style={[
+              tw`absolute bottom-0 left-0 right-0`,
+              { height: `${14 + (look.cinematic || 0) * 20}%`, backgroundColor: 'rgba(0,0,0,0.6)' },
+            ]}
+          />
         </View>
       ) : null}
       {(edit.overlays as TextOverlay[]).map((o) =>

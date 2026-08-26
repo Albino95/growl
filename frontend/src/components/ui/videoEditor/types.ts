@@ -1,6 +1,17 @@
 import type { TextOverlay } from '../photoEditor/types';
 
-export type VideoLookId = 'none' | 'warm' | 'cool' | 'cine' | 'fade' | 'pop' | 'noir';
+export type VideoLookId =
+  | 'none'
+  | 'golden'
+  | 'arctic'
+  | 'noir'
+  | 'cinema'
+  | 'rose'
+  | 'vivid'
+  | 'muted'
+  | 'sunset'
+  | 'forest'
+  | 'chrome';
 
 export type VideoEditSettings = {
   muted: boolean;
@@ -12,6 +23,11 @@ export type VideoEditSettings = {
   trimEndMs: number;
   lookId: VideoLookId;
   overlays: TextOverlay[];
+  /** Optional soundtrack URL (remote or local). */
+  audioUrl?: string | null;
+  audioTitle?: string | null;
+  /** Soundtrack volume 0–1. */
+  audioVolume?: number;
 };
 
 export const DEFAULT_VIDEO_EDIT: VideoEditSettings = {
@@ -21,29 +37,159 @@ export const DEFAULT_VIDEO_EDIT: VideoEditSettings = {
   trimEndMs: 0,
   lookId: 'none',
   overlays: [],
+  audioUrl: null,
+  audioTitle: null,
+  audioVolume: 0.85,
+};
+
+export type VideoLookLayer = {
+  color: string;
+  /** How strong the wash is (used as opacity). */
+  opacity?: number;
 };
 
 export type VideoLook = {
   id: VideoLookId;
   label: string;
-  /** Color wash over the frame. */
-  wash: string | null;
-  /** Extra top/bottom darken. */
-  cinematic?: boolean;
-  /** Approximate grayscale strength 0–1 (web CSS / overlay). */
-  grayscale?: number;
+  hint: string;
+  /** CSS filter for web video element. */
+  cssFilter?: string;
+  /** Color grade layers (native + web). */
+  layers: VideoLookLayer[];
+  /** Soft edge darken 0–1. */
+  vignette?: number;
+  /** Letterbox bars 0–1. */
+  cinematic?: number;
+  /** Warm/cool preview chip color. */
+  swatch: string;
 };
 
 export const VIDEO_LOOKS: VideoLook[] = [
-  { id: 'none', label: 'Original', wash: null },
-  { id: 'warm', label: 'Warm', wash: 'rgba(251, 191, 36, 0.22)' },
-  { id: 'cool', label: 'Cool', wash: 'rgba(56, 189, 248, 0.2)' },
-  { id: 'cine', label: 'Cine', wash: 'rgba(15, 23, 42, 0.28)', cinematic: true },
-  { id: 'fade', label: 'Fade', wash: 'rgba(255, 255, 255, 0.14)' },
-  { id: 'pop', label: 'Pop', wash: 'rgba(244, 114, 182, 0.14)' },
-  { id: 'noir', label: 'Noir', wash: 'rgba(0, 0, 0, 0.35)', grayscale: 1, cinematic: true },
+  {
+    id: 'none',
+    label: 'Original',
+    hint: 'Clean',
+    layers: [],
+    swatch: '#57534E',
+  },
+  {
+    id: 'golden',
+    label: 'Golden',
+    hint: 'Hour',
+    cssFilter: 'contrast(1.08) saturate(1.18) sepia(0.22) brightness(1.04)',
+    layers: [
+      { color: 'rgba(251, 191, 36, 0.2)' },
+      { color: 'rgba(249, 115, 22, 0.1)' },
+    ],
+    vignette: 0.22,
+    swatch: '#F59E0B',
+  },
+  {
+    id: 'arctic',
+    label: 'Arctic',
+    hint: 'Cool',
+    cssFilter: 'contrast(1.12) saturate(0.85) brightness(1.05) hue-rotate(190deg)',
+    layers: [
+      { color: 'rgba(56, 189, 248, 0.18)' },
+      { color: 'rgba(15, 23, 42, 0.12)' },
+    ],
+    vignette: 0.18,
+    swatch: '#38BDF8',
+  },
+  {
+    id: 'cinema',
+    label: 'Cinema',
+    hint: 'Teal',
+    cssFilter: 'contrast(1.22) saturate(0.88) brightness(0.92)',
+    layers: [
+      { color: 'rgba(15, 118, 110, 0.16)' },
+      { color: 'rgba(120, 53, 15, 0.1)' },
+    ],
+    vignette: 0.35,
+    cinematic: 0.55,
+    swatch: '#0F766E',
+  },
+  {
+    id: 'noir',
+    label: 'Noir',
+    hint: 'B&W',
+    cssFilter: 'grayscale(1) contrast(1.28) brightness(0.95)',
+    layers: [{ color: 'rgba(0, 0, 0, 0.28)' }],
+    vignette: 0.45,
+    cinematic: 0.35,
+    swatch: '#1C1917',
+  },
+  {
+    id: 'rose',
+    label: 'Rose',
+    hint: 'Soft',
+    cssFilter: 'contrast(0.95) saturate(1.15) brightness(1.06) sepia(0.12)',
+    layers: [
+      { color: 'rgba(244, 114, 182, 0.2)' },
+      { color: 'rgba(255, 255, 255, 0.08)' },
+    ],
+    vignette: 0.12,
+    swatch: '#F472B6',
+  },
+  {
+    id: 'vivid',
+    label: 'Vivid',
+    hint: 'Punch',
+    cssFilter: 'contrast(1.2) saturate(1.45) brightness(1.03)',
+    layers: [{ color: 'rgba(236, 72, 153, 0.08)' }],
+    vignette: 0.1,
+    swatch: '#EC4899',
+  },
+  {
+    id: 'muted',
+    label: 'Muted',
+    hint: 'Matte',
+    cssFilter: 'contrast(0.88) saturate(0.7) brightness(1.08)',
+    layers: [
+      { color: 'rgba(255, 255, 255, 0.14)' },
+      { color: 'rgba(120, 113, 108, 0.12)' },
+    ],
+    swatch: '#A8A29E',
+  },
+  {
+    id: 'sunset',
+    label: 'Sunset',
+    hint: 'Glow',
+    cssFilter: 'contrast(1.1) saturate(1.25) sepia(0.28) brightness(1.02)',
+    layers: [
+      { color: 'rgba(251, 113, 133, 0.18)' },
+      { color: 'rgba(251, 146, 60, 0.16)' },
+    ],
+    vignette: 0.2,
+    swatch: '#FB7185',
+  },
+  {
+    id: 'forest',
+    label: 'Forest',
+    hint: 'Green',
+    cssFilter: 'contrast(1.14) saturate(0.95) hue-rotate(55deg) brightness(0.96)',
+    layers: [
+      { color: 'rgba(22, 163, 74, 0.16)' },
+      { color: 'rgba(15, 23, 42, 0.14)' },
+    ],
+    vignette: 0.28,
+    cinematic: 0.25,
+    swatch: '#16A34A',
+  },
+  {
+    id: 'chrome',
+    label: 'Chrome',
+    hint: 'Metal',
+    cssFilter: 'contrast(1.3) saturate(0.55) brightness(1.08)',
+    layers: [
+      { color: 'rgba(148, 163, 184, 0.2)' },
+      { color: 'rgba(15, 23, 42, 0.15)' },
+    ],
+    vignette: 0.3,
+    swatch: '#94A3B8',
+  },
 ];
 
-export function getVideoLook(id: VideoLookId): VideoLook {
+export function getVideoLook(id: VideoLookId | string): VideoLook {
   return VIDEO_LOOKS.find((l) => l.id === id) || VIDEO_LOOKS[0];
 }

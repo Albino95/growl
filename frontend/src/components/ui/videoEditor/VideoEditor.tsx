@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Video, AVPlaybackStatus, ResizeMode } from 'expo-av';
+import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
 import type { TextOverlay, TextOverlayStyle } from '../photoEditor/types';
@@ -81,6 +81,7 @@ export default function VideoEditor({
 }: Props) {
   const insets = useSafeAreaInsets();
   const videoRef = useRef<Video>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
   const [tab, setTab] = useState<Tab>('trim');
   const [durationMs, setDurationMs] = useState(0);
   const [positionMs, setPositionMs] = useState(0);
@@ -94,6 +95,9 @@ export default function VideoEditor({
   const [lookId, setLookId] = useState<VideoLookId>(
     initialSettings?.lookId ?? DEFAULT_VIDEO_EDIT.lookId
   );
+  const [audioUrl, setAudioUrl] = useState(initialSettings?.audioUrl || '');
+  const [audioTitle, setAudioTitle] = useState(initialSettings?.audioTitle || '');
+  const [audioVolume, setAudioVolume] = useState(initialSettings?.audioVolume ?? 0.85);
   const [overlays, setOverlays] = useState<TextOverlay[]>(
     initialSettings?.overlays?.map((o) => ({ ...o })) ?? []
   );
@@ -104,6 +108,8 @@ export default function VideoEditor({
   const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
   const look = getVideoLook(lookId);
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
+  const hasSoundtrack = Boolean(audioUrl.trim());
+  const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
 
   const onStatus = useCallback(
     (status: AVPlaybackStatus) => {
@@ -124,12 +130,56 @@ export default function VideoEditor({
   );
 
   useEffect(() => {
-    void videoRef.current?.setIsMutedAsync(muted);
-  }, [muted]);
+    void videoRef.current?.setIsMutedAsync(muted || hasSoundtrack);
+  }, [muted, hasSoundtrack]);
 
   useEffect(() => {
     void videoRef.current?.setRateAsync(speed, true);
   }, [speed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (soundRef.current) {
+        try {
+          await soundRef.current.unloadAsync();
+        } catch {
+          /* ignore */
+        }
+        soundRef.current = null;
+      }
+      const url = audioUrl.trim();
+      if (!url) return;
+      try {
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: url },
+          { shouldPlay: playing, isLooping: true, volume: audioVolume }
+        );
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        soundRef.current = sound;
+      } catch {
+        soundRef.current = null;
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (soundRef.current) {
+        void soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, [audioUrl, audioVolume]);
+
+  useEffect(() => {
+    if (!soundRef.current) return;
+    if (playing) void soundRef.current.playAsync();
+    else void soundRef.current.pauseAsync();
+  }, [playing]);
 
   const togglePlay = async () => {
     const v = videoRef.current;
@@ -176,17 +226,11 @@ export default function VideoEditor({
       trimEndMs: end,
       lookId,
       overlays,
+      audioUrl: audioUrl.trim() || null,
+      audioTitle: audioTitle.trim() || null,
+      audioVolume,
     });
   };
-
-  const webFilter = useMemo(() => {
-    if (Platform.OS !== 'web') return undefined;
-    if (look.grayscale) return 'grayscale(1) contrast(1.15)';
-    if (lookId === 'pop') return 'saturate(1.35) contrast(1.1)';
-    if (lookId === 'fade') return 'contrast(0.92) brightness(1.06)';
-    if (lookId === 'cine') return 'contrast(1.12) saturate(0.9) brightness(0.95)';
-    return undefined;
-  }, [look.grayscale, lookId]);
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
@@ -233,22 +277,51 @@ export default function VideoEditor({
             resizeMode={ResizeMode.COVER}
             shouldPlay
             isLooping={false}
-            isMuted={muted}
+            isMuted={muted || hasSoundtrack}
             onPlaybackStatusUpdate={onStatus}
             useNativeControls={false}
             onLoadStart={() => setLoading(true)}
           />
 
-          {look.wash ? (
+          {look.layers.map((layer, i) => (
+            <View
+              key={`${look.id}-${i}`}
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: layer.color, opacity: layer.opacity ?? 1 },
+              ]}
+            />
+          ))}
+          {(look.vignette || 0) > 0 ? (
             <View
               pointerEvents="none"
-              style={[StyleSheet.absoluteFillObject, { backgroundColor: look.wash }]}
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: `rgba(0,0,0,${(look.vignette || 0) * 0.35})` },
+              ]}
             />
           ) : null}
-          {look.cinematic ? (
+          {(look.cinematic || 0) > 0 ? (
             <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-              <View style={tw`absolute top-0 left-0 right-0 h-16 bg-black/50`} />
-              <View style={tw`absolute bottom-0 left-0 right-0 h-20 bg-black/55`} />
+              <View
+                style={[
+                  tw`absolute top-0 left-0 right-0`,
+                  {
+                    height: `${12 + (look.cinematic || 0) * 18}%`,
+                    backgroundColor: 'rgba(0,0,0,0.55)',
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  tw`absolute bottom-0 left-0 right-0`,
+                  {
+                    height: `${14 + (look.cinematic || 0) * 20}%`,
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                  },
+                ]}
+              />
             </View>
           ) : null}
 
@@ -364,8 +437,9 @@ export default function VideoEditor({
 
           {tab === 'look' && (
             <View style={tw`pt-2`}>
-              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-3`}>
-                Looks
+              <Text style={tw`text-white text-sm font-bold mb-1`}>Color grade</Text>
+              <Text style={tw`text-stone-500 text-xs mb-3`}>
+                Multi-layer looks with contrast, tone, and cinematic edges
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {VIDEO_LOOKS.map((l) => {
@@ -378,24 +452,40 @@ export default function VideoEditor({
                     >
                       <View
                         style={[
-                          tw`w-16 h-20 rounded-2xl overflow-hidden border-2 items-center justify-center`,
+                          tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2 items-center justify-center`,
                           {
-                            backgroundColor: l.wash || '#1C1917',
+                            backgroundColor: l.swatch,
                             borderColor: selected ? '#34D399' : '#44403C',
                           },
                         ]}
                       >
+                        {l.layers.slice(0, 2).map((layer, idx) => (
+                          <View
+                            key={idx}
+                            style={[
+                              StyleSheet.absoluteFillObject,
+                              { backgroundColor: layer.color },
+                            ]}
+                          />
+                        ))}
+                        {(l.cinematic || 0) > 0 ? (
+                          <>
+                            <View style={tw`absolute top-0 left-0 right-0 h-3 bg-black/50`} />
+                            <View style={tw`absolute bottom-0 left-0 right-0 h-4 bg-black/55`} />
+                          </>
+                        ) : null}
                         {l.id === 'none' ? (
-                          <Ionicons name="sparkles-outline" size={22} color="#A8A29E" />
+                          <Ionicons name="sparkles-outline" size={22} color="#E7E5E4" />
                         ) : null}
                       </View>
                       <Text
-                        style={tw`text-[11px] font-semibold mt-1.5 ${
-                          selected ? 'text-brand-300' : 'text-stone-400'
+                        style={tw`text-[11px] font-bold mt-1.5 ${
+                          selected ? 'text-brand-300' : 'text-stone-200'
                         }`}
                       >
                         {l.label}
                       </Text>
+                      <Text style={tw`text-[10px] text-stone-500`}>{l.hint}</Text>
                     </Pressable>
                   );
                 })}
@@ -407,7 +497,7 @@ export default function VideoEditor({
             <View style={tw`pt-2`}>
               <Pressable
                 onPress={() => setMuted((m) => !m)}
-                style={tw`flex-row items-center justify-between bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-5`}
+                style={tw`flex-row items-center justify-between bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-4`}
               >
                 <View style={tw`flex-row items-center`}>
                   <View style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center mr-3`}>
@@ -418,26 +508,66 @@ export default function VideoEditor({
                     />
                   </View>
                   <View>
-                    <Text style={tw`text-white font-semibold`}>Sound</Text>
+                    <Text style={tw`text-white font-semibold`}>Original sound</Text>
                     <Text style={tw`text-stone-500 text-xs mt-0.5`}>
-                      {muted ? 'Muted' : 'Audio on'}
+                      {hasSoundtrack
+                        ? 'Muted while soundtrack plays'
+                        : muted
+                          ? 'Muted'
+                          : 'Audio on'}
                     </Text>
                   </View>
                 </View>
                 <View
                   style={[
                     tw`w-12 h-7 rounded-full px-0.5 justify-center`,
-                    muted ? tw`bg-stone-700` : tw`bg-brand-600`,
+                    muted || hasSoundtrack ? tw`bg-stone-700` : tw`bg-brand-600`,
                   ]}
                 >
                   <View
                     style={[
                       tw`w-6 h-6 rounded-full bg-white`,
-                      muted ? tw`self-start` : tw`self-end`,
+                      muted || hasSoundtrack ? tw`self-start` : tw`self-end`,
                     ]}
                   />
                 </View>
               </Pressable>
+
+              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
+                Soundtrack
+              </Text>
+              <TextInput
+                value={audioTitle}
+                onChangeText={setAudioTitle}
+                placeholder="Track title (optional)"
+                placeholderTextColor="#78716C"
+                style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3 mb-2 border border-stone-700`}
+              />
+              <TextInput
+                value={audioUrl}
+                onChangeText={setAudioUrl}
+                placeholder="Paste audio URL (mp3, m4a…)"
+                placeholderTextColor="#78716C"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3 mb-2 border border-stone-700`}
+              />
+              {audioUrl.trim() ? (
+                <Pressable
+                  onPress={() => {
+                    setAudioUrl('');
+                    setAudioTitle('');
+                  }}
+                  style={tw`self-start flex-row items-center gap-2 py-2 mb-3`}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#F87171" />
+                  <Text style={tw`text-red-400 text-sm font-semibold`}>Remove soundtrack</Text>
+                </Pressable>
+              ) : (
+                <Text style={tw`text-stone-500 text-xs mb-3 leading-5`}>
+                  Add a hosted audio link. Original camera audio is muted when a soundtrack is set.
+                </Text>
+              )}
 
               <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
                 Speed

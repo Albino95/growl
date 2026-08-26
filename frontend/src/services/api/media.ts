@@ -3,6 +3,7 @@ import { request, getApiBaseUrl } from './http';
 import { getSecureItem } from '../storage/secureStore';
 import { getToken, setToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
+import { uriToDataUrl as uriToDataUrlUtil } from '../../utils/mediaUri';
 
 export type UploadPurpose = 'post' | 'product' | 'story' | 'avatar' | 'reel';
 export type MediaKind = 'image' | 'video';
@@ -60,7 +61,7 @@ export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): P
 
 /**
  * Multipart upload — preferred for video (avoids huge base64 JSON bodies).
- * Returns hosted URL + detected media kind.
+ * Falls back to JSON dataUrl when the worker rejects non-JSON multipart.
  */
 export async function uploadMediaFile(
   uri: string,
@@ -72,58 +73,87 @@ export async function uploadMediaFile(
     opts?.fileName ||
     `upload.${mimeType.includes('png') ? 'png' : mimeType.includes('webm') ? 'webm' : mimeType.includes('quicktime') || uri.toLowerCase().includes('.mov') ? 'mov' : mimeType.startsWith('video/') ? 'mp4' : 'jpg'}`;
 
-  const form = new FormData();
-  form.append('purpose', purpose);
+  const token = await readAccessToken();
+  const endpoint = `${getApiBaseUrl()}/media/upload`;
 
-  if (Platform.OS === 'web') {
-    const res = await fetch(uri);
-    const blob = await res.blob();
-    const typed =
-      blob.type && blob.type !== 'application/octet-stream'
-        ? blob
-        : new Blob([blob], { type: mimeType });
-    form.append('file', typed, fileName);
-  } else {
-    // React Native FormData file shape
-    form.append('file', {
-      uri,
-      name: fileName,
-      type: mimeType,
-    } as unknown as Blob);
+  const parseUploadResponse = async (response: Response) => {
+    let data: UploadMediaResponse | null = null;
+    try {
+      data = (await response.json()) as UploadMediaResponse;
+    } catch {
+      throw new Error(messageFromApiError(null, response.status));
+    }
+    if (!response.ok || !data?.success || !data.data?.url) {
+      const err = new Error(messageFromApiError(data, response.status)) as Error & {
+        code?: string;
+        raw?: unknown;
+      };
+      err.code = (data as { error?: { code?: string } })?.error?.code;
+      err.raw = data;
+      throw err;
+    }
+    const mediaType: MediaKind =
+      data.data.mediaType ||
+      (data.data.contentType?.startsWith('video/') ? 'video' : 'image');
+    return {
+      url: normalizeUploadedMediaUrl(data.data.url, data.data.key),
+      mediaType,
+      contentType: data.data.contentType || mimeType,
+    };
+  };
+
+  // 1) Multipart
+  try {
+    const form = new FormData();
+    form.append('purpose', purpose);
+
+    if (Platform.OS === 'web') {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      const typed =
+        blob.type && blob.type !== 'application/octet-stream'
+          ? blob
+          : new Blob([blob], { type: mimeType });
+      form.append('file', typed, fileName);
+    } else {
+      form.append('file', {
+        uri,
+        name: fileName,
+        type: mimeType,
+      } as unknown as Blob);
+    }
+
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    return await parseUploadResponse(response);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    const code = (err as { code?: string })?.code;
+    const canFallback =
+      code === 'INVALID_JSON' ||
+      /invalid json/i.test(msg) ||
+      /multipart/i.test(msg);
+    if (!canFallback) throw err;
   }
 
-  const token = await readAccessToken();
-  const headers: Record<string, string> = {};
+  // 2) JSON dataUrl fallback (works with older workers / odd Content-Type)
+  const dataUrl = await uriToDataUrlUtil(uri);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
-  // Do NOT set Content-Type — fetch sets multipart boundary.
-
-  const endpoint = `${getApiBaseUrl()}/media/upload`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers,
-    body: form,
+    body: JSON.stringify({ dataUrl, purpose }),
   });
-
-  let data: UploadMediaResponse | null = null;
-  try {
-    data = (await response.json()) as UploadMediaResponse;
-  } catch {
-    throw new Error(messageFromApiError(null, response.status));
-  }
-
-  if (!response.ok || !data?.success || !data.data?.url) {
-    throw new Error(messageFromApiError(data, response.status));
-  }
-
-  const mediaType: MediaKind =
-    data.data.mediaType ||
-    (data.data.contentType?.startsWith('video/') ? 'video' : 'image');
-
-  return {
-    url: normalizeUploadedMediaUrl(data.data.url, data.data.key),
-    mediaType,
-    contentType: data.data.contentType || mimeType,
-  };
+  return parseUploadResponse(response);
 }
 
 function guessMimeFromUri(uri: string): string {

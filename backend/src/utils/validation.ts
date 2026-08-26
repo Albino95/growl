@@ -80,7 +80,12 @@ export const ssoSchema = z
   );
 
 export const createPostSchema = z.object({
-  image_url: z.string().url().optional(),
+  // Allow http(s) media URLs; some CDN paths fail strict URL parsing in older Zod.
+  image_url: z
+    .string()
+    .min(1)
+    .refine((v) => /^https?:\/\//i.test(v), 'image_url must be an http(s) URL')
+    .optional(),
   caption: z.string().max(2000, 'Caption too long').optional(),
   category: z.string().min(1, 'Category is required'),
   subcategory: z.string().optional(),

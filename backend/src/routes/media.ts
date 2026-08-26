@@ -140,6 +140,26 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
   let parsed: ParsedMedia | null = null;
   let purpose = 'post';
 
+  const tryJsonUpload = async (req: Request): Promise<Response | null> => {
+    let body: { dataUrl?: string; purpose?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return null;
+    }
+    purpose = normalizePurpose(body.purpose);
+    const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
+    parsed = parseMediaDataUrl(dataUrl);
+    if (!parsed) {
+      return error(
+        'VALIDATION_ERROR',
+        'Only base64 data URLs for jpeg/png/webp or mp4/webm/mov are supported (or use multipart file upload)',
+        400
+      );
+    }
+    return null; // success — parsed set
+  };
+
   if (contentType.includes('multipart/form-data')) {
     const multi = await parseMultipart(request);
     if (!multi) {
@@ -151,22 +171,30 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     }
     parsed = multi.media;
     purpose = multi.purpose;
-  } else {
-    let body: { dataUrl?: string; purpose?: string };
-    try {
-      body = await request.json();
-    } catch {
+  } else if (contentType.includes('application/json')) {
+    const errRes = await tryJsonUpload(request);
+    if (errRes) return errRes;
+    if (!parsed) {
       return error('INVALID_JSON', 'Invalid JSON in request body', 400);
     }
-    purpose = normalizePurpose(body.purpose);
-    const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
-    parsed = parseMediaDataUrl(dataUrl);
-    if (!parsed) {
-      return error(
-        'VALIDATION_ERROR',
-        'Only base64 data URLs for jpeg/png/webp or mp4/webm/mov are supported (or use multipart file upload)',
-        400
-      );
+  } else {
+    // React Native / some browsers omit or mangle Content-Type on FormData.
+    // Prefer multipart, then fall back to JSON.
+    const cloned = request.clone();
+    const multi = await parseMultipart(request);
+    if (multi) {
+      parsed = multi.media;
+      purpose = multi.purpose;
+    } else {
+      const errRes = await tryJsonUpload(cloned);
+      if (errRes) return errRes;
+      if (!parsed) {
+        return error(
+          'VALIDATION_ERROR',
+          'Upload requires multipart file or JSON dataUrl body',
+          400
+        );
+      }
     }
   }
 

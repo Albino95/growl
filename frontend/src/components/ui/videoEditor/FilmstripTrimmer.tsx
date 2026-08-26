@@ -60,9 +60,15 @@ export default function FilmstripTrimmer({
 
   useEffect(() => {
     let cancelled = false;
+    if (!videoUri || width <= 0) return;
+    // Wait for real duration so seek times are accurate (avoids hang on 0ms).
+    if (durationMs < 200) {
+      setLoading(true);
+      return;
+    }
     setLoading(true);
-    const count = width > 0 ? Math.max(6, Math.min(12, Math.round(width / 42))) : 10;
-    void extractVideoFrames(videoUri, durationMs || 5000, count).then((next) => {
+    const count = Math.max(6, Math.min(12, Math.round(width / 42)));
+    void extractVideoFrames(videoUri, durationMs, count).then((next) => {
       if (cancelled) return;
       setFrames(next);
       setLoading(false);
@@ -185,6 +191,9 @@ export default function FilmstripTrimmer({
             {loading && frames.length === 0 ? (
               <View style={tw`flex-1 items-center justify-center`}>
                 <ActivityIndicator color="#A8A29E" />
+                <Text style={tw`text-stone-500 text-[10px] mt-1`}>
+                  {durationMs < 200 ? 'Waiting for video…' : 'Loading frames…'}
+                </Text>
               </View>
             ) : frames.length > 0 ? (
               frames.map((f, i) => (
