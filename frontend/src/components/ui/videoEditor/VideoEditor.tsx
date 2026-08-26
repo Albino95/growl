@@ -21,6 +21,11 @@ import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
 import type { VideoEditSettings, VideoLookId } from './types';
 import { DEFAULT_VIDEO_EDIT, VIDEO_LOOKS, getVideoLook } from './types';
 import FilmstripTrimmer from './FilmstripTrimmer';
+import {
+  POST_MUSIC_TRACKS,
+  getMusicTrackById,
+  type PostMusicTrack,
+} from '../../../constants/postMusic';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_H = Math.min(SCREEN_W * 1.35, SCREEN_H * 0.48);
@@ -95,9 +100,13 @@ export default function VideoEditor({
   const [lookId, setLookId] = useState<VideoLookId>(
     initialSettings?.lookId ?? DEFAULT_VIDEO_EDIT.lookId
   );
-  const [audioUrl, setAudioUrl] = useState(initialSettings?.audioUrl || '');
-  const [audioTitle, setAudioTitle] = useState(initialSettings?.audioTitle || '');
-  const [audioVolume, setAudioVolume] = useState(initialSettings?.audioVolume ?? 0.85);
+  const [audioTrackId, setAudioTrackId] = useState<string | null>(
+    initialSettings?.audioTrackId ||
+      (initialSettings?.audioUrl
+        ? POST_MUSIC_TRACKS.find((t) => t.url === initialSettings.audioUrl)?.id || null
+        : null)
+  );
+  const [audioVolume] = useState(initialSettings?.audioVolume ?? 0.85);
   const [overlays, setOverlays] = useState<TextOverlay[]>(
     initialSettings?.overlays?.map((o) => ({ ...o })) ?? []
   );
@@ -108,7 +117,8 @@ export default function VideoEditor({
   const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
   const look = getVideoLook(lookId);
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
-  const hasSoundtrack = Boolean(audioUrl.trim());
+  const selectedTrack = getMusicTrackById(audioTrackId);
+  const hasSoundtrack = Boolean(selectedTrack);
   const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
 
   const onStatus = useCallback(
@@ -130,8 +140,9 @@ export default function VideoEditor({
   );
 
   useEffect(() => {
-    void videoRef.current?.setIsMutedAsync(muted || hasSoundtrack);
-  }, [muted, hasSoundtrack]);
+    // Original audio only mutes when opted in — soundtrack overlaps by default.
+    void videoRef.current?.setIsMutedAsync(muted);
+  }, [muted]);
 
   useEffect(() => {
     void videoRef.current?.setRateAsync(speed, true);
@@ -148,12 +159,11 @@ export default function VideoEditor({
         }
         soundRef.current = null;
       }
-      const url = audioUrl.trim();
-      if (!url) return;
+      if (!selectedTrack?.url) return;
       try {
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
         const { sound } = await Audio.Sound.createAsync(
-          { uri: url },
+          { uri: selectedTrack.url },
           { shouldPlay: playing, isLooping: true, volume: audioVolume }
         );
         if (cancelled) {
@@ -173,13 +183,17 @@ export default function VideoEditor({
         soundRef.current = null;
       }
     };
-  }, [audioUrl, audioVolume]);
+  }, [selectedTrack?.url, audioVolume]);
 
   useEffect(() => {
     if (!soundRef.current) return;
     if (playing) void soundRef.current.playAsync();
     else void soundRef.current.pauseAsync();
   }, [playing]);
+
+  const selectTrack = (track: PostMusicTrack | null) => {
+    setAudioTrackId(track?.id ?? null);
+  };
 
   const togglePlay = async () => {
     const v = videoRef.current;
@@ -226,8 +240,9 @@ export default function VideoEditor({
       trimEndMs: end,
       lookId,
       overlays,
-      audioUrl: audioUrl.trim() || null,
-      audioTitle: audioTitle.trim() || null,
+      audioTrackId: selectedTrack?.id ?? null,
+      audioUrl: selectedTrack?.url ?? null,
+      audioTitle: selectedTrack ? `${selectedTrack.title} · ${selectedTrack.artist}` : null,
       audioVolume,
     });
   };
@@ -277,7 +292,7 @@ export default function VideoEditor({
             resizeMode={ResizeMode.COVER}
             shouldPlay
             isLooping={false}
-            isMuted={muted || hasSoundtrack}
+            isMuted={muted}
             onPlaybackStatusUpdate={onStatus}
             useNativeControls={false}
             onLoadStart={() => setLoading(true)}
@@ -495,79 +510,101 @@ export default function VideoEditor({
 
           {tab === 'audio' && (
             <View style={tw`pt-2`}>
+              <Text style={tw`text-white text-sm font-bold mb-1`}>Music library</Text>
+              <Text style={tw`text-stone-500 text-xs mb-3 leading-5`}>
+                Pick a track — it overlaps your original sound by default
+              </Text>
+
+              <Pressable
+                onPress={() => selectTrack(null)}
+                style={[
+                  tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
+                  !selectedTrack
+                    ? tw`bg-brand-600/20 border-brand-500`
+                    : tw`bg-stone-900 border-stone-800`,
+                ]}
+              >
+                <View style={tw`w-10 h-10 rounded-xl bg-white/10 items-center justify-center`}>
+                  <Ionicons name="musical-notes-outline" size={18} color="#A8A29E" />
+                </View>
+                <Text style={tw`ml-3 text-white font-semibold flex-1`}>No music</Text>
+                {!selectedTrack ? (
+                  <Ionicons name="checkmark-circle" size={20} color="#34D399" />
+                ) : null}
+              </Pressable>
+
+              {POST_MUSIC_TRACKS.map((track) => {
+                const active = selectedTrack?.id === track.id;
+                return (
+                  <Pressable
+                    key={track.id}
+                    onPress={() => selectTrack(track)}
+                    style={[
+                      tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
+                      active
+                        ? tw`bg-brand-600/20 border-brand-500`
+                        : tw`bg-stone-900 border-stone-800`,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        tw`w-10 h-10 rounded-xl items-center justify-center`,
+                        active ? tw`bg-brand-600` : tw`bg-white/10`,
+                      ]}
+                    >
+                      <Ionicons name="musical-notes" size={18} color="#fff" />
+                    </View>
+                    <View style={tw`ml-3 flex-1`}>
+                      <Text style={tw`text-white font-semibold`}>{track.title}</Text>
+                      <Text style={tw`text-stone-500 text-xs mt-0.5`}>
+                        {track.artist}
+                        {track.mood ? ` · ${track.mood}` : ''}
+                      </Text>
+                    </View>
+                    {active ? (
+                      <Ionicons name="checkmark-circle" size={20} color="#34D399" />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+
               <Pressable
                 onPress={() => setMuted((m) => !m)}
-                style={tw`flex-row items-center justify-between bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-4`}
+                style={tw`flex-row items-center justify-between bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mt-3 mb-4`}
               >
-                <View style={tw`flex-row items-center`}>
+                <View style={tw`flex-row items-center flex-1 mr-3`}>
                   <View style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center mr-3`}>
                     <Ionicons
-                      name={muted ? 'volume-mute' : 'volume-high'}
+                      name={muted ? 'mic-off-outline' : 'mic-outline'}
                       size={20}
                       color="#fff"
                     />
                   </View>
-                  <View>
-                    <Text style={tw`text-white font-semibold`}>Original sound</Text>
+                  <View style={tw`flex-1`}>
+                    <Text style={tw`text-white font-semibold`}>Mute original voice</Text>
                     <Text style={tw`text-stone-500 text-xs mt-0.5`}>
-                      {hasSoundtrack
-                        ? 'Muted while soundtrack plays'
-                        : muted
-                          ? 'Muted'
-                          : 'Audio on'}
+                      {muted
+                        ? 'Clip audio off — music only'
+                        : hasSoundtrack
+                          ? 'Overlapping with music'
+                          : 'Clip audio on'}
                     </Text>
                   </View>
                 </View>
                 <View
                   style={[
                     tw`w-12 h-7 rounded-full px-0.5 justify-center`,
-                    muted || hasSoundtrack ? tw`bg-stone-700` : tw`bg-brand-600`,
+                    muted ? tw`bg-brand-600` : tw`bg-stone-700`,
                   ]}
                 >
                   <View
                     style={[
                       tw`w-6 h-6 rounded-full bg-white`,
-                      muted || hasSoundtrack ? tw`self-start` : tw`self-end`,
+                      muted ? tw`self-end` : tw`self-start`,
                     ]}
                   />
                 </View>
               </Pressable>
-
-              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
-                Soundtrack
-              </Text>
-              <TextInput
-                value={audioTitle}
-                onChangeText={setAudioTitle}
-                placeholder="Track title (optional)"
-                placeholderTextColor="#78716C"
-                style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3 mb-2 border border-stone-700`}
-              />
-              <TextInput
-                value={audioUrl}
-                onChangeText={setAudioUrl}
-                placeholder="Paste audio URL (mp3, m4a…)"
-                placeholderTextColor="#78716C"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3 mb-2 border border-stone-700`}
-              />
-              {audioUrl.trim() ? (
-                <Pressable
-                  onPress={() => {
-                    setAudioUrl('');
-                    setAudioTitle('');
-                  }}
-                  style={tw`self-start flex-row items-center gap-2 py-2 mb-3`}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#F87171" />
-                  <Text style={tw`text-red-400 text-sm font-semibold`}>Remove soundtrack</Text>
-                </Pressable>
-              ) : (
-                <Text style={tw`text-stone-500 text-xs mb-3 leading-5`}>
-                  Add a hosted audio link. Original camera audio is muted when a soundtrack is set.
-                </Text>
-              )}
 
               <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
                 Speed

@@ -32,7 +32,6 @@ export default function ReelVideoPlayer({
   const look = getVideoLook(edit.lookId);
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
-  const hasSoundtrack = Boolean(edit.audioUrl?.trim());
 
   const onStatus = useCallback(
     (status: AVPlaybackStatus) => {
@@ -49,9 +48,9 @@ export default function ReelVideoPlayer({
   );
 
   useEffect(() => {
-    // Mute camera audio when a soundtrack is attached.
-    void videoRef.current?.setIsMutedAsync(edit.muted || hasSoundtrack);
-  }, [edit.muted, hasSoundtrack]);
+    // Original audio only mutes when the user opts in — soundtrack overlaps by default.
+    void videoRef.current?.setIsMutedAsync(!!edit.muted);
+  }, [edit.muted]);
 
   useEffect(() => {
     void videoRef.current?.setRateAsync(edit.speed || 1, true);
@@ -128,7 +127,7 @@ export default function ReelVideoPlayer({
         resizeMode={ResizeMode.COVER}
         shouldPlay={shouldPlay}
         isLooping={false}
-        isMuted={edit.muted || hasSoundtrack}
+        isMuted={!!edit.muted}
         onPlaybackStatusUpdate={onStatus}
         useNativeControls={useNativeControls}
       />

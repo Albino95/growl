@@ -14,6 +14,7 @@ export type VideoLookId =
   | 'chrome';
 
 export type VideoEditSettings = {
+  /** Mute original clip audio (optional — default overlaps with soundtrack). */
   muted: boolean;
   /** Playback rate (0.5–2). */
   speed: number;
@@ -23,7 +24,9 @@ export type VideoEditSettings = {
   trimEndMs: number;
   lookId: VideoLookId;
   overlays: TextOverlay[];
-  /** Optional soundtrack URL (remote or local). */
+  /** Selected track from the public music library. */
+  audioTrackId?: string | null;
+  /** Resolved soundtrack URL (from library). */
   audioUrl?: string | null;
   audioTitle?: string | null;
   /** Soundtrack volume 0–1. */
@@ -37,6 +40,7 @@ export const DEFAULT_VIDEO_EDIT: VideoEditSettings = {
   trimEndMs: 0,
   lookId: 'none',
   overlays: [],
+  audioTrackId: null,
   audioUrl: null,
   audioTitle: null,
   audioVolume: 0.85,
