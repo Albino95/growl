@@ -27,7 +27,7 @@ const ACTIONS: Array<{
   {
     key: 'reel',
     title: 'New reel',
-    subtitle: 'Vertical clip with pro photo edits',
+    subtitle: 'Vertical clip with pro video & photo edits',
     icon: 'film-outline',
   },
   {

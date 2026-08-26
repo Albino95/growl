@@ -9,6 +9,7 @@ import RootNavigator from './src/app/navigation/RootNavigator';
 import { useAppDispatch, useAppSelector } from './src/store/store';
 import { hydrateAuth } from './src/store/slices/authSlice';
 import FullScreenLoader from './src/components/common/FullScreenLoader';
+import AppDialogHost from './src/components/ui/AppDialog';
 import { initMonitoring } from './src/services/monitoring';
 
 initMonitoring();
@@ -57,6 +58,7 @@ export default function App() {
     <Provider store={store}>
       <SafeAreaProvider>
         <AppContent />
+        <AppDialogHost />
       </SafeAreaProvider>
     </Provider>
   );

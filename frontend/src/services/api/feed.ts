@@ -28,6 +28,8 @@ export type FeedPost = {
     format?: 'reel' | 'post' | string;
     media_type?: 'image' | 'video' | string;
     content_type?: string;
+    /** Client-side reel video edits (trim, mute, look, text). */
+    video_edit?: Record<string, unknown>;
   };
 };
 

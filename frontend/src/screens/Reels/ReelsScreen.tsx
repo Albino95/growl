@@ -11,12 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getForYouFeed, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { isVideoMedia } from '../../services/api/media';
 import { resolveAvatarUri, resolveStoryDisplayUri } from '../../utils/images';
+import { ReelVideoPlayer, type VideoEditSettings } from '../../components/ui/VideoEditor';
 import tw from '../../lib/tw';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -196,6 +196,7 @@ export default function ReelsScreen() {
       contentType: item.metadata?.content_type,
     });
     const isActive = activeId === item.id;
+    const videoEdit = (item.metadata?.video_edit || null) as VideoEditSettings | null;
 
     return (
       <View style={[tw`bg-black`, { height: SCREEN_HEIGHT }]}>
@@ -224,14 +225,11 @@ export default function ReelsScreen() {
           }}
         >
           {isVideo ? (
-            <Video
-              source={{ uri }}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode={ResizeMode.COVER}
+            <ReelVideoPlayer
+              uri={uri}
+              settings={videoEdit}
               shouldPlay={isActive}
-              isLooping
-              isMuted={false}
-              useNativeControls={false}
+              style={StyleSheet.absoluteFillObject}
             />
           ) : (
             <Image source={{ uri }} style={tw`absolute inset-0 w-full h-full`} contentFit="cover" transition={200} />
