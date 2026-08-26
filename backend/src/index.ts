@@ -464,6 +464,10 @@ async function handleRequest(
       if (path === `${apiPrefix}/media/upload` && request.method === 'POST') {
         return mediaRoutes.uploadMedia(request, env);
       }
+      const audioMatch = path.match(new RegExp(`^${apiPrefix}/media/audio/([^/]+)$`));
+      if (audioMatch && (request.method === 'GET' || request.method === 'HEAD')) {
+        return mediaRoutes.getLibraryAudio(request, env, audioMatch[1]);
+      }
       const mediaMatch = path.match(new RegExp(`^${apiPrefix}/media/(.+)$`));
       if (mediaMatch && request.method === 'GET') {
         return mediaRoutes.getMedia(request, env, mediaMatch[1]);

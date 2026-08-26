@@ -60,8 +60,8 @@ export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): P
 }
 
 /**
- * Multipart upload — preferred for video (avoids huge base64 JSON bodies).
- * Falls back to JSON dataUrl when the worker rejects non-JSON multipart.
+ * Multipart upload — required for video (avoids huge base64 JSON bodies).
+ * Images may fall back to JSON dataUrl if multipart fails on older workers.
  */
 export async function uploadMediaFile(
   uri: string,
@@ -69,9 +69,20 @@ export async function uploadMediaFile(
   opts?: { mimeType?: string; fileName?: string }
 ): Promise<{ url: string; mediaType: MediaKind; contentType: string }> {
   const mimeType = opts?.mimeType || guessMimeFromUri(uri);
+  const isVideo = mimeType.startsWith('video/');
   const fileName =
     opts?.fileName ||
-    `upload.${mimeType.includes('png') ? 'png' : mimeType.includes('webm') ? 'webm' : mimeType.includes('quicktime') || uri.toLowerCase().includes('.mov') ? 'mov' : mimeType.startsWith('video/') ? 'mp4' : 'jpg'}`;
+    `upload.${
+      mimeType.includes('png')
+        ? 'png'
+        : mimeType.includes('webm')
+          ? 'webm'
+          : mimeType.includes('quicktime') || uri.toLowerCase().includes('.mov')
+            ? 'mov'
+            : mimeType.startsWith('video/')
+              ? 'mp4'
+              : 'jpg'
+    }`;
 
   const token = await readAccessToken();
   const endpoint = `${getApiBaseUrl()}/media/upload`;
@@ -102,7 +113,7 @@ export async function uploadMediaFile(
     };
   };
 
-  // 1) Multipart
+  // 1) Multipart (preferred)
   try {
     const form = new FormData();
     form.append('purpose', purpose);
@@ -111,10 +122,15 @@ export async function uploadMediaFile(
       const res = await fetch(uri);
       const blob = await res.blob();
       const typed =
-        blob.type && blob.type !== 'application/octet-stream'
+        blob.type && blob.type !== 'application/octet-stream' && blob.type === mimeType
           ? blob
-          : new Blob([blob], { type: mimeType });
-      form.append('file', typed, fileName);
+          : new Blob([await blob.arrayBuffer()], { type: mimeType });
+      // File gives workers a reliable filename + mime (plain Blob often arrives empty-typed)
+      const file =
+        typeof File !== 'undefined'
+          ? new File([typed], fileName, { type: mimeType })
+          : typed;
+      form.append('file', file, fileName);
     } else {
       form.append('file', {
         uri,
@@ -133,6 +149,17 @@ export async function uploadMediaFile(
     });
     return await parseUploadResponse(response);
   } catch (err) {
+    // Videos must stay multipart — JSON base64 hits image-only workers / size limits
+    if (isVideo) {
+      const msg = err instanceof Error ? err.message : 'Video upload failed';
+      if (/jpeg\/png\/webp|base64 data urls|only base64/i.test(msg)) {
+        throw new Error(
+          'Video upload isn’t supported by this API version yet. Please refresh the app or try again after the latest update.'
+        );
+      }
+      throw err instanceof Error ? err : new Error(msg);
+    }
+
     const msg = err instanceof Error ? err.message : '';
     const code = (err as { code?: string })?.code;
     const canFallback =
@@ -142,7 +169,7 @@ export async function uploadMediaFile(
     if (!canFallback) throw err;
   }
 
-  // 2) JSON dataUrl fallback (works with older workers / odd Content-Type)
+  // 2) JSON dataUrl fallback — images only
   const dataUrl = await uriToDataUrlUtil(uri, mimeType);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

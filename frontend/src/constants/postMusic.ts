@@ -1,8 +1,10 @@
+import { getApiBaseUrl } from '../services/api/http';
+
 export type PostMusicTrack = {
   id: string;
   title: string;
   artist: string;
-  /** Royalty-free / CC demo preview URLs for soundtracks */
+  /** Upstream royalty-free URL (may lack CORS — prefer playback via proxy). */
   url: string;
   /** Short mood tag shown in pickers */
   mood?: string;
@@ -12,12 +14,9 @@ export type PostMusicTrack = {
 
 /**
  * Shared public music library for posts + reels (Instagram-style picker).
- *
- * Sources: SoundHelix demos + Free Music Archive (CC).
- * We cannot ship licensed chart hits — titles mirror popular *moods/styles*.
+ * Playback should use getMusicPlaybackUrl() so web gets CORS via API proxy.
  */
 export const POST_MUSIC_TRACKS: PostMusicTrack[] = [
-  // —— Popular-style moods (SoundHelix demos) ——
   {
     id: 'chart-energy',
     title: 'Chart Energy',
@@ -146,8 +145,6 @@ export const POST_MUSIC_TRACKS: PostMusicTrack[] = [
     genre: 'Ambient',
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-16.mp3',
   },
-
-  // —— Free Music Archive (Creative Commons) ——
   {
     id: 'fma-enthusiast',
     title: 'Enthusiast',
@@ -180,8 +177,48 @@ export const POST_MUSIC_TRACKS: PostMusicTrack[] = [
     genre: 'Electronic',
     url: 'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/ccCommunity/Chad_Crouch/Arps/Chad_Crouch_-_Algorithms.mp3',
   },
+  {
+    id: 'fma-starling',
+    title: 'Starling',
+    artist: 'Podington Bear',
+    mood: 'Bright',
+    genre: 'Acoustic',
+    url: 'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/Music_for_Video/Podington_Bear/Solo_Instruments/Podington_Bear_-_Starling.mp3',
+  },
+  {
+    id: 'pulse-15',
+    title: 'Pulse Drop',
+    artist: 'Samplelib',
+    mood: 'Hype',
+    genre: 'Electronic',
+    url: 'https://download.samplelib.com/mp3/sample-15s.mp3',
+  },
+  {
+    id: 'pulse-12',
+    title: 'Short Groove',
+    artist: 'Samplelib',
+    mood: 'Groove',
+    genre: 'Electronic',
+    url: 'https://download.samplelib.com/mp3/sample-12s.mp3',
+  },
+  {
+    id: 'pulse-9',
+    title: 'Quick Hit',
+    artist: 'Samplelib',
+    mood: 'Upbeat',
+    genre: 'Pop',
+    url: 'https://download.samplelib.com/mp3/sample-9s.mp3',
+  },
+  {
+    id: 'pulse-6',
+    title: 'Snap Beat',
+    artist: 'Samplelib',
+    mood: 'Hype',
+    genre: 'Dance',
+    url: 'https://download.samplelib.com/mp3/sample-6s.mp3',
+  },
 
-  // Legacy ids kept so older drafts still resolve
+  // Legacy ids
   {
     id: 'energy',
     title: 'Morning Energy',
@@ -248,7 +285,6 @@ export const POST_MUSIC_TRACKS: PostMusicTrack[] = [
   },
 ];
 
-/** Genres shown as filter chips (unique, ordered). */
 export const MUSIC_GENRE_FILTERS = [
   'All',
   'Pop',
@@ -281,4 +317,26 @@ export function getPrimaryMusicTracks(): PostMusicTrack[] {
     'flow',
   ]);
   return POST_MUSIC_TRACKS.filter((t) => !legacy.has(t.id));
+}
+
+/**
+ * Playback URL that works on web.
+ * - FMA / Samplelib already send CORS * → use direct URL
+ * - SoundHelix has no CORS → route through API `/media/audio/:id` proxy
+ */
+export function getMusicPlaybackUrl(
+  trackId?: string | null,
+  fallbackUrl?: string | null
+): string | null {
+  const track = getMusicTrackById(trackId);
+  const upstream = (track?.url || fallbackUrl || '').trim();
+
+  if (track?.id) {
+    if (upstream && /freemusicarchive\.org|samplelib\.com/i.test(upstream)) {
+      return upstream;
+    }
+    return `${getApiBaseUrl()}/media/audio/${encodeURIComponent(track.id)}`;
+  }
+
+  return upstream || null;
 }

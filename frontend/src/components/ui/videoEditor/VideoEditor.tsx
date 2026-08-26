@@ -32,6 +32,7 @@ import {
   POST_MUSIC_TRACKS,
   MUSIC_GENRE_FILTERS,
   getMusicTrackById,
+  getMusicPlaybackUrl,
   getPrimaryMusicTracks,
   type PostMusicTrack,
 } from '../../../constants/postMusic';
@@ -128,10 +129,11 @@ export default function VideoEditor({
   const [musicGenre, setMusicGenre] = useState<(typeof MUSIC_GENRE_FILTERS)[number]>('All');
 
   const selectedTrack = getMusicTrackById(audioTrackId);
+  const soundtrackUrl = getMusicPlaybackUrl(selectedTrack?.id, selectedTrack?.url);
+  const hasSoundtrack = Boolean(soundtrackUrl);
   const libraryTracks = getPrimaryMusicTracks().filter(
     (t) => musicGenre === 'All' || t.genre === musicGenre
   );
-  const hasSoundtrack = Boolean(selectedTrack);
   const look = getVideoLook(lookId);
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
   const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
@@ -153,7 +155,8 @@ export default function VideoEditor({
       lookId,
       overlays,
       audioTrackId: selectedTrack?.id ?? null,
-      audioUrl: selectedTrack?.url ?? null,
+      // Persist proxied URL so feed/web playback works without CORS issues
+      audioUrl: getMusicPlaybackUrl(selectedTrack?.id, selectedTrack?.url),
       audioTitle: selectedTrack ? `${selectedTrack.title} · ${selectedTrack.artist}` : null,
       audioVolume,
     });
@@ -216,13 +219,28 @@ export default function VideoEditor({
         }
         soundRef.current = null;
       }
-      if (!selectedTrack?.url) return;
+      if (!selectedTrack?.id && !selectedTrack?.url) return;
       try {
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: selectedTrack.url },
-          { shouldPlay: playing, isLooping: true, volume: audioVolume }
-        );
+        let playbackUrl = getMusicPlaybackUrl(selectedTrack.id, selectedTrack.url);
+        if (!playbackUrl) return;
+        let sound: Audio.Sound;
+        try {
+          ({ sound } = await Audio.Sound.createAsync(
+            { uri: playbackUrl },
+            { shouldPlay: playing, isLooping: true, volume: audioVolume }
+          ));
+        } catch {
+          // Proxy may be undeployed — fall back to upstream URL
+          if (selectedTrack.url && selectedTrack.url !== playbackUrl) {
+            ({ sound } = await Audio.Sound.createAsync(
+              { uri: selectedTrack.url },
+              { shouldPlay: playing, isLooping: true, volume: audioVolume }
+            ));
+          } else {
+            throw new Error('soundtrack load failed');
+          }
+        }
         if (cancelled) {
           await sound.unloadAsync();
           return;
@@ -240,7 +258,7 @@ export default function VideoEditor({
         soundRef.current = null;
       }
     };
-  }, [selectedTrack?.url, audioVolume]);
+  }, [selectedTrack?.id, selectedTrack?.url, audioVolume]);
 
   useEffect(() => {
     if (!soundRef.current) return;

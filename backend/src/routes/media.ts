@@ -2,6 +2,7 @@ import { Env } from '../types';
 import { error, json } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { checkRateLimit } from '../utils/rateLimit';
+import { AUDIO_LIBRARY } from '../constants/audioLibrary';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // 40MB (prefer multipart)
@@ -283,4 +284,48 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
   headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   headers.set('Accept-Ranges', 'bytes');
   return new Response(obj.body, { status: 200, headers });
+}
+
+/**
+ * GET /api/v1/media/audio/:trackId
+ * Proxies allowlisted royalty-free tracks with CORS so web reels can play soundtracks.
+ */
+export async function getLibraryAudio(
+  _request: Request,
+  _env: Env,
+  trackId: string
+): Promise<Response> {
+  const id = decodeURIComponent(trackId || '').trim();
+  const track = AUDIO_LIBRARY[id];
+  if (!track?.url) {
+    return error('NOT_FOUND', 'Soundtrack not found', 404);
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(track.url, {
+      headers: {
+        'User-Agent': 'GrowlAudioProxy/1.0',
+        Accept: 'audio/mpeg,audio/*,*/*',
+      },
+    });
+  } catch {
+    return error('UPSTREAM_ERROR', 'Could not load soundtrack', 502);
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    return error('UPSTREAM_ERROR', 'Soundtrack unavailable', 502);
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', upstream.headers.get('Content-Type') || 'audio/mpeg');
+  headers.set('Cache-Control', 'public, max-age=86400');
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+  headers.set('Accept-Ranges', 'bytes');
+  const len = upstream.headers.get('Content-Length');
+  if (len) headers.set('Content-Length', len);
+
+  return new Response(upstream.body, { status: 200, headers });
 }

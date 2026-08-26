@@ -4,6 +4,7 @@ import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import type { TextOverlay } from '../photoEditor/types';
 import type { VideoEditSettings } from './types';
 import { getVideoLook, normalizeVideoEdit } from './types';
+import { getMusicPlaybackUrl } from '../../../constants/postMusic';
 import tw from '../../../lib/tw';
 
 type Props = {
@@ -26,6 +27,7 @@ export default function ReelVideoPlayer({
   const soundRef = useRef<Audio.Sound | null>(null);
   const edit = normalizeVideoEdit(settings);
   const look = getVideoLook(edit.lookId);
+  const soundtrackUrl = getMusicPlaybackUrl(edit.audioTrackId, edit.audioUrl);
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
   const originalVol = edit.originalVolume;
@@ -67,14 +69,14 @@ export default function ReelVideoPlayer({
         }
         soundRef.current = null;
       }
-      if (!edit.audioUrl?.trim()) return;
+      if (!soundtrackUrl) return;
       try {
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           allowsRecordingIOS: false,
         });
         const { sound } = await Audio.Sound.createAsync(
-          { uri: edit.audioUrl.trim() },
+          { uri: soundtrackUrl },
           {
             shouldPlay,
             isLooping: true,
@@ -98,7 +100,7 @@ export default function ReelVideoPlayer({
         soundRef.current = null;
       }
     };
-  }, [edit.audioUrl, edit.audioVolume, shouldPlay]);
+  }, [soundtrackUrl, edit.audioVolume, shouldPlay]);
 
   useEffect(() => {
     if (!shouldPlay) {
