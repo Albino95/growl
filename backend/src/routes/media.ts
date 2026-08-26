@@ -96,14 +96,35 @@ async function parseMultipart(
   const blob = file as File;
   const mime =
     (blob.type || '').toLowerCase() || guessMimeFromName((blob as File).name || '');
-  const kind = kindForMime(mime);
-  const ext = extForMime(mime);
-  if (!kind || !ext) return null;
+  let kind = kindForMime(mime);
+  let ext = extForMime(mime);
+  let resolvedMime = mime;
+
+  if (!kind || !ext) {
+    // Last-resort: treat unnamed binary uploads with a video filename as mp4
+    const name = ((blob as File).name || '').toLowerCase();
+    if (
+      name.endsWith('.mp4') ||
+      name.includes('video') ||
+      name.endsWith('.mov') ||
+      name.endsWith('.webm')
+    ) {
+      resolvedMime = name.endsWith('.webm')
+        ? 'video/webm'
+        : name.endsWith('.mov')
+          ? 'video/quicktime'
+          : 'video/mp4';
+      kind = 'video';
+      ext = extForMime(resolvedMime);
+    } else {
+      return null;
+    }
+  }
 
   const buffer = await blob.arrayBuffer();
   return {
     purpose,
-    media: { mime, bytes: new Uint8Array(buffer), ext, kind },
+    media: { mime: resolvedMime, bytes: new Uint8Array(buffer), ext: ext!, kind: kind! },
   };
 }
 

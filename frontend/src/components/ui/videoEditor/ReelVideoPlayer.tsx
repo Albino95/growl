@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import type { TextOverlay } from '../photoEditor/types';
 import type { VideoEditSettings } from './types';
-import { DEFAULT_VIDEO_EDIT, getVideoLook } from './types';
+import { getVideoLook, normalizeVideoEdit } from './types';
 import tw from '../../../lib/tw';
 
 type Props = {
@@ -14,7 +14,7 @@ type Props = {
   useNativeControls?: boolean;
 };
 
-/** Shared reel video surface — applies mute, speed, trim loop, look, text, soundtrack. */
+/** Shared reel video surface — trim, look, flip, volumes, text, soundtrack. */
 export default function ReelVideoPlayer({
   uri,
   settings,
@@ -24,14 +24,12 @@ export default function ReelVideoPlayer({
 }: Props) {
   const videoRef = useRef<Video>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
-  const edit: VideoEditSettings = {
-    ...DEFAULT_VIDEO_EDIT,
-    ...settings,
-    overlays: settings?.overlays || [],
-  };
+  const edit = normalizeVideoEdit(settings);
   const look = getVideoLook(edit.lookId);
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
+  const originalVol = edit.originalVolume;
+  const isMuted = originalVol <= 0.001;
 
   const onStatus = useCallback(
     (status: AVPlaybackStatus) => {
@@ -48,9 +46,11 @@ export default function ReelVideoPlayer({
   );
 
   useEffect(() => {
-    // Original audio only mutes when the user opts in — soundtrack overlaps by default.
-    void videoRef.current?.setIsMutedAsync(!!edit.muted);
-  }, [edit.muted]);
+    void videoRef.current?.setIsMutedAsync(isMuted);
+    if (!isMuted) {
+      void videoRef.current?.setVolumeAsync(Math.max(0, Math.min(1, originalVol)));
+    }
+  }, [isMuted, originalVol]);
 
   useEffect(() => {
     void videoRef.current?.setRateAsync(edit.speed || 1, true);
@@ -76,7 +76,7 @@ export default function ReelVideoPlayer({
         const { sound } = await Audio.Sound.createAsync(
           { uri: edit.audioUrl.trim() },
           {
-            shouldPlay: shouldPlay,
+            shouldPlay,
             isLooping: true,
             volume: edit.audioVolume ?? 0.85,
           }
@@ -117,17 +117,26 @@ export default function ReelVideoPlayer({
   }, [shouldPlay, trimStart, uri]);
 
   const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
+  const flipTransform = [
+    { scaleX: edit.flipH ? -1 : 1 },
+    { scaleY: edit.flipV ? -1 : 1 },
+  ];
 
   return (
     <View style={[tw`overflow-hidden bg-black`, style]}>
       <Video
         ref={videoRef}
         source={{ uri }}
-        style={[StyleSheet.absoluteFillObject, webFilter ? ({ filter: webFilter } as object) : null]}
+        style={[
+          StyleSheet.absoluteFillObject,
+          { transform: flipTransform },
+          webFilter ? ({ filter: webFilter } as object) : null,
+        ]}
         resizeMode={ResizeMode.COVER}
         shouldPlay={shouldPlay}
         isLooping={false}
-        isMuted={!!edit.muted}
+        isMuted={isMuted}
+        volume={isMuted ? 0 : originalVol}
         onPlaybackStatusUpdate={onStatus}
         useNativeControls={useNativeControls}
       />
@@ -155,13 +164,19 @@ export default function ReelVideoPlayer({
           <View
             style={[
               tw`absolute top-0 left-0 right-0`,
-              { height: `${12 + (look.cinematic || 0) * 18}%`, backgroundColor: 'rgba(0,0,0,0.55)' },
+              {
+                height: `${12 + (look.cinematic || 0) * 18}%`,
+                backgroundColor: 'rgba(0,0,0,0.55)',
+              },
             ]}
           />
           <View
             style={[
               tw`absolute bottom-0 left-0 right-0`,
-              { height: `${14 + (look.cinematic || 0) * 20}%`, backgroundColor: 'rgba(0,0,0,0.6)' },
+              {
+                height: `${14 + (look.cinematic || 0) * 20}%`,
+                backgroundColor: 'rgba(0,0,0,0.6)',
+              },
             ]}
           />
         </View>

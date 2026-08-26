@@ -137,13 +137,13 @@ export async function uploadMediaFile(
     const code = (err as { code?: string })?.code;
     const canFallback =
       code === 'INVALID_JSON' ||
-      /invalid json/i.test(msg) ||
-      /multipart/i.test(msg);
+      code === 'VALIDATION_ERROR' ||
+      /invalid json|multipart|data url|file of type|check your email/i.test(msg);
     if (!canFallback) throw err;
   }
 
   // 2) JSON dataUrl fallback (works with older workers / odd Content-Type)
-  const dataUrl = await uriToDataUrlUtil(uri);
+  const dataUrl = await uriToDataUrlUtil(uri, mimeType);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };

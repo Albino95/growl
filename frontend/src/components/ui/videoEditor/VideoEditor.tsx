@@ -18,8 +18,15 @@ import tw from '../../../lib/tw';
 import type { TextOverlay, TextOverlayStyle } from '../photoEditor/types';
 import { TEXT_COLORS, TEXT_QUICK_PHRASES } from '../photoEditor/types';
 import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
+import { AdjustSlider } from '../photoEditor/AdjustSlider';
 import type { VideoEditSettings, VideoLookId } from './types';
-import { DEFAULT_VIDEO_EDIT, VIDEO_LOOKS, getVideoLook } from './types';
+import {
+  DEFAULT_VIDEO_EDIT,
+  VIDEO_LOOKS,
+  SPEED_PRESETS,
+  getVideoLook,
+  normalizeVideoEdit,
+} from './types';
 import FilmstripTrimmer from './FilmstripTrimmer';
 import {
   POST_MUSIC_TRACKS,
@@ -28,15 +35,16 @@ import {
 } from '../../../constants/postMusic';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PREVIEW_H = Math.min(SCREEN_W * 1.35, SCREEN_H * 0.48);
+const PREVIEW_H = Math.min(SCREEN_W * 1.28, SCREEN_H * 0.46);
 
-type Tab = 'trim' | 'look' | 'audio' | 'text';
+type Tab = 'trim' | 'look' | 'audio' | 'text' | 'tools';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'trim', label: 'Trim', icon: 'cut-outline' },
   { id: 'look', label: 'Look', icon: 'color-filter-outline' },
-  { id: 'audio', label: 'Audio', icon: 'volume-high-outline' },
+  { id: 'audio', label: 'Audio', icon: 'musical-notes-outline' },
   { id: 'text', label: 'Text', icon: 'text-outline' },
+  { id: 'tools', label: 'Tools', icon: 'options-outline' },
 ];
 
 const TEXT_STYLES: { id: TextOverlayStyle; label: string }[] = [
@@ -46,8 +54,6 @@ const TEXT_STYLES: { id: TextOverlayStyle; label: string }[] = [
   { id: 'neon', label: 'Neon' },
   { id: 'banner', label: 'Banner' },
 ];
-
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
 function formatMs(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -85,41 +91,82 @@ export default function VideoEditor({
   onCancel,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const initial = normalizeVideoEdit(initialSettings);
   const videoRef = useRef<Video>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+
   const [tab, setTab] = useState<Tab>('trim');
   const [durationMs, setDurationMs] = useState(0);
   const [positionMs, setPositionMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [loading, setLoading] = useState(true);
   const [previewSize, setPreviewSize] = useState({ w: SCREEN_W - 32, h: PREVIEW_H });
-  const [muted, setMuted] = useState(initialSettings?.muted ?? DEFAULT_VIDEO_EDIT.muted);
-  const [speed, setSpeed] = useState(initialSettings?.speed ?? DEFAULT_VIDEO_EDIT.speed);
-  const [trimStartMs, setTrimStartMs] = useState(initialSettings?.trimStartMs ?? 0);
-  const [trimEndMs, setTrimEndMs] = useState(initialSettings?.trimEndMs ?? 0);
-  const [lookId, setLookId] = useState<VideoLookId>(
-    initialSettings?.lookId ?? DEFAULT_VIDEO_EDIT.lookId
-  );
+
+  const [originalVolume, setOriginalVolume] = useState(initial.originalVolume);
+  const [speed, setSpeed] = useState(initial.speed);
+  const [trimStartMs, setTrimStartMs] = useState(initial.trimStartMs);
+  const [trimEndMs, setTrimEndMs] = useState(initial.trimEndMs);
+  const [coverMs, setCoverMs] = useState(initial.coverMs);
+  const [flipH, setFlipH] = useState(initial.flipH);
+  const [flipV, setFlipV] = useState(initial.flipV);
+  const [lookId, setLookId] = useState<VideoLookId>(initial.lookId);
   const [audioTrackId, setAudioTrackId] = useState<string | null>(
-    initialSettings?.audioTrackId ||
-      (initialSettings?.audioUrl
-        ? POST_MUSIC_TRACKS.find((t) => t.url === initialSettings.audioUrl)?.id || null
+    initial.audioTrackId ||
+      (initial.audioUrl
+        ? POST_MUSIC_TRACKS.find((t) => t.url === initial.audioUrl)?.id || null
         : null)
   );
-  const [audioVolume] = useState(initialSettings?.audioVolume ?? 0.85);
+  const [audioVolume, setAudioVolume] = useState(initial.audioVolume);
   const [overlays, setOverlays] = useState<TextOverlay[]>(
-    initialSettings?.overlays?.map((o) => ({ ...o })) ?? []
+    initial.overlays.map((o) => ({ ...o }))
   );
   const [activeOverlayId, setActiveOverlayId] = useState<string | null>(
-    initialSettings?.overlays?.[0]?.id ?? null
+    initial.overlays[0]?.id ?? null
   );
 
-  const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
-  const look = getVideoLook(lookId);
-  const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
   const selectedTrack = getMusicTrackById(audioTrackId);
   const hasSoundtrack = Boolean(selectedTrack);
+  const look = getVideoLook(lookId);
+  const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
+  const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
   const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
+  const isOriginalMuted = originalVolume <= 0.001;
+
+  const buildSettings = useCallback((): VideoEditSettings => {
+    const end = durationMs > 0 ? Math.min(effectiveEnd || durationMs, durationMs) : trimEndMs;
+    const start = Math.max(0, Math.min(trimStartMs, Math.max(0, end - 500)));
+    return normalizeVideoEdit({
+      muted: isOriginalMuted,
+      originalVolume,
+      speed,
+      trimStartMs: start,
+      trimEndMs: end,
+      coverMs: Math.max(start, Math.min(coverMs || start, end || coverMs)),
+      flipH,
+      flipV,
+      lookId,
+      overlays,
+      audioTrackId: selectedTrack?.id ?? null,
+      audioUrl: selectedTrack?.url ?? null,
+      audioTitle: selectedTrack ? `${selectedTrack.title} · ${selectedTrack.artist}` : null,
+      audioVolume,
+    });
+  }, [
+    audioVolume,
+    coverMs,
+    durationMs,
+    effectiveEnd,
+    flipH,
+    flipV,
+    isOriginalMuted,
+    lookId,
+    originalVolume,
+    overlays,
+    selectedTrack,
+    speed,
+    trimEndMs,
+    trimStartMs,
+  ]);
 
   const onStatus = useCallback(
     (status: AVPlaybackStatus) => {
@@ -127,22 +174,26 @@ export default function VideoEditor({
       setLoading(false);
       setPlaying(status.isPlaying);
       setPositionMs(status.positionMillis || 0);
-      if (status.durationMillis && status.durationMillis !== durationMs) {
-        setDurationMs(status.durationMillis);
-        if (trimEndMs <= 0) setTrimEndMs(status.durationMillis);
+      const dur = status.durationMillis || 0;
+      if (dur > 0) {
+        setDurationMs((prev) => (Math.abs(prev - dur) > 50 ? dur : prev));
+        setTrimEndMs((prev) => (prev <= 0 || prev > dur ? dur : prev));
       }
-      const end = trimEndMs > 0 ? trimEndMs : status.durationMillis || 0;
+      const end = trimEndMs > 0 ? trimEndMs : dur;
       if (end > 0 && (status.positionMillis || 0) >= end - 80) {
         void videoRef.current?.setPositionAsync(trimStartMs);
+        if (soundRef.current) void soundRef.current.setPositionAsync(0);
       }
     },
-    [durationMs, trimEndMs, trimStartMs]
+    [trimEndMs, trimStartMs]
   );
 
   useEffect(() => {
-    // Original audio only mutes when opted in — soundtrack overlaps by default.
-    void videoRef.current?.setIsMutedAsync(muted);
-  }, [muted]);
+    void videoRef.current?.setIsMutedAsync(isOriginalMuted);
+    if (!isOriginalMuted) {
+      void videoRef.current?.setVolumeAsync(originalVolume);
+    }
+  }, [isOriginalMuted, originalVolume]);
 
   useEffect(() => {
     void videoRef.current?.setRateAsync(speed, true);
@@ -204,11 +255,14 @@ export default function VideoEditor({
     else await v.playAsync();
   };
 
-  const seekTo = useCallback(async (ms: number) => {
-    const clamped = Math.max(0, Math.min(durationMs || ms, ms));
-    setPositionMs(clamped);
-    await videoRef.current?.setPositionAsync(clamped);
-  }, [durationMs]);
+  const seekTo = useCallback(
+    async (ms: number) => {
+      const clamped = Math.max(0, Math.min(durationMs || ms, ms));
+      setPositionMs(clamped);
+      await videoRef.current?.setPositionAsync(clamped);
+    },
+    [durationMs]
+  );
 
   const addText = (text?: string) => {
     const o = newOverlay(text || 'GROW');
@@ -230,26 +284,30 @@ export default function VideoEditor({
     setActiveOverlayId(null);
   };
 
-  const handleDone = () => {
-    const end = durationMs > 0 ? Math.min(effectiveEnd, durationMs) : trimEndMs;
-    const start = Math.max(0, Math.min(trimStartMs, Math.max(0, end - 500)));
-    onSave({
-      muted,
-      speed,
-      trimStartMs: start,
-      trimEndMs: end,
-      lookId,
-      overlays,
-      audioTrackId: selectedTrack?.id ?? null,
-      audioUrl: selectedTrack?.url ?? null,
-      audioTitle: selectedTrack ? `${selectedTrack.title} · ${selectedTrack.artist}` : null,
-      audioVolume,
-    });
+  const resetAll = () => {
+    setOriginalVolume(1);
+    setSpeed(1);
+    setTrimStartMs(0);
+    setTrimEndMs(durationMs || 0);
+    setCoverMs(0);
+    setFlipH(false);
+    setFlipV(false);
+    setLookId('none');
+    setAudioTrackId(null);
+    setAudioVolume(0.85);
+    setOverlays([]);
+    setActiveOverlayId(null);
   };
+
+  const flipTransform = [
+    { scaleX: flipH ? -1 : 1 },
+    { scaleY: flipV ? -1 : 1 },
+  ];
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
       <SafeAreaView style={tw`flex-1 bg-black`} edges={['top', 'bottom']}>
+        {/* Header */}
         <View style={tw`flex-row items-center justify-between px-4 py-3`}>
           <Pressable
             onPress={onCancel}
@@ -260,14 +318,14 @@ export default function VideoEditor({
           </Pressable>
           <View style={tw`items-center`}>
             <Text style={tw`text-white text-base font-bold`}>{title}</Text>
-            {durationMs > 0 ? (
-              <Text style={tw`text-stone-500 text-[10px] mt-0.5`}>
-                {formatMs(Math.max(0, effectiveEnd - trimStartMs))} clip
-              </Text>
-            ) : null}
+            <Text style={tw`text-stone-500 text-[10px] mt-0.5`}>
+              {durationMs > 0
+                ? `${formatMs(Math.max(0, (effectiveEnd || durationMs) - trimStartMs))} · Pro editor`
+                : 'Pro editor'}
+            </Text>
           </View>
           <Pressable
-            onPress={handleDone}
+            onPress={() => onSave(buildSettings())}
             style={tw`px-4 py-2 rounded-full bg-brand-600`}
             hitSlop={6}
           >
@@ -275,6 +333,7 @@ export default function VideoEditor({
           </Pressable>
         </View>
 
+        {/* Preview */}
         <View
           style={[
             tw`mx-3 rounded-3xl overflow-hidden bg-stone-950 border border-white/10`,
@@ -288,11 +347,16 @@ export default function VideoEditor({
           <Video
             ref={videoRef}
             source={{ uri: videoUri }}
-            style={[StyleSheet.absoluteFillObject, webFilter ? ({ filter: webFilter } as object) : null]}
+            style={[
+              StyleSheet.absoluteFillObject,
+              { transform: flipTransform },
+              webFilter ? ({ filter: webFilter } as object) : null,
+            ]}
             resizeMode={ResizeMode.COVER}
             shouldPlay
             isLooping={false}
-            isMuted={muted}
+            isMuted={isOriginalMuted}
+            volume={isOriginalMuted ? 0 : originalVolume}
             onPlaybackStatusUpdate={onStatus}
             useNativeControls={false}
             onLoadStart={() => setLoading(true)}
@@ -349,23 +413,19 @@ export default function VideoEditor({
             </View>
           )}
 
-          {!playing ? (
-            <Pressable
-              onPress={() => void togglePlay()}
-              hitSlop={8}
-              style={tw`absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/60 items-center justify-center z-20`}
-            >
-              <Ionicons name="play" size={22} color="#fff" />
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={() => void togglePlay()}
-              hitSlop={8}
-              style={tw`absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/40 items-center justify-center z-20`}
-            >
-              <Ionicons name="pause" size={20} color="#fff" />
-            </Pressable>
-          )}
+          <Pressable
+            onPress={() => void togglePlay()}
+            hitSlop={8}
+            style={tw`absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/55 items-center justify-center z-20`}
+          >
+            <Ionicons name={playing ? 'pause' : 'play'} size={20} color="#fff" />
+          </Pressable>
+
+          {coverMs > 0 && Math.abs(positionMs - coverMs) < 120 ? (
+            <View style={tw`absolute top-3 left-3 bg-brand-600/90 px-2.5 py-1 rounded-full z-20`}>
+              <Text style={tw`text-white text-[10px] font-bold`}>COVER</Text>
+            </View>
+          ) : null}
 
           {overlays.map((o) =>
             o.text.trim() ? (
@@ -390,7 +450,19 @@ export default function VideoEditor({
           )}
         </View>
 
-        <View style={tw`flex-row px-3 pt-3 pb-1`}>
+        {/* Timeline readout */}
+        <View style={tw`px-4 pt-2 flex-row justify-between`}>
+          <Text style={tw`text-stone-500 text-[11px] font-semibold`}>
+            {formatMs(positionMs)}
+          </Text>
+          <Text style={tw`text-stone-600 text-[11px]`}>9:16 · vertical</Text>
+          <Text style={tw`text-stone-500 text-[11px] font-semibold`}>
+            {formatMs(effectiveEnd || durationMs)}
+          </Text>
+        </View>
+
+        {/* Tabs */}
+        <View style={tw`flex-row px-2 pt-2 pb-1`}>
           {TABS.map((t) => {
             const selected = tab === t.id;
             return (
@@ -398,13 +470,13 @@ export default function VideoEditor({
                 key={t.id}
                 onPress={() => setTab(t.id)}
                 style={[
-                  tw`flex-1 items-center py-2.5 mx-0.5 rounded-2xl`,
+                  tw`flex-1 items-center py-2 mx-0.5 rounded-2xl`,
                   selected ? tw`bg-white/12` : tw`bg-transparent`,
                 ]}
               >
                 <Ionicons name={t.icon} size={18} color={selected ? '#34D399' : '#A8A29E'} />
                 <Text
-                  style={tw`text-[11px] font-semibold mt-1 ${
+                  style={tw`text-[10px] font-semibold mt-1 ${
                     selected ? 'text-brand-300' : 'text-stone-500'
                   }`}
                 >
@@ -415,328 +487,421 @@ export default function VideoEditor({
           })}
         </View>
 
-        <ScrollView
-          style={tw`flex-1 px-4`}
-          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {tab === 'trim' && (
-            <View style={tw`pt-3`}>
-              <View style={tw`flex-row items-center justify-between mb-3`}>
-                <Text style={tw`text-white text-sm font-bold`}>Trim clip</Text>
+        {tab === 'trim' ? (
+          <View style={[tw`flex-1 px-4 pt-3`, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <Text style={tw`text-stone-400 text-xs mb-3`}>
+              Drag handles to set the clip window — only this range loops in the feed
+            </Text>
+            <FilmstripTrimmer
+              videoUri={videoUri}
+              durationMs={durationMs}
+              trimStartMs={trimStartMs}
+              trimEndMs={effectiveEnd || durationMs}
+              positionMs={positionMs}
+              onChangeTrim={(start, end) => {
+                setTrimStartMs(start);
+                setTrimEndMs(end);
+              }}
+              onSeek={(ms) => void seekTo(ms)}
+            />
+          </View>
+        ) : (
+          <ScrollView
+            style={tw`flex-1 px-4`}
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {tab === 'look' && (
+              <View style={tw`pt-2`}>
+                <Text style={tw`text-white text-sm font-bold mb-1`}>Color grade</Text>
+                <Text style={tw`text-stone-500 text-xs mb-3`}>
+                  Multi-layer cinematic looks — preview updates live
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {VIDEO_LOOKS.map((l) => {
+                    const selected = lookId === l.id;
+                    return (
+                      <Pressable
+                        key={l.id}
+                        onPress={() => setLookId(l.id)}
+                        style={tw`mr-3 items-center`}
+                      >
+                        <View
+                          style={[
+                            tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2 items-center justify-center`,
+                            {
+                              backgroundColor: l.swatch,
+                              borderColor: selected ? '#34D399' : '#44403C',
+                            },
+                          ]}
+                        >
+                          {l.layers.slice(0, 2).map((layer, idx) => (
+                            <View
+                              key={idx}
+                              style={[
+                                StyleSheet.absoluteFillObject,
+                                { backgroundColor: layer.color },
+                              ]}
+                            />
+                          ))}
+                          {(l.cinematic || 0) > 0 ? (
+                            <>
+                              <View style={tw`absolute top-0 left-0 right-0 h-3 bg-black/50`} />
+                              <View style={tw`absolute bottom-0 left-0 right-0 h-4 bg-black/55`} />
+                            </>
+                          ) : null}
+                          {l.id === 'none' ? (
+                            <Ionicons name="sparkles-outline" size={22} color="#E7E5E4" />
+                          ) : null}
+                        </View>
+                        <Text
+                          style={tw`text-[11px] font-bold mt-1.5 ${
+                            selected ? 'text-brand-300' : 'text-stone-200'
+                          }`}
+                        >
+                          {l.label}
+                        </Text>
+                        <Text style={tw`text-[10px] text-stone-500`}>{l.hint}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {tab === 'audio' && (
+              <View style={tw`pt-2`}>
+                <Text style={tw`text-white text-sm font-bold mb-1`}>Mix</Text>
+                <Text style={tw`text-stone-500 text-xs mb-3`}>
+                  Music overlaps original sound by default — balance both levels
+                </Text>
+
+                <AdjustSlider
+                  label="Original voice"
+                  value={Math.round(originalVolume * 100)}
+                  min={0}
+                  max={100}
+                  onChange={(v) => setOriginalVolume(v / 100)}
+                />
                 <Pressable
-                  onPress={() => void togglePlay()}
-                  style={tw`flex-row items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full`}
+                  onPress={() => setOriginalVolume(isOriginalMuted ? 1 : 0)}
+                  style={tw`self-start flex-row items-center gap-2 mb-4 -mt-1`}
                 >
-                  <Ionicons name={playing ? 'pause' : 'play'} size={14} color="#fff" />
-                  <Text style={tw`text-white text-xs font-semibold`}>
-                    {playing ? 'Pause' : 'Play'}
+                  <Ionicons
+                    name={isOriginalMuted ? 'mic-off-outline' : 'mic-outline'}
+                    size={16}
+                    color={isOriginalMuted ? '#F87171' : '#A8A29E'}
+                  />
+                  <Text
+                    style={tw`text-xs font-semibold ${
+                      isOriginalMuted ? 'text-red-400' : 'text-stone-400'
+                    }`}
+                  >
+                    {isOriginalMuted ? 'Original muted' : 'Mute original'}
                   </Text>
                 </Pressable>
-              </View>
-              <FilmstripTrimmer
-                videoUri={videoUri}
-                durationMs={durationMs || 1}
-                trimStartMs={trimStartMs}
-                trimEndMs={effectiveEnd}
-                positionMs={positionMs}
-                onChangeTrim={(start, end) => {
-                  setTrimStartMs(start);
-                  setTrimEndMs(end);
-                }}
-                onSeek={(ms) => void seekTo(ms)}
-              />
-            </View>
-          )}
 
-          {tab === 'look' && (
-            <View style={tw`pt-2`}>
-              <Text style={tw`text-white text-sm font-bold mb-1`}>Color grade</Text>
-              <Text style={tw`text-stone-500 text-xs mb-3`}>
-                Multi-layer looks with contrast, tone, and cinematic edges
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {VIDEO_LOOKS.map((l) => {
-                  const selected = lookId === l.id;
+                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
+                  Music library
+                </Text>
+                <Pressable
+                  onPress={() => selectTrack(null)}
+                  style={[
+                    tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
+                    !selectedTrack
+                      ? tw`bg-brand-600/20 border-brand-500`
+                      : tw`bg-stone-900 border-stone-800`,
+                  ]}
+                >
+                  <View style={tw`w-10 h-10 rounded-xl bg-white/10 items-center justify-center`}>
+                    <Ionicons name="musical-notes-outline" size={18} color="#A8A29E" />
+                  </View>
+                  <Text style={tw`ml-3 text-white font-semibold flex-1`}>No music</Text>
+                  {!selectedTrack ? (
+                    <Ionicons name="checkmark-circle" size={20} color="#34D399" />
+                  ) : null}
+                </Pressable>
+
+                {POST_MUSIC_TRACKS.map((track) => {
+                  const active = selectedTrack?.id === track.id;
                   return (
                     <Pressable
-                      key={l.id}
-                      onPress={() => setLookId(l.id)}
-                      style={tw`mr-3 items-center`}
+                      key={track.id}
+                      onPress={() => selectTrack(track)}
+                      style={[
+                        tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
+                        active
+                          ? tw`bg-brand-600/20 border-brand-500`
+                          : tw`bg-stone-900 border-stone-800`,
+                      ]}
                     >
                       <View
                         style={[
-                          tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2 items-center justify-center`,
-                          {
-                            backgroundColor: l.swatch,
-                            borderColor: selected ? '#34D399' : '#44403C',
-                          },
+                          tw`w-10 h-10 rounded-xl items-center justify-center`,
+                          active ? tw`bg-brand-600` : tw`bg-white/10`,
                         ]}
                       >
-                        {l.layers.slice(0, 2).map((layer, idx) => (
-                          <View
-                            key={idx}
-                            style={[
-                              StyleSheet.absoluteFillObject,
-                              { backgroundColor: layer.color },
-                            ]}
-                          />
-                        ))}
-                        {(l.cinematic || 0) > 0 ? (
-                          <>
-                            <View style={tw`absolute top-0 left-0 right-0 h-3 bg-black/50`} />
-                            <View style={tw`absolute bottom-0 left-0 right-0 h-4 bg-black/55`} />
-                          </>
-                        ) : null}
-                        {l.id === 'none' ? (
-                          <Ionicons name="sparkles-outline" size={22} color="#E7E5E4" />
-                        ) : null}
+                        <Ionicons name="musical-notes" size={18} color="#fff" />
                       </View>
-                      <Text
-                        style={tw`text-[11px] font-bold mt-1.5 ${
-                          selected ? 'text-brand-300' : 'text-stone-200'
-                        }`}
-                      >
-                        {l.label}
-                      </Text>
-                      <Text style={tw`text-[10px] text-stone-500`}>{l.hint}</Text>
+                      <View style={tw`ml-3 flex-1`}>
+                        <Text style={tw`text-white font-semibold`}>{track.title}</Text>
+                        <Text style={tw`text-stone-500 text-xs mt-0.5`}>
+                          {track.artist}
+                          {track.mood ? ` · ${track.mood}` : ''}
+                        </Text>
+                      </View>
+                      {active ? (
+                        <Ionicons name="checkmark-circle" size={20} color="#34D399" />
+                      ) : null}
                     </Pressable>
                   );
                 })}
-              </ScrollView>
-            </View>
-          )}
 
-          {tab === 'audio' && (
-            <View style={tw`pt-2`}>
-              <Text style={tw`text-white text-sm font-bold mb-1`}>Music library</Text>
-              <Text style={tw`text-stone-500 text-xs mb-3 leading-5`}>
-                Pick a track — it overlaps your original sound by default
-              </Text>
-
-              <Pressable
-                onPress={() => selectTrack(null)}
-                style={[
-                  tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
-                  !selectedTrack
-                    ? tw`bg-brand-600/20 border-brand-500`
-                    : tw`bg-stone-900 border-stone-800`,
-                ]}
-              >
-                <View style={tw`w-10 h-10 rounded-xl bg-white/10 items-center justify-center`}>
-                  <Ionicons name="musical-notes-outline" size={18} color="#A8A29E" />
-                </View>
-                <Text style={tw`ml-3 text-white font-semibold flex-1`}>No music</Text>
-                {!selectedTrack ? (
-                  <Ionicons name="checkmark-circle" size={20} color="#34D399" />
-                ) : null}
-              </Pressable>
-
-              {POST_MUSIC_TRACKS.map((track) => {
-                const active = selectedTrack?.id === track.id;
-                return (
-                  <Pressable
-                    key={track.id}
-                    onPress={() => selectTrack(track)}
-                    style={[
-                      tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
-                      active
-                        ? tw`bg-brand-600/20 border-brand-500`
-                        : tw`bg-stone-900 border-stone-800`,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        tw`w-10 h-10 rounded-xl items-center justify-center`,
-                        active ? tw`bg-brand-600` : tw`bg-white/10`,
-                      ]}
-                    >
-                      <Ionicons name="musical-notes" size={18} color="#fff" />
-                    </View>
-                    <View style={tw`ml-3 flex-1`}>
-                      <Text style={tw`text-white font-semibold`}>{track.title}</Text>
-                      <Text style={tw`text-stone-500 text-xs mt-0.5`}>
-                        {track.artist}
-                        {track.mood ? ` · ${track.mood}` : ''}
-                      </Text>
-                    </View>
-                    {active ? (
-                      <Ionicons name="checkmark-circle" size={20} color="#34D399" />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-
-              <Pressable
-                onPress={() => setMuted((m) => !m)}
-                style={tw`flex-row items-center justify-between bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mt-3 mb-4`}
-              >
-                <View style={tw`flex-row items-center flex-1 mr-3`}>
-                  <View style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center mr-3`}>
-                    <Ionicons
-                      name={muted ? 'mic-off-outline' : 'mic-outline'}
-                      size={20}
-                      color="#fff"
+                {hasSoundtrack ? (
+                  <View style={tw`mt-2`}>
+                    <AdjustSlider
+                      label="Music volume"
+                      value={Math.round(audioVolume * 100)}
+                      min={0}
+                      max={100}
+                      onChange={(v) => setAudioVolume(v / 100)}
                     />
                   </View>
-                  <View style={tw`flex-1`}>
-                    <Text style={tw`text-white font-semibold`}>Mute original voice</Text>
-                    <Text style={tw`text-stone-500 text-xs mt-0.5`}>
-                      {muted
-                        ? 'Clip audio off — music only'
-                        : hasSoundtrack
-                          ? 'Overlapping with music'
-                          : 'Clip audio on'}
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  style={[
-                    tw`w-12 h-7 rounded-full px-0.5 justify-center`,
-                    muted ? tw`bg-brand-600` : tw`bg-stone-700`,
-                  ]}
-                >
-                  <View
-                    style={[
-                      tw`w-6 h-6 rounded-full bg-white`,
-                      muted ? tw`self-end` : tw`self-start`,
-                    ]}
-                  />
-                </View>
-              </Pressable>
-
-              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
-                Speed
-              </Text>
-              <View style={tw`flex-row flex-wrap gap-2`}>
-                {SPEEDS.map((s) => {
-                  const selected = speed === s;
-                  return (
-                    <Pressable
-                      key={s}
-                      onPress={() => setSpeed(s)}
-                      style={[
-                        tw`px-4 py-2.5 rounded-full border`,
-                        selected
-                          ? tw`bg-brand-600/30 border-brand-500`
-                          : tw`bg-stone-900 border-stone-700`,
-                      ]}
-                    >
-                      <Text
-                        style={tw`text-sm font-bold ${
-                          selected ? 'text-brand-300' : 'text-stone-300'
-                        }`}
-                      >
-                        {s}×
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                ) : null}
               </View>
-            </View>
-          )}
+            )}
 
-          {tab === 'text' && (
-            <View style={tw`pt-2`}>
-              <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-3 py-3 mb-3`}>
-                <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
-                  Press and drag text on the preview to place it
-                </Text>
-              </View>
-              <View style={tw`flex-row items-center justify-between mb-3`}>
-                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide`}>
-                  On-clip text
-                </Text>
-                <Pressable
-                  onPress={() => addText()}
-                  style={tw`flex-row items-center gap-1 bg-brand-600 px-3 py-2 rounded-full`}
-                >
-                  <Ionicons name="add" size={16} color="#fff" />
-                  <Text style={tw`text-white text-xs font-bold`}>Add</Text>
-                </Pressable>
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
-                {TEXT_QUICK_PHRASES.map((phrase) => (
-                  <Pressable
-                    key={phrase}
-                    onPress={() => {
-                      if (activeOverlay) updateActive({ text: phrase });
-                      else addText(phrase);
-                    }}
-                    style={tw`px-3 py-2 rounded-full bg-stone-800 border border-stone-700 mr-2`}
-                  >
-                    <Text style={tw`text-stone-200 text-xs font-semibold`}>{phrase}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              {activeOverlay ? (
-                <>
-                  <TextInput
-                    value={activeOverlay.text}
-                    onChangeText={(t) => updateActive({ text: t.slice(0, 48) })}
-                    placeholder="Type your text…"
-                    placeholderTextColor="#78716C"
-                    style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3.5 mb-3 border border-stone-700`}
-                    maxLength={48}
-                  />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
-                    {TEXT_STYLES.map((s) => {
-                      const selected = activeOverlay.style === s.id;
-                      return (
-                        <Pressable
-                          key={s.id}
-                          onPress={() => updateActive({ style: s.id })}
-                          style={[
-                            tw`px-3 py-2 rounded-xl border mr-2`,
-                            selected
-                              ? tw`bg-brand-600/25 border-brand-500`
-                              : tw`bg-stone-900 border-stone-700`,
-                          ]}
-                        >
-                          <Text
-                            style={tw`text-xs font-bold ${
-                              selected ? 'text-brand-300' : 'text-white'
-                            }`}
-                          >
-                            {s.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                  <View style={tw`flex-row flex-wrap gap-2 mb-3`}>
-                    {TEXT_COLORS.map((c) => (
-                      <Pressable
-                        key={c}
-                        onPress={() => updateActive({ color: c })}
-                        style={[
-                          tw`w-8 h-8 rounded-full border-2`,
-                          {
-                            backgroundColor: c,
-                            borderColor: activeOverlay.color === c ? '#34D399' : '#44403C',
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                  <Pressable onPress={removeActive} style={tw`flex-row items-center gap-2 py-2`}>
-                    <Ionicons name="trash-outline" size={18} color="#F87171" />
-                    <Text style={tw`text-red-400 font-semibold text-sm`}>Remove text</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <View style={tw`bg-stone-900/80 border border-stone-800 rounded-2xl px-4 py-5`}>
-                  <Text style={tw`text-stone-400 text-sm text-center`}>
-                    Add a short label, then drag it anywhere on the clip.
+            {tab === 'text' && (
+              <View style={tw`pt-2`}>
+                <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-3 py-3 mb-3`}>
+                  <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
+                    Press and drag text on the preview to place it
                   </Text>
                 </View>
-              )}
-            </View>
-          )}
-        </ScrollView>
+                <View style={tw`flex-row items-center justify-between mb-3`}>
+                  <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide`}>
+                    On-clip text
+                  </Text>
+                  <Pressable
+                    onPress={() => addText()}
+                    style={tw`flex-row items-center gap-1 bg-brand-600 px-3 py-2 rounded-full`}
+                  >
+                    <Ionicons name="add" size={16} color="#fff" />
+                    <Text style={tw`text-white text-xs font-bold`}>Add</Text>
+                  </Pressable>
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                  {TEXT_QUICK_PHRASES.map((phrase) => (
+                    <Pressable
+                      key={phrase}
+                      onPress={() => {
+                        if (activeOverlay) updateActive({ text: phrase });
+                        else addText(phrase);
+                      }}
+                      style={tw`px-3 py-2 rounded-full bg-stone-800 border border-stone-700 mr-2`}
+                    >
+                      <Text style={tw`text-stone-200 text-xs font-semibold`}>{phrase}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                {activeOverlay ? (
+                  <>
+                    <TextInput
+                      value={activeOverlay.text}
+                      onChangeText={(t) => updateActive({ text: t.slice(0, 48) })}
+                      placeholder="Type your text…"
+                      placeholderTextColor="#78716C"
+                      style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3.5 mb-3 border border-stone-700`}
+                      maxLength={48}
+                    />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                      {TEXT_STYLES.map((s) => {
+                        const selected = activeOverlay.style === s.id;
+                        return (
+                          <Pressable
+                            key={s.id}
+                            onPress={() => updateActive({ style: s.id })}
+                            style={[
+                              tw`px-3 py-2 rounded-xl border mr-2`,
+                              selected
+                                ? tw`bg-brand-600/25 border-brand-500`
+                                : tw`bg-stone-900 border-stone-700`,
+                            ]}
+                          >
+                            <Text
+                              style={tw`text-xs font-bold ${
+                                selected ? 'text-brand-300' : 'text-white'
+                              }`}
+                            >
+                              {s.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                    <View style={tw`flex-row flex-wrap gap-2 mb-3`}>
+                      {TEXT_COLORS.map((c) => (
+                        <Pressable
+                          key={c}
+                          onPress={() => updateActive({ color: c })}
+                          style={[
+                            tw`w-8 h-8 rounded-full border-2`,
+                            {
+                              backgroundColor: c,
+                              borderColor: activeOverlay.color === c ? '#34D399' : '#44403C',
+                            },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                    <Pressable onPress={removeActive} style={tw`flex-row items-center gap-2 py-2`}>
+                      <Ionicons name="trash-outline" size={18} color="#F87171" />
+                      <Text style={tw`text-red-400 font-semibold text-sm`}>Remove text</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <View style={tw`bg-stone-900/80 border border-stone-800 rounded-2xl px-4 py-5`}>
+                    <Text style={tw`text-stone-400 text-sm text-center`}>
+                      Add a short label, then drag it anywhere on the clip.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {tab === 'tools' && (
+              <View style={tw`pt-2`}>
+                <Text style={tw`text-white text-sm font-bold mb-1`}>Tools</Text>
+                <Text style={tw`text-stone-500 text-xs mb-4`}>
+                  Speed, flip, and cover frame — the polish pass
+                </Text>
+
+                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
+                  Speed
+                </Text>
+                <View style={tw`flex-row flex-wrap gap-2 mb-5`}>
+                  {SPEED_PRESETS.map((s) => {
+                    const selected = speed === s.value;
+                    return (
+                      <Pressable
+                        key={s.value}
+                        onPress={() => setSpeed(s.value)}
+                        style={[
+                          tw`px-3.5 py-2.5 rounded-2xl border min-w-[72px]`,
+                          selected
+                            ? tw`bg-brand-600/30 border-brand-500`
+                            : tw`bg-stone-900 border-stone-700`,
+                        ]}
+                      >
+                        <Text
+                          style={tw`text-sm font-bold ${
+                            selected ? 'text-brand-300' : 'text-stone-200'
+                          }`}
+                        >
+                          {s.label}
+                        </Text>
+                        <Text style={tw`text-[10px] text-stone-500 mt-0.5`}>{s.hint}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
+                  Transform
+                </Text>
+                <View style={tw`flex-row gap-2 mb-5`}>
+                  <Pressable
+                    onPress={() => setFlipH((v) => !v)}
+                    style={[
+                      tw`flex-1 items-center py-3.5 rounded-2xl border`,
+                      flipH
+                        ? tw`bg-brand-600/25 border-brand-500`
+                        : tw`bg-stone-900 border-stone-700`,
+                    ]}
+                  >
+                    <Ionicons
+                      name="swap-horizontal-outline"
+                      size={22}
+                      color={flipH ? '#34D399' : '#A8A29E'}
+                    />
+                    <Text
+                      style={tw`text-xs font-bold mt-1.5 ${
+                        flipH ? 'text-brand-300' : 'text-stone-300'
+                      }`}
+                    >
+                      Flip H
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setFlipV((v) => !v)}
+                    style={[
+                      tw`flex-1 items-center py-3.5 rounded-2xl border`,
+                      flipV
+                        ? tw`bg-brand-600/25 border-brand-500`
+                        : tw`bg-stone-900 border-stone-700`,
+                    ]}
+                  >
+                    <Ionicons
+                      name="swap-vertical-outline"
+                      size={22}
+                      color={flipV ? '#34D399' : '#A8A29E'}
+                    />
+                    <Text
+                      style={tw`text-xs font-bold mt-1.5 ${
+                        flipV ? 'text-brand-300' : 'text-stone-300'
+                      }`}
+                    >
+                      Flip V
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
+                  Cover frame
+                </Text>
+                <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-4`}>
+                  <Text style={tw`text-stone-300 text-sm mb-3`}>
+                    Scrub the preview, then set this moment as the reel thumbnail.
+                  </Text>
+                  <View style={tw`flex-row gap-2`}>
+                    <Pressable
+                      onPress={() => setCoverMs(positionMs)}
+                      style={tw`flex-1 py-3 rounded-xl bg-brand-600 items-center`}
+                    >
+                      <Text style={tw`text-white font-bold text-sm`}>
+                        Use {formatMs(positionMs)}
+                      </Text>
+                    </Pressable>
+                    {coverMs > 0 ? (
+                      <Pressable
+                        onPress={() => void seekTo(coverMs)}
+                        style={tw`px-4 py-3 rounded-xl bg-white/10 items-center justify-center`}
+                      >
+                        <Ionicons name="image-outline" size={18} color="#fff" />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {coverMs > 0 ? (
+                    <Text style={tw`text-brand-400 text-xs font-semibold mt-2`}>
+                      Cover set at {formatMs(coverMs)}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <Pressable
+                  onPress={resetAll}
+                  style={tw`flex-row items-center justify-center gap-2 py-3 rounded-2xl border border-stone-700 bg-stone-900`}
+                >
+                  <Ionicons name="refresh-outline" size={18} color="#A8A29E" />
+                  <Text style={tw`text-stone-300 font-semibold text-sm`}>Reset all edits</Text>
+                </Pressable>
+              </View>
+            )}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </Modal>
   );

@@ -14,14 +14,23 @@ export type VideoLookId =
   | 'chrome';
 
 export type VideoEditSettings = {
-  /** Mute original clip audio (optional — default overlaps with soundtrack). */
+  /**
+   * @deprecated Prefer originalVolume === 0
+   * Kept for older drafts — treated as originalVolume 0 when true.
+   */
   muted: boolean;
+  /** Original clip volume 0–1 (default 1). Overlaps soundtrack unless 0. */
+  originalVolume: number;
   /** Playback rate (0.5–2). */
   speed: number;
   /** Trim start in milliseconds. */
   trimStartMs: number;
   /** Trim end in milliseconds (0 = full duration). */
   trimEndMs: number;
+  /** Cover / poster frame time in ms. */
+  coverMs: number;
+  flipH: boolean;
+  flipV: boolean;
   lookId: VideoLookId;
   overlays: TextOverlay[];
   /** Selected track from the public music library. */
@@ -30,14 +39,18 @@ export type VideoEditSettings = {
   audioUrl?: string | null;
   audioTitle?: string | null;
   /** Soundtrack volume 0–1. */
-  audioVolume?: number;
+  audioVolume: number;
 };
 
 export const DEFAULT_VIDEO_EDIT: VideoEditSettings = {
   muted: false,
+  originalVolume: 1,
   speed: 1,
   trimStartMs: 0,
   trimEndMs: 0,
+  coverMs: 0,
+  flipH: false,
+  flipV: false,
   lookId: 'none',
   overlays: [],
   audioTrackId: null,
@@ -46,9 +59,30 @@ export const DEFAULT_VIDEO_EDIT: VideoEditSettings = {
   audioVolume: 0.85,
 };
 
+/** Normalize partial/legacy settings into a full VideoEditSettings. */
+export function normalizeVideoEdit(
+  partial?: Partial<VideoEditSettings> | null
+): VideoEditSettings {
+  const base = { ...DEFAULT_VIDEO_EDIT, ...(partial || {}) };
+  const muted = !!base.muted;
+  let originalVolume =
+    typeof base.originalVolume === 'number' ? base.originalVolume : muted ? 0 : 1;
+  if (muted && originalVolume > 0) originalVolume = 0;
+  return {
+    ...base,
+    muted: originalVolume <= 0.001,
+    originalVolume: Math.max(0, Math.min(1, originalVolume)),
+    audioVolume: Math.max(0, Math.min(1, base.audioVolume ?? 0.85)),
+    speed: Math.max(0.5, Math.min(2, base.speed || 1)),
+    coverMs: Math.max(0, base.coverMs || 0),
+    flipH: !!base.flipH,
+    flipV: !!base.flipV,
+    overlays: Array.isArray(base.overlays) ? base.overlays : [],
+  };
+}
+
 export type VideoLookLayer = {
   color: string;
-  /** How strong the wash is (used as opacity). */
   opacity?: number;
 };
 
@@ -56,26 +90,15 @@ export type VideoLook = {
   id: VideoLookId;
   label: string;
   hint: string;
-  /** CSS filter for web video element. */
   cssFilter?: string;
-  /** Color grade layers (native + web). */
   layers: VideoLookLayer[];
-  /** Soft edge darken 0–1. */
   vignette?: number;
-  /** Letterbox bars 0–1. */
   cinematic?: number;
-  /** Warm/cool preview chip color. */
   swatch: string;
 };
 
 export const VIDEO_LOOKS: VideoLook[] = [
-  {
-    id: 'none',
-    label: 'Original',
-    hint: 'Clean',
-    layers: [],
-    swatch: '#57534E',
-  },
+  { id: 'none', label: 'Original', hint: 'Clean', layers: [], swatch: '#57534E' },
   {
     id: 'golden',
     label: 'Golden',
@@ -197,3 +220,12 @@ export const VIDEO_LOOKS: VideoLook[] = [
 export function getVideoLook(id: VideoLookId | string): VideoLook {
   return VIDEO_LOOKS.find((l) => l.id === id) || VIDEO_LOOKS[0];
 }
+
+export const SPEED_PRESETS = [
+  { value: 0.5, label: '0.5×', hint: 'Slow-mo' },
+  { value: 0.75, label: '0.75×', hint: 'Ease' },
+  { value: 1, label: '1×', hint: 'Normal' },
+  { value: 1.25, label: '1.25×', hint: 'Snappy' },
+  { value: 1.5, label: '1.5×', hint: 'Fast' },
+  { value: 2, label: '2×', hint: 'Rush' },
+] as const;
