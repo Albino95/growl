@@ -12,17 +12,18 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Slider from '@react-native-community/slider';
 import { Video, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
 import type { TextOverlay, TextOverlayStyle } from '../photoEditor/types';
 import { TEXT_COLORS, TEXT_QUICK_PHRASES } from '../photoEditor/types';
+import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
 import type { VideoEditSettings, VideoLookId } from './types';
 import { DEFAULT_VIDEO_EDIT, VIDEO_LOOKS, getVideoLook } from './types';
+import FilmstripTrimmer from './FilmstripTrimmer';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const PREVIEW_H = Math.min(SCREEN_W * 1.45, Dimensions.get('window').height * 0.58);
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const PREVIEW_H = Math.min(SCREEN_W * 1.35, SCREEN_H * 0.48);
 
 type Tab = 'trim' | 'look' | 'audio' | 'text';
 
@@ -85,6 +86,7 @@ export default function VideoEditor({
   const [positionMs, setPositionMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [previewSize, setPreviewSize] = useState({ w: SCREEN_W - 32, h: PREVIEW_H });
   const [muted, setMuted] = useState(initialSettings?.muted ?? DEFAULT_VIDEO_EDIT.muted);
   const [speed, setSpeed] = useState(initialSettings?.speed ?? DEFAULT_VIDEO_EDIT.speed);
   const [trimStartMs, setTrimStartMs] = useState(initialSettings?.trimStartMs ?? 0);
@@ -138,11 +140,11 @@ export default function VideoEditor({
     else await v.playAsync();
   };
 
-  const seekTo = async (ms: number) => {
-    const clamped = Math.max(trimStartMs, Math.min(effectiveEnd || ms, ms));
+  const seekTo = useCallback(async (ms: number) => {
+    const clamped = Math.max(0, Math.min(durationMs || ms, ms));
     setPositionMs(clamped);
     await videoRef.current?.setPositionAsync(clamped);
-  };
+  }, [durationMs]);
 
   const addText = (text?: string) => {
     const o = newOverlay(text || 'GROW');
@@ -177,11 +179,6 @@ export default function VideoEditor({
     });
   };
 
-  const progress =
-    effectiveEnd > trimStartMs
-      ? (positionMs - trimStartMs) / (effectiveEnd - trimStartMs)
-      : 0;
-
   const webFilter = useMemo(() => {
     if (Platform.OS !== 'web') return undefined;
     if (look.grayscale) return 'grayscale(1) contrast(1.15)';
@@ -193,7 +190,7 @@ export default function VideoEditor({
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
-      <SafeAreaView style={tw`flex-1 bg-stone-950`} edges={['top', 'bottom']}>
+      <SafeAreaView style={tw`flex-1 bg-black`} edges={['top', 'bottom']}>
         <View style={tw`flex-row items-center justify-between px-4 py-3`}>
           <Pressable
             onPress={onCancel}
@@ -202,7 +199,14 @@ export default function VideoEditor({
           >
             <Ionicons name="close" size={22} color="#fff" />
           </Pressable>
-          <Text style={tw`text-white text-base font-bold`}>{title}</Text>
+          <View style={tw`items-center`}>
+            <Text style={tw`text-white text-base font-bold`}>{title}</Text>
+            {durationMs > 0 ? (
+              <Text style={tw`text-stone-500 text-[10px] mt-0.5`}>
+                {formatMs(Math.max(0, effectiveEnd - trimStartMs))} clip
+              </Text>
+            ) : null}
+          </View>
           <Pressable
             onPress={handleDone}
             style={tw`px-4 py-2 rounded-full bg-brand-600`}
@@ -214,9 +218,13 @@ export default function VideoEditor({
 
         <View
           style={[
-            tw`mx-4 rounded-3xl overflow-hidden bg-black border border-white/10`,
+            tw`mx-3 rounded-3xl overflow-hidden bg-stone-950 border border-white/10`,
             { height: PREVIEW_H },
           ]}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            if (width > 0 && height > 0) setPreviewSize({ w: width, h: height });
+          }}
         >
           <Video
             ref={videoRef}
@@ -244,84 +252,54 @@ export default function VideoEditor({
             </View>
           ) : null}
 
-          {overlays.map((o) =>
-            o.text.trim() ? (
-              <View
-                key={o.id}
-                pointerEvents="none"
-                style={[
-                  tw`absolute px-2 py-1`,
-                  {
-                    left: `${o.x * 100}%`,
-                    top: `${o.y * 100}%`,
-                    transform: [{ translateX: -50 }, { translateY: -14 }, { scale: o.scale }],
-                    backgroundColor:
-                      o.style === 'pill' || o.style === 'banner'
-                        ? 'rgba(0,0,0,0.55)'
-                        : 'transparent',
-                    borderRadius: o.style === 'pill' ? 999 : o.style === 'banner' ? 4 : 0,
-                    paddingHorizontal: o.style === 'banner' ? 12 : 4,
-                    paddingVertical: o.style === 'banner' ? 5 : 2,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: o.color,
-                    fontSize: o.style === 'bold' ? 22 : 18,
-                    fontWeight: '800',
-                    textAlign: o.align || 'center',
-                    textShadowColor:
-                      o.style === 'outline' || o.style === 'bold' || o.style === 'neon'
-                        ? o.style === 'neon'
-                          ? o.color
-                          : 'rgba(0,0,0,0.9)'
-                        : 'transparent',
-                    textShadowOffset: { width: 0, height: 1 },
-                    textShadowRadius: o.style === 'neon' ? 10 : 4,
-                  }}
-                >
-                  {o.text}
-                </Text>
-              </View>
-            ) : null
-          )}
-
           {loading && (
-            <View style={tw`absolute inset-0 items-center justify-center bg-black/40`}>
+            <View
+              pointerEvents="none"
+              style={tw`absolute inset-0 items-center justify-center bg-black/40 z-30`}
+            >
               <ActivityIndicator color="#fff" size="large" />
             </View>
           )}
 
-          <Pressable
-            onPress={() => void togglePlay()}
-            style={tw`absolute inset-0 items-center justify-center`}
-          >
-            {!playing ? (
-              <View style={tw`w-16 h-16 rounded-full bg-black/55 items-center justify-center`}>
-                <Ionicons name="play" size={32} color="#fff" />
-              </View>
-            ) : null}
-          </Pressable>
+          {!playing ? (
+            <Pressable
+              onPress={() => void togglePlay()}
+              hitSlop={8}
+              style={tw`absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/60 items-center justify-center z-20`}
+            >
+              <Ionicons name="play" size={22} color="#fff" />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => void togglePlay()}
+              hitSlop={8}
+              style={tw`absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/40 items-center justify-center z-20`}
+            >
+              <Ionicons name="pause" size={20} color="#fff" />
+            </Pressable>
+          )}
 
-          <View style={tw`absolute left-3 right-3 bottom-3`}>
-            <View style={tw`h-1 rounded-full bg-white/20 overflow-hidden mb-2`}>
-              <View
-                style={[
-                  tw`h-full bg-brand-500 rounded-full`,
-                  { width: `${Math.max(0, Math.min(1, progress)) * 100}%` },
-                ]}
+          {overlays.map((o) =>
+            o.text.trim() ? (
+              <DraggableTextOverlay
+                key={o.id}
+                overlay={o}
+                selected={activeOverlayId === o.id}
+                containerW={previewSize.w}
+                containerH={previewSize.h}
+                editable={tab === 'text'}
+                onSelect={() => {
+                  setActiveOverlayId(o.id);
+                  setTab('text');
+                }}
+                onMove={(x, y) => {
+                  setOverlays((prev) =>
+                    prev.map((item) => (item.id === o.id ? { ...item, x, y } : item))
+                  );
+                }}
               />
-            </View>
-            <View style={tw`flex-row justify-between`}>
-              <Text style={tw`text-white/80 text-xs font-semibold`}>
-                {formatMs(positionMs)}
-              </Text>
-              <Text style={tw`text-white/60 text-xs`}>
-                {formatMs(effectiveEnd || durationMs)}
-              </Text>
-            </View>
-          </View>
+            ) : null
+          )}
         </View>
 
         <View style={tw`flex-row px-3 pt-3 pb-1`}>
@@ -336,11 +314,7 @@ export default function VideoEditor({
                   selected ? tw`bg-white/12` : tw`bg-transparent`,
                 ]}
               >
-                <Ionicons
-                  name={t.icon}
-                  size={18}
-                  color={selected ? '#34D399' : '#A8A29E'}
-                />
+                <Ionicons name={t.icon} size={18} color={selected ? '#34D399' : '#A8A29E'} />
                 <Text
                   style={tw`text-[11px] font-semibold mt-1 ${
                     selected ? 'text-brand-300' : 'text-stone-500'
@@ -360,65 +334,31 @@ export default function VideoEditor({
           showsVerticalScrollIndicator={false}
         >
           {tab === 'trim' && (
-            <View style={tw`pt-2`}>
-              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-3`}>
-                Clip window
-              </Text>
-              <View style={tw`flex-row justify-between mb-1`}>
-                <Text style={tw`text-stone-300 text-sm`}>Start {formatMs(trimStartMs)}</Text>
-                <Text style={tw`text-stone-300 text-sm`}>
-                  End {formatMs(effectiveEnd || durationMs)}
-                </Text>
-              </View>
-              <Slider
-                style={tw`w-full h-8 mb-2`}
-                minimumValue={0}
-                maximumValue={Math.max(durationMs, 1000)}
-                value={trimStartMs}
-                step={100}
-                onValueChange={(v) => {
-                  const next = Math.min(v, (effectiveEnd || durationMs) - 500);
-                  setTrimStartMs(Math.max(0, next));
-                }}
-                onSlidingComplete={(v) => void seekTo(v)}
-                minimumTrackTintColor="#059669"
-                maximumTrackTintColor="#44403C"
-                thumbTintColor="#10B981"
-              />
-              <Slider
-                style={tw`w-full h-8 mb-4`}
-                minimumValue={0}
-                maximumValue={Math.max(durationMs, 1000)}
-                value={effectiveEnd || durationMs}
-                step={100}
-                onValueChange={(v) => {
-                  setTrimEndMs(Math.max(v, trimStartMs + 500));
-                }}
-                onSlidingComplete={(v) => void seekTo(Math.min(v, durationMs))}
-                minimumTrackTintColor="#059669"
-                maximumTrackTintColor="#44403C"
-                thumbTintColor="#10B981"
-              />
-              <View style={tw`flex-row gap-2`}>
+            <View style={tw`pt-3`}>
+              <View style={tw`flex-row items-center justify-between mb-3`}>
+                <Text style={tw`text-white text-sm font-bold`}>Trim clip</Text>
                 <Pressable
-                  onPress={() => {
-                    setTrimStartMs(positionMs);
-                    void seekTo(positionMs);
-                  }}
-                  style={tw`flex-1 py-3 rounded-2xl bg-stone-800 border border-stone-700 items-center`}
+                  onPress={() => void togglePlay()}
+                  style={tw`flex-row items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full`}
                 >
-                  <Text style={tw`text-white text-xs font-bold`}>Set start here</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setTrimEndMs(Math.max(positionMs, trimStartMs + 500))}
-                  style={tw`flex-1 py-3 rounded-2xl bg-stone-800 border border-stone-700 items-center`}
-                >
-                  <Text style={tw`text-white text-xs font-bold`}>Set end here</Text>
+                  <Ionicons name={playing ? 'pause' : 'play'} size={14} color="#fff" />
+                  <Text style={tw`text-white text-xs font-semibold`}>
+                    {playing ? 'Pause' : 'Play'}
+                  </Text>
                 </Pressable>
               </View>
-              <Text style={tw`text-stone-500 text-xs mt-3 leading-5`}>
-                Trim controls what loops in the preview and when your reel plays in the feed.
-              </Text>
+              <FilmstripTrimmer
+                videoUri={videoUri}
+                durationMs={durationMs || 1}
+                trimStartMs={trimStartMs}
+                trimEndMs={effectiveEnd}
+                positionMs={positionMs}
+                onChangeTrim={(start, end) => {
+                  setTrimStartMs(start);
+                  setTrimEndMs(end);
+                }}
+                onSeek={(ms) => void seekTo(ms)}
+              />
             </View>
           )}
 
@@ -447,14 +387,7 @@ export default function VideoEditor({
                       >
                         {l.id === 'none' ? (
                           <Ionicons name="sparkles-outline" size={22} color="#A8A29E" />
-                        ) : (
-                          <View
-                            style={[
-                              tw`absolute inset-0`,
-                              { backgroundColor: l.wash || 'transparent' },
-                            ]}
-                          />
-                        )}
+                        ) : null}
                       </View>
                       <Text
                         style={tw`text-[11px] font-semibold mt-1.5 ${
@@ -539,6 +472,11 @@ export default function VideoEditor({
 
           {tab === 'text' && (
             <View style={tw`pt-2`}>
+              <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-3 py-3 mb-3`}>
+                <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
+                  Press and drag text on the preview to place it
+                </Text>
+              </View>
               <View style={tw`flex-row items-center justify-between mb-3`}>
                 <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide`}>
                   On-clip text
@@ -617,21 +555,6 @@ export default function VideoEditor({
                       />
                     ))}
                   </View>
-                  <View style={tw`flex-row gap-2 mb-3`}>
-                    {[
-                      { label: 'Top', y: 0.18 },
-                      { label: 'Mid', y: 0.42 },
-                      { label: 'Low', y: 0.72 },
-                    ].map((p) => (
-                      <Pressable
-                        key={p.label}
-                        onPress={() => updateActive({ y: p.y, x: 0.5 })}
-                        style={tw`flex-1 py-2.5 rounded-xl bg-stone-900 border border-stone-700 items-center`}
-                      >
-                        <Text style={tw`text-stone-300 text-xs font-semibold`}>{p.label}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
                   <Pressable onPress={removeActive} style={tw`flex-row items-center gap-2 py-2`}>
                     <Ionicons name="trash-outline" size={18} color="#F87171" />
                     <Text style={tw`text-red-400 font-semibold text-sm`}>Remove text</Text>
@@ -640,7 +563,7 @@ export default function VideoEditor({
               ) : (
                 <View style={tw`bg-stone-900/80 border border-stone-800 rounded-2xl px-4 py-5`}>
                   <Text style={tw`text-stone-400 text-sm text-center`}>
-                    Add a short label that sits on your reel frame.
+                    Add a short label, then drag it anywhere on the clip.
                   </Text>
                 </View>
               )}

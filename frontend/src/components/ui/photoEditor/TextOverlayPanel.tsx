@@ -323,11 +323,19 @@ export default function TextOverlayPanel({
           <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
             Placement
           </Text>
+          <View style={tw`bg-stone-800/70 border border-stone-700 rounded-2xl px-3 py-3 mb-3`}>
+            <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
+              Press and hold the text on the photo, then drag it anywhere
+            </Text>
+            <Text style={tw`text-stone-500 text-[11px] text-center mt-1`}>
+              Quick snaps below are optional
+            </Text>
+          </View>
           <View style={tw`flex-row gap-2 mb-3`}>
             {POSITIONS.map((p) => (
               <Pressable
                 key={p.id}
-                onPress={() => onUpdate({ y: p.y, x: 0.5 })}
+                onPress={() => onUpdate({ y: p.y })}
                 style={tw`flex-1 items-center py-2.5 rounded-xl bg-stone-800 border border-stone-700`}
               >
                 <Ionicons name={p.icon} size={16} color="#A8A29E" />
@@ -376,7 +384,7 @@ export default function TextOverlayPanel({
             Tap Add or a quick phrase to place text on your story or reel.
           </Text>
           <Text style={tw`text-stone-500 text-xs text-center mt-2`}>
-            Drag text on the preview to reposition.
+            Press and drag text on the preview to place it freely.
           </Text>
         </View>
       )}

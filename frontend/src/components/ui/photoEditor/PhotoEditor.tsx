@@ -45,6 +45,7 @@ import {
 } from './imageProcessing';
 import type { FilterCategory } from './types';
 import CropFrameOverlay from './CropFrameOverlay';
+import DraggableTextOverlay from './DraggableTextOverlay';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PREVIEW_H = Math.min(SCREEN_W * 1.05, 480);
@@ -194,7 +195,7 @@ export default function PhotoEditor({
   const cropOffsetRef = useRef({ x: 0, y: 0 });
   const panStartRef = useRef({ x: 0, y: 0 });
   const adjustHistoryArmed = useRef(true);
-  const textDragStart = useRef({ x: 0.5, y: 0.5 });
+  const [previewSize, setPreviewSize] = useState({ w: SCREEN_W, h: PREVIEW_H });
   cropOffsetRef.current = { x: cropOffsetX, y: cropOffsetY };
 
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
@@ -411,18 +412,10 @@ export default function PhotoEditor({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () =>
-          (activeTab === 'crop' && selectedCrop !== 'free') ||
-          (activeTab === 'overlay' && !!activeOverlayId),
-        onMoveShouldSetPanResponder: () =>
-          (activeTab === 'crop' && selectedCrop !== 'free') ||
-          (activeTab === 'overlay' && !!activeOverlayId),
+        onStartShouldSetPanResponder: () => activeTab === 'crop' && selectedCrop !== 'free',
+        onMoveShouldSetPanResponder: () => activeTab === 'crop' && selectedCrop !== 'free',
         onPanResponderGrant: () => {
-          if (activeTab === 'crop') {
-            panStartRef.current = { ...cropOffsetRef.current };
-          } else if (activeOverlay) {
-            textDragStart.current = { x: activeOverlay.x, y: activeOverlay.y };
-          }
+          panStartRef.current = { ...cropOffsetRef.current };
         },
         onPanResponderMove: (_evt, gesture) => {
           if (activeTab === 'crop' && selectedCrop !== 'free') {
@@ -430,18 +423,10 @@ export default function PhotoEditor({
             const nextY = Math.max(-1, Math.min(1, panStartRef.current.y + gesture.dy / 140));
             setCropOffsetX(nextX);
             setCropOffsetY(nextY);
-            return;
-          }
-          if (activeTab === 'overlay' && activeOverlayId) {
-            const nextX = Math.max(0.08, Math.min(0.92, textDragStart.current.x + gesture.dx / SCREEN_W));
-            const nextY = Math.max(0.08, Math.min(0.92, textDragStart.current.y + gesture.dy / PREVIEW_H));
-            setOverlays((prev) =>
-              prev.map((o) => (o.id === activeOverlayId ? { ...o, x: nextX, y: nextY } : o))
-            );
           }
         },
       }),
-    [activeTab, selectedCrop, activeOverlayId, activeOverlay]
+    [activeTab, selectedCrop]
   );
 
   const previewUri = comparing ? originalUri : workingUri;
@@ -455,7 +440,7 @@ export default function PhotoEditor({
     { rotate: `${comparing ? 0 : straighten}deg` },
     { scale: Math.abs(straighten) > 0.4 && !comparing ? 1.08 : 1 },
   ];
-  const showPanHandlers = activeTab === 'crop' || activeTab === 'overlay';
+  const showPanHandlers = activeTab === 'crop' && selectedCrop !== 'free';
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen">
@@ -526,6 +511,10 @@ export default function PhotoEditor({
 
         <View
           style={[tw`items-center justify-center bg-black overflow-hidden`, { height: PREVIEW_H }]}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            if (width > 0 && height > 0) setPreviewSize({ w: width, h: height });
+          }}
           {...(showPanHandlers ? panResponder.panHandlers : {})}
         >
           <View style={tw`relative w-full h-full`}>
@@ -565,55 +554,23 @@ export default function PhotoEditor({
             {!comparing &&
               overlays.map((o) =>
                 o.text.trim() ? (
-                  <View
+                  <DraggableTextOverlay
                     key={o.id}
-                    pointerEvents="none"
-                    style={[
-                      tw`absolute px-2 py-1`,
-                      {
-                        left: `${o.x * 100}%`,
-                        top: `${o.y * 100}%`,
-                        transform: [
-                          { translateX: -50 },
-                          { translateY: -16 },
-                          { scale: o.scale },
-                        ],
-                        backgroundColor:
-                          o.style === 'pill' || o.style === 'banner'
-                            ? 'rgba(0,0,0,0.55)'
-                            : 'transparent',
-                        borderRadius: o.style === 'pill' ? 999 : o.style === 'banner' ? 4 : 0,
-                        paddingHorizontal: o.style === 'banner' ? 14 : 4,
-                        paddingVertical: o.style === 'banner' ? 6 : 2,
-                        borderWidth: activeOverlayId === o.id ? 1 : 0,
-                        borderColor: '#34D399',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: o.color,
-                        fontSize: o.style === 'bold' ? 24 : 20,
-                        fontWeight: o.style === 'plain' ? '600' : '800',
-                        textAlign: o.align || 'center',
-                        letterSpacing: o.style === 'neon' ? 1.2 : 0.2,
-                        textShadowColor:
-                          o.style === 'outline' ||
-                          o.style === 'bold' ||
-                          o.style === 'neon' ||
-                          o.style === 'shadow'
-                            ? o.style === 'neon'
-                              ? o.color
-                              : 'rgba(0,0,0,0.9)'
-                            : 'transparent',
-                        textShadowOffset: { width: 0, height: o.style === 'shadow' ? 3 : 1 },
-                        textShadowRadius:
-                          o.style === 'neon' ? 10 : o.style === 'outline' || o.style === 'bold' ? 4 : o.style === 'shadow' ? 6 : 0,
-                      }}
-                    >
-                      {o.text}
-                    </Text>
-                  </View>
+                    overlay={o}
+                    selected={activeOverlayId === o.id}
+                    containerW={previewSize.w}
+                    containerH={previewSize.h}
+                    editable={!isProcessing}
+                    onSelect={() => {
+                      setActiveOverlayId(o.id);
+                      setActiveTab('overlay');
+                    }}
+                    onMove={(x, y) => {
+                      setOverlays((prev) =>
+                        prev.map((item) => (item.id === o.id ? { ...item, x, y } : item))
+                      );
+                    }}
+                  />
                 ) : null
               )}
             {activeTab === 'crop' && selectedCrop !== 'free' && (
@@ -638,7 +595,7 @@ export default function PhotoEditor({
         )}
         {activeTab === 'overlay' && activeOverlay && (
           <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
-            Drag text to reposition
+            Press and drag the text to place it anywhere
           </Text>
         )}
 
