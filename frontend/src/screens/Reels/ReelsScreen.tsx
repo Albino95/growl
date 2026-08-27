@@ -13,9 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
-import { getForYouFeed, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { getForYouFeed, getFeedPost, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { isVideoMedia } from '../../services/api/media';
-import { resolveAvatarUri, resolveStoryDisplayUri } from '../../utils/images';
+import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { isReelPost } from '../../utils/reelNavigation';
 import { ReelVideoPlayer, type VideoEditSettings } from '../../components/ui/VideoEditor';
 import tw from '../../lib/tw';
@@ -24,7 +24,10 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type ReelRow = FeedPost & { liked: boolean };
 
-type ReelsRoute = RouteProp<{ Reels: { startPostId?: string } | undefined }, 'Reels'>;
+type ReelsRoute = RouteProp<
+  { Reels: { startPostId?: string; seedPost?: FeedPost } | undefined },
+  'Reels'
+>;
 
 function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -78,6 +81,7 @@ export default function ReelsScreen() {
   const navigation = useNavigation();
   const route = useRoute<ReelsRoute>();
   const startPostId = route.params?.startPostId;
+  const seedPost = route.params?.seedPost;
   const scrollToId = useRef(startPostId);
 
   const [items, setItems] = useState<ReelRow[]>([]);
@@ -108,6 +112,7 @@ export default function ReelsScreen() {
   }, [navigation]);
 
   const load = useCallback(async () => {
+    const targetId = scrollToId.current;
     try {
       const res = await getForYouFeed();
       if (!res.success || !res.data) {
@@ -124,6 +129,15 @@ export default function ReelsScreen() {
         merged.push(p);
       }
 
+      if (targetId && !merged.some((p) => p.id === targetId)) {
+        if (seedPost?.id === targetId) {
+          merged.unshift(seedPost);
+        } else {
+          const fetched = await getFeedPost(targetId);
+          if (fetched) merged.unshift(fetched);
+        }
+      }
+
       const reels = merged
         .filter((p) => isReelPost(p))
         .map((p) => ({ ...p, liked: !!p.metadata?.has_liked }))
@@ -133,18 +147,14 @@ export default function ReelsScreen() {
 
       setItems(reels);
 
-      const targetId = scrollToId.current;
       if (targetId) {
         const idx = reels.findIndex((r) => r.id === targetId);
         if (idx >= 0) {
           setActiveId(reels[idx].id);
-          setTimeout(() => {
-            flatListRef.current?.scrollToIndex({ index: idx, animated: false });
-          }, 80);
         } else if (reels[0]?.id) {
           setActiveId(reels[0].id);
+          scrollToId.current = undefined;
         }
-        scrollToId.current = undefined;
       } else if (reels[0]?.id) {
         setActiveId(reels[0].id);
       }
@@ -155,7 +165,7 @@ export default function ReelsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [seedPost]);
 
   useFocusEffect(
     useCallback(() => {
@@ -164,6 +174,22 @@ export default function ReelsScreen() {
       void load();
     }, [load, startPostId])
   );
+
+  useEffect(() => {
+    const targetId = scrollToId.current;
+    if (!targetId || items.length === 0) return;
+    const idx = items.findIndex((r) => r.id === targetId);
+    if (idx < 0) return;
+
+    setActiveId(items[idx].id);
+    const scroll = () => {
+      flatListRef.current?.scrollToIndex({ index: idx, animated: false });
+      scrollToId.current = undefined;
+    };
+    requestAnimationFrame(() => {
+      setTimeout(scroll, 50);
+    });
+  }, [items]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -194,7 +220,7 @@ export default function ReelsScreen() {
   const renderReel = ({ item }: { item: ReelRow }) => {
     const username = item.metadata?.username || 'Member';
     const avatar = resolveAvatarUri(item.user_id, username, item.metadata?.avatar);
-    const uri = resolveStoryDisplayUri(item.image_url ?? '', item.user_id, item.id);
+    const uri = resolvePostMediaUri(item.image_url ?? '', item.category, item.id);
     const likes = item.metadata?.likes ?? 0;
     const comments = item.metadata?.comments ?? 0;
     const isVideo = isVideoMedia({

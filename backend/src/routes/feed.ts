@@ -509,10 +509,20 @@ export async function getPost(
   }
 
   const userMeta = JSON.parse(post.user_metadata || '{}');
+  let postMeta: Record<string, unknown> = {};
+  try {
+    postMeta =
+      typeof post.metadata === 'string'
+        ? JSON.parse(post.metadata || '{}')
+        : (post.metadata as Record<string, unknown>) || {};
+  } catch {
+    postMeta = {};
+  }
 
   return json({
     ...post,
     metadata: {
+      ...postMeta,
       likes: post.likes_count || 0,
       comments: post.comments_count || 0,
       has_liked: ctx.isAuthenticated && ctx.userId ? Number(post.viewer_has_liked) > 0 : false,
@@ -691,9 +701,19 @@ export async function getUserPosts(
 
     const userPosts = posts.results.map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
+      let postMeta: Record<string, unknown> = {};
+      try {
+        postMeta =
+          typeof post.metadata === 'string'
+            ? JSON.parse(post.metadata || '{}')
+            : (post.metadata as Record<string, unknown>) || {};
+      } catch {
+        postMeta = {};
+      }
       return {
         ...post,
         metadata: {
+          ...postMeta,
           likes: post.likes_count || 0,
           comments: post.comments_count || 0,
           has_liked: Number(post.viewer_has_liked) > 0,

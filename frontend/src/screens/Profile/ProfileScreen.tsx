@@ -128,6 +128,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [showFadedPosts, setShowFadedPosts] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [following, setFollowing] = useState<FriendSummary[]>([]);
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
@@ -163,6 +164,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       if (elig) setEligibility(elig);
       const decay =
         typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
+      setSourcePosts(postList);
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
       setFollowing(connections.following);
@@ -712,7 +714,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
                   if (post.isReel) {
-                    openReelsAtPost(rootNavigation, post.id);
+                    openReelsAtPost(
+                      rootNavigation,
+                      post.id,
+                      sourcePosts.find((p) => p.id === post.id)
+                    );
                     return;
                   }
                   (rootNavigation as any).navigate('PostDetail', {

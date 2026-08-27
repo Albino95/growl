@@ -288,7 +288,7 @@ export default function ExploreScreen() {
   const openPostDetail = (p: FeedPost) => {
     if (isReelPost(p)) {
       const root = navigation.getParent?.() || navigation;
-      openReelsAtPost(root as { getParent?: () => unknown; navigate: (a: string, b?: object) => void }, p.id);
+      openReelsAtPost(navigation, p.id, p);
       return;
     }
     const username = p.metadata?.username || 'Member';

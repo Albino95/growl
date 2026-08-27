@@ -80,6 +80,18 @@ export async function getForYouFeed(): Promise<ForYouFeedResponse> {
   return request<ForYouFeedResponse>('/feed/feed?mode=foryou');
 }
 
+export async function getFeedPost(postId: string): Promise<FeedPost | null> {
+  try {
+    const res = await request<{ success: boolean; data: FeedPost }>(
+      `/feed/posts/${encodeURIComponent(postId)}`
+    );
+    if (!res.success || !res.data) return null;
+    return res.data;
+  } catch {
+    return null;
+  }
+}
+
 export async function createFeedPost(payload: {
   image_url: string;
   caption?: string;

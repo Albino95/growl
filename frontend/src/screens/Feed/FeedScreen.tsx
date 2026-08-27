@@ -33,6 +33,7 @@ import SkeletonCard from '../../components/ui/SkeletonCard';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import HeartBurst from '../../components/feed/HeartBurst';
+import FeedReelMedia from '../../components/feed/FeedReelMedia';
 import FeedLikeButton, {
   ReactionPickerBar,
   type FeedReaction,
@@ -45,6 +46,7 @@ import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import type { VideoEditSettings } from '../../components/ui/VideoEditor';
 
 type Story = {
   id: string;
@@ -80,6 +82,9 @@ type Post = {
   audioUrl?: string;
   audioTitle?: string;
   isReel?: boolean;
+  mediaType?: string;
+  contentType?: string;
+  videoEdit?: VideoEditSettings | null;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -156,12 +161,22 @@ export default function FeedScreen({ navigation, route }: any) {
       audioTitle:
         typeof post.metadata?.audio_title === 'string' ? post.metadata.audio_title : undefined,
       isReel: isReelPost(post),
+      mediaType:
+        typeof post.metadata?.media_type === 'string' ? post.metadata.media_type : undefined,
+      contentType:
+        typeof post.metadata?.content_type === 'string' ? post.metadata.content_type : undefined,
+      videoEdit: (post.metadata?.video_edit as VideoEditSettings | undefined) || null,
     };
   };
 
+  const findFeedPost = (postId: string): FeedPost | undefined =>
+    feedFollowing.find((p) => p.id === postId) ||
+    feedSuggested.find((p) => p.id === postId) ||
+    feedItems.find((p) => p.id === postId);
+
   const openPost = (post: Post) => {
     if (post.isReel) {
-      openReelsAtPost(navigation, post.id);
+      openReelsAtPost(navigation, post.id, findFeedPost(post.id));
       return;
     }
     setSelectedPost(post);
@@ -440,7 +455,7 @@ export default function FeedScreen({ navigation, route }: any) {
       const postId = post.id;
       setTimeout(() => {
         if (lastTapRef.current?.id === postId) {
-          openReelsAtPost(navigation, postId);
+          openReelsAtPost(navigation, postId, findFeedPost(postId));
           lastTapRef.current = null;
         }
       }, 340);
@@ -864,29 +879,24 @@ export default function FeedScreen({ navigation, route }: any) {
                     <Text style={tw`text-white text-[10px] font-bold ml-1`}>Reel</Text>
                   </View>
                 ) : null}
-                {item.image && item.image.trim() !== '' ? (
-                  <Image
-                    source={{
-                      uri: failedPostImages[item.id]
-                        ? `https://picsum.photos/seed/fallback-post-${encodeURIComponent(item.id)}/1200/1200`
-                        : item.image,
-                    }}
-                    style={tw`w-full h-96`}
-                    contentFit="cover"
-                    onError={() => {
-                      setFailedPostImages((prev) =>
-                        prev[item.id] ? prev : { ...prev, [item.id]: true }
-                      );
-                    }}
-                    placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-                    transition={200}
-                  />
-                ) : (
-                  <View style={tw`w-full h-96 bg-gradient-to-br from-gray-100 to-gray-200 items-center justify-center`}>
-                    <Ionicons name="image-outline" size={64} color="#9CA3AF" />
-                    <Text style={tw`text-gray-400 mt-2 text-sm`}>No image available</Text>
-                  </View>
-                )}
+                <FeedReelMedia
+                  uri={
+                    failedPostImages[item.id]
+                      ? `https://picsum.photos/seed/fallback-post-${encodeURIComponent(item.id)}/1200/1200`
+                      : item.image
+                  }
+                  postId={item.id}
+                  isReel={item.isReel}
+                  mediaType={item.mediaType}
+                  contentType={item.contentType}
+                  videoEdit={item.videoEdit}
+                  failed={!!failedPostImages[item.id]}
+                  onError={() => {
+                    setFailedPostImages((prev) =>
+                      prev[item.id] ? prev : { ...prev, [item.id]: true }
+                    );
+                  }}
+                />
                 <HeartBurst triggerKey={heartBurst[item.id] || 0} />
               </Pressable>
 

@@ -112,9 +112,9 @@ function mapStoryItemToStory(s: StoryItem): Story {
 }
 
 /** Fetches and maps public posts for the selected profile user. */
-async function fetchUserPosts(userId: string): Promise<Post[]> {
+async function fetchUserPosts(userId: string): Promise<{ cards: Post[]; raw: FeedPost[] }> {
   const list = await getUserPosts(userId);
-  return list.map(mapFeedPostToPublicPost);
+  return { cards: list.map(mapFeedPostToPublicPost), raw: list };
 }
 
 /** Fetches and maps profile stories for story strip + viewer navigation. */
@@ -147,6 +147,7 @@ export default function PublicProfileScreen() {
   const [profileUser, setProfileUser] = useState<PublicUser | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'journal'>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
@@ -327,8 +328,9 @@ export default function PublicProfileScreen() {
     if (isBlocked) return;
     try {
       setLoadingContent(true);
-      const userPosts = await fetchUserPosts(userId);
-      setPosts(userPosts);
+      const { cards, raw } = await fetchUserPosts(userId);
+      setSourcePosts(raw);
+      setPosts(cards);
     } catch (error) {
       console.error('Error prefetching posts:', error);
     } finally {
@@ -349,8 +351,9 @@ export default function PublicProfileScreen() {
     try {
       setLoadingContent(true);
       if (activeTab === 'posts') {
-        const userPosts = await fetchUserPosts(userId);
-        setPosts(userPosts);
+        const { cards, raw } = await fetchUserPosts(userId);
+        setSourcePosts(raw);
+        setPosts(cards);
       } else if (activeTab === 'stories') {
         const userStories = await fetchUserStories(userId);
         setStories(userStories);
@@ -871,7 +874,11 @@ export default function PublicProfileScreen() {
                     if (!profileUser) return;
                     const rootNavigation = navigation.getParent() || navigation;
                     if (post.isReel) {
-                      openReelsAtPost(rootNavigation, post.id);
+                      openReelsAtPost(
+                        rootNavigation,
+                        post.id,
+                        sourcePosts.find((p) => p.id === post.id)
+                      );
                       return;
                     }
                     (rootNavigation as any).navigate('PostDetail', {

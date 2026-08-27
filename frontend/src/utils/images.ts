@@ -125,12 +125,25 @@ export function rewriteMediaUrlToApiHost(raw: string): string {
   }
 }
 
+function absolutizeApiMediaPath(s: string): string {
+  if (!s.startsWith('/api/')) return s;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getApiBaseUrl } = require('../services/api/http') as { getApiBaseUrl: () => string };
+    const base = getApiBaseUrl().replace(/\/$/, '');
+    return `${base}${s}`;
+  } catch {
+    return s;
+  }
+}
+
 export function resolvePostMediaUri(
   raw: string | null | undefined,
   category: string,
   postId: string
 ): string {
-  const s = rewriteMediaUrlToApiHost((raw || '').trim());
+  let s = rewriteMediaUrlToApiHost((raw || '').trim());
+  s = absolutizeApiMediaPath(s);
   if (!s) return getPostImageUrl(category, postId);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
@@ -161,7 +174,7 @@ export function resolveStoryDisplayUri(
   userId: string,
   storyId?: string
 ): string {
-  const s = (raw || '').trim();
+  let s = absolutizeApiMediaPath(rewriteMediaUrlToApiHost((raw || '').trim()));
   if (!s) return getStoryImageUrl(userId, storyId);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;
