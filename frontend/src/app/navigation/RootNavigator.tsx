@@ -49,7 +49,7 @@ export type RootStackParamList = {
   Business: undefined;
   Post: undefined;
   Messages: { conversationId?: string; targetUserId?: string } | undefined;
-  Reels: undefined;
+  Reels: { startPostId?: string } | undefined;
   PublicProfile: { userId: string };
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };

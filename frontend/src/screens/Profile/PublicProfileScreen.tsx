@@ -29,6 +29,7 @@ import {
   reportUser,
 } from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
@@ -51,6 +52,7 @@ type Post = {
   comments: number;
   createdAt: string;
   category: string;
+  isReel?: boolean;
 };
 
 type Story = {
@@ -91,6 +93,7 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
     comments: p.metadata?.comments ?? 0,
     createdAt: p.created_at,
     category: p.category,
+    isReel: isReelPost(p),
   };
 }
 
@@ -867,6 +870,10 @@ export default function PublicProfileScreen() {
                   onPress={() => {
                     if (!profileUser) return;
                     const rootNavigation = navigation.getParent() || navigation;
+                    if (post.isReel) {
+                      openReelsAtPost(rootNavigation, post.id);
+                      return;
+                    }
                     (rootNavigation as any).navigate('PostDetail', {
                       post: {
                         id: post.id,

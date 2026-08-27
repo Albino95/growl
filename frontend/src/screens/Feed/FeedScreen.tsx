@@ -43,6 +43,7 @@ import { getStories, viewStory, type StoryItem } from '../../services/api/storie
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
 type Story = {
@@ -78,6 +79,7 @@ type Post = {
   isOwn?: boolean;
   audioUrl?: string;
   audioTitle?: string;
+  isReel?: boolean;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -153,10 +155,17 @@ export default function FeedScreen({ navigation, route }: any) {
         typeof post.metadata?.audio_url === 'string' ? post.metadata.audio_url : undefined,
       audioTitle:
         typeof post.metadata?.audio_title === 'string' ? post.metadata.audio_title : undefined,
+      isReel: isReelPost(post),
     };
   };
 
-  const togglePostAudio = (post: Post) => {
+  const openPost = (post: Post) => {
+    if (post.isReel) {
+      openReelsAtPost(navigation, post.id);
+      return;
+    }
+    setSelectedPost(post);
+  };
     if (!post.audioUrl) return;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       if (playingAudioId === post.id) {
@@ -424,6 +433,16 @@ export default function FeedScreen({ navigation, route }: any) {
       return;
     }
     lastTapRef.current = { id: post.id, at: now };
+
+    if (post.isReel) {
+      const postId = post.id;
+      setTimeout(() => {
+        if (lastTapRef.current?.id === postId) {
+          openReelsAtPost(navigation, postId);
+          lastTapRef.current = null;
+        }
+      }, 340);
+    }
   };
 
   const setReaction = async (postId: string, reaction: ReactionType) => {
@@ -837,6 +856,12 @@ export default function FeedScreen({ navigation, route }: any) {
 
               {/* Post Image — double-tap to like */}
               <Pressable onPress={() => handleMediaPress(item)} style={tw`relative w-full bg-stone-50`}>
+                {item.isReel ? (
+                  <View style={tw`absolute top-3 left-3 z-10 flex-row items-center bg-black/55 px-2.5 py-1 rounded-full`}>
+                    <Ionicons name="film-outline" size={12} color="#fff" />
+                    <Text style={tw`text-white text-[10px] font-bold ml-1`}>Reel</Text>
+                  </View>
+                ) : null}
                 {item.image && item.image.trim() !== '' ? (
                   <Image
                     source={{
@@ -882,7 +907,7 @@ export default function FeedScreen({ navigation, route }: any) {
                       }
                     />
                     <View style={tw`relative mr-3`}>
-                      <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                      <TouchableOpacity onPress={() => openPost(item)}>
                         <Ionicons name="chatbubble-outline" size={24} color="#374151" />
                       </TouchableOpacity>
                       <View
@@ -954,21 +979,21 @@ export default function FeedScreen({ navigation, route }: any) {
 
                 {/* Comments */}
                 {item.comments > 0 && (
-                  <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                  <TouchableOpacity onPress={() => openPost(item)}>
                     <Text style={tw`text-stone-500 text-sm mb-1`}>
                       View all {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
                     </Text>
                   </TouchableOpacity>
                 )}
                 {item.comments === 0 ? (
-                  <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                  <TouchableOpacity onPress={() => openPost(item)}>
                     <Text style={tw`text-stone-400 text-xs mb-1`}>No comments yet</Text>
                   </TouchableOpacity>
                 ) : null}
 
                 {/* Add Comment */}
                 <TouchableOpacity
-                  onPress={() => setSelectedPost(item)}
+                  onPress={() => openPost(item)}
                   style={tw`mt-2`}
                 >
                   <Text style={tw`text-stone-500 text-sm`}>Add a comment...</Text>

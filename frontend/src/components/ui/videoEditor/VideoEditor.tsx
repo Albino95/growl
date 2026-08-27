@@ -15,19 +15,20 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
-import type { TextOverlay, TextOverlayStyle } from '../photoEditor/types';
-import { TEXT_COLORS, TEXT_QUICK_PHRASES } from '../photoEditor/types';
+import type { TextOverlay, TextOverlayStyle, EditAdjustments } from '../photoEditor/types';
+import { TEXT_COLORS, TEXT_QUICK_PHRASES, DEFAULT_ADJUSTMENTS } from '../photoEditor/types';
 import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
 import { AdjustSlider } from '../photoEditor/AdjustSlider';
 import type { VideoEditSettings, VideoLookId } from './types';
 import {
   DEFAULT_VIDEO_EDIT,
-  VIDEO_LOOKS,
   SPEED_PRESETS,
   getVideoLook,
   normalizeVideoEdit,
 } from './types';
 import FilmstripTrimmer from './FilmstripTrimmer';
+import VideoLookPanel from './VideoLookPanel';
+import { buildVideoCssFilter, videoVignetteStrength, videoCinematicStrength, videoFadeOpacity } from './videoFilters';
 import {
   POST_MUSIC_TRACKS,
   MUSIC_GENRE_FILTERS,
@@ -113,6 +114,11 @@ export default function VideoEditor({
   const [flipH, setFlipH] = useState(initial.flipH);
   const [flipV, setFlipV] = useState(initial.flipV);
   const [lookId, setLookId] = useState<VideoLookId>(initial.lookId);
+  const [filterPresetId, setFilterPresetId] = useState<string | null>(initial.filterPresetId);
+  const [manualAdjust, setManualAdjust] = useState<EditAdjustments>({
+    ...DEFAULT_ADJUSTMENTS,
+    ...initial.manualAdjust,
+  });
   const [audioTrackId, setAudioTrackId] = useState<string | null>(
     initial.audioTrackId ||
       (initial.audioUrl
@@ -135,9 +141,18 @@ export default function VideoEditor({
     (t) => musicGenre === 'All' || t.genre === musicGenre
   );
   const look = getVideoLook(lookId);
+  const editPreview: VideoEditSettings = {
+    ...normalizeVideoEdit({ lookId, filterPresetId, manualAdjust }),
+    lookId,
+    filterPresetId,
+    manualAdjust,
+  } as VideoEditSettings;
+  const webFilter = Platform.OS === 'web' ? buildVideoCssFilter(editPreview) : undefined;
+  const vignetteStrength = videoVignetteStrength(editPreview);
+  const cinematicStrength = videoCinematicStrength(editPreview);
+  const fadeOverlay = videoFadeOpacity(editPreview);
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
   const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
-  const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
   const isOriginalMuted = originalVolume <= 0.001;
 
   const buildSettings = useCallback((): VideoEditSettings => {
@@ -153,6 +168,8 @@ export default function VideoEditor({
       flipH,
       flipV,
       lookId,
+      filterPresetId,
+      manualAdjust,
       overlays,
       audioTrackId: selectedTrack?.id ?? null,
       // Persist proxied URL so feed/web playback works without CORS issues
@@ -169,6 +186,8 @@ export default function VideoEditor({
     flipV,
     isOriginalMuted,
     lookId,
+    filterPresetId,
+    manualAdjust,
     originalVolume,
     overlays,
     selectedTrack,
@@ -317,6 +336,8 @@ export default function VideoEditor({
     setFlipH(false);
     setFlipV(false);
     setLookId('none');
+    setFilterPresetId(null);
+    setManualAdjust({ ...DEFAULT_ADJUSTMENTS });
     setAudioTrackId(null);
     setAudioVolume(0.85);
     setOverlays([]);
@@ -396,22 +417,28 @@ export default function VideoEditor({
               ]}
             />
           ))}
-          {(look.vignette || 0) > 0 ? (
+          {vignetteStrength > 0 ? (
             <View
               pointerEvents="none"
               style={[
                 StyleSheet.absoluteFillObject,
-                { backgroundColor: `rgba(0,0,0,${(look.vignette || 0) * 0.35})` },
+                { backgroundColor: `rgba(0,0,0,${vignetteStrength * 0.35})` },
               ]}
             />
           ) : null}
-          {(look.cinematic || 0) > 0 ? (
+          {fadeOverlay > 0 ? (
+            <View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(255,255,255,${fadeOverlay})` }]}
+            />
+          ) : null}
+          {cinematicStrength > 0 ? (
             <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
               <View
                 style={[
                   tw`absolute top-0 left-0 right-0`,
                   {
-                    height: `${12 + (look.cinematic || 0) * 18}%`,
+                    height: `${12 + cinematicStrength * 18}%`,
                     backgroundColor: 'rgba(0,0,0,0.55)',
                   },
                 ]}
@@ -420,7 +447,7 @@ export default function VideoEditor({
                 style={[
                   tw`absolute bottom-0 left-0 right-0`,
                   {
-                    height: `${14 + (look.cinematic || 0) * 20}%`,
+                    height: `${14 + cinematicStrength * 20}%`,
                     backgroundColor: 'rgba(0,0,0,0.6)',
                   },
                 ]}
@@ -540,61 +567,21 @@ export default function VideoEditor({
             showsVerticalScrollIndicator={false}
           >
             {tab === 'look' && (
-              <View style={tw`pt-2`}>
-                <Text style={tw`text-white text-sm font-bold mb-1`}>Looks</Text>
-                <Text style={tw`text-stone-500 text-xs mb-3`}>
-                  20 cinematic grades — film, neon, bleach, dusk, and more
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {VIDEO_LOOKS.map((l) => {
-                    const selected = lookId === l.id;
-                    return (
-                      <Pressable
-                        key={l.id}
-                        onPress={() => setLookId(l.id)}
-                        style={tw`mr-3 items-center`}
-                      >
-                        <View
-                          style={[
-                            tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2 items-center justify-center`,
-                            {
-                              backgroundColor: l.swatch,
-                              borderColor: selected ? '#34D399' : '#44403C',
-                            },
-                          ]}
-                        >
-                          {l.layers.slice(0, 2).map((layer, idx) => (
-                            <View
-                              key={idx}
-                              style={[
-                                StyleSheet.absoluteFillObject,
-                                { backgroundColor: layer.color },
-                              ]}
-                            />
-                          ))}
-                          {(l.cinematic || 0) > 0 ? (
-                            <>
-                              <View style={tw`absolute top-0 left-0 right-0 h-3 bg-black/50`} />
-                              <View style={tw`absolute bottom-0 left-0 right-0 h-4 bg-black/55`} />
-                            </>
-                          ) : null}
-                          {l.id === 'none' ? (
-                            <Ionicons name="sparkles-outline" size={22} color="#E7E5E4" />
-                          ) : null}
-                        </View>
-                        <Text
-                          style={tw`text-[11px] font-bold mt-1.5 ${
-                            selected ? 'text-brand-300' : 'text-stone-200'
-                          }`}
-                        >
-                          {l.label}
-                        </Text>
-                        <Text style={tw`text-[10px] text-stone-500`}>{l.hint}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
+              <VideoLookPanel
+                lookId={lookId}
+                filterPresetId={filterPresetId}
+                manualAdjust={manualAdjust}
+                onLookIdChange={setLookId}
+                onPresetChange={setFilterPresetId}
+                onAdjustChange={(patch) =>
+                  setManualAdjust((prev) => ({ ...prev, ...patch }))
+                }
+                onResetLooks={() => {
+                  setLookId('none');
+                  setFilterPresetId(null);
+                  setManualAdjust({ ...DEFAULT_ADJUSTMENTS });
+                }}
+              />
             )}
 
             {tab === 'audio' && (

@@ -1,4 +1,6 @@
 import type { TextOverlay } from '../photoEditor/types';
+import type { EditAdjustments } from '../photoEditor/types';
+import { DEFAULT_ADJUSTMENTS } from '../photoEditor/types';
 
 export type VideoLookId =
   | 'none'
@@ -41,6 +43,10 @@ export type VideoEditSettings = {
   flipH: boolean;
   flipV: boolean;
   lookId: VideoLookId;
+  /** Photo-editor style filter preset id (natural, film, portrait…). */
+  filterPresetId: string | null;
+  /** Manual fine-tune sliders merged with preset. */
+  manualAdjust: EditAdjustments;
   overlays: TextOverlay[];
   /** Selected track from the public music library. */
   audioTrackId?: string | null;
@@ -61,6 +67,8 @@ export const DEFAULT_VIDEO_EDIT: VideoEditSettings = {
   flipH: false,
   flipV: false,
   lookId: 'none',
+  filterPresetId: null,
+  manualAdjust: { ...DEFAULT_ADJUSTMENTS },
   overlays: [],
   audioTrackId: null,
   audioUrl: null,
@@ -86,6 +94,11 @@ export function normalizeVideoEdit(
     coverMs: Math.max(0, base.coverMs || 0),
     flipH: !!base.flipH,
     flipV: !!base.flipV,
+    filterPresetId: base.filterPresetId ?? null,
+    manualAdjust: {
+      ...DEFAULT_ADJUSTMENTS,
+      ...(base.manualAdjust && typeof base.manualAdjust === 'object' ? base.manualAdjust : {}),
+    },
     overlays: Array.isArray(base.overlays) ? base.overlays : [],
   };
 }

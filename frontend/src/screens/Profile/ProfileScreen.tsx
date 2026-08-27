@@ -18,6 +18,7 @@ import { useAuth } from '../../store/hooks';
 import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { getConnections, syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
@@ -58,6 +59,7 @@ type Post = {
   createdAt: string;
   daysUntilDecay: number;
   category: string;
+  isReel?: boolean;
 };
 
 type Story = {
@@ -93,6 +95,7 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     createdAt: p.created_at,
     daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
     category: p.category,
+    isReel: isReelPost(p),
   };
 }
 
@@ -708,6 +711,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
+                  if (post.isReel) {
+                    openReelsAtPost(rootNavigation, post.id);
+                    return;
+                  }
                   (rootNavigation as any).navigate('PostDetail', {
                     post: {
                       id: post.id,

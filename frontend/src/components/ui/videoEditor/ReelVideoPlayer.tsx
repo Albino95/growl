@@ -6,6 +6,12 @@ import type { VideoEditSettings } from './types';
 import { getVideoLook, normalizeVideoEdit } from './types';
 import { getMusicPlaybackUrl } from '../../../constants/postMusic';
 import tw from '../../../lib/tw';
+import {
+  buildVideoCssFilter,
+  videoVignetteStrength,
+  videoCinematicStrength,
+  videoFadeOpacity,
+} from './videoFilters';
 
 type Props = {
   uri: string;
@@ -28,6 +34,10 @@ export default function ReelVideoPlayer({
   const edit = normalizeVideoEdit(settings);
   const look = getVideoLook(edit.lookId);
   const soundtrackUrl = getMusicPlaybackUrl(edit.audioTrackId, edit.audioUrl);
+  const webFilter = Platform.OS === 'web' ? buildVideoCssFilter(edit) : undefined;
+  const vignetteStrength = videoVignetteStrength(edit);
+  const cinematicStrength = videoCinematicStrength(edit);
+  const fadeOverlay = videoFadeOpacity(edit);
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
   const originalVol = edit.originalVolume;
@@ -118,7 +128,6 @@ export default function ReelVideoPlayer({
     })();
   }, [shouldPlay, trimStart, uri]);
 
-  const webFilter = Platform.OS === 'web' ? look.cssFilter : undefined;
   const flipTransform = [
     { scaleX: edit.flipH ? -1 : 1 },
     { scaleY: edit.flipV ? -1 : 1 },
@@ -152,22 +161,28 @@ export default function ReelVideoPlayer({
           ]}
         />
       ))}
-      {(look.vignette || 0) > 0 ? (
+      {(vignetteStrength > 0) ? (
         <View
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFillObject,
-            { backgroundColor: `rgba(0,0,0,${(look.vignette || 0) * 0.35})` },
+            { backgroundColor: `rgba(0,0,0,${vignetteStrength * 0.35})` },
           ]}
         />
       ) : null}
-      {(look.cinematic || 0) > 0 ? (
+      {fadeOverlay > 0 ? (
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(255,255,255,${fadeOverlay})` }]}
+        />
+      ) : null}
+      {(cinematicStrength > 0) ? (
         <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
           <View
             style={[
               tw`absolute top-0 left-0 right-0`,
               {
-                height: `${12 + (look.cinematic || 0) * 18}%`,
+                height: `${12 + cinematicStrength * 18}%`,
                 backgroundColor: 'rgba(0,0,0,0.55)',
               },
             ]}
@@ -176,7 +191,7 @@ export default function ReelVideoPlayer({
             style={[
               tw`absolute bottom-0 left-0 right-0`,
               {
-                height: `${14 + (look.cinematic || 0) * 20}%`,
+                height: `${14 + cinematicStrength * 20}%`,
                 backgroundColor: 'rgba(0,0,0,0.6)',
               },
             ]}

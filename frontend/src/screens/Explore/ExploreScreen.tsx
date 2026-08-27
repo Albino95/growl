@@ -38,6 +38,7 @@ import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import CATEGORIES from '../../data/categories';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 
 function SectionTitle({
   title,
@@ -285,6 +286,11 @@ export default function ExploreScreen() {
   };
 
   const openPostDetail = (p: FeedPost) => {
+    if (isReelPost(p)) {
+      const root = navigation.getParent?.() || navigation;
+      openReelsAtPost(root as { getParent?: () => unknown; navigate: (a: string, b?: object) => void }, p.id);
+      return;
+    }
     const username = p.metadata?.username || 'Member';
     const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
     const image = resolvePostMediaUri(p.image_url, p.category, p.id);
