@@ -166,6 +166,8 @@ export default function FeedScreen({ navigation, route }: any) {
     }
     setSelectedPost(post);
   };
+
+  const togglePostAudio = (post: Post) => {
     if (!post.audioUrl) return;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       if (playingAudioId === post.id) {
