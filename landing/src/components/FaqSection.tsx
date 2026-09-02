@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Plus } from '@phosphor-icons/react';
 import { FAQ_ITEMS } from '@/lib/content';
 
 export default function FaqSection() {
@@ -9,12 +10,9 @@ export default function FaqSection() {
   const reduced = useReducedMotion();
 
   return (
-    <section id="faq" className="bg-[var(--surface-alt)] px-6 py-24 sm:px-8 sm:py-28 lg:px-10">
+    <section id="faq" className="bg-[var(--surface)] px-6 py-24 sm:px-8 sm:py-28 lg:px-10">
       <div className="mx-auto max-w-3xl">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
-          FAQ
-        </p>
-        <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-stone-900 sm:text-4xl">
+        <h2 className="font-display text-3xl font-bold tracking-tight text-stone-900 sm:text-4xl">
           Questions, answered.
         </h2>
 
@@ -42,7 +40,7 @@ export default function FaqSection() {
                     }`}
                     aria-hidden
                   >
-                    +
+                    <Plus size={16} weight="bold" />
                   </span>
                 </button>
                 <AnimatePresence initial={false}>
