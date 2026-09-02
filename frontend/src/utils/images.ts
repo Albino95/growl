@@ -126,12 +126,13 @@ export function rewriteMediaUrlToApiHost(raw: string): string {
 }
 
 function absolutizeApiMediaPath(s: string): string {
-  if (!s.startsWith('/api/')) return s;
+  if (!s.startsWith('/')) return s;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getApiBaseUrl } = require('../services/api/http') as { getApiBaseUrl: () => string };
-    const base = getApiBaseUrl().replace(/\/$/, '');
-    return `${base}${s}`;
+    // getApiBaseUrl is …/api/v1 — join origin + path to avoid …/api/v1/api/v1/…
+    const api = new URL(getApiBaseUrl());
+    return `${api.origin}${s}`;
   } catch {
     return s;
   }
@@ -194,7 +195,7 @@ export function resolveStoryDisplayUri(
 
 /** Avatar from metadata may be emoji or invalid — prefer remote URL or pravatar fallback */
 export function resolveAvatarUri(userId: string, username?: string, raw?: string | null): string {
-  const s = rewriteMediaUrlToApiHost((raw || '').trim());
+  let s = absolutizeApiMediaPath(rewriteMediaUrlToApiHost((raw || '').trim()));
   if (!s) return getAvatarUrl(userId, username);
   const lower = s.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return s;

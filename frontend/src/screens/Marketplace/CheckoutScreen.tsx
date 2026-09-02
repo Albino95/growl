@@ -56,8 +56,8 @@ type FieldKey = 'name' | 'street' | 'country' | 'state' | 'city' | 'zip';
 
 function fieldBorder(hasError: boolean) {
   return hasError
-    ? 'bg-surface-page border border-red-400 rounded-lg px-4 py-3'
-    : 'bg-surface-page border border-stone-300 rounded-lg px-4 py-3';
+    ? 'bg-surface-page border border-red-400 rounded-2xl px-4 py-3'
+    : 'bg-surface-page border border-stone-200/80 rounded-2xl px-4 py-3';
 }
 
 export default function CheckoutScreen() {
@@ -381,9 +381,9 @@ export default function CheckoutScreen() {
 
   if (loading || !configLoaded) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-surface-page`}>
         <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#10B981" />
+          <ActivityIndicator size="large" color="#059669" />
           <Text style={tw`mt-4 text-stone-600`}>Loading checkout...</Text>
         </View>
       </SafeAreaView>
@@ -396,9 +396,9 @@ export default function CheckoutScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white border-b border-stone-200`}>
+      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-surface-card border-b border-stone-200/80`}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <Ionicons name="arrow-back" size={24} color="#1C1917" />
         </TouchableOpacity>
         <Text style={tw`text-lg font-semibold text-stone-900`}>Checkout</Text>
         <View style={tw`w-6`} />
@@ -409,9 +409,10 @@ export default function CheckoutScreen() {
         style={tw`flex-1`}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        contentContainerStyle={tw`pb-4`}
       >
         {!paymentsEnabled && (
-          <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex-row items-center`}>
+          <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex-row items-center`}>
             <Ionicons name="time-outline" size={20} color="#D97706" style={tw`mr-2`} />
             <Text style={tw`text-amber-800 text-sm font-medium flex-1`}>
               Checkout opening soon — payments are not enabled yet.
@@ -420,14 +421,14 @@ export default function CheckoutScreen() {
         )}
 
         {formError ? (
-          <View style={tw`mx-4 mt-4 mb-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex-row items-start`}>
+          <View style={tw`mx-4 mt-4 mb-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex-row items-start`}>
             <Ionicons name="alert-circle" size={20} color="#DC2626" style={tw`mr-2 mt-0.5`} />
             <Text style={tw`text-red-700 text-sm font-medium flex-1`}>{formError}</Text>
           </View>
         ) : null}
 
-        <View style={tw`bg-white mb-4`}>
-          <View style={tw`px-4 py-3 border-b border-stone-200`}>
+        <View style={tw`mx-4 mt-4 mb-4 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}>
+          <View style={tw`px-4 py-3 border-b border-stone-200/80`}>
             <Text style={tw`text-lg font-semibold text-stone-900`}>Order Items</Text>
           </View>
           {cartItems.map((item, index) => {
@@ -435,19 +436,23 @@ export default function CheckoutScreen() {
               item.product?.image_url ||
               item.product?.images?.[0] ||
               (item.product ? getProductImageUrl(item.product.category, item.product.id) : '');
+            const isLast = index === cartItems.length - 1;
             return (
-              <View key={index} style={tw`px-4 py-4 border-b border-stone-100 flex-row`}>
+              <View
+                key={index}
+                style={tw`px-4 py-4 flex-row ${isLast ? '' : 'border-b border-stone-200/60'}`}
+              >
                 {item.product && (
                   <>
                     {productImage ? (
                       <Image
                         source={{ uri: productImage }}
-                        style={tw`w-16 h-16 rounded-lg mr-4`}
+                        style={tw`w-16 h-16 rounded-2xl mr-4 bg-surface-subtle`}
                         resizeMode="cover"
                       />
                     ) : (
-                      <View style={tw`w-16 h-16 bg-stone-200 rounded-lg mr-4 items-center justify-center`}>
-                        <Ionicons name="image-outline" size={24} color="#9CA3AF" />
+                      <View style={tw`w-16 h-16 bg-surface-subtle border border-stone-200/60 rounded-2xl mr-4 items-center justify-center`}>
+                        <Ionicons name="image-outline" size={24} color="#A8A29E" />
                       </View>
                     )}
                     <View style={tw`flex-1`}>
@@ -468,8 +473,8 @@ export default function CheckoutScreen() {
           })}
         </View>
 
-        <View style={tw`bg-white mb-4`}>
-          <View style={tw`px-4 py-3 border-b border-stone-200`}>
+        <View style={tw`mx-4 mb-4 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}>
+          <View style={tw`px-4 py-3 border-b border-stone-200/80`}>
             <Text style={tw`text-lg font-semibold text-stone-900`}>Shipping Address</Text>
           </View>
           <View style={tw`px-4 py-4`}>
@@ -601,7 +606,7 @@ export default function CheckoutScreen() {
                   }}
                   style={tw`mb-3 mt-1`}
                 >
-                  <Text style={tw`text-sm text-emerald-700 font-medium`}>City not listed? Enter it</Text>
+                  <Text style={tw`text-sm text-brand-700 font-medium`}>City not listed? Enter it</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -626,7 +631,7 @@ export default function CheckoutScreen() {
                     }}
                     style={tw`mb-3 mt-1`}
                   >
-                    <Text style={tw`text-sm text-emerald-700 font-medium`}>Pick from city list</Text>
+                    <Text style={tw`text-sm text-brand-700 font-medium`}>Pick from city list</Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={tw`mb-3`} />
@@ -653,8 +658,8 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        <View style={tw`bg-white mb-4`}>
-          <View style={tw`px-4 py-3 border-b border-stone-200`}>
+        <View style={tw`mx-4 mb-4 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}>
+          <View style={tw`px-4 py-3 border-b border-stone-200/80`}>
             <Text style={tw`text-lg font-semibold text-stone-900`}>Order Summary</Text>
           </View>
           <View style={tw`px-4 py-4`}>
@@ -673,7 +678,7 @@ export default function CheckoutScreen() {
                 Free shipping on orders over $50!
               </Text>
             )}
-            <View style={tw`border-t border-stone-200 pt-3 mt-2`}>
+            <View style={tw`border-t border-stone-200/80 pt-3 mt-2`}>
               <View style={tw`flex-row justify-between`}>
                 <Text style={tw`text-lg font-bold text-stone-900`}>Total</Text>
                 <Text style={tw`text-lg font-bold text-brand-600`}>${total.toFixed(2)}</Text>
@@ -683,11 +688,11 @@ export default function CheckoutScreen() {
         </View>
       </ScrollView>
 
-      <View style={tw`bg-white border-t border-stone-200 px-4 py-4`}>
+      <View style={tw`bg-surface-card border-t border-stone-200/80 px-4 py-4`}>
         <TouchableOpacity
           onPress={() => void handlePlaceOrder()}
           disabled={processing || cartItems.length === 0 || !paymentsEnabled}
-          style={tw`bg-brand-600 rounded-lg py-4 items-center ${
+          style={tw`bg-brand-600 rounded-2xl py-4 items-center ${
             processing || cartItems.length === 0 || !paymentsEnabled ? 'opacity-50' : ''
           }`}
         >

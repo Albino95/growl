@@ -92,7 +92,7 @@ export default function ReelVideoPlayer({
           const { sound } = await Audio.Sound.createAsync(
             { uri: playbackUrl },
             {
-              shouldPlay,
+              shouldPlay: false,
               isLooping: true,
               volume: edit.audioVolume ?? 0.85,
             }
@@ -108,7 +108,7 @@ export default function ReelVideoPlayer({
             const { sound } = await Audio.Sound.createAsync(
               { uri: fallback },
               {
-                shouldPlay,
+                shouldPlay: false,
                 isLooping: true,
                 volume: edit.audioVolume ?? 0.85,
               }
@@ -135,11 +135,7 @@ export default function ReelVideoPlayer({
       el.volume = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
       if (el.src !== soundtrackUrl) {
         el.src = soundtrackUrl;
-      }
-      if (shouldPlay) {
-        void el.play().catch(() => undefined);
-      } else {
-        el.pause();
+        el.load?.();
       }
     };
 
@@ -157,9 +153,11 @@ export default function ReelVideoPlayer({
       }
       if (webAudioRef.current) {
         webAudioRef.current.pause();
+        webAudioRef.current.removeAttribute?.('src');
+        webAudioRef.current = null;
       }
     };
-  }, [soundtrackUrl, edit.audioVolume, edit.audioUrl, shouldPlay]);
+  }, [soundtrackUrl, edit.audioVolume, edit.audioUrl]);
 
   useEffect(() => {
     if (!shouldPlay) {
@@ -177,6 +175,7 @@ export default function ReelVideoPlayer({
       }
       if (webAudioRef.current && soundtrackUrl) {
         try {
+          webAudioRef.current.currentTime = 0;
           await webAudioRef.current.play();
         } catch {
           /* ignore */
@@ -184,6 +183,17 @@ export default function ReelVideoPlayer({
       }
     })();
   }, [shouldPlay, trimStart, uri, soundtrackUrl]);
+
+  // Keep soundtrack volume in sync without remounting the audio element
+  useEffect(() => {
+    const vol = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
+    if (soundRef.current) {
+      void soundRef.current.setVolumeAsync(vol);
+    }
+    if (webAudioRef.current) {
+      webAudioRef.current.volume = vol;
+    }
+  }, [edit.audioVolume]);
 
   const flipTransform = [
     { scaleX: edit.flipH ? -1 : 1 },

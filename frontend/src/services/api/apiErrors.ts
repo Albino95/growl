@@ -66,8 +66,8 @@ export function messageFromApiError(data: unknown, httpStatus?: number): string 
   }
 
   if (httpStatus === 409) return AUTH_ERROR_MESSAGES.USER_EXISTS;
-  if (httpStatus === 401) return AUTH_ERROR_MESSAGES.INVALID_CREDENTIALS;
-  if (httpStatus === 403) return AUTH_ERROR_MESSAGES.EMAIL_NOT_VERIFIED;
+  if (httpStatus === 401) return APP_ERROR_MESSAGES.UNAUTHORIZED;
+  if (httpStatus === 403) return 'You do not have permission to do that.';
   if (httpStatus === 410) return AUTH_ERROR_MESSAGES.SIGNUP_EXPIRED;
   if (httpStatus === 413) return APP_ERROR_MESSAGES.PAYLOAD_TOO_LARGE;
 

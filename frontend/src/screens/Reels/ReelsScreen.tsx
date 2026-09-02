@@ -418,7 +418,7 @@ export default function ReelsScreen() {
     });
     const isActive = activeId === item.id;
     const isUserPaused = userPausedIds.has(item.id);
-    const shouldPlay = isActive && !isUserPaused;
+    const shouldPlay = isActive && !isUserPaused && !commentsPost;
     const videoEdit = reelPlaybackSettingsFromMetadata(item.metadata);
     const reaction = reactionsById[item.id] ?? (item.liked ? 'love' : null);
 

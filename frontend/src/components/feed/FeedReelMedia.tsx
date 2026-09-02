@@ -16,6 +16,8 @@ type Props = {
   videoEdit?: Partial<VideoEditSettings> | null;
   failed?: boolean;
   isActive?: boolean;
+  /** Feed cards must stay muted; full audio only in Reels viewer */
+  muted?: boolean;
   onError?: () => void;
 };
 
@@ -29,20 +31,30 @@ export default function FeedReelMedia({
   videoEdit,
   failed,
   isActive = false,
+  muted = true,
   onError,
 }: Props) {
   const { width: screenW } = useWindowDimensions();
   const mediaW = Math.min(screenW - 40, 420);
   const reelH = Math.round(mediaW * (16 / 9));
   const photoH = 384;
-  const playbackSettings =
+  const baseSettings =
     reelPlaybackSettingsFromMetadata(videoEdit ? { video_edit: videoEdit } : null) ??
     videoEdit ??
     null;
-  const isVideo = !!isReel && isVideoMedia({ uri, mediaType, contentType });
+  const playbackSettings = muted
+    ? {
+        ...(baseSettings || {}),
+        originalVolume: 0,
+        audioVolume: 0,
+        audioTrackId: null,
+        audioUrl: null,
+      }
+    : baseSettings;
+  const isVideo = !!isReel && !failed && isVideoMedia({ uri, mediaType, contentType });
   const height = isReel ? reelH : photoH;
 
-  if (isVideo && uri && !failed) {
+  if (isVideo && uri) {
     return (
       <View style={[tw`w-full bg-black items-center`, { height }]}>
         <View style={[tw`h-full bg-black overflow-hidden`, { width: mediaW, maxWidth: '100%' }]}>
@@ -79,8 +91,9 @@ export default function FeedReelMedia({
   }
 
   return (
-    <View style={[tw`w-full bg-stone-100 items-center justify-center`, { height }]}>
-      <Ionicons name="image-outline" size={64} color="#9CA3AF" />
+    <View style={[tw`w-full bg-[#EAE4D6] items-center justify-center`, { height }]}>
+      <Ionicons name="image-outline" size={48} color="#A8A29E" />
+      <Text style={tw`text-stone-500 text-sm mt-2`}>Media unavailable</Text>
     </View>
   );
 }

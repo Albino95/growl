@@ -47,7 +47,7 @@ export default function StoryViewerScreen() {
   const [stories, setStories] = useState(initialStories);
   const storiesRef = useRef(initialStories);
   const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
-  const [progress, setProgress] = useState(0);
+  const currentIndexRef = useRef(initialIndex || 0);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -66,18 +66,42 @@ export default function StoryViewerScreen() {
     return next;
   };
 
-  const markAllViewedAndClose = () => {
+  const markAllViewedAndClose = useRef(() => {
     const updatedStories = storiesRef.current.map((story) => ({ ...story, hasViewed: true }));
     syncStories(updatedStories);
     onStoriesUpdate?.(updatedStories);
     navigation.goBack();
-  };
+  }).current;
+
+  const goToNextStory = useRef(() => {
+    const idx = currentIndexRef.current;
+    markIndexViewed(idx);
+
+    if (idx < storiesRef.current.length - 1) {
+      const next = idx + 1;
+      currentIndexRef.current = next;
+      setCurrentIndex(next);
+      progressAnim.setValue(0);
+    } else {
+      markAllViewedAndClose();
+    }
+  }).current;
+
+  const goToPreviousStory = useRef(() => {
+    const idx = currentIndexRef.current;
+    if (idx > 0) {
+      const next = idx - 1;
+      currentIndexRef.current = next;
+      setCurrentIndex(next);
+      progressAnim.setValue(0);
+    }
+  }).current;
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderRelease: (evt, gestureState) => {
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+      onPanResponderRelease: (_evt, gestureState) => {
         const { dx, dy } = gestureState;
         const swipeThreshold = 50;
 
@@ -93,6 +117,10 @@ export default function StoryViewerScreen() {
   ).current;
 
   const currentStory = stories[currentIndex];
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   useEffect(() => {
     // Check if we're switching to a different user (for transition animation)
@@ -134,7 +162,7 @@ export default function StoryViewerScreen() {
 
     // Auto-advance story after 5 seconds
     const timer = setTimeout(() => {
-      if (currentIndex < storiesRef.current.length - 1) {
+      if (currentIndexRef.current < storiesRef.current.length - 1) {
         goToNextStory();
       } else {
         markAllViewedAndClose();
@@ -154,23 +182,7 @@ export default function StoryViewerScreen() {
     };
   }, [currentIndex]);
 
-  const goToNextStory = () => {
-    markIndexViewed(currentIndex);
-
-    if (currentIndex < storiesRef.current.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      progressAnim.setValue(0);
-    } else {
-      markAllViewedAndClose();
-    }
-  };
-
-  const goToPreviousStory = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-      progressAnim.setValue(0);
-    }
-  };
+  // Removed duplicate goToNextStory / goToPreviousStory — see refs above
 
   const navigateToProfile = () => {
     const updatedStories = storiesRef.current.map((story) => ({ ...story, hasViewed: true }));

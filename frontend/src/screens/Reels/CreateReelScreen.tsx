@@ -406,8 +406,12 @@ export default function CreateReelScreen({ navigation }: Props) {
           {publishedPostId ? (
             <Pressable
               onPress={() => {
-                openReelsAtPost(navigation, publishedPostId, publishedPost);
+                const postId = publishedPostId;
+                const seed = publishedPost;
                 navigation.goBack();
+                requestAnimationFrame(() => {
+                  openReelsAtPost(navigation, postId, seed);
+                });
               }}
               style={tw`w-full bg-brand-600 py-3.5 rounded-2xl items-center mb-3`}
             >

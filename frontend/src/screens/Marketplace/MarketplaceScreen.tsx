@@ -334,7 +334,7 @@ export default function MarketplaceScreen() {
                         const defaultImage =
                           item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
                         const productImage = failedProductImages[item.id]
-                          ? `https://picsum.photos/seed/fallback-product-${encodeURIComponent(item.id)}/600/600`
+                          ? getProductImageUrl(item.category, item.id)
                           : defaultImage;
                         return (
                           <TouchableOpacity
@@ -388,7 +388,7 @@ export default function MarketplaceScreen() {
             renderItem={({ item }) => {
               const defaultImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
               const productImage = failedProductImages[item.id]
-                ? `https://picsum.photos/seed/fallback-product-${encodeURIComponent(item.id)}/600/600`
+                ? getProductImageUrl(item.category, item.id)
                 : defaultImage;
               return (
                 <TouchableOpacity

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, getStoryImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { getStoryImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { isVideoMedia } from '../../services/api/media';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
 import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
@@ -221,6 +221,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
+  const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
+  connectionsSheetRef.current = connectionsSheet;
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
   const [profileMeta, setProfileMeta] = useState<{
@@ -290,9 +292,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      if (connectionsSheet) return;
+      if (connectionsSheetRef.current) return;
       void loadProfileContent();
-    }, [loadProfileContent, connectionsSheet])
+    }, [loadProfileContent])
   );
 
   useEffect(() => {
@@ -593,7 +595,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
                   <View
                     style={[
-                      tw`h-full bg-violet-500 rounded-full`,
+                      tw`h-full bg-emerald-600 rounded-full`,
                       {
                         width: `${Math.min(
                           (eligibility.postCount / Math.max(eligibility.postsNeeded, 1)) * 100,
@@ -813,8 +815,18 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     post: {
                       id: post.id,
                       userId: user?.id || 'me',
-                      username: user?.email?.split('@')[0] || 'User',
-                      avatar: getAvatarUrl(user?.id || 'default', user?.email?.split('@')[0]),
+                      username:
+                        profileMeta.username ||
+                        user?.username ||
+                        user?.email?.split('@')[0] ||
+                        'User',
+                      avatar: resolveAvatarUri(
+                        user?.id || 'default',
+                        profileMeta.username ||
+                          user?.username ||
+                          user?.email?.split('@')[0],
+                        profileMeta.avatar || user?.avatar
+                      ),
                       image: post.image,
                       caption: post.caption,
                       category: post.category,
@@ -871,7 +883,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     const rootNavigation = navigation.getParent() || navigation;
                     (rootNavigation as any).navigate('CreateStory');
                   }}
-                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-violet-600`}
+                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-emerald-600`}
                 >
                   <Text style={tw`text-white font-semibold`}>Create Story</Text>
                 </TouchableOpacity>
@@ -886,7 +898,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       onPress={() => openStoriesViewer(story.id)}
                     >
                       <View
-                        style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
+                        style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-emerald-500 overflow-hidden`}
                       >
                         <ProfileStoryThumb story={story} userId={user?.id} />
                       </View>
@@ -1035,7 +1047,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         visible={connectionsSheet !== null}
         mode={connectionsSheet ?? 'following'}
         users={connectionsSheet === 'followers' ? followers : following}
-        loading={false}
+        loading={profileLoading && (connectionsSheet === 'followers' ? followers : following).length === 0}
         onClose={() => setConnectionsSheet(null)}
         onSelectUser={(id) => {
           setConnectionsSheet(null);

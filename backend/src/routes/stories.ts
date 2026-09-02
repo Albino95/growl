@@ -67,17 +67,28 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
   const viewerId = ctx.userId || '';
   
   try {
-    // Fetch only active stories and annotate each with viewer view state.
+    // Prefer correlated subqueries over JOIN+GROUP BY so D1 does not multiply
+    // story rows by every story_views row (blows free-tier row reads).
     const storiesQuery = `
-      SELECT 
-        s.*,
+      SELECT
+        s.id,
+        s.user_id,
+        s.image_url,
+        s.caption,
+        s.views,
+        s.expires_at,
+        s.created_at,
+        s.updated_at,
         u.metadata as user_metadata,
-        COUNT(DISTINCT sv.user_id) as view_count,
-        CASE WHEN sv_viewer.user_id IS NOT NULL THEN 1 ELSE 0 END as has_viewed
+        (SELECT COUNT(*) FROM story_views sv WHERE sv.story_id = s.id) as view_count,
+        CASE
+          WHEN ? != '' AND EXISTS (
+            SELECT 1 FROM story_views sv_viewer
+            WHERE sv_viewer.story_id = s.id AND sv_viewer.user_id = ?
+          ) THEN 1 ELSE 0
+        END as has_viewed
       FROM stories s
       JOIN users u ON s.user_id = u.id
-      LEFT JOIN story_views sv ON s.id = sv.story_id
-      LEFT JOIN story_views sv_viewer ON s.id = sv_viewer.story_id AND sv_viewer.user_id = ?
       WHERE s.created_at > datetime('now', '-24 hours')
       ${
         viewerId
@@ -92,11 +103,11 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
             )`
           : ''
       }
-      GROUP BY s.id
       ORDER BY s.created_at DESC
+      LIMIT 200
     `;
     const stories = await env.DB.prepare(storiesQuery)
-      .bind(...(viewerId ? [viewerId, viewerId, viewerId] : [viewerId]))
+      .bind(...(viewerId ? [viewerId, viewerId, viewerId, viewerId] : ['', '']))
       .all<{
         id: string;
         user_id: string;
@@ -120,12 +131,17 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
         groupedStories[userId] = [];
       }
       
-      const userMeta = JSON.parse(story.user_metadata || '{}');
+      let userMeta: Record<string, unknown> = {};
+      try {
+        userMeta = JSON.parse(story.user_metadata || '{}') as Record<string, unknown>;
+      } catch {
+        userMeta = {};
+      }
       groupedStories[userId].push({
         id: story.id,
         userId: story.user_id,
-        username: userMeta.username || 'User',
-        avatar: userMeta.avatar || null,
+        username: (typeof userMeta.username === 'string' && userMeta.username) || 'User',
+        avatar: (typeof userMeta.avatar === 'string' && userMeta.avatar) || null,
         image: story.image_url,
         caption: story.caption,
         views: story.view_count,
@@ -205,14 +221,19 @@ export async function getUserStories(
       .bind(userId)
       .first<{ metadata: string }>();
 
-    const userMeta = JSON.parse(user?.metadata || '{}');
+    let userMeta: Record<string, unknown> = {};
+    try {
+      userMeta = JSON.parse(user?.metadata || '{}') as Record<string, unknown>;
+    } catch {
+      userMeta = {};
+    }
 
     return json({
       stories: (stories.results || []).map((story) => ({
         id: story.id,
         userId: story.user_id,
-        username: userMeta.username || 'User',
-        avatar: userMeta.avatar || null,
+        username: (typeof userMeta.username === 'string' && userMeta.username) || 'User',
+        avatar: (typeof userMeta.avatar === 'string' && userMeta.avatar) || null,
         image: story.image_url,
         caption: story.caption,
         views: typeof story.view_count === 'number' ? story.view_count : story.views,

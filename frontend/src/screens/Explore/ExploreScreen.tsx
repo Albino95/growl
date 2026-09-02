@@ -143,7 +143,7 @@ export default function ExploreScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      // Soft refresh — avoid full-screen spinner flash when returning to the tab
       void load();
     }, [load])
   );
@@ -259,9 +259,10 @@ export default function ExploreScreen() {
     setAddingId(userId);
     try {
       const result = await addFriend(userId);
-      setFriendIds((prev) => new Set([...prev, userId]));
+      if (result.connected) {
+        setFriendIds((prev) => new Set([...prev, userId]));
+      }
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
-      // Keep posts visible so users can still open them after sending a request.
       Alert.alert(
         result.connected ? 'Friends' : 'Request sent',
         result.connected
@@ -380,7 +381,7 @@ export default function ExploreScreen() {
             >
               <Image
                 source={{
-                  uri: product.image_url || `https://picsum.photos/seed/${product.id}/400/500`,
+                  uri: product.image_url || '',
                 }}
                 style={tw`w-full h-44 bg-stone-100`}
                 contentFit="cover"
