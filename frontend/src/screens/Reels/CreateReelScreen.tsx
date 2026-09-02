@@ -32,6 +32,7 @@ import PostCaptionOverlay from '../Post/components/PostCaptionOverlay';
 import PostCategorySheet from '../Post/components/PostCategorySheet';
 import PostStickyBar from '../Post/components/PostStickyBar';
 import { openReelsAtPost } from '../../utils/reelNavigation';
+import { reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import tw from '../../lib/tw';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
@@ -272,6 +273,8 @@ export default function CreateReelScreen({ navigation }: Props) {
         ? selectedCategory.split(':')[1]
         : undefined;
 
+      const soundtrack = reelSoundtrackFromEdit(videoEdit);
+
       const created = await createFeedPost({
         image_url: mediaUrl,
         caption: caption.trim() || '',
@@ -282,6 +285,9 @@ export default function CreateReelScreen({ navigation }: Props) {
           media_type: uploadedKind,
           content_type: contentType,
           ...(uploadedKind === 'video' ? { video_edit: videoEdit } : {}),
+          ...(soundtrack.audioUrl
+            ? { audio_url: soundtrack.audioUrl, audio_title: soundtrack.audioTitle }
+            : {}),
         },
       });
 
@@ -298,6 +304,9 @@ export default function CreateReelScreen({ navigation }: Props) {
               content_type: contentType,
               ...serverMeta,
               ...(uploadedKind === 'video' ? { video_edit: videoEdit } : {}),
+              ...(soundtrack.audioUrl
+                ? { audio_url: soundtrack.audioUrl, audio_title: soundtrack.audioTitle }
+                : {}),
               username:
                 serverMeta.username ||
                 user?.username ||

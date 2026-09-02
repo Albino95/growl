@@ -106,7 +106,7 @@ function mapStoryToProfileStory(s: StoryItem): Story {
     userId: s.userId,
     username: s.username,
     avatar: s.avatar,
-    image: s.image,
+    image: resolveStoryDisplayUri(s.image, s.userId, s.id),
     createdAt: s.createdAt,
     views: s.views ?? 0,
     hasViewed: !!s.hasViewed,
@@ -199,12 +199,13 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     } finally {
       setProfileLoading(false);
     }
-  }, [user?.id, user?.decayTimer, updateUser]);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
+      if (connectionsSheet) return;
       void loadProfileContent();
-    }, [loadProfileContent])
+    }, [loadProfileContent, connectionsSheet])
   );
 
   useEffect(() => {
@@ -805,9 +806,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                         style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
                       >
                         <Image
-                          source={{ uri: resolveStoryDisplayUri(story.image, user?.id || 'me', story.id) }}
+                          source={{ uri: story.image }}
                           style={tw`w-full h-full`}
                           contentFit="cover"
+                          placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+                          transition={200}
                         />
                       </View>
                       <Text style={tw`text-xs text-stone-500`}>{story.views} views</Text>
@@ -955,7 +958,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         visible={connectionsSheet !== null}
         mode={connectionsSheet ?? 'following'}
         users={connectionsSheet === 'followers' ? followers : following}
-        loading={profileLoading}
+        loading={false}
         onClose={() => setConnectionsSheet(null)}
         onSelectUser={(id) => {
           setConnectionsSheet(null);

@@ -4,11 +4,14 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Pressable,
   Dimensions,
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
   Modal,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -18,13 +21,20 @@ import { getForYouFeed, getFeedPost, toggleFeedPostLike, type FeedPost } from '.
 import { isVideoMedia } from '../../services/api/media';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { isReelPost } from '../../utils/reelNavigation';
-import { ReelVideoPlayer, type VideoEditSettings } from '../../components/ui/VideoEditor';
+import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
+import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 import CommentsScreen from '../Comments/CommentsScreen';
+import HeartBurst from '../../components/feed/HeartBurst';
+import FeedLikeButton, {
+  ReactionPickerBar,
+  type FeedReaction,
+} from '../../components/feed/FeedLikeButton';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import tw from '../../lib/tw';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-type ReelRow = FeedPost & { liked: boolean };
+type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
 type ReelsRoute = RouteProp<
   { Reels: { startPostId?: string; seedPost?: FeedPost } | undefined },
@@ -96,7 +106,12 @@ export default function ReelsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [commentsPost, setCommentsPost] = useState<ReelRow | null>(null);
+  const [reactionsById, setReactionsById] = useState<Record<string, FeedReaction>>({});
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [heartBurst, setHeartBurst] = useState<Record<string, number>>({});
   const flatListRef = useRef<FlatList>(null);
+  const lastTapRef = useRef<{ id: string; at: number } | null>(null);
+  const pullRefreshingRef = useRef(false);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: Array<{ item: ReelRow }> }) => {
@@ -148,12 +163,25 @@ export default function ReelsScreen() {
 
       const reels = merged
         .filter((p) => isReelPost(p))
-        .map((p) => ({ ...p, liked: !!p.metadata?.has_liked }))
+        .map((p) => ({
+          ...p,
+          liked: !!p.metadata?.has_liked,
+          reaction: (p.metadata?.has_liked ? 'love' : null) as FeedReaction,
+        }))
         .sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
 
       setItems(reels);
+      setReactionsById((prev) => {
+        const next = { ...prev };
+        for (const row of reels) {
+          if (next[row.id] === undefined) {
+            next[row.id] = row.liked ? 'love' : null;
+          }
+        }
+        return next;
+      });
 
       if (targetId) {
         const idx = reels.findIndex((r) => r.id === targetId);
@@ -172,6 +200,7 @@ export default function ReelsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      pullRefreshingRef.current = false;
     }
   }, [seedPost]);
 
@@ -200,28 +229,146 @@ export default function ReelsScreen() {
   }, [items]);
 
   const onRefresh = () => {
+    if (pullRefreshingRef.current) return;
+    pullRefreshingRef.current = true;
     setRefreshing(true);
     void load();
   };
 
-  const onToggleLike = async (postId: string) => {
+  const playHeartBurst = useCallback((postId: string) => {
+    setHeartBurst((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
+  }, []);
+
+  const onToggleLike = async (postId: string, opts?: { fromDoubleTap?: boolean }) => {
+    const current = items.find((row) => row.id === postId);
+    const wasLiked = !!current?.liked;
+
+    if (opts?.fromDoubleTap && wasLiked) {
+      playHeartBurst(postId);
+      return;
+    }
+
+    const nextLiked = !wasLiked;
+    const nextLikes = nextLiked
+      ? (current?.metadata?.likes ?? 0) + 1
+      : Math.max(0, (current?.metadata?.likes ?? 0) - 1);
+
+    setItems((prev) =>
+      prev.map((row) => {
+        if (row.id !== postId) return row;
+        return {
+          ...row,
+          liked: nextLiked,
+          reaction: nextLiked ? reactionsById[postId] || 'love' : null,
+          metadata: { ...row.metadata, likes: nextLikes },
+        };
+      })
+    );
+    setReactionsById((prev) => ({
+      ...prev,
+      [postId]: nextLiked ? prev[postId] || 'love' : null,
+    }));
+    if (nextLiked) playHeartBurst(postId);
+
     try {
       const res = await toggleFeedPostLike(postId);
       const liked = !!res.data?.liked;
       setItems((prev) =>
         prev.map((row) => {
           if (row.id !== postId) return row;
-          const base = row.metadata?.likes ?? 0;
-          const nextLikes = liked ? base + (row.liked ? 0 : 1) : base - (row.liked ? 1 : 0);
+          const base = current?.metadata?.likes ?? 0;
+          const likes = liked
+            ? wasLiked
+              ? base
+              : base + 1
+            : Math.max(0, base - (wasLiked ? 1 : 0));
           return {
             ...row,
             liked,
-            metadata: { ...row.metadata, likes: Math.max(0, nextLikes) },
+            reaction: liked ? reactionsById[postId] || 'love' : null,
+            metadata: { ...row.metadata, likes },
           };
         })
       );
+      setReactionsById((prev) => ({
+        ...prev,
+        [postId]: liked ? prev[postId] || 'love' : null,
+      }));
     } catch {
-      /* ignore */
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === postId
+            ? {
+                ...row,
+                liked: wasLiked,
+                reaction: wasLiked ? reactionsById[postId] || 'love' : null,
+                metadata: {
+                  ...row.metadata,
+                  likes: current?.metadata?.likes ?? 0,
+                },
+              }
+            : row
+        )
+      );
+      setReactionsById((prev) => ({
+        ...prev,
+        [postId]: wasLiked ? prev[postId] || 'love' : null,
+      }));
+    }
+  };
+
+  const setReaction = async (postId: string, reaction: FeedReaction) => {
+    setShowReactionPicker(null);
+    const current = items.find((row) => row.id === postId);
+    if (!reaction) {
+      if (current?.liked) await onToggleLike(postId);
+      return;
+    }
+
+    try {
+      if (!current?.liked) {
+        await toggleFeedPostLike(postId);
+      }
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === postId
+            ? {
+                ...row,
+                liked: true,
+                reaction,
+                metadata: {
+                  ...row.metadata,
+                  likes: current?.liked
+                    ? row.metadata?.likes ?? 0
+                    : (row.metadata?.likes ?? 0) + 1,
+                },
+              }
+            : row
+        )
+      );
+      setReactionsById((prev) => ({ ...prev, [postId]: reaction }));
+      if (reaction === 'love') playHeartBurst(postId);
+    } catch {
+      /* keep optimistic UI */
+    }
+  };
+
+  const handleReelPress = (postId: string) => {
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (last && last.id === postId && now - last.at < 320) {
+      lastTapRef.current = null;
+      triggerPressFeedback();
+      void onToggleLike(postId, { fromDoubleTap: true });
+      return;
+    }
+    lastTapRef.current = { id: postId, at: now };
+  };
+
+  const handleScrollEndDrag = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    if (y < -72 && !refreshing && !pullRefreshingRef.current) {
+      onRefresh();
     }
   };
 
@@ -237,11 +384,12 @@ export default function ReelsScreen() {
       contentType: item.metadata?.content_type,
     });
     const isActive = activeId === item.id;
-    const videoEdit = (item.metadata?.video_edit || null) as VideoEditSettings | null;
+    const videoEdit = reelPlaybackSettingsFromMetadata(item.metadata);
+    const reaction = reactionsById[item.id] ?? (item.liked ? 'love' : null);
 
     return (
       <View style={[tw`bg-black`, { height: SCREEN_HEIGHT }]}>
-        <View style={tw`flex-1`}>
+        <Pressable style={tw`flex-1`} onPress={() => handleReelPress(item.id)}>
           {isVideo ? (
             <ReelVideoPlayer
               uri={uri}
@@ -253,7 +401,8 @@ export default function ReelsScreen() {
             <Image source={{ uri }} style={tw`absolute inset-0 w-full h-full`} contentFit="cover" transition={200} />
           )}
           <View style={tw`absolute inset-0 bg-black/25`} pointerEvents="none" />
-        </View>
+          <HeartBurst triggerKey={heartBurst[item.id] || 0} />
+        </Pressable>
 
         <View style={tw`absolute bottom-0 left-0 right-0 pb-10 px-4`} pointerEvents="box-none">
           <View style={tw`flex-row items-end justify-between`}>
@@ -283,16 +432,25 @@ export default function ReelsScreen() {
             </View>
 
             <View style={tw`items-center gap-5 pb-2`}>
-              <TouchableOpacity style={tw`items-center`} onPress={() => void onToggleLike(item.id)}>
+              <View style={tw`items-center relative`}>
+                {showReactionPicker === item.id ? (
+                  <View style={tw`absolute bottom-14 right-0 z-20`}>
+                    <ReactionPickerBar onPick={(r) => void setReaction(item.id, r)} />
+                  </View>
+                ) : null}
                 <View style={tw`w-12 h-12 rounded-full bg-black/40 items-center justify-center`}>
-                  <Ionicons
-                    name={item.liked ? 'heart' : 'heart-outline'}
-                    size={26}
-                    color={item.liked ? '#F87171' : '#FFFFFF'}
+                  <FeedLikeButton
+                    hasLiked={item.liked}
+                    reaction={reaction}
+                    tone="dark"
+                    onPress={() => void onToggleLike(item.id)}
+                    onLongPress={() =>
+                      setShowReactionPicker((prev) => (prev === item.id ? null : item.id))
+                    }
                   />
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(likes)}</Text>
-              </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 style={tw`items-center`}
                 onPress={() => setCommentsPost(item)}
@@ -351,7 +509,15 @@ export default function ReelsScreen() {
             });
           }, 100);
         }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+        onScrollEndDrag={handleScrollEndDrag}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#fff"
+            progressViewOffset={80}
+          />
+        }
         getItemLayout={(_, index) => ({
           length: SCREEN_HEIGHT,
           offset: SCREEN_HEIGHT * index,

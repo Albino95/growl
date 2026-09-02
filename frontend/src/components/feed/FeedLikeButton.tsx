@@ -11,12 +11,23 @@ type Props = {
   reaction: FeedReaction;
   onPress: () => void;
   onLongPress: () => void;
+  /** Light = feed cards; dark = reels overlay */
+  tone?: 'light' | 'dark';
 };
 
-function ReactionGlyph({ reaction, hasLiked }: { reaction: FeedReaction; hasLiked: boolean }) {
+function ReactionGlyph({
+  reaction,
+  hasLiked,
+  tone = 'light',
+}: {
+  reaction: FeedReaction;
+  hasLiked: boolean;
+  tone?: 'light' | 'dark';
+}) {
   const active = hasLiked || reaction != null;
+  const outlineColor = tone === 'dark' ? '#FFFFFF' : '#374151';
   if (!active) {
-    return <Ionicons name="heart-outline" size={28} color="#374151" />;
+    return <Ionicons name="heart-outline" size={28} color={outlineColor} />;
   }
   const r = reaction || 'love';
   switch (r) {
@@ -35,7 +46,13 @@ function ReactionGlyph({ reaction, hasLiked }: { reaction: FeedReaction; hasLike
 }
 
 /** Like / reaction control with a bounce when the heart fills. */
-export default function FeedLikeButton({ hasLiked, reaction, onPress, onLongPress }: Props) {
+export default function FeedLikeButton({
+  hasLiked,
+  reaction,
+  onPress,
+  onLongPress,
+  tone = 'light',
+}: Props) {
   const scale = useRef(new Animated.Value(1)).current;
   const prevLiked = useRef(hasLiked);
 
@@ -65,7 +82,7 @@ export default function FeedLikeButton({ hasLiked, reaction, onPress, onLongPres
       accessibilityLabel={hasLiked ? 'Unlike' : 'Like'}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        <ReactionGlyph reaction={reaction} hasLiked={hasLiked} />
+        <ReactionGlyph reaction={reaction} hasLiked={hasLiked} tone={tone} />
       </Animated.View>
     </Pressable>
   );

@@ -45,6 +45,7 @@ import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import type { VideoEditSettings } from '../../components/ui/VideoEditor';
 
@@ -148,6 +149,16 @@ export default function FeedScreen({ navigation, route }: any) {
     const hasLiked = !!post.metadata?.has_liked;
 
     const imageUri = resolvePostMediaUri(post.image_url, post.category || 'general', post.id);
+    const videoEdit = reelPlaybackSettingsFromMetadata(post.metadata ?? undefined);
+    const soundtrack = reelSoundtrackFromEdit(videoEdit);
+    const audioUrl =
+      typeof post.metadata?.audio_url === 'string'
+        ? post.metadata.audio_url
+        : soundtrack.audioUrl;
+    const audioTitle =
+      typeof post.metadata?.audio_title === 'string'
+        ? post.metadata.audio_title
+        : soundtrack.audioTitle || videoEdit?.audioTitle || undefined;
 
     return {
       id: post.id,
@@ -167,16 +178,14 @@ export default function FeedScreen({ navigation, route }: any) {
       friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
       isFriend: !!post.metadata?.is_friend,
       isOwn: post.user_id === user?.id,
-      audioUrl:
-        typeof post.metadata?.audio_url === 'string' ? post.metadata.audio_url : undefined,
-      audioTitle:
-        typeof post.metadata?.audio_title === 'string' ? post.metadata.audio_title : undefined,
+      audioUrl,
+      audioTitle,
       isReel: isReelPost(post),
       mediaType:
         typeof post.metadata?.media_type === 'string' ? post.metadata.media_type : undefined,
       contentType:
         typeof post.metadata?.content_type === 'string' ? post.metadata.content_type : undefined,
-      videoEdit: (post.metadata?.video_edit as VideoEditSettings | undefined) || null,
+      videoEdit,
     };
   };
 
@@ -237,7 +246,7 @@ export default function FeedScreen({ navigation, route }: any) {
               userId: s.userId,
               username: s.username,
               avatar: resolveAvatarUri(s.userId, s.username, s.avatar),
-              image: s.image,
+              image: resolveStoryDisplayUri(s.image, s.userId, s.id),
               // Keep optimistic views if a silent refresh races ahead of viewStory
               hasViewed: !!s.hasViewed || locallyViewed.has(s.id),
             }));
@@ -310,8 +319,9 @@ export default function FeedScreen({ navigation, route }: any) {
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
     const grouped = new Map<string, { user: Story; stories: Story[] }>();
-    
+
     stories.forEach((story) => {
+      if (user?.id && story.userId === user.id) return;
       if (!grouped.has(story.userId)) {
         grouped.set(story.userId, {
           user: story,
@@ -320,10 +330,14 @@ export default function FeedScreen({ navigation, route }: any) {
       }
       grouped.get(story.userId)!.stories.push(story);
     });
-    
-    const result = Array.from(grouped.values());
-    return result;
-  }, [stories]);
+
+    return Array.from(grouped.values());
+  }, [stories, user?.id]);
+
+  const myStories = useMemo(
+    () => (user?.id ? stories.filter((s) => s.userId === user.id) : []),
+    [stories, user?.id]
+  );
 
   // Check if viewer has posted today to avoid stale nudges.
   const hasPostedToday = useMemo(() => {
@@ -626,11 +640,59 @@ export default function FeedScreen({ navigation, route }: any) {
           style={tw`items-center mr-4`}
           onPress={() => {
             const rootNavigation = navigation.getParent() || navigation;
+            if (myStories.length > 0) {
+              const fullStories = myStories.map((s, idx) => ({
+                ...s,
+                image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+                createdAt: new Date(
+                  Date.now() - (myStories.length - idx) * 3600000
+                ).toISOString(),
+                views: 0,
+                hasViewed: true,
+              }));
+              rootNavigation.navigate('StoryViewer' as never, {
+                stories: fullStories,
+                initialIndex: 0,
+              } as never);
+              return;
+            }
             rootNavigation.navigate('CreateStory' as never);
           }}
+          onLongPress={() => {
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.navigate('CreateStory' as never);
+          }}
+          delayLongPress={400}
         >
-          <View style={tw`w-14 h-14 rounded-full border-2 border-dashed border-stone-300 items-center justify-center bg-white/60`}>
-            <Ionicons name="add" size={22} color="#78716C" />
+          <View style={tw`relative`}>
+            <View
+              style={tw`w-14 h-14 rounded-full border-2 ${
+                myStories.length > 0 ? 'border-emerald-500' : 'border-dashed border-stone-300'
+              } overflow-hidden items-center justify-center bg-white/60`}
+            >
+              {myStories.length > 0 ? (
+                <Image
+                  source={{
+                    uri: resolveStoryDisplayUri(
+                      myStories[myStories.length - 1]?.image,
+                      user?.id || 'me',
+                      myStories[myStories.length - 1]?.id
+                    ),
+                  }}
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
+              ) : (
+                <Ionicons name="add" size={22} color="#78716C" />
+              )}
+            </View>
+            {myStories.length > 0 ? (
+              <View
+                style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-600 border-2 border-[#FFFcf7] items-center justify-center`}
+              >
+                <Ionicons name="add" size={12} color="#fff" />
+              </View>
+            ) : null}
           </View>
           <Text style={tw`text-[11px] text-stone-600 mt-1`}>Your story</Text>
         </TouchableOpacity>
@@ -685,7 +747,22 @@ export default function FeedScreen({ navigation, route }: any) {
                 <View
                   style={tw`w-14 h-14 rounded-full border-2 ${
                     allViewed ? 'border-stone-300' : 'border-emerald-500'
-                  } items-center justify-center bg-emerald-50 p-0.5`}
+                  } overflow-hidden bg-stone-200`}
+                >
+                  <Image
+                    source={{
+                      uri: resolveStoryDisplayUri(
+                        userStories[userStories.length - 1]?.image,
+                        storyUser.userId,
+                        userStories[userStories.length - 1]?.id
+                      ),
+                    }}
+                    style={tw`w-full h-full`}
+                    contentFit="cover"
+                  />
+                </View>
+                <View
+                  style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-[#FFFcf7] overflow-hidden bg-emerald-100`}
                 >
                   <Image
                     source={{
@@ -695,7 +772,7 @@ export default function FeedScreen({ navigation, route }: any) {
                         storyUser.avatar
                       ),
                     }}
-                    style={tw`w-full h-full rounded-full`}
+                    style={tw`w-full h-full`}
                     contentFit="cover"
                   />
                 </View>

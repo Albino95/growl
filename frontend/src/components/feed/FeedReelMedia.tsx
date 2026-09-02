@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { isVideoMedia } from '../../services/api/media';
 import { ReelVideoPlayer, type VideoEditSettings } from '../ui/VideoEditor';
+import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
 import tw from '../../lib/tw';
 
 type Props = {
@@ -34,6 +35,10 @@ export default function FeedReelMedia({
   const mediaW = Math.min(screenW - 40, 420);
   const reelH = Math.round(mediaW * (16 / 9));
   const photoH = 384;
+  const playbackSettings =
+    reelPlaybackSettingsFromMetadata(videoEdit ? { video_edit: videoEdit } : null) ??
+    videoEdit ??
+    null;
   const isVideo = !!isReel && isVideoMedia({ uri, mediaType, contentType });
   const height = isReel ? reelH : photoH;
 
@@ -43,7 +48,7 @@ export default function FeedReelMedia({
         <View style={[tw`h-full bg-black overflow-hidden`, { width: mediaW, maxWidth: '100%' }]}>
           <ReelVideoPlayer
             uri={uri}
-            settings={videoEdit}
+            settings={playbackSettings}
             shouldPlay={isActive}
             useNativeControls={false}
             style={tw`w-full h-full`}

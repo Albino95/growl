@@ -31,6 +31,7 @@ export default function ReelVideoPlayer({
 }: Props) {
   const videoRef = useRef<Video>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const webAudioRef = useRef<HTMLAudioElement | null>(null);
   const edit = normalizeVideoEdit(settings);
   const look = getVideoLook(edit.lookId);
   const soundtrackUrl = getMusicPlaybackUrl(edit.audioTrackId, edit.audioUrl);
@@ -70,7 +71,8 @@ export default function ReelVideoPlayer({
 
   useEffect(() => {
     let cancelled = false;
-    const loadSound = async () => {
+
+    const loadNativeSound = async () => {
       if (soundRef.current) {
         try {
           await soundRef.current.unloadAsync();
@@ -79,43 +81,91 @@ export default function ReelVideoPlayer({
         }
         soundRef.current = null;
       }
-      if (!soundtrackUrl) return;
+      if (!soundtrackUrl || Platform.OS === 'web') return;
       try {
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           allowsRecordingIOS: false,
         });
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: soundtrackUrl },
-          {
-            shouldPlay,
-            isLooping: true,
-            volume: edit.audioVolume ?? 0.85,
+        let playbackUrl = soundtrackUrl;
+        try {
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: playbackUrl },
+            {
+              shouldPlay,
+              isLooping: true,
+              volume: edit.audioVolume ?? 0.85,
+            }
+          );
+          if (cancelled) {
+            await sound.unloadAsync();
+            return;
           }
-        );
-        if (cancelled) {
-          await sound.unloadAsync();
-          return;
+          soundRef.current = sound;
+        } catch {
+          const fallback = edit.audioUrl?.trim();
+          if (fallback && fallback !== playbackUrl) {
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: fallback },
+              {
+                shouldPlay,
+                isLooping: true,
+                volume: edit.audioVolume ?? 0.85,
+              }
+            );
+            if (cancelled) {
+              await sound.unloadAsync();
+              return;
+            }
+            soundRef.current = sound;
+          }
         }
-        soundRef.current = sound;
       } catch {
         soundRef.current = null;
       }
     };
-    void loadSound();
+
+    const loadWebSound = () => {
+      if (Platform.OS !== 'web' || typeof window === 'undefined' || !soundtrackUrl) return;
+      if (!webAudioRef.current) {
+        webAudioRef.current = new window.Audio();
+      }
+      const el = webAudioRef.current;
+      el.loop = true;
+      el.volume = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
+      if (el.src !== soundtrackUrl) {
+        el.src = soundtrackUrl;
+      }
+      if (shouldPlay) {
+        void el.play().catch(() => undefined);
+      } else {
+        el.pause();
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      loadWebSound();
+    } else {
+      void loadNativeSound();
+    }
+
     return () => {
       cancelled = true;
       if (soundRef.current) {
         void soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+      if (webAudioRef.current) {
+        webAudioRef.current.pause();
+      }
     };
-  }, [soundtrackUrl, edit.audioVolume, shouldPlay]);
+  }, [soundtrackUrl, edit.audioVolume, edit.audioUrl, shouldPlay]);
 
   useEffect(() => {
     if (!shouldPlay) {
       void videoRef.current?.pauseAsync();
       void soundRef.current?.pauseAsync();
+      webAudioRef.current?.pause();
       return;
     }
     void (async () => {
@@ -125,8 +175,15 @@ export default function ReelVideoPlayer({
         await soundRef.current.setPositionAsync(0);
         await soundRef.current.playAsync();
       }
+      if (webAudioRef.current && soundtrackUrl) {
+        try {
+          await webAudioRef.current.play();
+        } catch {
+          /* ignore */
+        }
+      }
     })();
-  }, [shouldPlay, trimStart, uri]);
+  }, [shouldPlay, trimStart, uri, soundtrackUrl]);
 
   const flipTransform = [
     { scaleX: edit.flipH ? -1 : 1 },
