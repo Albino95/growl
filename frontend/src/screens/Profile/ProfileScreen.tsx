@@ -8,6 +8,7 @@ import {
   FlatList,
   Modal,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -15,7 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, getStoryImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { isVideoMedia } from '../../services/api/media';
+import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
+import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
@@ -60,6 +64,9 @@ type Post = {
   daysUntilDecay: number;
   category: string;
   isReel?: boolean;
+  mediaType?: string;
+  contentType?: string;
+  videoEdit?: ReturnType<typeof reelPlaybackSettingsFromMetadata>;
 };
 
 type Story = {
@@ -96,6 +103,9 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
     category: p.category,
     isReel: isReelPost(p),
+    mediaType: typeof p.metadata?.media_type === 'string' ? p.metadata.media_type : undefined,
+    contentType: typeof p.metadata?.content_type === 'string' ? p.metadata.content_type : undefined,
+    videoEdit: reelPlaybackSettingsFromMetadata(p.metadata ?? undefined),
   };
 }
 
@@ -106,11 +116,88 @@ function mapStoryToProfileStory(s: StoryItem): Story {
     userId: s.userId,
     username: s.username,
     avatar: s.avatar,
-    image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+    image: s.image || '',
     createdAt: s.createdAt,
     views: s.views ?? 0,
     hasViewed: !!s.hasViewed,
   };
+}
+
+function ProfileStoryThumb({
+  story,
+  userId,
+}: {
+  story: Story;
+  userId?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const ownerId = story.userId || userId || 'me';
+  const uri = resolveStoryDisplayUri(story.image, ownerId, story.id);
+  const fallback = getStoryImageUrl(ownerId, story.id);
+  const isVideo = isVideoMedia({ uri });
+
+  if (isVideo) {
+    return (
+      <View style={tw`w-20 h-20 rounded-xl overflow-hidden bg-stone-900`}>
+        <ReelVideoPlayer uri={uri} shouldPlay={false} style={StyleSheet.absoluteFillObject} />
+        <View
+          style={tw`absolute bottom-1 right-1 bg-black/55 px-1.5 py-0.5 rounded flex-row items-center`}
+          pointerEvents="none"
+        >
+          <Ionicons name="play" size={10} color="#fff" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: failed ? fallback : uri }}
+      style={tw`w-20 h-20 rounded-xl`}
+      contentFit="cover"
+      placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+      transition={200}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ProfilePostThumb({ post }: { post: Post }) {
+  const isVideo =
+    post.isReel &&
+    isVideoMedia({
+      uri: post.image,
+      mediaType: post.mediaType,
+      contentType: post.contentType,
+    });
+
+  if (isVideo) {
+    return (
+      <View style={tw`w-16 h-16 rounded-xl mr-3 overflow-hidden bg-stone-900`}>
+        <ReelVideoPlayer
+          uri={post.image}
+          settings={post.videoEdit}
+          shouldPlay={false}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={tw`absolute bottom-0.5 right-0.5 bg-black/60 px-1 py-0.5 rounded`}
+          pointerEvents="none"
+        >
+          <Ionicons name="film-outline" size={10} color="#fff" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: post.image }}
+      style={tw`w-16 h-16 rounded-xl mr-3`}
+      contentFit="cover"
+      placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+    />
+  );
 }
 
 export default function ProfileScreen({ navigation: navProp }: any) {
@@ -743,11 +830,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View style={tw`flex-row items-center`}>
-                    <Image
-                      source={{ uri: post.image }}
-                      style={tw`w-16 h-16 rounded-xl mr-3`}
-                      contentFit="cover"
-                    />
+                    <ProfilePostThumb post={post} />
                     <View style={tw`flex-1`}>
                       <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
                         {post.caption}
@@ -805,13 +888,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       <View
                         style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
                       >
-                        <Image
-                          source={{ uri: story.image }}
-                          style={tw`w-full h-full`}
-                          contentFit="cover"
-                          placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-                          transition={200}
-                        />
+                        <ProfileStoryThumb story={story} userId={user?.id} />
                       </View>
                       <Text style={tw`text-xs text-stone-500`}>{story.views} views</Text>
                       <Text style={tw`text-xs text-stone-400 mt-1`}>

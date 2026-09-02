@@ -13,6 +13,8 @@ type Props = {
   onLongPress: () => void;
   /** Light = feed cards; dark = reels overlay */
   tone?: 'light' | 'dark';
+  /** Removes feed margin so icon centers in circular reel actions */
+  compact?: boolean;
 };
 
 function ReactionGlyph({
@@ -52,6 +54,7 @@ export default function FeedLikeButton({
   onPress,
   onLongPress,
   tone = 'light',
+  compact = false,
 }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
   const prevLiked = useRef(hasLiked);
@@ -77,7 +80,7 @@ export default function FeedLikeButton({
       onLongPress={onLongPress}
       delayLongPress={280}
       hitSlop={10}
-      style={tw`mr-3`}
+      style={compact ? tw`items-center justify-center` : tw`mr-3`}
       accessibilityRole="button"
       accessibilityLabel={hasLiked ? 'Unlike' : 'Like'}
     >

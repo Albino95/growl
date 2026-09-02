@@ -109,8 +109,10 @@ export default function ReelsScreen() {
   const [reactionsById, setReactionsById] = useState<Record<string, FeedReaction>>({});
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [heartBurst, setHeartBurst] = useState<Record<string, number>>({});
+  const [userPausedIds, setUserPausedIds] = useState<Set<string>>(new Set());
   const flatListRef = useRef<FlatList>(null);
   const lastTapRef = useRef<{ id: string; at: number } | null>(null);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pullRefreshingRef = useRef(false);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
   const onViewableItemsChanged = useRef(
@@ -227,6 +229,17 @@ export default function ReelsScreen() {
       setTimeout(scroll, 50);
     });
   }, [items]);
+
+  useEffect(() => {
+    setUserPausedIds(new Set());
+  }, [activeId]);
+
+  useEffect(
+    () => () => {
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    },
+    []
+  );
 
   const onRefresh = () => {
     if (pullRefreshingRef.current) return;
@@ -353,16 +366,36 @@ export default function ReelsScreen() {
     }
   };
 
+  const toggleReelPlayback = useCallback((postId: string) => {
+    setUserPausedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  }, []);
+
   const handleReelPress = (postId: string) => {
     const now = Date.now();
     const last = lastTapRef.current;
     if (last && last.id === postId && now - last.at < 320) {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
       lastTapRef.current = null;
       triggerPressFeedback();
       void onToggleLike(postId, { fromDoubleTap: true });
       return;
     }
     lastTapRef.current = { id: postId, at: now };
+    if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    singleTapTimerRef.current = setTimeout(() => {
+      singleTapTimerRef.current = null;
+      lastTapRef.current = null;
+      triggerPressFeedback();
+      toggleReelPlayback(postId);
+    }, 320);
   };
 
   const handleScrollEndDrag = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -384,6 +417,8 @@ export default function ReelsScreen() {
       contentType: item.metadata?.content_type,
     });
     const isActive = activeId === item.id;
+    const isUserPaused = userPausedIds.has(item.id);
+    const shouldPlay = isActive && !isUserPaused;
     const videoEdit = reelPlaybackSettingsFromMetadata(item.metadata);
     const reaction = reactionsById[item.id] ?? (item.liked ? 'love' : null);
 
@@ -394,13 +429,20 @@ export default function ReelsScreen() {
             <ReelVideoPlayer
               uri={uri}
               settings={videoEdit}
-              shouldPlay={isActive}
+              shouldPlay={shouldPlay}
               style={StyleSheet.absoluteFillObject}
             />
           ) : (
             <Image source={{ uri }} style={tw`absolute inset-0 w-full h-full`} contentFit="cover" transition={200} />
           )}
           <View style={tw`absolute inset-0 bg-black/25`} pointerEvents="none" />
+          {isUserPaused ? (
+            <View style={tw`absolute inset-0 items-center justify-center`} pointerEvents="none">
+              <View style={tw`w-20 h-20 rounded-full bg-black/45 items-center justify-center border border-white/30`}>
+                <Ionicons name="play" size={40} color="#FFFFFF" style={tw`ml-1`} />
+              </View>
+            </View>
+          ) : null}
           <HeartBurst triggerKey={heartBurst[item.id] || 0} />
         </Pressable>
 
@@ -443,6 +485,7 @@ export default function ReelsScreen() {
                     hasLiked={item.liked}
                     reaction={reaction}
                     tone="dark"
+                    compact
                     onPress={() => void onToggleLike(item.id)}
                     onLongPress={() =>
                       setShowReactionPicker((prev) => (prev === item.id ? null : item.id))
