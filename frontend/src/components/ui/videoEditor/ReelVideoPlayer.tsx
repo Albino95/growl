@@ -201,13 +201,15 @@ export default function ReelVideoPlayer({
   ];
 
   return (
-    <View style={[tw`overflow-hidden bg-black`, style]}>
+    <View style={[tw`overflow-hidden bg-black`, { width: '100%', height: '100%' }, style]}>
       <Video
         ref={videoRef}
         source={{ uri }}
         style={[
           StyleSheet.absoluteFillObject,
-          { transform: flipTransform },
+          { width: '100%', height: '100%', transform: flipTransform },
+          // Web <video> ignores ResizeMode.COVER unless object-fit is set.
+          Platform.OS === 'web' ? ({ objectFit: 'cover' } as object) : null,
           webFilter ? ({ filter: webFilter } as object) : null,
         ]}
         resizeMode={ResizeMode.COVER}

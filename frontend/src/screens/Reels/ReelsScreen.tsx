@@ -423,28 +423,36 @@ export default function ReelsScreen() {
     const reaction = reactionsById[item.id] ?? (item.liked ? 'love' : null);
 
     return (
-      <View style={[tw`bg-black`, { height: SCREEN_HEIGHT }]}>
-        <Pressable style={tw`flex-1`} onPress={() => handleReelPress(item.id)}>
-          {isVideo ? (
-            <ReelVideoPlayer
-              uri={uri}
-              settings={videoEdit}
-              shouldPlay={shouldPlay}
-              style={StyleSheet.absoluteFillObject}
-            />
-          ) : (
-            <Image source={{ uri }} style={tw`absolute inset-0 w-full h-full`} contentFit="cover" transition={200} />
-          )}
-          <View style={tw`absolute inset-0 bg-black/25`} pointerEvents="none" />
-          {isUserPaused ? (
-            <View style={tw`absolute inset-0 items-center justify-center`} pointerEvents="none">
-              <View style={tw`w-20 h-20 rounded-full bg-black/45 items-center justify-center border border-white/30`}>
-                <Ionicons name="play" size={40} color="#FFFFFF" style={tw`ml-1`} />
+      <View style={[tw`bg-black overflow-hidden`, { height: SCREEN_HEIGHT, width: '100%' }]}>
+        {/* Full-bleed media plane — absolute so flex/Pressable quirks can't shrink the video */}
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => handleReelPress(item.id)}>
+            {isVideo ? (
+              <ReelVideoPlayer
+                uri={uri}
+                settings={videoEdit}
+                shouldPlay={shouldPlay}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : (
+              <Image
+                source={{ uri }}
+                style={StyleSheet.absoluteFillObject}
+                contentFit="cover"
+                transition={200}
+              />
+            )}
+            <View style={tw`absolute inset-0 bg-black/20`} pointerEvents="none" />
+            {isUserPaused ? (
+              <View style={tw`absolute inset-0 items-center justify-center`} pointerEvents="none">
+                <View style={tw`w-20 h-20 rounded-full bg-black/45 items-center justify-center border border-white/30`}>
+                  <Ionicons name="play" size={40} color="#FFFFFF" style={tw`ml-1`} />
+                </View>
               </View>
-            </View>
-          ) : null}
-          <HeartBurst triggerKey={heartBurst[item.id] || 0} />
-        </Pressable>
+            ) : null}
+            <HeartBurst triggerKey={heartBurst[item.id] || 0} />
+          </Pressable>
+        </View>
 
         <View style={tw`absolute bottom-0 left-0 right-0 pb-10 px-4`} pointerEvents="box-none">
           <View style={tw`flex-row items-end justify-between`}>
