@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-surface-muted text-slate-900 antialiased;
+    @apply bg-[#f3eee4] text-stone-900 antialiased;
   }
 }
 

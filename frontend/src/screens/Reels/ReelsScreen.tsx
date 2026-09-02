@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -18,6 +19,7 @@ import { isVideoMedia } from '../../services/api/media';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { isReelPost } from '../../utils/reelNavigation';
 import { ReelVideoPlayer, type VideoEditSettings } from '../../components/ui/VideoEditor';
+import CommentsScreen from '../Comments/CommentsScreen';
 import tw from '../../lib/tw';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -37,7 +39,7 @@ function formatCompact(n: number): string {
 
 function ReelsHeader({ onBack, onCreate }: { onBack: () => void; onCreate: () => void }) {
   return (
-    <SafeAreaView edges={['top']} style={tw`bg-black border-b border-white/10`}>
+    <SafeAreaView edges={['top']} style={tw`bg-black/80`}>
       <View style={tw`flex-row items-center justify-between px-4 py-2`}>
         <TouchableOpacity
           onPress={onBack}
@@ -46,7 +48,12 @@ function ReelsHeader({ onBack, onCreate }: { onBack: () => void; onCreate: () =>
         >
           <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
+        <View style={tw`items-center`}>
+          <Text style={tw`text-[10px] tracking-[2px] uppercase text-emerald-400 font-bold`}>
+            Grow!
+          </Text>
+          <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
+        </View>
         <TouchableOpacity
           onPress={onCreate}
           hitSlop={12}
@@ -88,6 +95,7 @@ export default function ReelsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [commentsPost, setCommentsPost] = useState<ReelRow | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
   const onViewableItemsChanged = useRef(
@@ -262,7 +270,11 @@ export default function ReelsScreen() {
                 <Image source={{ uri: avatar }} style={tw`w-10 h-10 rounded-full border-2 border-white mr-3`} />
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-white font-semibold`}>{username}</Text>
-                  <Text style={tw`text-white/70 text-xs capitalize`}>{item.category}</Text>
+                  <View style={tw`self-start mt-0.5 px-2 py-0.5 rounded-full bg-brand-600/30 border border-brand-500/40`}>
+                    <Text style={tw`text-emerald-200 text-[10px] font-semibold capitalize`}>
+                      {item.category}
+                    </Text>
+                  </View>
                 </View>
               </TouchableOpacity>
               <Text style={tw`text-white`} numberOfLines={3}>
@@ -281,12 +293,15 @@ export default function ReelsScreen() {
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(likes)}</Text>
               </TouchableOpacity>
-              <View style={tw`items-center`}>
+              <TouchableOpacity
+                style={tw`items-center`}
+                onPress={() => setCommentsPost(item)}
+              >
                 <View style={tw`w-12 h-12 rounded-full bg-black/40 items-center justify-center`}>
                   <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" />
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(comments)}</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -346,6 +361,31 @@ export default function ReelsScreen() {
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={tw`absolute top-0 left-0 right-0`}>
         <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
       </SafeAreaView>
+
+      {commentsPost ? (
+        <Modal
+          visible
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setCommentsPost(null)}
+        >
+          <CommentsScreen
+            postId={commentsPost.id}
+            postUsername={commentsPost.metadata?.username || 'Member'}
+            postCaption={commentsPost.caption || ''}
+            onClose={() => setCommentsPost(null)}
+            onCommentsChanged={(count) => {
+              setItems((prev) =>
+                prev.map((row) =>
+                  row.id === commentsPost.id
+                    ? { ...row, metadata: { ...row.metadata, comments: count } }
+                    : row
+                )
+              );
+            }}
+          />
+        </Modal>
+      ) : null}
     </View>
   );
 }

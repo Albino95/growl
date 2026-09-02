@@ -82,8 +82,8 @@ export default function Hero() {
           transition={{ duration: 0.6, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
           className="mt-4 max-w-md text-base leading-relaxed text-emerald-100/85 sm:text-lg"
         >
-          Interest-based feeds, peer instructors, and a curated marketplace — so every scroll
-          pushes you forward.
+          Interest-based feeds, vertical reels, peer instructors, and a curated marketplace — so
+          every scroll pushes you forward.
         </motion.p>
 
         <motion.div

@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
-import { createFeedPost } from '../../services/api/feed';
+import { createFeedPost, type FeedPost } from '../../services/api/feed';
 import { uploadMediaApi, uploadMediaFile, isVideoMedia } from '../../services/api/media';
 import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { useAuth, useAppDispatch } from '../../store/hooks';
@@ -31,6 +31,7 @@ import PostComposerLayout from '../Post/components/PostComposerLayout';
 import PostCaptionOverlay from '../Post/components/PostCaptionOverlay';
 import PostCategorySheet from '../Post/components/PostCategorySheet';
 import PostStickyBar from '../Post/components/PostStickyBar';
+import { openReelsAtPost } from '../../utils/reelNavigation';
 import tw from '../../lib/tw';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
@@ -40,6 +41,23 @@ type MediaKind = 'image' | 'video';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STAGE_HEIGHT = Math.min(Math.round(SCREEN_WIDTH * (16 / 9)), Math.round(SCREEN_HEIGHT * 0.62));
 const HEADER_OFFSET = 56;
+
+function StepPill({ label, active, done }: { label: string; active?: boolean; done?: boolean }) {
+  return (
+    <View
+      style={tw`flex-row items-center px-3 py-1.5 rounded-full mr-2 ${
+        active ? 'bg-brand-600' : done ? 'bg-white/20' : 'bg-white/10'
+      }`}
+    >
+      {done ? <Ionicons name="checkmark" size={12} color="#A7F3D0" style={tw`mr-1`} /> : null}
+      <Text
+        style={tw`text-[11px] font-bold ${active || done ? 'text-white' : 'text-white/50'}`}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 function ToolChip({
   icon,
@@ -95,22 +113,16 @@ export default function CreateReelScreen({ navigation }: Props) {
   const [videoEdit, setVideoEdit] = useState<VideoEditSettings>(DEFAULT_VIDEO_EDIT);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [publishedPostId, setPublishedPostId] = useState<string | null>(null);
+  const [publishedPost, setPublishedPost] = useState<FeedPost | null>(null);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
-  const openEditorAfterPick = useRef(false);
 
   useEffect(() => {
-    if (mediaUri && openEditorAfterPick.current) {
-      openEditorAfterPick.current = false;
-      if (mediaKind === 'image') setShowPhotoEditor(true);
-      else setShowVideoEditor(true);
-      return;
-    }
-    openEditorAfterPick.current = false;
     if (mediaUri && !showPhotoEditor && !showVideoEditor) {
       const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
       return () => clearTimeout(timer);
     }
-  }, [mediaUri, mediaKind, showPhotoEditor, showVideoEditor]);
+  }, [mediaUri, showPhotoEditor, showVideoEditor]);
 
   const applyAsset = (asset: ImagePicker.ImagePickerAsset) => {
     const kind = assetKind(asset);
@@ -118,7 +130,6 @@ export default function CreateReelScreen({ navigation }: Props) {
     setMimeType(asset.mimeType || undefined);
     setMediaUri(asset.uri);
     setVideoEdit(DEFAULT_VIDEO_EDIT);
-    openEditorAfterPick.current = true;
   };
 
   const pickFromLibrary = async () => {
@@ -155,7 +166,6 @@ export default function CreateReelScreen({ navigation }: Props) {
     setMimeType(result.mimeType);
     setMediaUri(result.uri);
     setVideoEdit(DEFAULT_VIDEO_EDIT);
-    openEditorAfterPick.current = true;
   };
 
   const clearMedia = () => {
@@ -305,8 +315,10 @@ export default function CreateReelScreen({ navigation }: Props) {
         }
       }
 
+      const newPostId = created?.data?.id || null;
+      setPublishedPost(created?.data || null);
+      setPublishedPostId(newPostId);
       setShowSuccess(true);
-      setTimeout(() => navigation.goBack(), 600);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to publish reel';
       await alertMessage('Error', msg);
@@ -374,11 +386,31 @@ export default function CreateReelScreen({ navigation }: Props) {
       />
 
       {showSuccess && (
-        <View style={tw`absolute inset-0 z-50 bg-brand-600/90 items-center justify-center`}>
-          <View style={tw`bg-white rounded-full p-4 mb-3`}>
-            <Text style={tw`text-3xl`}>✓</Text>
+        <View style={tw`absolute inset-0 z-50 bg-brand-900/95 items-center justify-center px-8`}>
+          <View style={tw`w-16 h-16 rounded-full bg-brand-600 items-center justify-center mb-4`}>
+            <Ionicons name="checkmark" size={32} color="#fff" />
           </View>
-          <Text style={tw`text-white text-xl font-bold`}>Reel live!</Text>
+          <Text style={tw`text-white text-2xl font-bold mb-2`}>Reel is live!</Text>
+          <Text style={tw`text-white/70 text-center mb-8`}>
+            Your clip is in the feed. Open Reels to watch and scroll more.
+          </Text>
+          {publishedPostId ? (
+            <Pressable
+              onPress={() => {
+                openReelsAtPost(navigation, publishedPostId, publishedPost);
+                navigation.goBack();
+              }}
+              style={tw`w-full bg-brand-600 py-3.5 rounded-2xl items-center mb-3`}
+            >
+              <Text style={tw`text-white font-bold text-base`}>View in Reels</Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={tw`w-full py-3.5 rounded-2xl items-center border border-white/25`}
+          >
+            <Text style={tw`text-white font-semibold`}>Done</Text>
+          </Pressable>
         </View>
       )}
 
@@ -419,6 +451,11 @@ export default function CreateReelScreen({ navigation }: Props) {
         </View>
       ) : (
         <View style={tw`flex-1`}>
+          <View style={tw`flex-row px-4 pt-2 pb-1`}>
+            <StepPill label="Capture" done />
+            <StepPill label="Preview" active />
+            <StepPill label="Publish" />
+          </View>
           <View style={[tw`w-full relative bg-black`, { height: STAGE_HEIGHT }]}>
             {mediaKind === 'video' ? (
               <ReelVideoPlayer

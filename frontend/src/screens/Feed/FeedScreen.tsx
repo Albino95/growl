@@ -127,7 +127,18 @@ export default function FeedScreen({ navigation, route }: any) {
   const [likesLoading, setLikesLoading] = useState(false);
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 55 }).current;
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: Post; isViewable: boolean }> }) => {
+      const ids = new Set<string>();
+      for (const v of viewableItems) {
+        if (v.isViewable && v.item?.id) ids.add(v.item.id);
+      }
+      setVisiblePostIds(ids);
+    }
+  ).current;
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -798,6 +809,8 @@ export default function FeedScreen({ navigation, route }: any) {
           sections={feedSections}
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
           ListHeaderComponent={feedListHeader}
           renderSectionHeader={({ section }) => (
             <View style={tw`px-5 pt-3 pb-2`}>
@@ -819,7 +832,9 @@ export default function FeedScreen({ navigation, route }: any) {
           {...verticalScrollProps}
           renderItem={({ item }) => (
             <View
-              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70`}
+              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70 ${
+                item.isReel ? 'border-stone-300/60' : ''
+              }`}
             >
               {/* Post Header - Modern Style */}
               <View style={tw`flex-row items-center justify-between px-4 py-3`}>
@@ -873,12 +888,6 @@ export default function FeedScreen({ navigation, route }: any) {
 
               {/* Post Image — double-tap to like */}
               <Pressable onPress={() => handleMediaPress(item)} style={tw`relative w-full bg-stone-50`}>
-                {item.isReel ? (
-                  <View style={tw`absolute top-3 left-3 z-10 flex-row items-center bg-black/55 px-2.5 py-1 rounded-full`}>
-                    <Ionicons name="film-outline" size={12} color="#fff" />
-                    <Text style={tw`text-white text-[10px] font-bold ml-1`}>Reel</Text>
-                  </View>
-                ) : null}
                 <FeedReelMedia
                   uri={
                     failedPostImages[item.id]
@@ -891,6 +900,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   contentType={item.contentType}
                   videoEdit={item.videoEdit}
                   failed={!!failedPostImages[item.id]}
+                  isActive={visiblePostIds.has(item.id)}
                   onError={() => {
                     setFailedPostImages((prev) =>
                       prev[item.id] ? prev : { ...prev, [item.id]: true }
@@ -986,8 +996,22 @@ export default function FeedScreen({ navigation, route }: any) {
                   </Pressable>
                 ) : null}
 
-                {/* CO2 Calculator */}
-                <CO2Calculator category={item.category} activityType="post" />
+                {item.isReel ? (
+                  <Pressable
+                    onPress={() => openPost(item)}
+                    style={tw`mx-4 mb-2 flex-row items-center self-start bg-emerald-50 border border-emerald-200/80 rounded-full px-3 py-1.5`}
+                  >
+                    <Ionicons name="film-outline" size={14} color="#059669" />
+                    <Text style={tw`text-emerald-800 text-xs font-semibold ml-1.5`}>
+                      Watch in Reels
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {/* CO2 Calculator — posts only */}
+                {!item.isReel ? (
+                  <CO2Calculator category={item.category} activityType="post" />
+                ) : null}
 
                 {/* Comments */}
                 {item.comments > 0 && (

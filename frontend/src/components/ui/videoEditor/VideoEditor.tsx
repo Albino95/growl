@@ -41,14 +41,12 @@ import {
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_H = Math.min(SCREEN_W * 1.28, SCREEN_H * 0.46);
 
-type Tab = 'trim' | 'look' | 'audio' | 'text' | 'tools';
+type Tab = 'edit' | 'look' | 'audio';
 
 const TABS: { id: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'trim', label: 'Trim', icon: 'cut-outline' },
+  { id: 'edit', label: 'Edit', icon: 'cut-outline' },
   { id: 'look', label: 'Look', icon: 'color-filter-outline' },
-  { id: 'audio', label: 'Audio', icon: 'musical-notes-outline' },
-  { id: 'text', label: 'Text', icon: 'text-outline' },
-  { id: 'tools', label: 'Tools', icon: 'options-outline' },
+  { id: 'audio', label: 'Sound', icon: 'musical-notes-outline' },
 ];
 
 const TEXT_STYLES: { id: TextOverlayStyle; label: string }[] = [
@@ -99,7 +97,7 @@ export default function VideoEditor({
   const videoRef = useRef<Video>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
-  const [tab, setTab] = useState<Tab>('trim');
+  const [tab, setTab] = useState<Tab>('edit');
   const [durationMs, setDurationMs] = useState(0);
   const [positionMs, setPositionMs] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -311,7 +309,7 @@ export default function VideoEditor({
     const o = newOverlay(text || 'GROW');
     setOverlays((prev) => [...prev.slice(0, 4), o]);
     setActiveOverlayId(o.id);
-    setTab('text');
+    setTab('edit');
   };
 
   const updateActive = (patch: Partial<TextOverlay>) => {
@@ -491,7 +489,7 @@ export default function VideoEditor({
                   editable
                   onSelect={() => {
                     setActiveOverlayId(o.id);
-                    setTab('text');
+                    setTab('edit');
                   }}
                   onMove={(x, y) => {
                     setOverlays((prev) =>
@@ -541,10 +539,15 @@ export default function VideoEditor({
           })}
         </View>
 
-        {tab === 'trim' ? (
-          <View style={[tw`flex-1 px-4 pt-3`, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-            <Text style={tw`text-stone-400 text-xs mb-3`}>
-              Drag handles to set the clip window — only this range loops in the feed
+        {tab === 'edit' ? (
+          <ScrollView
+            style={tw`flex-1 px-4`}
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={tw`text-stone-400 text-xs mb-3 pt-2`}>
+              Drag handles to trim — only this range loops in the feed
             </Text>
             <FilmstripTrimmer
               videoUri={videoUri}
@@ -558,7 +561,161 @@ export default function VideoEditor({
               }}
               onSeek={(ms) => void seekTo(ms)}
             />
-          </View>
+
+            <View style={tw`mt-5 pt-4 border-t border-stone-800`}>
+              <View style={tw`flex-row items-center justify-between mb-3`}>
+                <Text style={tw`text-white text-sm font-bold`}>Text</Text>
+                <Pressable
+                  onPress={() => addText()}
+                  style={tw`flex-row items-center gap-1 bg-brand-600 px-3 py-2 rounded-full`}
+                >
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={tw`text-white text-xs font-bold`}>Add</Text>
+                </Pressable>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                {TEXT_QUICK_PHRASES.map((phrase) => (
+                  <Pressable
+                    key={phrase}
+                    onPress={() => {
+                      if (activeOverlay) updateActive({ text: phrase });
+                      else addText(phrase);
+                    }}
+                    style={tw`px-3 py-2 rounded-full bg-stone-800 border border-stone-700 mr-2`}
+                  >
+                    <Text style={tw`text-stone-200 text-xs font-semibold`}>{phrase}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              {activeOverlay ? (
+                <>
+                  <TextInput
+                    value={activeOverlay.text}
+                    onChangeText={(t) => updateActive({ text: t.slice(0, 48) })}
+                    placeholder="Type your text…"
+                    placeholderTextColor="#78716C"
+                    style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3.5 mb-3 border border-stone-700`}
+                    maxLength={48}
+                  />
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                    {TEXT_STYLES.map((s) => {
+                      const selected = activeOverlay.style === s.id;
+                      return (
+                        <Pressable
+                          key={s.id}
+                          onPress={() => updateActive({ style: s.id })}
+                          style={[
+                            tw`px-3 py-2 rounded-xl border mr-2`,
+                            selected
+                              ? tw`bg-brand-600/25 border-brand-500`
+                              : tw`bg-stone-900 border-stone-700`,
+                          ]}
+                        >
+                          <Text
+                            style={tw`text-xs font-bold ${
+                              selected ? 'text-brand-300' : 'text-white'
+                            }`}
+                          >
+                            {s.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  <AdjustSlider
+                    label="Size"
+                    value={Math.round((activeOverlay.scale || 1) * 100)}
+                    min={70}
+                    max={180}
+                    onChange={(v) => updateActive({ scale: v / 100 })}
+                  />
+                </>
+              ) : (
+                <Text style={tw`text-stone-500 text-xs mb-3`}>
+                  Drag text on the preview from any tab.
+                </Text>
+              )}
+            </View>
+
+            <View style={tw`mt-5 pt-4 border-t border-stone-800 pb-2`}>
+              <Text style={tw`text-white text-sm font-bold mb-3`}>Tools</Text>
+              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
+                Speed
+              </Text>
+              <View style={tw`flex-row flex-wrap gap-2 mb-5`}>
+                {SPEED_PRESETS.map((s) => {
+                  const selected = speed === s.value;
+                  return (
+                    <Pressable
+                      key={s.value}
+                      onPress={() => setSpeed(s.value)}
+                      style={[
+                        tw`px-3.5 py-2.5 rounded-2xl border min-w-[72px]`,
+                        selected
+                          ? tw`bg-brand-600/30 border-brand-500`
+                          : tw`bg-stone-900 border-stone-700`,
+                      ]}
+                    >
+                      <Text
+                        style={tw`text-sm font-bold ${
+                          selected ? 'text-brand-300' : 'text-stone-200'
+                        }`}
+                      >
+                        {s.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={tw`flex-row gap-3 mb-4`}>
+                <Pressable
+                  onPress={() => setFlipH((v) => !v)}
+                  style={[
+                    tw`flex-1 flex-row items-center justify-center py-3 rounded-2xl border`,
+                    flipH ? tw`bg-brand-600/25 border-brand-500` : tw`bg-stone-900 border-stone-700`,
+                  ]}
+                >
+                  <Ionicons name="swap-horizontal" size={18} color={flipH ? '#34D399' : '#fff'} />
+                  <Text style={tw`text-white text-xs font-bold ml-2`}>Flip H</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setFlipV((v) => !v)}
+                  style={[
+                    tw`flex-1 flex-row items-center justify-center py-3 rounded-2xl border`,
+                    flipV ? tw`bg-brand-600/25 border-brand-500` : tw`bg-stone-900 border-stone-700`,
+                  ]}
+                >
+                  <Ionicons name="swap-vertical" size={18} color={flipV ? '#34D399' : '#fff'} />
+                  <Text style={tw`text-white text-xs font-bold ml-2`}>Flip V</Text>
+                </Pressable>
+              </View>
+              <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2 mt-2`}>
+                Cover frame
+              </Text>
+              <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-4`}>
+                <Pressable
+                  onPress={() => setCoverMs(positionMs)}
+                  style={tw`py-3 rounded-xl bg-brand-600 items-center`}
+                >
+                  <Text style={tw`text-white font-bold text-sm`}>
+                    Use {formatMs(positionMs)} as cover
+                  </Text>
+                </Pressable>
+                {coverMs > 0 ? (
+                  <Text style={tw`text-brand-400 text-xs font-semibold mt-2`}>
+                    Cover at {formatMs(coverMs)}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={resetAll}
+                style={tw`flex-row items-center justify-center gap-2 py-3 rounded-2xl border border-stone-700 bg-stone-900`}
+              >
+                <Ionicons name="refresh-outline" size={18} color="#A8A29E" />
+                <Text style={tw`text-stone-300 font-semibold text-sm`}>Reset all edits</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
         ) : (
           <ScrollView
             style={tw`flex-1 px-4`}
@@ -712,242 +869,6 @@ export default function VideoEditor({
                     />
                   </View>
                 ) : null}
-              </View>
-            )}
-
-            {tab === 'text' && (
-              <View style={tw`pt-2`}>
-                <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-3 py-3 mb-3`}>
-                  <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
-                    Drag text anywhere on the preview — works from any tab
-                  </Text>
-                </View>
-                <View style={tw`flex-row items-center justify-between mb-3`}>
-                  <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide`}>
-                    On-clip text
-                  </Text>
-                  <Pressable
-                    onPress={() => addText()}
-                    style={tw`flex-row items-center gap-1 bg-brand-600 px-3 py-2 rounded-full`}
-                  >
-                    <Ionicons name="add" size={16} color="#fff" />
-                    <Text style={tw`text-white text-xs font-bold`}>Add</Text>
-                  </Pressable>
-                </View>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
-                  {TEXT_QUICK_PHRASES.map((phrase) => (
-                    <Pressable
-                      key={phrase}
-                      onPress={() => {
-                        if (activeOverlay) updateActive({ text: phrase });
-                        else addText(phrase);
-                      }}
-                      style={tw`px-3 py-2 rounded-full bg-stone-800 border border-stone-700 mr-2`}
-                    >
-                      <Text style={tw`text-stone-200 text-xs font-semibold`}>{phrase}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-
-                {activeOverlay ? (
-                  <>
-                    <TextInput
-                      value={activeOverlay.text}
-                      onChangeText={(t) => updateActive({ text: t.slice(0, 48) })}
-                      placeholder="Type your text…"
-                      placeholderTextColor="#78716C"
-                      style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3.5 mb-3 border border-stone-700`}
-                      maxLength={48}
-                    />
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
-                      {TEXT_STYLES.map((s) => {
-                        const selected = activeOverlay.style === s.id;
-                        return (
-                          <Pressable
-                            key={s.id}
-                            onPress={() => updateActive({ style: s.id })}
-                            style={[
-                              tw`px-3 py-2 rounded-xl border mr-2`,
-                              selected
-                                ? tw`bg-brand-600/25 border-brand-500`
-                                : tw`bg-stone-900 border-stone-700`,
-                            ]}
-                          >
-                            <Text
-                              style={tw`text-xs font-bold ${
-                                selected ? 'text-brand-300' : 'text-white'
-                              }`}
-                            >
-                              {s.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                    <View style={tw`flex-row flex-wrap gap-2 mb-3`}>
-                      {TEXT_COLORS.map((c) => (
-                        <Pressable
-                          key={c}
-                          onPress={() => updateActive({ color: c })}
-                          style={[
-                            tw`w-8 h-8 rounded-full border-2`,
-                            {
-                              backgroundColor: c,
-                              borderColor: activeOverlay.color === c ? '#34D399' : '#44403C',
-                            },
-                          ]}
-                        />
-                      ))}
-                    </View>
-                    <AdjustSlider
-                      label="Size"
-                      value={Math.round((activeOverlay.scale || 1) * 100)}
-                      min={70}
-                      max={180}
-                      onChange={(v) => updateActive({ scale: v / 100 })}
-                    />
-                    <Pressable onPress={removeActive} style={tw`flex-row items-center gap-2 py-2`}>
-                      <Ionicons name="trash-outline" size={18} color="#F87171" />
-                      <Text style={tw`text-red-400 font-semibold text-sm`}>Remove text</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <View style={tw`bg-stone-900/80 border border-stone-800 rounded-2xl px-4 py-5`}>
-                    <Text style={tw`text-stone-400 text-sm text-center`}>
-                      Add a short label, then drag it anywhere on the clip.
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-
-            {tab === 'tools' && (
-              <View style={tw`pt-2`}>
-                <Text style={tw`text-white text-sm font-bold mb-1`}>Tools</Text>
-                <Text style={tw`text-stone-500 text-xs mb-4`}>
-                  Speed, flip, and cover frame — the polish pass
-                </Text>
-
-                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
-                  Speed
-                </Text>
-                <View style={tw`flex-row flex-wrap gap-2 mb-5`}>
-                  {SPEED_PRESETS.map((s) => {
-                    const selected = speed === s.value;
-                    return (
-                      <Pressable
-                        key={s.value}
-                        onPress={() => setSpeed(s.value)}
-                        style={[
-                          tw`px-3.5 py-2.5 rounded-2xl border min-w-[72px]`,
-                          selected
-                            ? tw`bg-brand-600/30 border-brand-500`
-                            : tw`bg-stone-900 border-stone-700`,
-                        ]}
-                      >
-                        <Text
-                          style={tw`text-sm font-bold ${
-                            selected ? 'text-brand-300' : 'text-stone-200'
-                          }`}
-                        >
-                          {s.label}
-                        </Text>
-                        <Text style={tw`text-[10px] text-stone-500 mt-0.5`}>{s.hint}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
-                  Transform
-                </Text>
-                <View style={tw`flex-row gap-2 mb-5`}>
-                  <Pressable
-                    onPress={() => setFlipH((v) => !v)}
-                    style={[
-                      tw`flex-1 items-center py-3.5 rounded-2xl border`,
-                      flipH
-                        ? tw`bg-brand-600/25 border-brand-500`
-                        : tw`bg-stone-900 border-stone-700`,
-                    ]}
-                  >
-                    <Ionicons
-                      name="swap-horizontal-outline"
-                      size={22}
-                      color={flipH ? '#34D399' : '#A8A29E'}
-                    />
-                    <Text
-                      style={tw`text-xs font-bold mt-1.5 ${
-                        flipH ? 'text-brand-300' : 'text-stone-300'
-                      }`}
-                    >
-                      Flip H
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setFlipV((v) => !v)}
-                    style={[
-                      tw`flex-1 items-center py-3.5 rounded-2xl border`,
-                      flipV
-                        ? tw`bg-brand-600/25 border-brand-500`
-                        : tw`bg-stone-900 border-stone-700`,
-                    ]}
-                  >
-                    <Ionicons
-                      name="swap-vertical-outline"
-                      size={22}
-                      color={flipV ? '#34D399' : '#A8A29E'}
-                    />
-                    <Text
-                      style={tw`text-xs font-bold mt-1.5 ${
-                        flipV ? 'text-brand-300' : 'text-stone-300'
-                      }`}
-                    >
-                      Flip V
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
-                  Cover frame
-                </Text>
-                <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-4`}>
-                  <Text style={tw`text-stone-300 text-sm mb-3`}>
-                    Scrub the preview, then set this moment as the reel thumbnail.
-                  </Text>
-                  <View style={tw`flex-row gap-2`}>
-                    <Pressable
-                      onPress={() => setCoverMs(positionMs)}
-                      style={tw`flex-1 py-3 rounded-xl bg-brand-600 items-center`}
-                    >
-                      <Text style={tw`text-white font-bold text-sm`}>
-                        Use {formatMs(positionMs)}
-                      </Text>
-                    </Pressable>
-                    {coverMs > 0 ? (
-                      <Pressable
-                        onPress={() => void seekTo(coverMs)}
-                        style={tw`px-4 py-3 rounded-xl bg-white/10 items-center justify-center`}
-                      >
-                        <Ionicons name="image-outline" size={18} color="#fff" />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                  {coverMs > 0 ? (
-                    <Text style={tw`text-brand-400 text-xs font-semibold mt-2`}>
-                      Cover set at {formatMs(coverMs)}
-                    </Text>
-                  ) : null}
-                </View>
-
-                <Pressable
-                  onPress={resetAll}
-                  style={tw`flex-row items-center justify-center gap-2 py-3 rounded-2xl border border-stone-700 bg-stone-900`}
-                >
-                  <Ionicons name="refresh-outline" size={18} color="#A8A29E" />
-                  <Text style={tw`text-stone-300 font-semibold text-sm`}>Reset all edits</Text>
-                </Pressable>
               </View>
             )}
           </ScrollView>

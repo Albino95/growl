@@ -4,11 +4,11 @@ import { Inbox } from 'lucide-react';
 export function EmptyState({ title, description }: { title: string; description?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="rounded-full bg-slate-100 p-4">
-        <Inbox className="h-8 w-8 text-slate-400" />
+      <div className="rounded-full bg-emerald-50 p-4 ring-1 ring-emerald-100">
+        <Inbox className="h-8 w-8 text-emerald-600/70" />
       </div>
-      <p className="mt-4 font-medium text-slate-700">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>}
+      <p className="mt-4 font-medium text-stone-800">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-sm text-stone-500">{description}</p>}
     </div>
   );
 }
