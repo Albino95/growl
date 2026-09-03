@@ -4,7 +4,7 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   ScrollView,
   Platform,
 } from 'react-native';
@@ -33,14 +33,13 @@ import PostCategorySheet from '../Post/components/PostCategorySheet';
 import PostStickyBar from '../Post/components/PostStickyBar';
 import { openReelsAtPost } from '../../utils/reelNavigation';
 import { reelSoundtrackFromEdit } from '../../utils/reelMedia';
+import { fitReelStage } from '../../utils/fitMediaBox';
 import tw from '../../lib/tw';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
 type Props = { navigation: Nav };
 type MediaKind = 'image' | 'video';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const STAGE_HEIGHT = Math.min(Math.round(SCREEN_WIDTH * (16 / 9)), Math.round(SCREEN_HEIGHT * 0.62));
 const HEADER_OFFSET = 56;
 
 function StepPill({ label, active, done }: { label: string; active?: boolean; done?: boolean }) {
@@ -98,6 +97,8 @@ function assetKind(asset: ImagePicker.ImagePickerAsset): MediaKind {
 export default function CreateReelScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
   const { user, updateUser } = useAuth();
+  const { width: windowW, height: windowH } = useWindowDimensions();
+  const stage = fitReelStage(windowW, Math.round(windowH * 0.62));
   const userCategories = user?.categories || [];
 
   const [mediaUri, setMediaUri] = useState<string | null>(null);
@@ -431,7 +432,7 @@ export default function CreateReelScreen({ navigation }: Props) {
         <View
           style={[
             tw`flex-1 items-center justify-center px-6 bg-brand-900`,
-            { minHeight: STAGE_HEIGHT },
+            { minHeight: stage.height },
           ]}
         >
           <View style={tw`items-center mb-10`}>
@@ -469,20 +470,31 @@ export default function CreateReelScreen({ navigation }: Props) {
             <StepPill label="Preview" active />
             <StepPill label="Publish" />
           </View>
-          <View style={[tw`w-full relative bg-black`, { height: STAGE_HEIGHT }]}>
+          <View
+            style={[
+              tw`w-full bg-black items-center justify-center`,
+              { height: stage.height },
+            ]}
+          >
+            <View
+              style={[
+                tw`relative overflow-hidden bg-black`,
+                { width: stage.width, height: stage.height },
+              ]}
+            >
             {mediaKind === 'video' ? (
               <ReelVideoPlayer
                 uri={mediaUri}
                 settings={videoEdit}
                 shouldPlay
-                contentFit="contain"
+                contentFit="cover"
                 style={{ width: '100%', height: '100%' }}
               />
             ) : (
               <Image
                 source={{ uri: mediaUri }}
                 style={tw`w-full h-full`}
-                contentFit="contain"
+                contentFit="cover"
                 transition={200}
               />
             )}
@@ -519,6 +531,7 @@ export default function CreateReelScreen({ navigation }: Props) {
                 <Text style={tw`text-white text-xs font-semibold`}>Video</Text>
               </View>
             )}
+            </View>
           </View>
 
           <ScrollView

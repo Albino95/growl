@@ -7,7 +7,7 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   StyleSheet,
   Platform,
 } from 'react-native';
@@ -37,9 +37,7 @@ import {
   getPrimaryMusicTracks,
   type PostMusicTrack,
 } from '../../../constants/postMusic';
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PREVIEW_H = Math.min(SCREEN_W * 1.28, SCREEN_H * 0.46);
+import { fitReelStage } from '../../../utils/fitMediaBox';
 
 type Tab = 'edit' | 'look' | 'audio';
 
@@ -93,8 +91,22 @@ export default function VideoEditor({
   onCancel,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
+  const maxPreviewW = winW - 24;
+  const maxPreviewH = Math.min(winH * 0.46, maxPreviewW * (16 / 9));
+  const reelStage = fitReelStage(maxPreviewW, maxPreviewH);
   const initial = normalizeVideoEdit(initialSettings);
   const videoRef = useRef<Video>(null);
+  const htmlVideoRef = useRef<{
+    play: () => Promise<void>;
+    pause: () => void;
+    currentTime: number;
+    playbackRate: number;
+    muted: boolean;
+    volume: number;
+    duration: number;
+    paused: boolean;
+  } | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   const [tab, setTab] = useState<Tab>('edit');
@@ -102,7 +114,7 @@ export default function VideoEditor({
   const [positionMs, setPositionMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [previewSize, setPreviewSize] = useState({ w: SCREEN_W - 32, h: PREVIEW_H });
+  const [previewSize, setPreviewSize] = useState({ w: reelStage.width, h: reelStage.height });
 
   const [originalVolume, setOriginalVolume] = useState(initial.originalVolume);
   const [speed, setSpeed] = useState(initial.speed);
@@ -214,7 +226,40 @@ export default function VideoEditor({
     [trimEndMs, trimStartMs]
   );
 
+  const applyWebDuration = useCallback((durationSec: number) => {
+    if (!durationSec || !Number.isFinite(durationSec)) return;
+    const dur = durationSec * 1000;
+    setDurationMs((prev) => (Math.abs(prev - dur) > 50 ? dur : prev));
+    setTrimEndMs((prev) => (prev <= 0 || prev > dur ? dur : prev));
+  }, []);
+
+  const onWebTimeUpdate = useCallback(() => {
+    const el = htmlVideoRef.current;
+    if (!el) return;
+    setLoading(false);
+    setPlaying(!el.paused);
+    setPositionMs(el.currentTime * 1000);
+    applyWebDuration(el.duration);
+    const end = trimEndMs > 0 ? trimEndMs / 1000 : 0;
+    if (end > 0 && el.currentTime >= end - 0.08) {
+      el.currentTime = trimStartMs / 1000;
+      if (soundRef.current) void soundRef.current.setPositionAsync(0);
+    }
+  }, [applyWebDuration, trimEndMs, trimStartMs]);
+
   useEffect(() => {
+    setPreviewSize({ w: reelStage.width, h: reelStage.height });
+  }, [reelStage.width, reelStage.height]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const el = htmlVideoRef.current;
+      if (el) {
+        el.muted = isOriginalMuted;
+        el.volume = isOriginalMuted ? 0 : Math.max(0, Math.min(1, originalVolume));
+      }
+      return;
+    }
     void videoRef.current?.setIsMutedAsync(isOriginalMuted);
     if (!isOriginalMuted) {
       void videoRef.current?.setVolumeAsync(originalVolume);
@@ -222,6 +267,10 @@ export default function VideoEditor({
   }, [isOriginalMuted, originalVolume]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (htmlVideoRef.current) htmlVideoRef.current.playbackRate = speed;
+      return;
+    }
     void videoRef.current?.setRateAsync(speed, true);
   }, [speed]);
 
@@ -288,6 +337,22 @@ export default function VideoEditor({
   };
 
   const togglePlay = async () => {
+    if (Platform.OS === 'web') {
+      const el = htmlVideoRef.current;
+      if (!el) return;
+      if (el.paused) {
+        try {
+          await el.play();
+        } catch {
+          /* autoplay */
+        }
+        setPlaying(true);
+      } else {
+        el.pause();
+        setPlaying(false);
+      }
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     const status = await v.getStatusAsync();
@@ -300,6 +365,10 @@ export default function VideoEditor({
     async (ms: number) => {
       const clamped = Math.max(0, Math.min(durationMs || ms, ms));
       setPositionMs(clamped);
+      if (Platform.OS === 'web') {
+        if (htmlVideoRef.current) htmlVideoRef.current.currentTime = clamped / 1000;
+        return;
+      }
       await videoRef.current?.setPositionAsync(clamped);
     },
     [durationMs]
@@ -346,6 +415,8 @@ export default function VideoEditor({
     { scaleX: flipH ? -1 : 1 },
     { scaleY: flipV ? -1 : 1 },
   ];
+  const webFlip =
+    [flipH ? 'scaleX(-1)' : '', flipV ? 'scaleY(-1)' : ''].filter(Boolean).join(' ') || undefined;
 
   return (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
@@ -376,27 +447,60 @@ export default function VideoEditor({
           </Pressable>
         </View>
 
-        {/* Preview */}
+        {/* Preview — 9:16 frame, video fills it */}
         <View
           style={[
-            tw`mx-3 rounded-3xl overflow-hidden bg-stone-950 border border-white/10`,
-            { height: PREVIEW_H },
+            tw`mx-3 items-center justify-center`,
+            { height: maxPreviewH },
           ]}
-          onLayout={(e) => {
-            const { width, height } = e.nativeEvent.layout;
-            if (width > 0 && height > 0) setPreviewSize({ w: width, h: height });
-          }}
         >
+          <View
+            style={[
+              tw`rounded-3xl overflow-hidden bg-stone-950 border border-white/10`,
+              { width: reelStage.width, height: reelStage.height, position: 'relative' },
+            ]}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              if (width > 0 && height > 0) setPreviewSize({ w: width, h: height });
+            }}
+          >
+          {Platform.OS === 'web'
+            ? React.createElement('video', {
+                ref: htmlVideoRef,
+                key: videoUri,
+                src: videoUri,
+                muted: isOriginalMuted,
+                loop: !(trimEndMs > 0),
+                playsInline: true,
+                autoPlay: playing,
+                controls: false,
+                preload: 'auto',
+                className: 'grow-video-cover',
+                onTimeUpdate: onWebTimeUpdate,
+                onLoadedMetadata: onWebTimeUpdate,
+                style: {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: 'center center',
+                  backgroundColor: '#000',
+                  filter: webFilter,
+                  transform: webFlip,
+                },
+              })
+            : (
           <Video
             ref={videoRef}
             source={{ uri: videoUri }}
             style={[
               StyleSheet.absoluteFillObject,
               { transform: flipTransform },
-              webFilter ? ({ filter: webFilter } as object) : null,
             ]}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={playing}
             isLooping={false}
             isMuted={isOriginalMuted}
             volume={isOriginalMuted ? 0 : originalVolume}
@@ -404,6 +508,7 @@ export default function VideoEditor({
             useNativeControls={false}
             onLoadStart={() => setLoading(true)}
           />
+            )}
 
           {look.layers.map((layer, i) => (
             <View
@@ -499,6 +604,7 @@ export default function VideoEditor({
                 />
               ) : null
             )}
+          </View>
           </View>
         </View>
 
