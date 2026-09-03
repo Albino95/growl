@@ -18,11 +18,19 @@
     #root {
       min-height: 100vh;
     }
-    /* Reels / full-bleed players: expo-av web video defaults to contain */
-    video {
-      object-fit: cover !important;
+    .grow-video-cover,
+    .grow-video-contain {
+      position: absolute;
+      inset: 0;
       width: 100% !important;
       height: 100% !important;
+      object-position: center center;
+    }
+    .grow-video-cover { object-fit: cover !important; }
+    .grow-video-contain { object-fit: contain !important; }
+    .grow-video-cover::-webkit-media-controls,
+    .grow-video-contain::-webkit-media-controls {
+      display: none !important;
     }
   </style>
 </head>

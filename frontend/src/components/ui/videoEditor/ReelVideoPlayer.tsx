@@ -13,12 +13,26 @@ import {
   videoFadeOpacity,
 } from './videoFilters';
 
+type ContentFit = 'cover' | 'contain';
+
 type Props = {
   uri: string;
   settings?: Partial<VideoEditSettings> | null;
   shouldPlay?: boolean;
   style?: object;
   useNativeControls?: boolean;
+  /** cover = fill (Reels). contain = whole frame (preview / thumbs). */
+  contentFit?: ContentFit;
+};
+
+type HtmlVideoEl = {
+  play: () => Promise<void>;
+  pause: () => void;
+  currentTime: number;
+  playbackRate: number;
+  muted: boolean;
+  volume: number;
+  duration: number;
 };
 
 /** Shared reel video surface — trim, look, flip, volumes, text, soundtrack. */
@@ -28,8 +42,10 @@ export default function ReelVideoPlayer({
   shouldPlay = true,
   style,
   useNativeControls = false,
+  contentFit = 'cover',
 }: Props) {
   const videoRef = useRef<Video>(null);
+  const htmlVideoRef = useRef<HtmlVideoEl | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const webAudioRef = useRef<HTMLAudioElement | null>(null);
   const edit = normalizeVideoEdit(settings);
@@ -58,7 +74,25 @@ export default function ReelVideoPlayer({
     [trimEnd, trimStart]
   );
 
+  const onWebTimeUpdate = useCallback(() => {
+    const el = htmlVideoRef.current;
+    if (!el) return;
+    const endSec = trimEnd > 0 ? trimEnd / 1000 : 0;
+    if (endSec > 0 && el.currentTime >= endSec - 0.08) {
+      el.currentTime = trimStart / 1000;
+      if (webAudioRef.current) webAudioRef.current.currentTime = 0;
+    }
+  }, [trimEnd, trimStart]);
+
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      const el = htmlVideoRef.current;
+      if (el) {
+        el.muted = isMuted;
+        el.volume = isMuted ? 0 : Math.max(0, Math.min(1, originalVol));
+      }
+      return;
+    }
     void videoRef.current?.setIsMutedAsync(isMuted);
     if (!isMuted) {
       void videoRef.current?.setVolumeAsync(Math.max(0, Math.min(1, originalVol)));
@@ -66,6 +100,10 @@ export default function ReelVideoPlayer({
   }, [isMuted, originalVol]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (htmlVideoRef.current) htmlVideoRef.current.playbackRate = edit.speed || 1;
+      return;
+    }
     void videoRef.current?.setRateAsync(edit.speed || 1, true);
   }, [edit.speed]);
 
@@ -162,13 +200,26 @@ export default function ReelVideoPlayer({
   useEffect(() => {
     if (!shouldPlay) {
       void videoRef.current?.pauseAsync();
+      htmlVideoRef.current?.pause();
       void soundRef.current?.pauseAsync();
       webAudioRef.current?.pause();
       return;
     }
     void (async () => {
-      await videoRef.current?.setPositionAsync(trimStart);
-      await videoRef.current?.playAsync();
+      if (Platform.OS === 'web') {
+        const el = htmlVideoRef.current;
+        if (el) {
+          el.currentTime = trimStart / 1000;
+          try {
+            await el.play();
+          } catch {
+            /* autoplay blocked */
+          }
+        }
+      } else {
+        await videoRef.current?.setPositionAsync(trimStart);
+        await videoRef.current?.playAsync();
+      }
       if (soundRef.current) {
         await soundRef.current.setPositionAsync(0);
         await soundRef.current.playAsync();
@@ -199,27 +250,56 @@ export default function ReelVideoPlayer({
     { scaleX: edit.flipH ? -1 : 1 },
     { scaleY: edit.flipV ? -1 : 1 },
   ];
+  const webFlip =
+    [edit.flipH ? 'scaleX(-1)' : '', edit.flipV ? 'scaleY(-1)' : ''].filter(Boolean).join(' ') ||
+    undefined;
+  const resizeMode = contentFit === 'contain' ? ResizeMode.CONTAIN : ResizeMode.COVER;
 
   return (
     <View style={[tw`overflow-hidden bg-black`, { width: '100%', height: '100%' }, style]}>
-      <Video
-        ref={videoRef}
-        source={{ uri }}
-        style={[
-          StyleSheet.absoluteFillObject,
-          { width: '100%', height: '100%', transform: flipTransform },
-          // Web <video> ignores ResizeMode.COVER unless object-fit is set.
-          Platform.OS === 'web' ? ({ objectFit: 'cover' } as object) : null,
-          webFilter ? ({ filter: webFilter } as object) : null,
-        ]}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay={shouldPlay}
-        isLooping={false}
-        isMuted={isMuted}
-        volume={isMuted ? 0 : originalVol}
-        onPlaybackStatusUpdate={onStatus}
-        useNativeControls={useNativeControls}
-      />
+      {Platform.OS === 'web'
+        ? React.createElement('video', {
+            ref: htmlVideoRef,
+            key: uri,
+            src: uri,
+            muted: isMuted,
+            loop: !(trimEnd > 0),
+            playsInline: true,
+            autoPlay: shouldPlay,
+            controls: useNativeControls,
+            preload: 'auto',
+            className: contentFit === 'contain' ? 'grow-video-contain' : 'grow-video-cover',
+            onTimeUpdate: onWebTimeUpdate,
+            style: {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: contentFit,
+              objectPosition: 'center center',
+              backgroundColor: '#000',
+              filter: webFilter,
+              transform: webFlip,
+            },
+          })
+        : (
+          <Video
+            ref={videoRef}
+            source={{ uri }}
+            style={[
+              StyleSheet.absoluteFillObject,
+              { width: '100%', height: '100%', transform: flipTransform },
+            ]}
+            resizeMode={resizeMode}
+            shouldPlay={shouldPlay}
+            isLooping={false}
+            isMuted={isMuted}
+            volume={isMuted ? 0 : originalVol}
+            onPlaybackStatusUpdate={onStatus}
+            useNativeControls={useNativeControls}
+          />
+        )}
       {look.layers.map((layer, i) => (
         <View
           key={`${look.id}-${i}`}

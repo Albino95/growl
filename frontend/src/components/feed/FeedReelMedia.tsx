@@ -63,6 +63,7 @@ export default function FeedReelMedia({
             settings={playbackSettings}
             shouldPlay={isActive}
             useNativeControls={false}
+            contentFit="cover"
             style={tw`w-full h-full`}
           />
           <View

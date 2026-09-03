@@ -5,7 +5,7 @@ import {
   FlatList,
   TouchableOpacity,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
@@ -31,8 +31,6 @@ import FeedLikeButton, {
 } from '../../components/feed/FeedLikeButton';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import tw from '../../lib/tw';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
@@ -97,6 +95,9 @@ function ReelsEmptyState({ onCreate }: { onCreate: () => void }) {
 export default function ReelsScreen() {
   const navigation = useNavigation();
   const route = useRoute<ReelsRoute>();
+  const { height: windowH, width: windowW } = useWindowDimensions();
+  const [pageSize, setPageSize] = useState({ w: windowW, h: windowH });
+  const pageH = pageSize.h > 0 ? pageSize.h : windowH;
   const startPostId = route.params?.startPostId;
   const seedPost = route.params?.seedPost;
   const scrollToId = useRef(startPostId);
@@ -423,7 +424,7 @@ export default function ReelsScreen() {
     const reaction = reactionsById[item.id] ?? (item.liked ? 'love' : null);
 
     return (
-      <View style={[tw`bg-black overflow-hidden`, { height: SCREEN_HEIGHT, width: '100%' }]}>
+      <View style={[tw`bg-black overflow-hidden`, { height: pageH, width: '100%' }]}>
         {/* Full-bleed media plane — absolute so flex/Pressable quirks can't shrink the video */}
         <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => handleReelPress(item.id)}>
@@ -432,6 +433,7 @@ export default function ReelsScreen() {
                 uri={uri}
                 settings={videoEdit}
                 shouldPlay={shouldPlay}
+                contentFit="cover"
                 style={StyleSheet.absoluteFillObject}
               />
             ) : (
@@ -540,16 +542,29 @@ export default function ReelsScreen() {
   }
 
   return (
-    <View style={tw`flex-1 bg-black`}>
+    <View
+      style={tw`flex-1 bg-black`}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        if (width <= 0 || height <= 0) return;
+        setPageSize((prev) =>
+          prev.w === width && prev.h === height ? prev : { w: width, h: height }
+        );
+      }}
+    >
       <FlatList
         ref={flatListRef}
+        style={{ flex: 1 }}
         data={items}
         renderItem={renderReel}
+        extraData={pageH}
         keyExtractor={(item) => item.id}
         pagingEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={SCREEN_HEIGHT}
+        snapToInterval={pageH}
+        snapToAlignment="start"
         decelerationRate="fast"
+        disableIntervalMomentum
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         onScrollToIndexFailed={(info) => {
@@ -570,8 +585,8 @@ export default function ReelsScreen() {
           />
         }
         getItemLayout={(_, index) => ({
-          length: SCREEN_HEIGHT,
-          offset: SCREEN_HEIGHT * index,
+          length: pageH,
+          offset: pageH * index,
           index,
         })}
       />

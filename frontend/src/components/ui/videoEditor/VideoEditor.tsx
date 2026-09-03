@@ -395,7 +395,7 @@ export default function VideoEditor({
               { transform: flipTransform },
               webFilter ? ({ filter: webFilter } as object) : null,
             ]}
-            resizeMode={ResizeMode.COVER}
+            resizeMode={ResizeMode.CONTAIN}
             shouldPlay
             isLooping={false}
             isMuted={isOriginalMuted}

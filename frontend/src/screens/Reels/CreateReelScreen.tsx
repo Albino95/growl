@@ -475,13 +475,14 @@ export default function CreateReelScreen({ navigation }: Props) {
                 uri={mediaUri}
                 settings={videoEdit}
                 shouldPlay
+                contentFit="contain"
                 style={{ width: '100%', height: '100%' }}
               />
             ) : (
               <Image
                 source={{ uri: mediaUri }}
                 style={tw`w-full h-full`}
-                contentFit="cover"
+                contentFit="contain"
                 transition={200}
               />
             )}

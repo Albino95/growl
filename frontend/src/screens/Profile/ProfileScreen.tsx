@@ -138,8 +138,13 @@ function ProfileStoryThumb({
 
   if (isVideo) {
     return (
-      <View style={tw`w-20 h-20 rounded-xl overflow-hidden bg-stone-900`}>
-        <ReelVideoPlayer uri={uri} shouldPlay={false} style={StyleSheet.absoluteFillObject} />
+      <View style={tw`w-full h-full bg-stone-900`}>
+        <ReelVideoPlayer
+          uri={uri}
+          shouldPlay={false}
+          contentFit="contain"
+          style={StyleSheet.absoluteFillObject}
+        />
         <View
           style={tw`absolute bottom-1 right-1 bg-black/55 px-1.5 py-0.5 rounded flex-row items-center`}
           pointerEvents="none"
@@ -153,8 +158,8 @@ function ProfileStoryThumb({
   return (
     <Image
       source={{ uri: failed ? fallback : uri }}
-      style={tw`w-20 h-20 rounded-xl`}
-      contentFit="cover"
+      style={tw`w-full h-full`}
+      contentFit="contain"
       placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
       transition={200}
       onError={() => setFailed(true)}
@@ -898,7 +903,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       onPress={() => openStoriesViewer(story.id)}
                     >
                       <View
-                        style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-emerald-500 overflow-hidden`}
+                        style={tw`w-[72px] h-[128px] rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-emerald-500 overflow-hidden`}
                       >
                         <ProfileStoryThumb story={story} userId={user?.id} />
                       </View>

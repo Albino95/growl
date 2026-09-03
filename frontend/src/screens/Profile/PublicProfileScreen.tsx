@@ -966,11 +966,11 @@ export default function PublicProfileScreen() {
                       style={tw`items-center`}
                       onPress={() => openStoryViewer(story.id)}
                     >
-                      <View style={tw`w-20 h-20 rounded-xl overflow-hidden mb-2 border-2 border-emerald-500 bg-[#EAE4D6]`}>
+                      <View style={tw`w-[72px] h-[128px] rounded-xl overflow-hidden mb-2 border-2 border-emerald-500 bg-[#EAE4D6]`}>
                         <Image
                           source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
                           style={tw`w-full h-full`}
-                          contentFit="cover"
+                          contentFit="contain"
                         />
                       </View>
                       <Text style={tw`text-xs text-stone-500`}>
