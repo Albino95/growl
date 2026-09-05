@@ -20,6 +20,7 @@ import LegalDocumentScreen from '../../screens/Legal/LegalDocumentScreen';
 import DeleteAccountScreen from '../../screens/Profile/DeleteAccountScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
+import CreateReelScreen from '../../screens/Reels/CreateReelScreen';
 import { useAppSelector } from '../../store/store';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 
@@ -48,7 +49,7 @@ export type RootStackParamList = {
   Business: undefined;
   Post: undefined;
   Messages: { conversationId?: string; targetUserId?: string } | undefined;
-  Reels: undefined;
+  Reels: { startPostId?: string; seedPost?: import('../../services/api/feed').FeedPost } | undefined;
   PublicProfile: { userId: string };
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };
@@ -84,6 +85,7 @@ export type RootStackParamList = {
     }>) => void;
   };
   CreateStory: undefined;
+  CreateReel: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -176,6 +178,15 @@ export default function RootNavigator() {
           <Stack.Screen
             name="CreateStory"
             component={CreateStoryScreen}
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="CreateReel"
+            component={CreateReelScreen}
             options={{
               headerShown: false,
               presentation: 'modal',

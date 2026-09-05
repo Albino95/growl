@@ -56,11 +56,11 @@ export function rankExploreRows<
     const friendEngagementBoost = Math.min(26, friendLikes * 8);
     const score =
       categoryScore(keys, p.category, p.subcategory) +
-      recencyScore(p.created_at, nowMs) * 0.65 +
+      recencyScore(p.created_at, nowMs) * 0.85 +
       engagementScore(likes, comments) +
       friendAuthorBoost +
       friendEngagementBoost +
-      jitter(p.id) * 8;
+      jitter(p.id) * 6;
     rows.push({ kind: 'post', post: p, score });
   }
 

@@ -43,6 +43,10 @@ export const verifyEmailSchema = z.object({
   code: z.string().min(6, 'Enter your verification code').max(64),
 });
 
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
 export const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
 });
@@ -76,10 +80,33 @@ export const ssoSchema = z
   );
 
 export const createPostSchema = z.object({
-  image_url: z.string().url().optional(),
-  caption: z.string().max(2000, 'Caption too long').optional(),
+  image_url: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return undefined;
+      const s = String(val).trim();
+      if (!s) return undefined;
+      return s;
+    },
+    z
+      .string()
+      .refine((v) => /^https?:\/\//i.test(v), {
+        message: 'Uploaded media URL is invalid — try publishing again',
+      })
+      .optional()
+  ),
+  caption: z.preprocess(
+    (val) => (val === undefined || val === null ? undefined : String(val)),
+    z.string().max(2000, 'Caption too long').optional()
+  ),
   category: z.string().min(1, 'Category is required'),
-  subcategory: z.string().optional(),
+  subcategory: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return undefined;
+      const s = String(val).trim();
+      return s || undefined;
+    },
+    z.string().optional()
+  ),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -167,7 +194,8 @@ export const checkoutSessionSchema = z.object({
 
 export const updateUserSchema = z.object({
   username: z.string().min(3).optional(),
-  avatar: z.string().url().optional(),
+  /** HTTPS media URL, or empty string to clear the avatar. */
+  avatar: z.union([z.string().url(), z.literal('')]).optional(),
   categories: z
     .array(z.string())
     .optional()

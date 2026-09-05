@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   FlatList,
   Modal,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -15,11 +16,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { getStoryImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { isVideoMedia } from '../../services/api/media';
+import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
+import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
+import { getConnections, syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -58,6 +63,10 @@ type Post = {
   createdAt: string;
   daysUntilDecay: number;
   category: string;
+  isReel?: boolean;
+  mediaType?: string;
+  contentType?: string;
+  videoEdit?: ReturnType<typeof reelPlaybackSettingsFromMetadata>;
 };
 
 type Story = {
@@ -93,6 +102,10 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     createdAt: p.created_at,
     daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
     category: p.category,
+    isReel: isReelPost(p),
+    mediaType: typeof p.metadata?.media_type === 'string' ? p.metadata.media_type : undefined,
+    contentType: typeof p.metadata?.content_type === 'string' ? p.metadata.content_type : undefined,
+    videoEdit: reelPlaybackSettingsFromMetadata(p.metadata ?? undefined),
   };
 }
 
@@ -103,11 +116,93 @@ function mapStoryToProfileStory(s: StoryItem): Story {
     userId: s.userId,
     username: s.username,
     avatar: s.avatar,
-    image: s.image,
+    image: s.image || '',
     createdAt: s.createdAt,
     views: s.views ?? 0,
     hasViewed: !!s.hasViewed,
   };
+}
+
+function ProfileStoryThumb({
+  story,
+  userId,
+}: {
+  story: Story;
+  userId?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const ownerId = story.userId || userId || 'me';
+  const uri = resolveStoryDisplayUri(story.image, ownerId, story.id);
+  const fallback = getStoryImageUrl(ownerId, story.id);
+  const isVideo = isVideoMedia({ uri });
+
+  if (isVideo) {
+    return (
+      <View style={tw`w-full h-full bg-stone-900`}>
+        <ReelVideoPlayer
+          uri={uri}
+          shouldPlay={false}
+          contentFit="contain"
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={tw`absolute bottom-1 right-1 bg-black/55 px-1.5 py-0.5 rounded flex-row items-center`}
+          pointerEvents="none"
+        >
+          <Ionicons name="play" size={10} color="#fff" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: failed ? fallback : uri }}
+      style={tw`w-full h-full`}
+      contentFit="contain"
+      placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+      transition={200}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ProfilePostThumb({ post }: { post: Post }) {
+  const isVideo =
+    post.isReel &&
+    isVideoMedia({
+      uri: post.image,
+      mediaType: post.mediaType,
+      contentType: post.contentType,
+    });
+
+  if (isVideo) {
+    return (
+      <View style={tw`w-16 h-16 rounded-xl mr-3 overflow-hidden bg-stone-900`}>
+        <ReelVideoPlayer
+          uri={post.image}
+          settings={post.videoEdit}
+          shouldPlay={false}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={tw`absolute bottom-0.5 right-0.5 bg-black/60 px-1 py-0.5 rounded`}
+          pointerEvents="none"
+        >
+          <Ionicons name="film-outline" size={10} color="#fff" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: post.image }}
+      style={tw`w-16 h-16 rounded-xl mr-3`}
+      contentFit="cover"
+      placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+    />
+  );
 }
 
 export default function ProfileScreen({ navigation: navProp }: any) {
@@ -125,11 +220,14 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [showFadedPosts, setShowFadedPosts] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [following, setFollowing] = useState<FriendSummary[]>([]);
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
+  const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
+  connectionsSheetRef.current = connectionsSheet;
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
   const [profileMeta, setProfileMeta] = useState<{
@@ -139,25 +237,32 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     status?: string | null;
   }>({});
 
-  /** Loads posts, stories, cohort connections, and instructor eligibility. */
+  /** Loads posts, stories, connections, and instructor eligibility. */
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, cohort, elig, me] = await Promise.all([
+      // Lightweight GET connections — avoid POST sync-cohort on every focus (that walks all users).
+      const [postList, storyList, connections, elig, me] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
-        syncCohortFriends(),
+        getConnections().catch(() => ({
+          following: [] as FriendSummary[],
+          followers: [] as FriendSummary[],
+          followingCount: 0,
+          followersCount: 0,
+        })),
         getInstructorEligibility().catch(() => null),
         fetchCurrentProfile({ stats: true }).catch(() => null),
       ]);
       if (elig) setEligibility(elig);
       const decay =
         typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
+      setSourcePosts(postList);
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
-      setFollowing(cohort.following);
-      setFollowers(cohort.followers);
+      setFollowing(connections.following);
+      setFollowers(connections.followers);
       if (me) {
         setProfileMeta({
           username: me.username,
@@ -176,6 +281,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           endorsementsGiven: me.endorsements_given ?? 0,
           streakDays: me.streak_days ?? 0,
           bio: me.bio ?? null,
+          status: me.status ?? null,
+          username: me.username,
+          avatar: me.avatar,
           categories: me.categories,
           isInstructor: me.is_instructor,
         });
@@ -185,10 +293,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     } finally {
       setProfileLoading(false);
     }
-  }, [user?.id, user?.decayTimer, updateUser]);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
+      if (connectionsSheetRef.current) return;
       void loadProfileContent();
     }, [loadProfileContent])
   );
@@ -403,8 +512,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               source={{
                 uri: resolveAvatarUri(
                   user?.id || 'default',
-                  profileMeta.username || user?.email?.split('@')[0],
-                  profileMeta.avatar
+                  profileMeta.username || user?.username || user?.email?.split('@')[0],
+                  profileMeta.avatar || user?.avatar
                 ),
               }}
               style={tw`w-20 h-20 rounded-full mr-4 border-2 border-white`}
@@ -412,7 +521,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             />
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {profileMeta.username || user?.email?.split('@')[0] || 'User'}
+                {profileMeta.username || user?.username || user?.email?.split('@')[0] || 'User'}
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
@@ -491,7 +600,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
                   <View
                     style={[
-                      tw`h-full bg-violet-500 rounded-full`,
+                      tw`h-full bg-emerald-600 rounded-full`,
                       {
                         width: `${Math.min(
                           (eligibility.postCount / Math.max(eligibility.postsNeeded, 1)) * 100,
@@ -699,12 +808,30 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
                 onPress={() => {
                   const rootNavigation = navigation.getParent() || navigation;
+                  if (post.isReel) {
+                    openReelsAtPost(
+                      rootNavigation,
+                      post.id,
+                      sourcePosts.find((p) => p.id === post.id)
+                    );
+                    return;
+                  }
                   (rootNavigation as any).navigate('PostDetail', {
                     post: {
                       id: post.id,
                       userId: user?.id || 'me',
-                      username: user?.email?.split('@')[0] || 'User',
-                      avatar: getAvatarUrl(user?.id || 'default', user?.email?.split('@')[0]),
+                      username:
+                        profileMeta.username ||
+                        user?.username ||
+                        user?.email?.split('@')[0] ||
+                        'User',
+                      avatar: resolveAvatarUri(
+                        user?.id || 'default',
+                        profileMeta.username ||
+                          user?.username ||
+                          user?.email?.split('@')[0],
+                        profileMeta.avatar || user?.avatar
+                      ),
                       image: post.image,
                       caption: post.caption,
                       category: post.category,
@@ -720,11 +847,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               >
                 <View style={tw`flex-row items-center justify-between mb-3`}>
                   <View style={tw`flex-row items-center`}>
-                    <Image
-                      source={{ uri: post.image }}
-                      style={tw`w-16 h-16 rounded-xl mr-3`}
-                      contentFit="cover"
-                    />
+                    <ProfilePostThumb post={post} />
                     <View style={tw`flex-1`}>
                       <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
                         {post.caption}
@@ -765,7 +888,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     const rootNavigation = navigation.getParent() || navigation;
                     (rootNavigation as any).navigate('CreateStory');
                   }}
-                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-violet-600`}
+                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-emerald-600`}
                 >
                   <Text style={tw`text-white font-semibold`}>Create Story</Text>
                 </TouchableOpacity>
@@ -780,13 +903,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       onPress={() => openStoriesViewer(story.id)}
                     >
                       <View
-                        style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
+                        style={tw`w-[72px] h-[128px] rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-emerald-500 overflow-hidden`}
                       >
-                        <Image
-                          source={{ uri: resolveStoryDisplayUri(story.image, user?.id || 'me', story.id) }}
-                          style={tw`w-full h-full`}
-                          contentFit="cover"
-                        />
+                        <ProfileStoryThumb story={story} userId={user?.id} />
                       </View>
                       <Text style={tw`text-xs text-stone-500`}>{story.views} views</Text>
                       <Text style={tw`text-xs text-stone-400 mt-1`}>
@@ -933,7 +1052,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         visible={connectionsSheet !== null}
         mode={connectionsSheet ?? 'following'}
         users={connectionsSheet === 'followers' ? followers : following}
-        loading={profileLoading}
+        loading={profileLoading && (connectionsSheet === 'followers' ? followers : following).length === 0}
         onClose={() => setConnectionsSheet(null)}
         onSelectUser={(id) => {
           setConnectionsSheet(null);

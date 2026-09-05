@@ -7,7 +7,6 @@ import PrimaryButton from '../../components/ui/PrimaryButton';
 import GrowthAreasPicker, { clampGrowthPaths } from '../../components/profile/GrowthAreasPicker';
 import { useAuth } from '../../store/hooks';
 import { updateProfileOnServer } from '../../services/api/profile';
-import { syncCohortFriends } from '../../services/api/friends';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { alertMessage } from '../../utils/confirmDialog';
 import tw from '../../lib/tw';
@@ -20,6 +19,7 @@ interface CategoryPickScreenProps {
 
 export default function CategoryPickScreen({ navigation }: CategoryPickScreenProps) {
   const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
+  const [saving, setSaving] = React.useState(false);
   const { setOnboardingComplete, refreshProfile } = useAuth();
 
   const handleContinue = async () => {
@@ -27,22 +27,24 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
       alertMessage('Select at least one', 'Pick a growth path to continue.');
       return;
     }
+    setSaving(true);
     try {
-      await updateProfileOnServer({ categories: clampGrowthPaths(selectedCategories) });
-      await syncCohortFriends();
+      const categories = clampGrowthPaths(selectedCategories);
+      await updateProfileOnServer({ categories });
+      setOnboardingComplete(categories);
+      await refreshProfile();
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Individual' }],
+        })
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';
       alertMessage('Could not save', msg);
-      return;
+    } finally {
+      setSaving(false);
     }
-    setOnboardingComplete(selectedCategories);
-    await refreshProfile();
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'Individual' }],
-      })
-    );
   };
 
   return (
@@ -63,9 +65,9 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
         </View>
 
         <PrimaryButton
-          label="Continue to Grow!"
+          label={saving ? 'Saving…' : 'Continue to Grow!'}
           onPress={handleContinue}
-          disabled={selectedCategories.length === 0}
+          disabled={selectedCategories.length === 0 || saving}
         />
       </View>
     </Screen>

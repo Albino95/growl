@@ -40,70 +40,73 @@ export default function ConnectionsListSheet({
       : 'People following you in shared growth areas';
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={tw`flex-1 justify-end bg-black/40`}>
-        <SafeAreaView edges={['bottom']} style={tw`bg-white rounded-t-3xl max-h-[85%]`}>
-          <View style={tw`px-5 pt-3 pb-2 border-b border-stone-100`}>
-            <View style={tw`w-10 h-1 bg-stone-200 rounded-full self-center mb-4`} />
-            <View style={tw`flex-row items-center justify-between`}>
-              <View style={tw`flex-1 pr-3`}>
-                <Text style={tw`text-xl font-bold text-stone-900`}>{title}</Text>
-                <Text style={tw`text-sm text-stone-500 mt-0.5`}>{subtitle}</Text>
-              </View>
-              <TouchableOpacity
-                onPress={onClose}
-                hitSlop={12}
-                style={tw`w-9 h-9 rounded-full bg-stone-100 items-center justify-center`}
-              >
-                <Ionicons name="close" size={22} color="#57534E" />
-              </TouchableOpacity>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView edges={['top', 'bottom']} style={tw`flex-1 bg-[#F3EEE4]`}>
+        <View style={tw`px-5 pt-3 pb-2 border-b border-stone-200/80 bg-[#FFFcf7]`}>
+          <View style={tw`flex-row items-center justify-between`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-xl font-bold text-stone-900`}>{title}</Text>
+              <Text style={tw`text-sm text-stone-500 mt-0.5`}>{subtitle}</Text>
             </View>
-            <Text style={tw`text-xs text-emerald-700 font-medium mt-2`}>
-              {users.length} {users.length === 1 ? 'person' : 'people'}
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={12}
+              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            >
+              <Ionicons name="close" size={22} color="#57534E" />
+            </TouchableOpacity>
+          </View>
+          <Text style={tw`text-xs text-emerald-700 font-medium mt-2`}>
+            {users.length} {users.length === 1 ? 'person' : 'people'}
+          </Text>
+        </View>
+
+        {loading ? (
+          <View style={tw`py-16 items-center`}>
+            <ActivityIndicator size="large" color="#059669" />
+          </View>
+        ) : users.length === 0 ? (
+          <View style={tw`py-16 px-8 items-center`}>
+            <Ionicons name="people-outline" size={48} color="#A8A29E" />
+            <Text style={tw`text-stone-600 text-center mt-4 leading-5`}>
+              {mode === 'following'
+                ? 'No connections yet. Pick growth categories to auto-link with others in the same areas.'
+                : 'No followers yet. When others share your growth categories, they connect with you.'}
             </Text>
           </View>
-
-          {loading ? (
-            <View style={tw`py-16 items-center`}>
-              <ActivityIndicator size="large" color="#059669" />
-            </View>
-          ) : users.length === 0 ? (
-            <View style={tw`py-16 px-8 items-center`}>
-              <Ionicons name="people-outline" size={48} color="#D6D3D1" />
-              <Text style={tw`text-stone-600 text-center mt-4 leading-5`}>
-                {mode === 'following'
-                  ? 'No connections yet. Pick growth categories to auto-link with others in the same areas.'
-                  : 'No followers yet. When others share your growth categories, they connect with you.'}
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={users}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={tw`pb-6`}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => onSelectUser(item.id)}
-                  style={tw`flex-row items-center px-5 py-3.5 border-b border-stone-50 active:bg-stone-50`}
-                >
-                  <View style={tw`w-12 h-12 rounded-full overflow-hidden bg-emerald-50 mr-3`}>
-                    <Image
-                      source={{ uri: resolveAvatarUri(item.id, item.username, item.avatar) }}
-                      style={tw`w-full h-full`}
-                      contentFit="cover"
-                    />
-                  </View>
-                  <View style={tw`flex-1`}>
-                    <Text style={tw`text-base font-semibold text-stone-900`}>{item.username}</Text>
-                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>View profile</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
-                </TouchableOpacity>
-              )}
-            />
-          )}
-        </SafeAreaView>
-      </View>
+        ) : (
+          <FlatList
+            data={users}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={tw`pb-6`}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => onSelectUser(item.id)}
+                style={tw`flex-row items-center px-5 py-3.5 border-b border-[#EAE4D6] bg-[#FFFcf7]/active:bg-[#EAE4D6]`}
+              >
+                <View style={tw`w-12 h-12 rounded-full overflow-hidden bg-[#ECFDF5] mr-3 border border-stone-200/70`}>
+                  <Image
+                    source={{ uri: resolveAvatarUri(item.id, item.username, item.avatar) }}
+                    style={tw`w-full h-full`}
+                    contentFit="cover"
+                  />
+                </View>
+                <View style={tw`flex-1`}>
+                  <Text style={tw`text-base font-semibold text-stone-900`}>{item.username}</Text>
+                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>View profile</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </SafeAreaView>
     </Modal>
   );
 }

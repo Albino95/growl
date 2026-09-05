@@ -33,6 +33,7 @@ import SkeletonCard from '../../components/ui/SkeletonCard';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import HeartBurst from '../../components/feed/HeartBurst';
+import FeedReelMedia from '../../components/feed/FeedReelMedia';
 import FeedLikeButton, {
   ReactionPickerBar,
   type FeedReaction,
@@ -43,7 +44,10 @@ import { getStories, viewStory, type StoryItem } from '../../services/api/storie
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import type { VideoEditSettings } from '../../components/ui/VideoEditor';
 
 type Story = {
   id: string;
@@ -52,6 +56,8 @@ type Story = {
   avatar: string;
   /** CDN/device URI from API; resolved again before render */
   image?: string;
+  createdAt?: string;
+  views?: number;
   hasViewed: boolean;
 };
 
@@ -78,6 +84,10 @@ type Post = {
   isOwn?: boolean;
   audioUrl?: string;
   audioTitle?: string;
+  isReel?: boolean;
+  mediaType?: string;
+  contentType?: string;
+  videoEdit?: VideoEditSettings | null;
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -120,7 +130,18 @@ export default function FeedScreen({ navigation, route }: any) {
   const [likesLoading, setLikesLoading] = useState(false);
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 55 }).current;
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: Post; isViewable: boolean }> }) => {
+      const ids = new Set<string>();
+      for (const v of viewableItems) {
+        if (v.isViewable && v.item?.id) ids.add(v.item.id);
+      }
+      setVisiblePostIds(ids);
+    }
+  ).current;
 
   const toLocalPost = (post: FeedPost): Post => {
     const username = post.metadata?.username || 'User';
@@ -130,6 +151,16 @@ export default function FeedScreen({ navigation, route }: any) {
     const hasLiked = !!post.metadata?.has_liked;
 
     const imageUri = resolvePostMediaUri(post.image_url, post.category || 'general', post.id);
+    const videoEdit = reelPlaybackSettingsFromMetadata(post.metadata ?? undefined);
+    const soundtrack = reelSoundtrackFromEdit(videoEdit);
+    const audioUrl =
+      typeof post.metadata?.audio_url === 'string'
+        ? post.metadata.audio_url
+        : soundtrack.audioUrl;
+    const audioTitle =
+      typeof post.metadata?.audio_title === 'string'
+        ? post.metadata.audio_title
+        : soundtrack.audioTitle || videoEdit?.audioTitle || undefined;
 
     return {
       id: post.id,
@@ -149,11 +180,32 @@ export default function FeedScreen({ navigation, route }: any) {
       friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
       isFriend: !!post.metadata?.is_friend,
       isOwn: post.user_id === user?.id,
-      audioUrl:
-        typeof post.metadata?.audio_url === 'string' ? post.metadata.audio_url : undefined,
-      audioTitle:
-        typeof post.metadata?.audio_title === 'string' ? post.metadata.audio_title : undefined,
+      audioUrl,
+      audioTitle,
+      isReel: isReelPost(post),
+      mediaType:
+        typeof post.metadata?.media_type === 'string' ? post.metadata.media_type : undefined,
+      contentType:
+        typeof post.metadata?.content_type === 'string' ? post.metadata.content_type : undefined,
+      videoEdit,
     };
+  };
+
+  const findFeedPost = (postId: string): FeedPost | undefined =>
+    feedFollowing.find((p) => p.id === postId) ||
+    feedSuggested.find((p) => p.id === postId) ||
+    feedItems.find((p) => p.id === postId);
+
+  const openPost = (post: Post) => {
+    if (post.isReel) {
+      openReelsAtPost(navigation, post.id, findFeedPost(post.id));
+      return;
+    }
+    setSelectedPost(post);
+  };
+
+  const openComments = (post: Post) => {
+    setSelectedPost(post);
   };
 
   const togglePostAudio = (post: Post) => {
@@ -178,20 +230,10 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const loadStoriesOnly = async () => {
     try {
-      console.log('[FeedScreen] Loading stories...');
       const storiesRes = await getStories();
 
       if (storiesRes.success && storiesRes.data) {
         const storiesArray = storiesRes.data.stories || [];
-        console.log('[FeedScreen] Stories response:', {
-          success: storiesRes.success,
-          storiesCount: storiesArray.length,
-          firstStory: storiesArray[0] ? {
-            id: storiesArray[0].id,
-            userId: storiesArray[0].userId,
-            username: storiesArray[0].username,
-          } : 'none',
-        });
         if (storiesArray.length > 0) {
           setStories((prev) => {
             const locallyViewed = new Set(prev.filter((s) => s.hasViewed).map((s) => s.id));
@@ -200,20 +242,20 @@ export default function FeedScreen({ navigation, route }: any) {
               userId: s.userId,
               username: s.username,
               avatar: resolveAvatarUri(s.userId, s.username, s.avatar),
-              image: s.image,
-              // Keep optimistic views if a silent refresh races ahead of viewStory
+              image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+              createdAt: s.createdAt,
+              views: s.views ?? 0,
               hasViewed: !!s.hasViewed || locallyViewed.has(s.id),
             }));
           });
         } else {
           setStories([]);
         }
-      } else {
-        setStories([]);
       }
+      // Keep last-good stories on empty/unsuccessful payload (transient API blips)
     } catch (error: unknown) {
       console.error('[FeedScreen] Error loading stories:', error);
-      setStories([]);
+      // Do not clear the tray on network failure
     }
   };
 
@@ -273,8 +315,9 @@ export default function FeedScreen({ navigation, route }: any) {
   // Group stories by user - show each person only once
   const groupedStories = useMemo(() => {
     const grouped = new Map<string, { user: Story; stories: Story[] }>();
-    
+
     stories.forEach((story) => {
+      if (user?.id && story.userId === user.id) return;
       if (!grouped.has(story.userId)) {
         grouped.set(story.userId, {
           user: story,
@@ -283,10 +326,14 @@ export default function FeedScreen({ navigation, route }: any) {
       }
       grouped.get(story.userId)!.stories.push(story);
     });
-    
-    const result = Array.from(grouped.values());
-    return result;
-  }, [stories]);
+
+    return Array.from(grouped.values());
+  }, [stories, user?.id]);
+
+  const myStories = useMemo(
+    () => (user?.id ? stories.filter((s) => s.userId === user.id) : []),
+    [stories, user?.id]
+  );
 
   // Check if viewer has posted today to avoid stale nudges.
   const hasPostedToday = useMemo(() => {
@@ -424,6 +471,16 @@ export default function FeedScreen({ navigation, route }: any) {
       return;
     }
     lastTapRef.current = { id: post.id, at: now };
+
+    if (post.isReel) {
+      const postId = post.id;
+      setTimeout(() => {
+        if (lastTapRef.current?.id === postId) {
+          openReelsAtPost(navigation, postId, findFeedPost(postId));
+          lastTapRef.current = null;
+        }
+      }, 340);
+    }
   };
 
   const setReaction = async (postId: string, reaction: ReactionType) => {
@@ -579,11 +636,57 @@ export default function FeedScreen({ navigation, route }: any) {
           style={tw`items-center mr-4`}
           onPress={() => {
             const rootNavigation = navigation.getParent() || navigation;
+            if (myStories.length > 0) {
+              const fullStories = myStories.map((s) => ({
+                ...s,
+                image: resolveStoryDisplayUri(s.image, s.userId, s.id),
+                createdAt: s.createdAt || new Date().toISOString(),
+                views: typeof s.views === 'number' ? s.views : 0,
+                hasViewed: true,
+              }));
+              rootNavigation.navigate('StoryViewer' as never, {
+                stories: fullStories,
+                initialIndex: 0,
+              } as never);
+              return;
+            }
             rootNavigation.navigate('CreateStory' as never);
           }}
+          onLongPress={() => {
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.navigate('CreateStory' as never);
+          }}
+          delayLongPress={400}
         >
-          <View style={tw`w-14 h-14 rounded-full border-2 border-dashed border-stone-300 items-center justify-center bg-white/60`}>
-            <Ionicons name="add" size={22} color="#78716C" />
+          <View style={tw`relative`}>
+            <View
+              style={tw`w-14 h-14 rounded-full border-2 ${
+                myStories.length > 0 ? 'border-emerald-500' : 'border-dashed border-stone-300'
+              } overflow-hidden items-center justify-center bg-white/60`}
+            >
+              {myStories.length > 0 ? (
+                <Image
+                  source={{
+                    uri: resolveStoryDisplayUri(
+                      myStories[myStories.length - 1]?.image,
+                      user?.id || 'me',
+                      myStories[myStories.length - 1]?.id
+                    ),
+                  }}
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
+              ) : (
+                <Ionicons name="add" size={22} color="#78716C" />
+              )}
+            </View>
+            {myStories.length > 0 ? (
+              <View
+                style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-600 border-2 border-[#FFFcf7] items-center justify-center`}
+              >
+                <Ionicons name="add" size={12} color="#fff" />
+              </View>
+            ) : null}
           </View>
           <Text style={tw`text-[11px] text-stone-600 mt-1`}>Your story</Text>
         </TouchableOpacity>
@@ -598,20 +701,13 @@ export default function FeedScreen({ navigation, route }: any) {
               style={tw`items-center mr-4`}
               onPress={() => {
                 const rootNavigation = navigation.getParent() || navigation;
-                const fullStories = userStories.map((s, idx) => ({
+                const fullStories = userStories.map((s) => ({
                   ...s,
                   image: resolveStoryDisplayUri(s.image, s.userId, s.id),
-                  createdAt: new Date(
-                    Date.now() - (userStories.length - idx) * 3600000
-                  ).toISOString(),
-                  views: Math.floor(Math.random() * 100),
+                  createdAt: s.createdAt || new Date().toISOString(),
+                  views: typeof s.views === 'number' ? s.views : 0,
                   hasViewed: !!s.hasViewed,
                 }));
-
-                const viewedIds = new Set(userStories.map((s) => s.id));
-                setStories((prev) =>
-                  prev.map((s) => (viewedIds.has(s.id) ? { ...s, hasViewed: true } : s))
-                );
 
                 rootNavigation.navigate('StoryViewer' as never, {
                   stories: fullStories,
@@ -638,7 +734,22 @@ export default function FeedScreen({ navigation, route }: any) {
                 <View
                   style={tw`w-14 h-14 rounded-full border-2 ${
                     allViewed ? 'border-stone-300' : 'border-emerald-500'
-                  } items-center justify-center bg-emerald-50 p-0.5`}
+                  } overflow-hidden bg-stone-200`}
+                >
+                  <Image
+                    source={{
+                      uri: resolveStoryDisplayUri(
+                        userStories[userStories.length - 1]?.image,
+                        storyUser.userId,
+                        userStories[userStories.length - 1]?.id
+                      ),
+                    }}
+                    style={tw`w-full h-full`}
+                    contentFit="cover"
+                  />
+                </View>
+                <View
+                  style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-[#FFFcf7] overflow-hidden bg-emerald-100`}
                 >
                   <Image
                     source={{
@@ -648,7 +759,7 @@ export default function FeedScreen({ navigation, route }: any) {
                         storyUser.avatar
                       ),
                     }}
-                    style={tw`w-full h-full rounded-full`}
+                    style={tw`w-full h-full`}
                     contentFit="cover"
                   />
                 </View>
@@ -762,6 +873,8 @@ export default function FeedScreen({ navigation, route }: any) {
           sections={feedSections}
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
           ListHeaderComponent={feedListHeader}
           renderSectionHeader={({ section }) => (
             <View style={tw`px-5 pt-3 pb-2`}>
@@ -783,7 +896,9 @@ export default function FeedScreen({ navigation, route }: any) {
           {...verticalScrollProps}
           renderItem={({ item }) => (
             <View
-              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70`}
+              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70 ${
+                item.isReel ? 'border-stone-300/60' : ''
+              }`}
             >
               {/* Post Header - Modern Style */}
               <View style={tw`flex-row items-center justify-between px-4 py-3`}>
@@ -837,29 +952,22 @@ export default function FeedScreen({ navigation, route }: any) {
 
               {/* Post Image — double-tap to like */}
               <Pressable onPress={() => handleMediaPress(item)} style={tw`relative w-full bg-stone-50`}>
-                {item.image && item.image.trim() !== '' ? (
-                  <Image
-                    source={{
-                      uri: failedPostImages[item.id]
-                        ? `https://picsum.photos/seed/fallback-post-${encodeURIComponent(item.id)}/1200/1200`
-                        : item.image,
-                    }}
-                    style={tw`w-full h-96`}
-                    contentFit="cover"
-                    onError={() => {
-                      setFailedPostImages((prev) =>
-                        prev[item.id] ? prev : { ...prev, [item.id]: true }
-                      );
-                    }}
-                    placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-                    transition={200}
-                  />
-                ) : (
-                  <View style={tw`w-full h-96 bg-gradient-to-br from-gray-100 to-gray-200 items-center justify-center`}>
-                    <Ionicons name="image-outline" size={64} color="#9CA3AF" />
-                    <Text style={tw`text-gray-400 mt-2 text-sm`}>No image available</Text>
-                  </View>
-                )}
+                <FeedReelMedia
+                  uri={item.image}
+                  postId={item.id}
+                  isReel={item.isReel}
+                  mediaType={item.mediaType}
+                  contentType={item.contentType}
+                  videoEdit={item.videoEdit}
+                  failed={!!failedPostImages[item.id]}
+                  isActive={visiblePostIds.has(item.id)}
+                  muted
+                  onError={() => {
+                    setFailedPostImages((prev) =>
+                      prev[item.id] ? prev : { ...prev, [item.id]: true }
+                    );
+                  }}
+                />
                 <HeartBurst triggerKey={heartBurst[item.id] || 0} />
               </Pressable>
 
@@ -882,7 +990,7 @@ export default function FeedScreen({ navigation, route }: any) {
                       }
                     />
                     <View style={tw`relative mr-3`}>
-                      <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                      <TouchableOpacity onPress={() => openComments(item)}>
                         <Ionicons name="chatbubble-outline" size={24} color="#374151" />
                       </TouchableOpacity>
                       <View
@@ -949,26 +1057,40 @@ export default function FeedScreen({ navigation, route }: any) {
                   </Pressable>
                 ) : null}
 
-                {/* CO2 Calculator */}
-                <CO2Calculator category={item.category} activityType="post" />
+                {item.isReel ? (
+                  <Pressable
+                    onPress={() => openPost(item)}
+                    style={tw`mb-2 flex-row items-center self-start bg-emerald-50 border border-emerald-200/80 rounded-full px-3 py-1.5`}
+                  >
+                    <Ionicons name="film-outline" size={14} color="#059669" />
+                    <Text style={tw`text-emerald-800 text-xs font-semibold ml-1.5`}>
+                      Watch in Reels
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                {/* CO2 Calculator — posts only */}
+                {!item.isReel ? (
+                  <CO2Calculator category={item.category} activityType="post" />
+                ) : null}
 
                 {/* Comments */}
                 {item.comments > 0 && (
-                  <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                  <TouchableOpacity onPress={() => openComments(item)}>
                     <Text style={tw`text-stone-500 text-sm mb-1`}>
                       View all {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
                     </Text>
                   </TouchableOpacity>
                 )}
                 {item.comments === 0 ? (
-                  <TouchableOpacity onPress={() => setSelectedPost(item)}>
+                  <TouchableOpacity onPress={() => openComments(item)}>
                     <Text style={tw`text-stone-400 text-xs mb-1`}>No comments yet</Text>
                   </TouchableOpacity>
                 ) : null}
 
                 {/* Add Comment */}
                 <TouchableOpacity
-                  onPress={() => setSelectedPost(item)}
+                  onPress={() => openComments(item)}
                   style={tw`mt-2`}
                 >
                   <Text style={tw`text-stone-500 text-sm`}>Add a comment...</Text>

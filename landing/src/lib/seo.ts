@@ -1,10 +1,10 @@
 export const SITE_NAME = 'Grow!';
 export const SITE_TAGLINE = 'Grow by scrolling with purpose.';
 export const SITE_DESCRIPTION =
-  'Grow! is a personal growth social platform — interest-based feeds, peer instructors, and a curated marketplace that help you improve while you scroll.';
+  'Grow! is a personal growth social platform: interest-based feeds, peer instructors, and a curated marketplace that help you improve while you scroll.';
 
 export function getSiteUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://grow.app';
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://letsgrow.lu';
   return raw.replace(/\/$/, '');
 }
 

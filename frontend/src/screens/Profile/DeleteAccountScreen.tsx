@@ -33,7 +33,7 @@ export default function DeleteAccountScreen() {
       const summary = `Exported ${data.posts.length} posts, ${data.comments.length} comments, ${data.orders.length} orders.`;
       alertMessage(
         'Export ready',
-        `${summary}\n\nA copy has been prepared on the server. Contact privacy@growl.app for a full archive file.`
+        `${summary}\n\nA copy has been prepared on the server. Contact privacy@letsgrow.lu for a full archive file.`
       );
     } catch (e: unknown) {
       alertMessage('Export failed', e instanceof Error ? e.message : 'Could not export data');

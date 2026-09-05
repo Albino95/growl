@@ -15,6 +15,8 @@ import { fetchCurrentProfile } from '../../services/api/profile';
 export type User = {
   id: string;
   email?: string;
+  username?: string;
+  avatar?: string;
   isInstructor?: boolean;
   isBusiness?: boolean;
   categories?: string[];
@@ -26,6 +28,7 @@ export type User = {
   endorsementsGiven?: number;
   streakDays?: number;
   bio?: string | null;
+  status?: string | null;
 };
 
 interface AuthState {
@@ -112,6 +115,8 @@ async function loadUserFromApi(
   return {
     id: profile.id,
     email: profile.email || email,
+    username: profile.username || undefined,
+    avatar: profile.avatar || undefined,
     isInstructor: profile.is_instructor,
     isBusiness: profile.is_business,
     categories: profile.categories,
@@ -124,6 +129,7 @@ async function loadUserFromApi(
     endorsementsGiven: profile.endorsements_given ?? 0,
     streakDays: profile.streak_days ?? 0,
     bio: profile.bio ?? null,
+    status: profile.status ?? null,
   };
 }
 
@@ -377,6 +383,9 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.user = action.payload.user;
         state.isLoading = false;
+        if (action.payload.user && !action.payload.user.hasCompletedOnboarding) {
+          state.shouldCompleteSignupOnboarding = true;
+        }
       })
       .addCase(signIn.rejected, (state, action) => {
         state.isLoading = false;
@@ -392,6 +401,9 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.user = action.payload.user;
         state.isLoading = false;
+        if (action.payload.user && !action.payload.user.hasCompletedOnboarding) {
+          state.shouldCompleteSignupOnboarding = true;
+        }
       })
       .addCase(signInWithSSO.rejected, (state, action) => {
         state.isLoading = false;

@@ -39,6 +39,10 @@ function clampAdjustments(a: EditAdjustments): EditAdjustments {
     hue: clamp(a.hue, -40, 40),
     sepia: clamp(a.sepia, 0, 100),
     grayscale: clamp(a.grayscale, 0, 100),
+    highlights: clamp(a.highlights, -40, 40),
+    shadows: clamp(a.shadows, -40, 40),
+    clarity: clamp(a.clarity, -40, 40),
+    cinematic: clamp(a.cinematic, 0, 50),
   };
 }
 
@@ -76,8 +80,16 @@ export function isAdjustmentsNeutral(adj: EditAdjustments): boolean {
 /** Map slider values to CSS filter chain (preview). Skips neutral (≈0) values. */
 export function buildCssFilter(adj: EditAdjustments): string {
   const a = sanitizeAdjustments(adj);
-  const exposureMul = 1 + (a.exposure !== 0 ? a.exposure / 100 : 0) + (a.brightness !== 0 ? a.brightness / 200 : 0);
-  const contrastMul = 1 + (a.contrast !== 0 ? a.contrast / 100 : 0);
+  const exposureMul =
+    1 +
+    (a.exposure !== 0 ? a.exposure / 100 : 0) +
+    (a.brightness !== 0 ? a.brightness / 200 : 0) +
+    (a.highlights !== 0 ? a.highlights / 280 : 0) +
+    (a.shadows !== 0 ? a.shadows / 320 : 0);
+  const contrastMul =
+    1 +
+    (a.contrast !== 0 ? a.contrast / 100 : 0) +
+    (a.clarity !== 0 ? a.clarity / 160 : 0);
   const saturateMul = a.saturation !== 0 ? Math.max(0, 1 + a.saturation / 100) : 1;
   const hue =
     (a.hue !== 0 ? a.hue * 0.9 : 0) +
@@ -96,6 +108,10 @@ export function buildCssFilter(adj: EditAdjustments): string {
   if (totalSepia > 0) parts.push(`sepia(${totalSepia.toFixed(3)})`);
   if (gray > 0) parts.push(`grayscale(${gray.toFixed(3)})`);
   if (a.fade > 0) parts.push(`opacity(${Math.max(0.72, 1 - a.fade / 200).toFixed(3)})`);
+  // Cinematic edges approximated as slight darkening in preview
+  if (a.cinematic > 0) {
+    parts.push(`brightness(${Math.max(0.82, 1 - a.cinematic / 220).toFixed(3)})`);
+  }
 
   return parts.join(' ') || 'none';
 }
@@ -104,3 +120,24 @@ export function hasActiveEdits(adj: EditAdjustments, presetId: string | null): b
   if (presetId && presetId !== 'original') return true;
   return !Object.values(sanitizeAdjustments(adj)).every((v) => v === 0);
 }
+
+/** One-tap “Auto” look — gentle pro polish, not a heavy filter. */
+export const AUTO_ENHANCE_ADJUSTMENTS: EditAdjustments = {
+  ...DEFAULT_ADJUSTMENTS,
+  exposure: 4,
+  contrast: 10,
+  saturation: 8,
+  warmth: 4,
+  shadows: 8,
+  highlights: -6,
+  clarity: 10,
+  sharpen: 8,
+};
+
+/** Vertical-clip auto look — slight cinematic edges. */
+export const AUTO_REEL_ADJUSTMENTS: EditAdjustments = {
+  ...AUTO_ENHANCE_ADJUSTMENTS,
+  cinematic: 18,
+  vignette: 10,
+  contrast: 12,
+};

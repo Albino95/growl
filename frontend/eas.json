@@ -10,7 +10,7 @@
       "ios": { "simulator": true },
       "env": {
         "APP_ENV": "development",
-        "API_BASE_URL": "https://growl-backend-dev.albino-ndreu.workers.dev/api/v1",
+        "API_BASE_URL": "https://growl-backend-dev.wispy-leaf-4e8b.workers.dev/api/v1",
         "SHOW_DEMO_ACCOUNTS": "true",
         "SHOW_DEV_TOOLS": "true",
         "ENABLE_KYC": "false",
@@ -23,7 +23,7 @@
       "android": { "buildType": "apk" },
       "env": {
         "APP_ENV": "qa",
-        "API_BASE_URL": "https://growl-backend-qa.albino-ndreu.workers.dev/api/v1",
+        "API_BASE_URL": "https://growl-backend-qa.wispy-leaf-4e8b.workers.dev/api/v1",
         "SHOW_DEMO_ACCOUNTS": "true",
         "SHOW_DEV_TOOLS": "true",
         "ENABLE_KYC": "false",
@@ -34,7 +34,7 @@
       "autoIncrement": true,
       "env": {
         "APP_ENV": "production",
-        "API_BASE_URL": "https://growl-backend-production.albino-ndreu.workers.dev/api/v1",
+        "API_BASE_URL": "https://growl-backend-production.wispy-leaf-4e8b.workers.dev/api/v1",
         "SHOW_DEMO_ACCOUNTS": "false",
         "SHOW_DEV_TOOLS": "false",
         "ENABLE_KYC": "false",
@@ -45,9 +45,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID",
-        "ascAppId": "YOUR_ASC_APP_ID",
-        "appleTeamId": "YOUR_TEAM_ID"
+        "appleId": "albino.ndreu@icloud.com",
+        "ascAppId": "6809046287",
+        "appleTeamId": "TWA9YR63J2"
       },
       "android": {
         "serviceAccountKeyPath": "./google-play-service-account.json",

@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl } from '../../utils/images';
+import { resolveAvatarUri } from '../../utils/images';
 import {
   getConversations,
   getMessages,
@@ -112,7 +112,7 @@ export default function MessagesScreen() {
   const [messageText, setMessageText] = useState('');
   const [listError, setListError] = useState<string | null>(null);
   const messageInputRef = useRef<TextInput>(null);
-  const bootedFromRouteRef = useRef(false);
+  const lastRouteBootKey = useRef<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
 
   selectedIdRef.current = selectedConversation?.id ?? null;
@@ -188,8 +188,9 @@ export default function MessagesScreen() {
   useEffect(() => {
     const { conversationId, targetUserId } = route.params ?? {};
     if (!conversationId && !targetUserId) return;
-    if (bootedFromRouteRef.current) return;
-    bootedFromRouteRef.current = true;
+    const bootKey = `${conversationId || ''}|${targetUserId || ''}`;
+    if (lastRouteBootKey.current === bootKey) return;
+    lastRouteBootKey.current = bootKey;
 
     const boot = async () => {
       let list = conversations;
@@ -329,7 +330,7 @@ export default function MessagesScreen() {
               <View style={tw`w-10 h-10 rounded-full bg-stone-100 overflow-hidden mr-3 border border-stone-200`}>
                 <Image
                   source={{
-                    uri: getAvatarUrl(
+                    uri: resolveAvatarUri(
                       selectedConversation.peer.id,
                       selectedConversation.peer.username,
                       selectedConversation.peer.avatar
@@ -546,7 +547,7 @@ export default function MessagesScreen() {
                 <View style={tw`w-14 h-14 rounded-full bg-stone-100 overflow-hidden border border-stone-200`}>
                   <Image
                     source={{
-                      uri: getAvatarUrl(item.peer.id, item.peer.username, item.peer.avatar),
+                      uri: resolveAvatarUri(item.peer.id, item.peer.username, item.peer.avatar),
                     }}
                     style={tw`w-full h-full`}
                     contentFit="cover"

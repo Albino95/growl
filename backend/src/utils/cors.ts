@@ -14,10 +14,16 @@ export function resolveCorsOrigin(request: Request, env: Env): string {
   if (!configured || configured === '*') {
     if (env.ENVIRONMENT === 'production') {
       // Fail closed for browser clients in production if misconfigured
-      if (origin && (origin.endsWith('://growl.app') || origin.endsWith('.growl.app'))) {
+      if (
+        origin &&
+        (origin.endsWith('://letsgrow.lu') ||
+          origin.endsWith('.letsgrow.lu') ||
+          origin.endsWith('://growl.app') ||
+          origin.endsWith('.growl.app'))
+      ) {
         return origin;
       }
-      return 'https://growl.app';
+      return 'https://letsgrow.lu';
     }
     return origin || '*';
   }
@@ -26,7 +32,7 @@ export function resolveCorsOrigin(request: Request, env: Env): string {
   if (origin && allowed.includes(origin)) return origin;
   if (allowed.includes('*')) return '*';
   // Non-browser clients (native) often omit Origin — echo first allowlisted origin for preflight compatibility
-  return allowed[0] || 'https://growl.app';
+  return allowed[0] || 'https://letsgrow.lu';
 }
 
 export function corsHeaders(request: Request, env: Env): Record<string, string> {

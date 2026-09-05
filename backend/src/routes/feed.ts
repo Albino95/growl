@@ -151,6 +151,10 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   }
 
   // Pull a recent post window and hydrate engagement counters in one query.
+  // Explore needs a wider window so discovery isn't empty after a quiet week.
+  // Home uses 21 days so seeded / quieter accounts still see a populated feed.
+  const recencyWindow = isExploreMode ? '-45 days' : '-21 days';
+  const feedLimit = isExploreMode ? 80 : 50;
   let query = `
     SELECT 
       p.*,
@@ -171,7 +175,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     JOIN users u ON p.user_id = u.id
     LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
     LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
-    WHERE p.created_at > datetime('now', '-7 days')
+    WHERE p.created_at > datetime('now', '${recencyWindow}')
   `;
 
   const bindings: any[] = [];
@@ -186,7 +190,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   query += `
     GROUP BY p.id
     ORDER BY p.engagement_score DESC, p.created_at DESC
-    LIMIT 40
+    LIMIT ${feedLimit}
   `;
 
   const posts = await env.DB.prepare(query)
@@ -221,8 +225,15 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
         (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
       const isOwn = post.user_id === ctx.userId;
       const isFriend = friendIds.has(post.user_id);
-      let relevanceScore = catScore + Math.max(0, 10 - daysSincePost);
-      if (isFriend) relevanceScore += 25;
+      const likes = Number(post.likes_count) || 0;
+      const comments = Number(post.comments_count) || 0;
+      const engagementBoost = Math.min(28, likes * 1.4 + comments * 2.2);
+      const instructorBoost = post.is_instructor ? 8 : 0;
+      // Explore favors category match + engagement; home favors friends + recency.
+      let relevanceScore = isExploreMode
+        ? catScore * 1.35 + Math.max(0, 18 - daysSincePost * 0.55) + engagementBoost + instructorBoost
+        : catScore + Math.max(0, 10 - daysSincePost) + engagementBoost * 0.45;
+      if (isFriend) relevanceScore += isExploreMode ? 6 : 25;
       if (isOwn) relevanceScore += 100;
 
       return {
@@ -352,7 +363,32 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
   const postId = generateId('post');
   console.log('[createPost] Generated post ID:', postId);
 
+  const userRow = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
+    .bind(ctx.userId)
+    .first<{ metadata: string; is_instructor: number }>();
+  let userMeta: Record<string, unknown> = {};
   try {
+    userMeta = JSON.parse(userRow?.metadata || '{}');
+  } catch {
+    userMeta = {};
+  }
+  const username =
+    typeof userMeta.username === 'string' && userMeta.username.trim()
+      ? userMeta.username.trim()
+      : undefined;
+  const avatar =
+    typeof userMeta.avatar === 'string' && userMeta.avatar.trim()
+      ? userMeta.avatar.trim()
+      : undefined;
+
+  try {
+    const postMetadata = {
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+      ...(username ? { username } : {}),
+      ...(avatar ? { avatar } : {}),
+      isInstructor: !!userRow?.is_instructor,
+    };
+
     await env.DB.prepare(
       `INSERT INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))`
@@ -364,7 +400,7 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         caption || null,
         category,
         subcategory || null,
-        JSON.stringify(metadata || {})
+        JSON.stringify(postMetadata)
       )
       .run();
 
@@ -384,6 +420,15 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         points_awarded: POINTS.CREATE_POST,
         points_total: pointsTotal ?? undefined,
         created_at: new Date().toISOString(),
+        metadata: {
+          ...postMetadata,
+          likes: 0,
+          comments: 0,
+          has_liked: false,
+          username,
+          avatar,
+          isInstructor: !!userRow?.is_instructor,
+        },
       },
       201
     );
@@ -464,10 +509,20 @@ export async function getPost(
   }
 
   const userMeta = JSON.parse(post.user_metadata || '{}');
+  let postMeta: Record<string, unknown> = {};
+  try {
+    postMeta =
+      typeof post.metadata === 'string'
+        ? JSON.parse(post.metadata || '{}')
+        : (post.metadata as Record<string, unknown>) || {};
+  } catch {
+    postMeta = {};
+  }
 
   return json({
     ...post,
     metadata: {
+      ...postMeta,
       likes: post.likes_count || 0,
       comments: post.comments_count || 0,
       has_liked: ctx.isAuthenticated && ctx.userId ? Number(post.viewer_has_liked) > 0 : false,
@@ -646,9 +701,19 @@ export async function getUserPosts(
 
     const userPosts = posts.results.map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
+      let postMeta: Record<string, unknown> = {};
+      try {
+        postMeta =
+          typeof post.metadata === 'string'
+            ? JSON.parse(post.metadata || '{}')
+            : (post.metadata as Record<string, unknown>) || {};
+      } catch {
+        postMeta = {};
+      }
       return {
         ...post,
         metadata: {
+          ...postMeta,
           likes: post.likes_count || 0,
           comments: post.comments_count || 0,
           has_liked: Number(post.viewer_has_liked) > 0,

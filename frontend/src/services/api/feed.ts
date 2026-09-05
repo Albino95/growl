@@ -24,6 +24,12 @@ export type FeedPost = {
     isInstructor?: boolean;
     audio_url?: string;
     audio_title?: string;
+    /** Vertical clip published via Create Reel. */
+    format?: 'reel' | 'post' | string;
+    media_type?: 'image' | 'video' | string;
+    content_type?: string;
+    /** Client-side reel video edits (trim, mute, look, text). */
+    video_edit?: Record<string, unknown>;
   };
 };
 
@@ -72,6 +78,18 @@ export async function getFeedPosts(options?: {
 
 export async function getForYouFeed(): Promise<ForYouFeedResponse> {
   return request<ForYouFeedResponse>('/feed/feed?mode=foryou');
+}
+
+export async function getFeedPost(postId: string): Promise<FeedPost | null> {
+  try {
+    const res = await request<{ success: boolean; data: FeedPost }>(
+      `/feed/posts/${encodeURIComponent(postId)}`
+    );
+    if (!res.success || !res.data) return null;
+    return res.data;
+  } catch {
+    return null;
+  }
 }
 
 export async function createFeedPost(payload: {

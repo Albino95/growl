@@ -15,13 +15,12 @@ function flagEnabled(key: string, defaultOn: boolean): boolean {
 
 /**
  * App capability flags.
- * KYC + push prefs default ON so business tooling is available unless
- * an EAS profile sets ENABLE_*=false.
+ * KYC + push prefs stay off unless an EAS profile sets ENABLE_*=true.
  */
 export const featureFlags = {
   showDemoAccounts: __DEV__ || truthyFlag(extra.SHOW_DEMO_ACCOUNTS),
   showDevVerificationHint: __DEV__ || truthyFlag(extra.SHOW_DEV_TOOLS),
-  enableKYC: flagEnabled('ENABLE_KYC', true),
-  enablePushPrefs: flagEnabled('ENABLE_PUSH_PREFS', true),
+  enableKYC: flagEnabled('ENABLE_KYC', false),
+  enablePushPrefs: flagEnabled('ENABLE_PUSH_PREFS', false),
   appEnv: String(extra.APP_ENV || extra.ENV || 'development'),
 } as const;

@@ -18,7 +18,7 @@ export const FAQ_ITEMS = [
   {
     question: 'What is Grow!?',
     answer:
-      'Grow! is a social platform for personal growth. Your feed is shaped by interest paths — fitness, mindset, art, nutrition — so scrolling helps you improve instead of drift.',
+      'Grow! is a social platform for personal growth. Your feed is shaped by interest paths (fitness, mindset, art, nutrition) so scrolling helps you improve instead of drift.',
   },
   {
     question: 'How do instructors work?',
@@ -33,7 +33,7 @@ export const FAQ_ITEMS = [
   {
     question: 'When does the app launch?',
     answer:
-      'We are preparing App Store and Google Play releases. Join early access to get notified first — and help shape what ships.',
+      'We are preparing App Store and Google Play releases. Join early access to get notified first, and help shape what ships.',
   },
   {
     question: 'Is Grow! free?',

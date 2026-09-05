@@ -3,7 +3,7 @@ import { getSecureItem, setSecureItem, deleteSecureItem } from '../storage/secur
 import { getToken, setToken, clearToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
 
-const DEFAULT_API_BASE = 'https://growl-backend.albino-ndreu.workers.dev/api/v1';
+const DEFAULT_API_BASE = 'https://growl-backend-qa.wispy-leaf-4e8b.workers.dev/api/v1';
 
 function resolveApiBaseUrl(): string {
   const extra = (Constants?.expoConfig?.extra ?? {}) as Record<string, unknown>;
@@ -35,6 +35,7 @@ function isAuthBootstrapPath(path: string): boolean {
     path.startsWith('/auth/forgot-password') ||
     path.startsWith('/auth/reset-password') ||
     path.startsWith('/auth/verify-email') ||
+    path.startsWith('/auth/resend-verification') ||
     path.startsWith('/auth/sso') ||
     path.startsWith('/auth/sign-out')
   );

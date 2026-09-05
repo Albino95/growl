@@ -25,11 +25,11 @@ Copy `.env.example` → `.env.local`:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `NEXT_PUBLIC_SITE_URL` | Yes (prod) | Canonical URL, e.g. `https://grow.app` |
+| `NEXT_PUBLIC_SITE_URL` | Yes (prod) | Canonical URL, e.g. `https://letsgrow.lu` |
 | `NEXT_PUBLIC_APP_STORE_URL` | No | App Store link (placeholder until live) |
 | `NEXT_PUBLIC_PLAY_STORE_URL` | No | Play Store link |
 | `RESEND_API_KEY` | No | Sends waitlist signup notification email |
-| `WAITLIST_TO` | No | Inbox for waitlist alerts (default `hello@grow.app`) |
+| `WAITLIST_TO` | No | Inbox for waitlist alerts (default `hello@letsgrow.lu`) |
 | `EMAIL_FROM` | No | Resend from address |
 
 Without `RESEND_API_KEY`, waitlist signups are logged server-side only (fine for local / early preview).
@@ -40,11 +40,22 @@ Without `RESEND_API_KEY`, waitlist signups are logged server-side only (fine for
 2. **Root Directory:** `landing`
 3. Framework preset: **Next.js**
 4. Set env vars above for Production (and Preview if useful).
-5. Attach domain `grow.app` (+ redirect `www` → apex or vice versa).
+5. Attach domain `letsgrow.lu` (+ redirect `www.letsgrow.lu` → apex or vice versa).
 6. After deploy, verify:
-   - `https://grow.app/sitemap.xml`
-   - `https://grow.app/robots.txt`
+   - `https://letsgrow.lu/sitemap.xml`
+   - `https://letsgrow.lu/robots.txt`
    - Open Graph via a sharing debugger
+
+### DNS (EuroDNS → Vercel)
+
+In Vercel → Project → **Settings** → **Domains**, add `letsgrow.lu` and `www.letsgrow.lu`, then in EuroDNS create the records Vercel shows (typically):
+
+| Host | Type | Value |
+|------|------|--------|
+| `@` | A | `76.76.21.21` |
+| `www` | CNAME | `cname.vercel-dns.com` |
+
+Set Production env `NEXT_PUBLIC_SITE_URL=https://letsgrow.lu` and redeploy.
 
 ## SEO checklist
 

@@ -133,7 +133,11 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
  * PUT /api/v1/profile
  * Update user profile
  */
-export async function updateProfile(request: Request, env: Env): Promise<Response> {
+export async function updateProfile(
+  request: Request,
+  env: Env,
+  executionCtx?: Pick<ExecutionContext, 'waitUntil'>
+): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -158,9 +162,12 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       ...currentMetadata,
       ...(metadata || {}),
       ...(username && { username }),
-      ...(avatar && { avatar }),
       ...(categories && { categories }),
     };
+
+    if (avatar !== undefined) {
+      updatedMetadata.avatar = avatar || null;
+    }
 
     if (typeof decay_timer === 'number') {
       updatedMetadata.decay_timer = decay_timer;
@@ -171,10 +178,13 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       .run();
 
     if (categories && categories.length > 0) {
-      try {
-        await syncCategoryCohortFriends(env, ctx.userId);
-      } catch (syncErr) {
+      const syncWork = syncCategoryCohortFriends(env, ctx.userId).catch((syncErr) => {
         console.error('[updateProfile] Category cohort friend sync failed:', syncErr);
+      });
+      if (executionCtx) {
+        executionCtx.waitUntil(syncWork);
+      } else {
+        await syncWork;
       }
     }
 

@@ -29,6 +29,7 @@ import {
   reportUser,
 } from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
@@ -51,6 +52,7 @@ type Post = {
   comments: number;
   createdAt: string;
   category: string;
+  isReel?: boolean;
 };
 
 type Story = {
@@ -91,6 +93,7 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
     comments: p.metadata?.comments ?? 0,
     createdAt: p.created_at,
     category: p.category,
+    isReel: isReelPost(p),
   };
 }
 
@@ -109,9 +112,9 @@ function mapStoryItemToStory(s: StoryItem): Story {
 }
 
 /** Fetches and maps public posts for the selected profile user. */
-async function fetchUserPosts(userId: string): Promise<Post[]> {
+async function fetchUserPosts(userId: string): Promise<{ cards: Post[]; raw: FeedPost[] }> {
   const list = await getUserPosts(userId);
-  return list.map(mapFeedPostToPublicPost);
+  return { cards: list.map(mapFeedPostToPublicPost), raw: list };
 }
 
 /** Fetches and maps profile stories for story strip + viewer navigation. */
@@ -144,6 +147,7 @@ export default function PublicProfileScreen() {
   const [profileUser, setProfileUser] = useState<PublicUser | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'journal'>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
@@ -160,9 +164,13 @@ export default function PublicProfileScreen() {
 
   const isOwnProfile = currentUser?.id === userId;
 
-  // Reload profile shell when route user changes.
+  // Reload profile shell + first tab content together when route user changes.
   useEffect(() => {
-    loadProfile();
+    setPosts([]);
+    setStories([]);
+    setJournalEntries([]);
+    void loadProfile();
+    void prefetchPrimaryContent();
   }, [userId]);
 
   // Relationship status drives follow button and moderation toggle labels.
@@ -174,15 +182,19 @@ export default function PublicProfileScreen() {
       return;
     }
     let cancelled = false;
-    getFriendshipStatus(userId).then((s) => {
-      if (!cancelled) {
-        setFriendConnected(s.connected);
-        setFriendRequestSent(s.requestSent);
-        setFriendRequestReceived(s.requestReceived);
-        setIsBlocked(s.blocked);
-        setIsMuted(s.muted);
-      }
-    });
+    getFriendshipStatus(userId)
+      .then((s) => {
+        if (!cancelled) {
+          setFriendConnected(s.connected);
+          setFriendRequestSent(s.requestSent);
+          setFriendRequestReceived(s.requestReceived);
+          setIsBlocked(s.blocked);
+          setIsMuted(s.muted);
+        }
+      })
+      .catch(() => {
+        // Keep local defaults when status lookup fails.
+      });
     return () => {
       cancelled = true;
     };
@@ -287,11 +299,11 @@ export default function PublicProfileScreen() {
     }
   };
 
-  // Lazily load tab-specific content only after profile metadata is available.
+  // Load tab content when switching tabs (posts are prefetched with the profile).
   useEffect(() => {
-    if (profileUser) {
-      loadContent();
-    }
+    if (!profileUser) return;
+    if (activeTab === 'posts') return;
+    void loadContent();
   }, [profileUser, activeTab, isBlocked]);
 
   useEffect(() => {
@@ -315,6 +327,21 @@ export default function PublicProfileScreen() {
     }
   };
 
+  /** Prefetch posts while profile metadata loads so the grid appears faster. */
+  const prefetchPrimaryContent = async () => {
+    if (isBlocked) return;
+    try {
+      setLoadingContent(true);
+      const { cards, raw } = await fetchUserPosts(userId);
+      setSourcePosts(raw);
+      setPosts(cards);
+    } catch (error) {
+      console.error('Error prefetching posts:', error);
+    } finally {
+      setLoadingContent(false);
+    }
+  };
+
   /** Loads selected tab content (posts/stories/journal) for current profile user. */
   const loadContent = async () => {
     if (!profileUser) return;
@@ -328,8 +355,9 @@ export default function PublicProfileScreen() {
     try {
       setLoadingContent(true);
       if (activeTab === 'posts') {
-        const userPosts = await fetchUserPosts(userId);
-        setPosts(userPosts);
+        const { cards, raw } = await fetchUserPosts(userId);
+        setSourcePosts(raw);
+        setPosts(cards);
       } else if (activeTab === 'stories') {
         const userStories = await fetchUserStories(userId);
         setStories(userStories);
@@ -545,10 +573,10 @@ export default function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
         <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#10B981" />
-          <Text style={tw`text-gray-500 mt-4`}>Loading profile...</Text>
+          <ActivityIndicator size="large" color="#059669" />
+          <Text style={tw`text-stone-500 mt-4`}>Loading profile...</Text>
         </View>
       </SafeAreaView>
     );
@@ -556,13 +584,13 @@ export default function PublicProfileScreen() {
 
   if (!profileUser) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
-          <Ionicons name="person-outline" size={64} color="#D1D5DB" />
-          <Text style={tw`text-gray-500 mt-4 text-center text-lg`}>User not found</Text>
+          <Ionicons name="person-outline" size={64} color="#A8A29E" />
+          <Text style={tw`text-stone-500 mt-4 text-center text-lg`}>User not found</Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={tw`mt-4 bg-green-600 px-6 py-3 rounded-xl`}
+            style={tw`mt-4 bg-emerald-600 px-6 py-3 rounded-xl`}
           >
             <Text style={tw`text-white font-semibold`}>Go Back</Text>
           </TouchableOpacity>
@@ -572,16 +600,16 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
       {/* Header with Back Button */}
-      <View style={tw`px-4 pt-2 pb-3 border-b border-gray-200 bg-white flex-row items-center`}>
+      <View style={tw`px-4 pt-2 pb-3 border-b border-stone-200/80 bg-[#FFFcf7] flex-row items-center`}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={tw`mr-3`}
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
+          <Ionicons name="arrow-back" size={24} color="#1C1917" />
         </TouchableOpacity>
-        <Text style={tw`text-lg font-semibold text-gray-900 flex-1`}>
+        <Text style={tw`text-lg font-semibold text-stone-900 flex-1`}>
           {profileUser.username}
         </Text>
         <TouchableOpacity
@@ -589,7 +617,7 @@ export default function PublicProfileScreen() {
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           onPress={openOptionsMenu}
         >
-          <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
+          <Ionicons name="ellipsis-horizontal" size={24} color="#57534E" />
         </TouchableOpacity>
       </View>
 
@@ -598,9 +626,9 @@ export default function PublicProfileScreen() {
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
       >
         {/* Profile Header */}
-        <View style={tw`px-4 pt-6 pb-6 border-b border-gray-200`}>
+        <View style={tw`px-5 pt-6 pb-6`}>
           <View style={tw`flex-row items-center mb-4`}>
-            <View style={tw`w-20 h-20 rounded-full overflow-hidden mr-4 bg-green-100`}>
+            <View style={tw`w-20 h-20 rounded-full overflow-hidden mr-4 bg-[#ECFDF5] border-2 border-white`}>
               <Image
                 source={{ uri: resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar) }}
                 style={tw`w-full h-full`}
@@ -608,13 +636,13 @@ export default function PublicProfileScreen() {
               />
             </View>
             <View style={tw`flex-1`}>
-              <Text style={tw`text-2xl font-bold text-gray-900`}>
+              <Text style={tw`text-2xl font-bold text-stone-900`}>
                 {profileUser.username}
               </Text>
               {profileUser.isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
-                  <Ionicons name="school" size={16} color="#10B981" />
-                  <Text style={tw`text-sm text-green-600 ml-1 font-semibold`}>Instructor</Text>
+                  <Ionicons name="school" size={16} color="#059669" />
+                  <Text style={tw`text-sm text-emerald-700 ml-1 font-semibold`}>Instructor</Text>
                 </View>
               )}
             </View>
@@ -629,16 +657,16 @@ export default function PublicProfileScreen() {
 
           <View style={tw`flex-row justify-around mb-4 py-2`}>
             <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.postsCount}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Posts</Text>
+              <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.postsCount}</Text>
+              <Text style={tw`text-xs text-stone-500`}>Posts</Text>
             </View>
             <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.storiesCount}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Stories</Text>
+              <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.storiesCount}</Text>
+              <Text style={tw`text-xs text-stone-500`}>Stories</Text>
             </View>
             <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-emerald-600`}>{profileUser.points}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Points</Text>
+              <Text style={tw`text-lg font-bold text-emerald-700`}>{profileUser.points}</Text>
+              <Text style={tw`text-xs text-stone-500`}>Points</Text>
             </View>
           </View>
 
@@ -649,7 +677,7 @@ export default function PublicProfileScreen() {
                 disabled={friendBusy}
                 style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
                   friendConnected || friendRequestSent
-                    ? 'bg-stone-100 border border-stone-200'
+                    ? 'bg-[#FFFcf7] border border-stone-200'
                     : friendRequestReceived
                       ? 'bg-amber-500'
                       : 'bg-emerald-600'
@@ -695,7 +723,7 @@ export default function PublicProfileScreen() {
                 <TouchableOpacity
                   onPress={() => void onMessageFriend()}
                   disabled={messageBusy}
-                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 bg-brand-500 ${
+                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 bg-emerald-600 ${
                     messageBusy ? 'opacity-60' : ''
                   }`}
                 >
@@ -714,10 +742,10 @@ export default function PublicProfileScreen() {
                   disabled={!endorseStatus.canEndorse || endorseBusy}
                   style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
                     endorseStatus.alreadyEndorsed
-                      ? 'bg-violet-50 border border-violet-200'
+                      ? 'bg-[#ECFDF5] border border-emerald-200'
                       : endorseStatus.canEndorse
-                        ? 'bg-violet-600'
-                        : 'bg-stone-100 border border-stone-200'
+                        ? 'bg-emerald-600'
+                        : 'bg-[#FFFcf7] border border-stone-200'
                   } ${endorseBusy ? 'opacity-60' : ''}`}
                 >
                   {endorseBusy ? (
@@ -728,7 +756,7 @@ export default function PublicProfileScreen() {
                       size={20}
                       color={
                         endorseStatus.alreadyEndorsed
-                          ? '#7C3AED'
+                          ? '#059669'
                           : endorseStatus.canEndorse
                             ? '#fff'
                             : '#78716C'
@@ -738,7 +766,7 @@ export default function PublicProfileScreen() {
                   <Text
                     style={tw`font-semibold text-base ${
                       endorseStatus.alreadyEndorsed
-                        ? 'text-violet-700'
+                        ? 'text-emerald-700'
                         : endorseStatus.canEndorse
                           ? 'text-white'
                           : 'text-stone-500'
@@ -755,17 +783,21 @@ export default function PublicProfileScreen() {
             </View>
           ) : null}
 
-          <View style={tw`bg-emerald-600 rounded-2xl p-4`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
             <View style={tw`flex-row items-center justify-between`}>
-              <View>
-                <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
-                <Text style={tw`text-white text-3xl font-bold`}>{profileUser.points}</Text>
+              <View style={tw`flex-1 pr-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Growth points
+                </Text>
+                <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{profileUser.points}</Text>
               </View>
-              <Ionicons name="trophy" size={40} color="white" />
+              <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
+                <Ionicons name="leaf" size={28} color="#059669" />
+              </View>
             </View>
             {!profileUser.isInstructor && endorseStatus ? (
-              <View style={tw`mt-3 pt-3 border-t border-emerald-400/60`}>
-                <Text style={tw`text-white text-sm`}>
+              <View style={tw`mt-3 pt-3 border-t border-stone-200/80`}>
+                <Text style={tw`text-sm text-stone-600`}>
                   Instructor endorsements: {endorseStatus.endorsementCount}
                 </Text>
               </View>
@@ -775,29 +807,34 @@ export default function PublicProfileScreen() {
 
         {/* Categories */}
         {profileUser.categories && profileUser.categories.length > 0 && (
-          <View style={tw`px-4 py-4 border-b border-gray-200`}>
-            <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Growth Areas</Text>
-            <View style={tw`flex-row flex-wrap`}>
-              {groupGrowthPaths(profileUser.categories).map((group) => {
-                const label =
-                  group.focusLabels.length > 0
-                    ? `${group.parentLabel}: ${group.focusLabels.join(', ')}`
-                    : group.parentLabel;
-                return (
-                  <View
-                    key={group.parentKey}
-                    style={tw`bg-green-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
-                  >
-                    <Text style={tw`text-sm text-green-800 font-medium`}>{label}</Text>
-                  </View>
-                );
-              })}
+          <View style={tw`px-4 pb-4`}>
+            <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                Grow!
+              </Text>
+              <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>Growth Areas</Text>
+              <View style={tw`flex-row flex-wrap`}>
+                {groupGrowthPaths(profileUser.categories).map((group) => {
+                  const label =
+                    group.focusLabels.length > 0
+                      ? `${group.parentLabel}: ${group.focusLabels.join(', ')}`
+                      : group.parentLabel;
+                  return (
+                    <View
+                      key={group.parentKey}
+                      style={tw`bg-[#ECFDF5] border border-emerald-200/80 px-3 py-1.5 rounded-full mr-2 mb-2`}
+                    >
+                      <Text style={tw`text-sm text-emerald-800 font-medium`}>{label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           </View>
         )}
 
         {/* Tabs */}
-        <View style={tw`flex-row border-b border-gray-200`}>
+        <View style={tw`flex-row border-b border-stone-200`}>
           {[
             { key: 'posts', label: 'Posts', icon: 'grid' },
             { key: 'stories', label: 'Stories', icon: 'images' },
@@ -807,17 +844,17 @@ export default function PublicProfileScreen() {
               key={tab.key}
               onPress={() => setActiveTab(tab.key as 'posts' | 'stories' | 'journal')}
               style={tw`flex-1 py-3 items-center border-b-2 ${
-                activeTab === tab.key ? 'border-green-600' : 'border-transparent'
+                activeTab === tab.key ? 'border-emerald-600' : 'border-transparent'
               }`}
             >
               <Ionicons
                 name={tab.icon as any}
                 size={20}
-                color={activeTab === tab.key ? '#10B981' : '#9CA3AF'}
+                color={activeTab === tab.key ? '#059669' : '#A8A29E'}
               />
               <Text
                 style={tw`text-xs mt-1 ${
-                  activeTab === tab.key ? 'text-green-600 font-semibold' : 'text-gray-500'
+                  activeTab === tab.key ? 'text-emerald-700 font-semibold' : 'text-stone-500'
                 }`}
               >
                 {tab.label}
@@ -829,15 +866,15 @@ export default function PublicProfileScreen() {
         {/* Content */}
         {isBlocked ? (
           <View style={tw`p-6 items-center justify-center`}>
-            <Ionicons name="ban-outline" size={48} color="#9CA3AF" />
-            <Text style={tw`text-gray-700 mt-3 text-center font-semibold`}>You have blocked this user</Text>
-            <Text style={tw`text-gray-500 mt-1 text-center`}>
+            <Ionicons name="ban-outline" size={48} color="#A8A29E" />
+            <Text style={tw`text-stone-700 mt-3 text-center font-semibold`}>You have blocked this user</Text>
+            <Text style={tw`text-stone-500 mt-1 text-center`}>
               Unblock them to view their posts, stories, and activity again.
             </Text>
           </View>
         ) : loadingContent ? (
           <View style={tw`p-8 items-center justify-center`}>
-            <ActivityIndicator size="large" color="#10B981" />
+            <ActivityIndicator size="large" color="#059669" />
           </View>
         ) : activeTab === 'posts' ? (
           <View style={tw`p-4`}>
@@ -845,16 +882,28 @@ export default function PublicProfileScreen() {
               posts.map((post) => (
                 <TouchableOpacity
                   key={post.id}
-                  style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
+                  style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-xl p-4 mb-3`}
                   onPress={() => {
                     if (!profileUser) return;
                     const rootNavigation = navigation.getParent() || navigation;
+                    if (post.isReel) {
+                      openReelsAtPost(
+                        rootNavigation,
+                        post.id,
+                        sourcePosts.find((p) => p.id === post.id)
+                      );
+                      return;
+                    }
                     (rootNavigation as any).navigate('PostDetail', {
                       post: {
                         id: post.id,
                         userId: profileUser.id,
                         username: profileUser.username,
-                        avatar: profileUser.avatar,
+                        avatar: resolveAvatarUri(
+                          profileUser.id,
+                          profileUser.username,
+                          profileUser.avatar
+                        ),
                         image: post.image,
                         caption: post.caption,
                         category: post.category,
@@ -869,7 +918,7 @@ export default function PublicProfileScreen() {
                 >
                   <View style={tw`flex-row items-center justify-between mb-3`}>
                     <View style={tw`flex-row items-center`}>
-                      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-gray-100`}>
+                      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-[#EAE4D6]`}>
                         <Image
                           source={{ uri: post.image }}
                           style={tw`w-full h-full`}
@@ -877,10 +926,10 @@ export default function PublicProfileScreen() {
                         />
                       </View>
                       <View style={tw`flex-1`}>
-                        <Text style={tw`font-semibold text-gray-900`} numberOfLines={2}>
+                        <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
                           {post.caption}
                         </Text>
-                        <Text style={tw`text-xs text-gray-500 mt-1`}>
+                        <Text style={tw`text-xs text-stone-500 mt-1`}>
                           {new Date(post.createdAt).toLocaleDateString()}
                         </Text>
                       </View>
@@ -889,11 +938,11 @@ export default function PublicProfileScreen() {
                   <View style={tw`flex-row items-center gap-4`}>
                     <View style={tw`flex-row items-center`}>
                       <Ionicons name="heart" size={16} color="#EF4444" />
-                      <Text style={tw`text-sm text-gray-600 ml-1`}>{post.likes}</Text>
+                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.likes}</Text>
                     </View>
                     <View style={tw`flex-row items-center`}>
-                      <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                      <Text style={tw`text-sm text-gray-600 ml-1`}>{post.comments}</Text>
+                      <Ionicons name="chatbubble" size={16} color="#78716C" />
+                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -917,17 +966,17 @@ export default function PublicProfileScreen() {
                       style={tw`items-center`}
                       onPress={() => openStoryViewer(story.id)}
                     >
-                      <View style={tw`w-20 h-20 rounded-xl overflow-hidden mb-2 border-2 border-purple-500 bg-gray-100`}>
+                      <View style={tw`w-[72px] h-[128px] rounded-xl overflow-hidden mb-2 border-2 border-emerald-500 bg-[#EAE4D6]`}>
                         <Image
                           source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
                           style={tw`w-full h-full`}
-                          contentFit="cover"
+                          contentFit="contain"
                         />
                       </View>
-                      <Text style={tw`text-xs text-gray-500`}>
+                      <Text style={tw`text-xs text-stone-500`}>
                         {story.views} views
                       </Text>
-                      <Text style={tw`text-xs text-gray-400 mt-1`}>
+                      <Text style={tw`text-xs text-stone-400 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
                     </TouchableOpacity>
@@ -946,9 +995,9 @@ export default function PublicProfileScreen() {
           <View style={tw`p-4`}>
             {journalEntries.length > 0 ? (
               journalEntries.map((entry) => (
-                <View key={entry.id} style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}>
+                <View key={entry.id} style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-xl p-4 mb-3`}>
                   <View style={tw`flex-row items-center justify-between mb-2`}>
-                    <Text style={tw`text-sm font-semibold text-gray-500`}>
+                    <Text style={tw`text-sm font-semibold text-stone-500`}>
                       {new Date(entry.date).toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
@@ -957,22 +1006,22 @@ export default function PublicProfileScreen() {
                       })}
                     </Text>
                     <View style={tw`flex-row items-center`}>
-                      <Ionicons name="globe" size={16} color="#10B981" />
-                      <Text style={tw`text-xs text-gray-500 ml-1`}>Public</Text>
+                      <Ionicons name="globe" size={16} color="#059669" />
+                      <Text style={tw`text-xs text-stone-500 ml-1`}>Public</Text>
                     </View>
                   </View>
-                  <Text style={tw`text-gray-900 leading-6`}>{entry.content}</Text>
+                  <Text style={tw`text-stone-900 leading-6`}>{entry.content}</Text>
                   {entry.mood && (
                     <View style={tw`mt-2 flex-row items-center`}>
-                      <Ionicons name="happy-outline" size={16} color="#6B7280" />
-                      <Text style={tw`text-xs text-gray-500 ml-1`}>Mood: {entry.mood}</Text>
+                      <Ionicons name="happy-outline" size={16} color="#78716C" />
+                      <Text style={tw`text-xs text-stone-500 ml-1`}>Mood: {entry.mood}</Text>
                     </View>
                   )}
                   {entry.tags && entry.tags.length > 0 && (
                     <View style={tw`flex-row flex-wrap mt-2`}>
                       {entry.tags.map((tag, index) => (
-                        <View key={index} style={tw`bg-green-100 px-2 py-1 rounded-full mr-2 mb-1`}>
-                          <Text style={tw`text-xs text-green-800`}>{tag}</Text>
+                        <View key={index} style={tw`bg-[#ECFDF5] border border-emerald-200/80 px-2 py-1 rounded-full mr-2 mb-1`}>
+                          <Text style={tw`text-xs text-emerald-800`}>{tag}</Text>
                         </View>
                       ))}
                     </View>
@@ -1001,32 +1050,32 @@ export default function PublicProfileScreen() {
             style={tw`absolute inset-0 bg-black/35`}
             onPress={() => setShowOptionsMenu(false)}
           />
-          <View style={tw`bg-white px-4 pt-3 pb-6 rounded-t-3xl`}>
-            <View style={tw`w-12 h-1.5 bg-gray-300 rounded-full self-center mb-4`} />
+          <View style={tw`bg-[#FFFcf7] px-4 pt-3 pb-6 rounded-t-3xl`}>
+            <View style={tw`w-12 h-1.5 bg-[#EAE4D6] rounded-full self-center mb-4`} />
 
             {!isOwnProfile ? (
               <>
                 <Pressable
-                  style={tw`py-4 border-b border-gray-100`}
+                  style={tw`py-4 border-b border-[#EAE4D6]`}
                   onPress={() => void handleBlockMenuPress()}
                 >
-                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-gray-900' : 'text-red-600'}`}>
+                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-stone-900' : 'text-red-600'}`}>
                     {isBlocked ? 'Unblock User' : 'Block User'}
                   </Text>
                 </Pressable>
 
                 <Pressable
-                  style={tw`py-4 border-b border-gray-100`}
+                  style={tw`py-4 border-b border-[#EAE4D6]`}
                   onPress={handleReportMenuPress}
                 >
-                  <Text style={tw`text-base font-semibold text-gray-900`}>Report User</Text>
+                  <Text style={tw`text-base font-semibold text-stone-900`}>Report User</Text>
                 </Pressable>
 
                 <Pressable
-                  style={tw`py-4 border-b border-gray-100`}
+                  style={tw`py-4 border-b border-[#EAE4D6]`}
                   onPress={handleMuteMenuPress}
                 >
-                  <Text style={tw`text-base font-semibold text-gray-900`}>
+                  <Text style={tw`text-base font-semibold text-stone-900`}>
                     {isMuted ? 'Unmute User' : 'Mute User'}
                   </Text>
                 </Pressable>
@@ -1034,20 +1083,20 @@ export default function PublicProfileScreen() {
             ) : null}
 
             <Pressable
-              style={tw`py-4 border-b border-gray-100`}
+              style={tw`py-4 border-b border-[#EAE4D6]`}
               onPress={() => {
                 setShowOptionsMenu(false);
                 Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
               }}
             >
-              <Text style={tw`text-base font-semibold text-gray-900`}>Share Profile</Text>
+              <Text style={tw`text-base font-semibold text-stone-900`}>Share Profile</Text>
             </Pressable>
 
             <Pressable
               style={tw`py-4 mt-2`}
               onPress={() => setShowOptionsMenu(false)}
             >
-              <Text style={tw`text-base font-semibold text-center text-gray-500`}>Cancel</Text>
+              <Text style={tw`text-base font-semibold text-center text-stone-500`}>Cancel</Text>
             </Pressable>
           </View>
         </View>

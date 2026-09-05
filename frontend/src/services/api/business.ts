@@ -12,7 +12,7 @@ export type { Order };
 
 const BASE_URL: string =
   (Constants?.expoConfig?.extra?.API_BASE_URL as string) ||
-  'https://growl-backend.albino-ndreu.workers.dev/api/v1';
+  'https://growl-backend-qa.wispy-leaf-4e8b.workers.dev/api/v1';
 
 async function authHeaders(): Promise<Record<string, string>> {
   let token: string | null = getToken();

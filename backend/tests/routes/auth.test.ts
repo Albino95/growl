@@ -32,7 +32,7 @@ describe('Auth Routes', () => {
     it('should create a new user', async () => {
       let insertCalled = false;
       mockDb.prepare = (query: string) => {
-        if (query.includes('SELECT id FROM users')) {
+        if (query.includes('SELECT') && query.includes('FROM users') && !query.includes('INSERT')) {
           return {
             bind: () => ({
               first: async () => null, // User doesn't exist
@@ -75,10 +75,10 @@ describe('Auth Routes', () => {
 
     it('should reject duplicate email', async () => {
       mockDb.prepare = (query: string) => {
-        if (query.includes('SELECT id FROM users')) {
+        if (query.includes('SELECT') && query.includes('FROM users')) {
           return {
             bind: () => ({
-              first: async () => ({ id: 'existing-user-id' }), // User exists
+              first: async () => ({ id: 'existing-user-id', email_verified: 1 }), // Verified user exists
             }),
           };
         }

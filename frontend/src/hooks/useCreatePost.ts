@@ -11,10 +11,10 @@ import {
 } from '../store/slices/postSlice';
 import { createFeedPost } from '../services/api/feed';
 import { uploadMediaApi } from '../services/api/media';
-import { getPostImageUrl } from '../utils/images';
 import { triggerPressFeedback } from '../utils/interactionFeedback';
 import { alertMessage } from '../utils/confirmDialog';
 import { prependFeedPost } from '../store/slices/feedSlice';
+import { isRemoteMediaUrl, uriToDataUrl } from '../utils/mediaUri';
 import type { PostMusicTrack } from '../constants/postMusic';
 
 async function blobToOptimizedDataUrl(uri: string): Promise<string> {
@@ -91,26 +91,21 @@ export function useCreatePost(onSuccess?: () => void) {
         }
       }
 
-      const lower = persistableImage.toLowerCase();
-      const isDirectRenderable =
-        lower.startsWith('http://') ||
-        lower.startsWith('https://') ||
-        lower.startsWith('file://') ||
-        lower.startsWith('content://') ||
-        lower.startsWith('ph://') ||
-        lower.startsWith('blob:') ||
-        lower.startsWith('data:');
-
-      const shouldUpload = lower.startsWith('data:');
-      let imageUrl = isDirectRenderable
-        ? persistableImage
-        : getPostImageUrl(category, `${Date.now()}`);
-
-      if (shouldUpload) {
+      let imageUrl = persistableImage;
+      if (!isRemoteMediaUrl(persistableImage)) {
         try {
-          imageUrl = await uploadMediaApi(persistableImage, 'post');
-        } catch {
-          imageUrl = persistableImage;
+          const dataUrl = persistableImage.toLowerCase().startsWith('data:')
+            ? persistableImage
+            : await uriToDataUrl(persistableImage);
+          imageUrl = await uploadMediaApi(dataUrl, 'post');
+        } catch (uploadErr: unknown) {
+          const msg =
+            uploadErr instanceof Error ? uploadErr.message : 'Image upload failed';
+          alertMessage(
+            'Image upload failed',
+            `${msg}\n\nYour post was not published. Check media storage and try again.`
+          );
+          return false;
         }
       }
 
@@ -129,18 +124,24 @@ export function useCreatePost(onSuccess?: () => void) {
       });
 
       if (created?.data) {
+        const serverMeta = created.data.metadata || {};
         dispatch(
           prependFeedPost({
             ...created.data,
+            image_url: created.data.image_url || imageUrl,
             feed_section: 'following',
             metadata: {
-              ...(created.data.metadata || {}),
               ...metadata,
-              username: user?.username || 'You',
-              avatar: user?.avatar,
-              likes: 0,
-              comments: 0,
-              has_liked: false,
+              ...serverMeta,
+              username:
+                serverMeta.username ||
+                user?.username ||
+                user?.email?.split('@')[0] ||
+                'You',
+              avatar: serverMeta.avatar || user?.avatar,
+              likes: Number(serverMeta.likes ?? 0),
+              comments: Number(serverMeta.comments ?? 0),
+              has_liked: !!serverMeta.has_liked,
             },
           })
         );

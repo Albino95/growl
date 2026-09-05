@@ -28,7 +28,13 @@ import { featureFlags } from '../../constants/featureFlags';
 import {
   forgotPasswordApi,
   resetPasswordApi,
+  resendVerificationApi,
 } from '../../services/api/auth';
+import {
+  savePendingVerification,
+  loadPendingVerification,
+  clearPendingVerification,
+} from '../../services/storage/pendingVerification';
 import tw from '../../lib/tw';
 
 function notify(title: string, message?: string) {
@@ -37,6 +43,30 @@ function notify(title: string, message?: string) {
   } else if (Platform.OS !== 'web') {
     Alert.alert(title, message);
   }
+}
+
+function defaultVerificationExpiry(): string {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+function authErrorMessage(e: unknown, fallback: string): string {
+  if (typeof e === 'string') return e;
+  if (e instanceof Error && e.message) return e.message;
+  if (e && typeof e === 'object' && 'message' in e) {
+    const msg = (e as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return fallback;
+}
+
+function isUnverifiedError(message: string): boolean {
+  const msg = message.toLowerCase();
+  return msg.includes('confirm your email') || msg.includes('before signing in');
+}
+
+function isExpiredSignupError(message: string): boolean {
+  const msg = message.toLowerCase();
+  return msg.includes('expired after 24') || msg.includes('sign up again');
 }
 
 type Step = 'auth' | 'verify' | 'forgot' | 'reset';
@@ -161,6 +191,24 @@ export default function AuthScreen() {
     ]).start();
   }, [step, isSignUp, fade, rise, formFade]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void loadPendingVerification().then((pending) => {
+      if (cancelled || !pending) return;
+      setEmail(pending.email);
+      setDevCodeHint(pending.devCode ?? null);
+      setStep('verify');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const showApple = isAppleSignInAvailable();
+  const showGoogle = isGoogleOAuthConfigured();
+  const showFacebook = isFacebookOAuthConfigured();
+  const showSocialAuth = showApple || showGoogle || showFacebook;
+
   const passwordRuleStatus = useMemo(
     () => PASSWORD_RULES.map((r) => ({ ...r, ok: r.test(password) })),
     [password]
@@ -190,20 +238,36 @@ export default function AuthScreen() {
         const result = await signUp(trimmedEmail, password).unwrap();
         markSignupOnboardingRequired();
         setDevCodeHint(result.devVerificationCode ?? null);
+        await savePendingVerification({
+          email: result.email || trimmedEmail,
+          expiresAt: result.expiresAt || defaultVerificationExpiry(),
+          devCode: result.devVerificationCode ?? null,
+        });
         setStep('verify');
         setPassword('');
         notify('Verify your email', result.message);
       } else {
         await signIn(trimmedEmail, password).unwrap();
+        await clearPendingVerification();
         void refreshProfile();
       }
     } catch (e: unknown) {
-      const msg =
-        typeof e === 'string'
-          ? e
-          : e instanceof Error
-            ? e.message
-            : error || 'Authentication failed';
+      const msg = authErrorMessage(e, error || 'Authentication failed');
+      if (!isSignUp && isUnverifiedError(msg)) {
+        await savePendingVerification({
+          email: trimmedEmail,
+          expiresAt: defaultVerificationExpiry(),
+        });
+        setStep('verify');
+        notify('Confirm your email', 'Your account is waiting. Enter the 6-digit code we sent — it stays valid for 24 hours.');
+        return;
+      }
+      if (isExpiredSignupError(msg)) {
+        await clearPendingVerification();
+        setIsSignUp(true);
+        notify('Signup expired', msg);
+        return;
+      }
       const alreadyExists =
         isSignUp && typeof msg === 'string' && msg.toLowerCase().includes('already exists');
       if (alreadyExists) {
@@ -225,12 +289,49 @@ export default function AuthScreen() {
     setLocalLoading(true);
     try {
       await verifyEmail(email.trim().toLowerCase(), verifyCode.trim()).unwrap();
+      await clearPendingVerification();
       notify('Email verified', 'You can sign in now.');
       setStep('auth');
       setIsSignUp(false);
       setVerifyCode('');
+      setDevCodeHint(null);
     } catch (e: unknown) {
-      notify('Verification failed', e instanceof Error ? e.message : 'Invalid code');
+      const msg = authErrorMessage(e, 'Invalid code');
+      if (isExpiredSignupError(msg)) {
+        await clearPendingVerification();
+        setStep('auth');
+        setIsSignUp(true);
+      }
+      notify('Verification failed', msg);
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      notify('Email required', 'Enter the email we should send the code to.');
+      return;
+    }
+    setLocalLoading(true);
+    try {
+      const result = await resendVerificationApi(trimmedEmail);
+      setDevCodeHint(result.devVerificationCode ?? null);
+      await savePendingVerification({
+        email: result.email || trimmedEmail,
+        expiresAt: result.expiresAt || defaultVerificationExpiry(),
+        devCode: result.devVerificationCode ?? null,
+      });
+      notify('Code sent', result.message || 'Check your inbox for a new verification code.');
+    } catch (e: unknown) {
+      const msg = authErrorMessage(e, 'Could not resend the code');
+      if (isExpiredSignupError(msg)) {
+        await clearPendingVerification();
+        setStep('auth');
+        setIsSignUp(true);
+      }
+      notify('Could not resend', msg);
     } finally {
       setLocalLoading(false);
     }
@@ -493,6 +594,7 @@ export default function AuthScreen() {
           <Text style={tw`text-stone-600 mb-5 leading-5`}>
             We sent a 6-digit code to{' '}
             <Text style={tw`font-semibold text-stone-800`}>{email.trim().toLowerCase()}</Text>
+            . Your pending account stays available for 24 hours — you can leave and come back.
           </Text>
           {featureFlags.showDevVerificationHint && devCodeHint ? (
             <Text style={tw`text-xs text-amber-900 bg-amber-50 border border-amber-100 p-3 rounded-2xl mb-4`}>
@@ -510,8 +612,27 @@ export default function AuthScreen() {
             placeholderTextColor="#A8A29E"
           />
           <PrimaryButton label="Confirm email" onPress={handleVerify} disabled={busy} loading={busy} />
-          <TouchableOpacity onPress={() => setStep('auth')} style={tw`mt-6 items-center`}>
-            <Text style={tw`text-emerald-700 font-semibold`}>Back to sign in</Text>
+          <TouchableOpacity
+            onPress={() => void handleResendVerification()}
+            disabled={busy}
+            style={tw`mt-6 items-center`}
+          >
+            <Text style={tw`text-emerald-700 font-semibold`}>Resend code</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setStep('auth')} style={tw`mt-4 items-center`}>
+            <Text style={tw`text-stone-500 font-semibold`}>Back to sign in</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              void clearPendingVerification();
+              setStep('auth');
+              setIsSignUp(true);
+              setVerifyCode('');
+              setDevCodeHint(null);
+            }}
+            style={tw`mt-3 items-center`}
+          >
+            <Text style={tw`text-stone-400 text-sm`}>Use a different email</Text>
           </TouchableOpacity>
         </Animated.View>
       </>
@@ -648,37 +769,45 @@ export default function AuthScreen() {
           loading={busy}
         />
 
-        <View style={tw`flex-row items-center my-7`}>
-          <View style={tw`flex-1 h-px bg-stone-200`} />
-          <Text style={tw`mx-4 text-stone-400 text-sm`}>or continue with</Text>
-          <View style={tw`flex-1 h-px bg-stone-200`} />
-        </View>
+        {showSocialAuth ? (
+          <>
+            <View style={tw`flex-row items-center my-7`}>
+              <View style={tw`flex-1 h-px bg-stone-200`} />
+              <Text style={tw`mx-4 text-stone-400 text-sm`}>or continue with</Text>
+              <View style={tw`flex-1 h-px bg-stone-200`} />
+            </View>
 
-        <View style={tw`flex-row gap-3 mb-2`}>
-          {isAppleSignInAvailable() ? (
-            <TouchableOpacity
-              onPress={() => void handleApple()}
-              disabled={busy}
-              style={tw`flex-1 flex-row items-center justify-center border border-stone-800 rounded-2xl py-3.5 bg-stone-900`}
-            >
-              <Ionicons name="logo-apple" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            onPress={() => void handleGoogle()}
-            disabled={busy}
-            style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
-          >
-            <Ionicons name="logo-google" size={22} color="#4285F4" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => void handleFacebook()}
-            disabled={busy}
-            style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
-          >
-            <Ionicons name="logo-facebook" size={22} color="#1877F2" />
-          </TouchableOpacity>
-        </View>
+            <View style={tw`flex-row gap-3 mb-2`}>
+              {showApple ? (
+                <TouchableOpacity
+                  onPress={() => void handleApple()}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center border border-stone-800 rounded-2xl py-3.5 bg-stone-900`}
+                >
+                  <Ionicons name="logo-apple" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
+              {showGoogle ? (
+                <TouchableOpacity
+                  onPress={() => void handleGoogle()}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
+                >
+                  <Ionicons name="logo-google" size={22} color="#4285F4" />
+                </TouchableOpacity>
+              ) : null}
+              {showFacebook ? (
+                <TouchableOpacity
+                  onPress={() => void handleFacebook()}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7]`}
+                >
+                  <Ionicons name="logo-facebook" size={22} color="#1877F2" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </>
+        ) : null}
 
         {featureFlags.showDemoAccounts ? (
           <View style={tw`mt-10 pt-6 border-t border-stone-200/80`}>

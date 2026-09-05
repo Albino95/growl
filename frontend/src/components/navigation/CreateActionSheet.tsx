@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
-export type CreateAction = 'post' | 'journal';
+export type CreateAction = 'post' | 'reel' | 'story' | 'journal';
 
 type Props = {
   visible: boolean;
@@ -23,6 +23,18 @@ const ACTIONS: Array<{
     title: 'New post',
     subtitle: 'Share progress with your circle',
     icon: 'image-outline',
+  },
+  {
+    key: 'reel',
+    title: 'New reel',
+    subtitle: 'Vertical clip with pro video & photo edits',
+    icon: 'film-outline',
+  },
+  {
+    key: 'story',
+    title: 'New story',
+    subtitle: 'Ephemeral update for 24 hours',
+    icon: 'ellipse-outline',
   },
   {
     key: 'journal',
