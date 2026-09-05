@@ -54,7 +54,7 @@ export default function SiteFooter() {
             <a href={`${siteUrl}/delete-account`} className="transition hover:text-white">
               Delete account
             </a>
-            <a href="mailto:support@letsgrow.lu" className="transition hover:text-white">
+            <a href={`${siteUrl}/support`} className="transition hover:text-white">
               Support
             </a>
           </nav>

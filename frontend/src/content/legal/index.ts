@@ -11,12 +11,12 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   terms: {
     id: 'terms',
     title: 'Terms of Service',
-    updatedAt: '2026-08-18',
+    updatedAt: '2026-09-05',
     sections: [
       {
         heading: 'Acceptance',
         body:
-          'By creating an account or using Grow!, you agree to these Terms of Service. If you do not agree, do not use the app.',
+          'By creating an account or using Grow!, you agree to these Terms and our Community Guidelines. If you do not agree, do not use the app.',
       },
       {
         heading: 'Eligibility',
@@ -26,12 +26,17 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: 'Your account',
         body:
-          'You are responsible for your account credentials and for activity under your account. You must provide accurate information and keep your contact details up to date.',
+          'You are responsible for your account credentials and activity. Keep your email up to date. Do not share your account.',
       },
       {
         heading: 'Community content',
         body:
-          'You retain ownership of content you post. You grant Grow! a non-exclusive license to host, display, and distribute your content within the service. Do not post unlawful, harassing, or infringing material.',
+          'You retain ownership of content you post. You grant Grow! a non-exclusive license to host, display, and distribute your content within the service. Do not post unlawful, harassing, infringing, or exploitative material. We may remove content and suspend accounts that break these rules.',
+      },
+      {
+        heading: 'Safety tools',
+        body:
+          'You can report posts and profiles and block other users in the app. For help, email support@letsgrow.lu. If you are in immediate danger, contact local emergency services first.',
       },
       {
         heading: 'Marketplace and refunds',
@@ -41,7 +46,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: 'Termination',
         body:
-          'You may delete your account at any time from Profile settings. We may suspend or terminate accounts that violate these terms or our Community Guidelines.',
+          'You may delete your account at any time from Profile → Settings → Delete Account. We may suspend or terminate accounts that violate these terms or our Community Guidelines.',
       },
       {
         heading: 'Contact',
@@ -52,17 +57,17 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
   privacy: {
     id: 'privacy',
     title: 'Privacy Policy',
-    updatedAt: '2026-08-18',
+    updatedAt: '2026-09-05',
     sections: [
       {
         heading: 'Overview',
         body:
-          'Grow! collects information you provide (email, profile, posts) and usage data needed to operate the service. We do not sell your personal information. Contact: privacy@letsgrow.lu.',
+          'Grow! collects information you provide and data needed to operate the service. We do not sell your personal information. Full policy: https://letsgrow.lu/privacy. Contact: privacy@letsgrow.lu.',
       },
       {
         heading: 'Data we collect',
         body:
-          'Account data (email, username, avatar), content you create (posts, comments, stories), social graph (friends, blocks), marketplace orders, and device/log data for security and reliability. Unverified signups are kept for 24 hours, then deleted if you never confirm your email.',
+          'Account data (email, username, avatar), sign-in provider data if you use Apple / Google / Facebook, content you create (posts, reels, stories, comments, messages, journal), social graph (friends, blocks), marketplace orders, and device/log data for security. Crash reports may go to Sentry when enabled. Unverified signups are kept for 24 hours, then deleted if you never confirm your email.',
       },
       {
         heading: 'How we use data',
@@ -70,14 +75,19 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
           'To provide the feed, messaging, marketplace, authentication, safety/moderation, and customer support. We may send service-related emails (verification, security).',
       },
       {
+        heading: 'User-generated content and moderation',
+        body:
+          'You can report posts and profiles and block users in the app. Reports are reviewed by our team. We may remove content, warn, suspend, or ban accounts that violate our Terms or Community Guidelines.',
+      },
+      {
         heading: 'Your rights',
         body:
-          'You can export or delete your account from Profile → Delete Account. Deletion schedules removal of personal data subject to legal retention requirements.',
+          'You can export or delete your account from Profile → Settings → Delete Account, or visit https://letsgrow.lu/delete-account. Deletion disables login and removes or anonymizes personal data subject to legal retention (for example payments or abuse records).',
       },
       {
         heading: 'Third parties',
         body:
-          'We use infrastructure providers (Cloudflare), transactional email (Resend), optional sign-in providers (Google, Facebook, Apple), and Stripe when checkout is enabled. Crash reports may go to Sentry when enabled on store builds.',
+          'We use Cloudflare (infrastructure), Resend (email), optional sign-in providers (Apple, Google, Facebook), Stripe when checkout is enabled, and Sentry when crash reporting is enabled on a store build.',
       },
       {
         heading: 'Children',
@@ -86,14 +96,14 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: 'Contact',
-        body: 'Privacy requests: privacy@letsgrow.lu',
+        body: 'Privacy requests: privacy@letsgrow.lu. Support: support@letsgrow.lu.',
       },
     ],
   },
   community: {
     id: 'community',
     title: 'Community Guidelines',
-    updatedAt: '2026-08-18',
+    updatedAt: '2026-09-05',
     sections: [
       {
         heading: 'Be respectful',
@@ -102,37 +112,44 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: 'Safe content',
         body:
-          'Do not post illegal content, sexual exploitation, gratuitous violence, or spam. Report content that violates these guidelines.',
+          'Do not post illegal content, sexual exploitation, gratuitous violence, scams, or spam. Report content that violates these guidelines from a post or profile menu.',
       },
       {
         heading: 'Authenticity',
-        body: 'Do not impersonate others or misrepresent your identity. One person per account unless using an approved business account.',
+        body:
+          'Do not impersonate others or misrepresent your identity. One person per account unless using an approved business account.',
       },
       {
         heading: 'Enforcement',
         body:
-          'Violations may result in content removal, account warnings, suspension, or permanent ban. You can report users and posts from their profile or the feed menu.',
+          'Violations may result in content removal, warnings, suspension, or a permanent ban. Questions: support@letsgrow.lu.',
       },
     ],
   },
   support: {
     id: 'support',
     title: 'Help & Support',
-    updatedAt: '2026-08-18',
+    updatedAt: '2026-09-05',
     sections: [
       {
         heading: 'Get help',
-        body: 'Email support@letsgrow.lu with your account email and a description of the issue. We typically respond within 2 business days.',
+        body:
+          'Email support@letsgrow.lu with your account email and a description of the issue. We typically respond within 2 business days. Web: https://letsgrow.lu/support',
       },
       {
         heading: 'Account access',
         body:
-          'Use Forgot password on the sign-in screen or verify your email if you recently signed up. For SSO, use the same provider you registered with.',
+          'Use Forgot password on the sign-in screen or verify your email if you recently signed up. On iOS you can also use Sign in with Apple.',
       },
       {
         heading: 'Safety',
         body:
-          'Block or report users and posts that make you uncomfortable. For urgent safety concerns, contact local authorities and support@letsgrow.lu.',
+          'Block or report users and posts in the app. For urgent danger, contact local authorities first, then support@letsgrow.lu.',
+      },
+      {
+        heading: 'Delete account',
+        body:
+          'Profile → Settings → Delete Account, or https://letsgrow.lu/delete-account. Privacy requests: privacy@letsgrow.lu.',
       },
     ],
   },

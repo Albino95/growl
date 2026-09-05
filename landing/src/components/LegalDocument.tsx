@@ -28,6 +28,33 @@ export default function LegalDocument({ id }: { id: LegalPageId }) {
             {page.title}
           </h1>
           <p className="mt-3 text-sm text-stone-500">Last updated {page.updatedAt}</p>
+          <p className="mt-4 text-base leading-7 text-stone-600">{page.description}</p>
+          <nav
+            aria-label="Related legal pages"
+            className="mt-8 flex flex-wrap gap-x-5 gap-y-2 border-y border-stone-200/80 py-4 text-sm font-medium text-emerald-800"
+          >
+            {(
+              [
+                ['Privacy', '/privacy'],
+                ['Terms', '/terms'],
+                ['Guidelines', '/community'],
+                ['Support', '/support'],
+                ['Delete account', '/delete-account'],
+              ] as const
+            ).map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                className={
+                  href === `/${id}`
+                    ? 'text-stone-900 underline decoration-emerald-600/40 underline-offset-4'
+                    : 'transition hover:text-emerald-950'
+                }
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
           <div className="mt-10 space-y-10">
             {page.sections.map((section) => (
               <section key={section.heading}>
