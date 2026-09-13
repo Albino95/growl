@@ -967,6 +967,14 @@ export default function FeedScreen({ navigation, route }: any) {
                       prev[item.id] ? prev : { ...prev, [item.id]: true }
                     );
                   }}
+                  onRetry={() => {
+                    setFailedPostImages((prev) => {
+                      if (!prev[item.id]) return prev;
+                      const next = { ...prev };
+                      delete next[item.id];
+                      return next;
+                    });
+                  }}
                 />
                 <HeartBurst triggerKey={heartBurst[item.id] || 0} />
               </Pressable>

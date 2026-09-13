@@ -13,7 +13,7 @@ import {
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
@@ -46,31 +46,54 @@ function formatCompact(n: number): string {
 }
 
 function ReelsHeader({ onBack, onCreate }: { onBack: () => void; onCreate: () => void }) {
+  const insets = useSafeAreaInsets();
   return (
-    <SafeAreaView edges={['top']} style={tw`bg-black/80`}>
-      <View style={tw`flex-row items-center justify-between px-4 py-2`}>
+    <View
+      pointerEvents="box-none"
+      style={[
+        tw`absolute top-0 left-0 right-0 z-20`,
+        {
+          paddingTop: Math.max(insets.top, 8),
+          backgroundColor: 'transparent',
+        },
+      ]}
+    >
+      <View
+        style={[
+          tw`mx-3 mb-1 flex-row items-center justify-between px-2 py-2 rounded-2xl`,
+          {
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: 'rgba(255,255,255,0.12)',
+          },
+        ]}
+      >
         <TouchableOpacity
           onPress={onBack}
           hitSlop={12}
           style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
+          accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
         </TouchableOpacity>
-        <View style={tw`items-center`}>
-          <Text style={tw`text-[10px] tracking-[2px] uppercase text-emerald-400 font-bold`}>
+        <View style={tw`items-center flex-1 px-2`}>
+          <Text
+            style={tw`text-[10px] tracking-[3px] uppercase text-emerald-400 font-extrabold`}
+          >
             Grow!
           </Text>
-          <Text style={tw`text-white font-bold text-lg`}>Reels</Text>
+          <Text style={tw`text-white font-bold text-base -mt-0.5`}>Reels</Text>
         </View>
         <TouchableOpacity
           onPress={onCreate}
           hitSlop={12}
           style={tw`w-10 h-10 rounded-full bg-brand-600 items-center justify-center`}
+          accessibilityLabel="Create reel"
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -590,9 +613,7 @@ export default function ReelsScreen() {
           index,
         })}
       />
-      <SafeAreaView edges={['top']} pointerEvents="box-none" style={tw`absolute top-0 left-0 right-0`}>
-        <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
-      </SafeAreaView>
+      <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
 
       {commentsPost ? (
         <Modal

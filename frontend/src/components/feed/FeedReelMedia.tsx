@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { isVideoMedia } from '../../services/api/media';
@@ -19,6 +19,7 @@ type Props = {
   /** Feed cards must stay muted; full audio only in Reels viewer */
   muted?: boolean;
   onError?: () => void;
+  onRetry?: () => void;
 };
 
 /** Feed/profile media — portrait reels with muted autoplay when visible. */
@@ -33,11 +34,19 @@ export default function FeedReelMedia({
   isActive = false,
   muted = true,
   onError,
+  onRetry,
 }: Props) {
   const { width: screenW } = useWindowDimensions();
   const mediaW = Math.min(screenW - 40, 420);
   const reelH = Math.round(mediaW * (16 / 9));
   const photoH = 384;
+  const [retryToken, setRetryToken] = useState(0);
+  const [localFailed, setLocalFailed] = useState(false);
+
+  useEffect(() => {
+    setLocalFailed(false);
+  }, [uri, postId]);
+
   const baseSettings =
     reelPlaybackSettingsFromMetadata(videoEdit ? { video_edit: videoEdit } : null) ??
     videoEdit ??
@@ -51,15 +60,42 @@ export default function FeedReelMedia({
         audioUrl: null,
       }
     : baseSettings;
-  const isVideo = !!isReel && !failed && isVideoMedia({ uri, mediaType, contentType });
-  const height = isReel ? reelH : photoH;
 
-  if (isVideo && uri) {
+  // Reels / videos must use the player — never Image (extensionless /media/keys fail as images).
+  const treatAsVideo =
+    !!isReel ||
+    isVideoMedia({ uri, mediaType, contentType }) ||
+    mediaType === 'video';
+
+  const height = treatAsVideo || isReel ? reelH : photoH;
+  const showFailed = (failed || localFailed) && !treatAsVideo;
+  const displayUri =
+    retryToken > 0 && uri
+      ? `${uri}${uri.includes('?') ? '&' : '?'}_r=${retryToken}`
+      : uri;
+
+  const handleImageError = useCallback(() => {
+    if (retryToken < 1 && uri) {
+      setRetryToken((t) => t + 1);
+      return;
+    }
+    setLocalFailed(true);
+    onError?.();
+  }, [onError, retryToken, uri]);
+
+  const handleRetry = useCallback(() => {
+    setLocalFailed(false);
+    setRetryToken((t) => t + 1);
+    onRetry?.();
+  }, [onRetry]);
+
+  if (treatAsVideo && uri) {
     return (
       <View style={[tw`w-full bg-black items-center`, { height }]}>
         <View style={[tw`h-full bg-black overflow-hidden`, { width: mediaW, maxWidth: '100%' }]}>
           <ReelVideoPlayer
-            uri={uri}
+            key={`${postId}-${retryToken}`}
+            uri={displayUri}
             settings={playbackSettings}
             shouldPlay={isActive}
             useNativeControls={false}
@@ -78,23 +114,29 @@ export default function FeedReelMedia({
     );
   }
 
-  if (uri && uri.trim() !== '' && !failed) {
+  if (displayUri && displayUri.trim() !== '' && !showFailed) {
     return (
       <Image
-        source={{ uri }}
+        key={`${postId}-${retryToken}`}
+        source={{ uri: displayUri }}
         style={[tw`w-full`, { height }]}
         contentFit="cover"
-        onError={onError}
+        onError={handleImageError}
         placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
         transition={200}
       />
     );
   }
 
+  // Soft placeholder — never show "Media unavailable" copy
   return (
-    <View style={[tw`w-full bg-[#EAE4D6] items-center justify-center`, { height }]}>
-      <Ionicons name="image-outline" size={48} color="#A8A29E" />
-      <Text style={tw`text-stone-500 text-sm mt-2`}>Media unavailable</Text>
-    </View>
+    <Pressable
+      onPress={handleRetry}
+      style={[tw`w-full bg-[#EAE4D6] items-center justify-center`, { height }]}
+      accessibilityLabel="Reload media"
+    >
+      <Ionicons name="image-outline" size={40} color="#A8A29E" />
+      <Text style={tw`text-stone-500 text-sm mt-2 font-medium`}>Tap to reload</Text>
+    </Pressable>
   );
 }

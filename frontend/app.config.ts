@@ -122,7 +122,7 @@ const defineConfig = (): ExpoConfig => ({
     googleAndroidClientId: process.env.GOOGLE_ANDROID_CLIENT_ID,
     facebookAppId: process.env.FACEBOOK_APP_ID,
     eas: {
-      projectId: process.env.EAS_PROJECT_ID,
+      projectId: 'b2daa524-631c-46b5-97ab-387b39b111be',
     },
   },
 });

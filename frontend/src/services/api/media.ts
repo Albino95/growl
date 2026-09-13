@@ -208,8 +208,12 @@ export function isVideoMedia(opts: {
   if (opts.mediaType === 'video') return true;
   if (opts.contentType?.toLowerCase().startsWith('video/')) return true;
   const u = (opts.uri || '').toLowerCase();
-  return (
-    u.startsWith('data:video/') ||
-    /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)
-  );
+  if (u.startsWith('data:video/')) return true;
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)) return true;
+  // Uploaded reels often use extensionless /api/v1/media/{key} URLs
+  if (/\/api\/v\d+\/media\//i.test(u) && !/\.(jpe?g|png|gif|webp|heic)(\?|$)/i.test(u)) {
+    // Heuristic: media keys without image extensions — caller should also pass mediaType
+    return false;
+  }
+  return false;
 }

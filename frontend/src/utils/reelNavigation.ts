@@ -25,6 +25,14 @@ export function isReelPost(
   ) {
     return m.format !== 'post';
   }
+  // Extensionless /media/{key} URLs: treat as reel when upload purpose was reel or format hint
+  if (
+    typeof uri === 'string' &&
+    /\/api\/v\d+\/media\//i.test(uri) &&
+    (m.purpose === 'reel' || m.post_type === 'reel' || m.is_reel === true)
+  ) {
+    return true;
+  }
   return false;
 }
 

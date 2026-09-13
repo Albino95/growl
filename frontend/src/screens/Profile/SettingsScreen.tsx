@@ -96,7 +96,7 @@ export default function SettingsScreen() {
           <View style={tw`flex-row items-center justify-between py-3.5 border-b border-stone-200/80`}>
             <View style={tw`flex-1 pr-3`}>
               <Text style={tw`font-semibold text-stone-900`}>Haptics</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Vibration on presses (mobile)</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Vibration on presses (off by default)</Text>
             </View>
             <Switch
               value={hapticsEnabled}
@@ -108,7 +108,7 @@ export default function SettingsScreen() {
           <View style={tw`flex-row items-center justify-between py-3.5`}>
             <View style={tw`flex-1 pr-3`}>
               <Text style={tw`font-semibold text-stone-900`}>Click sound</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Optional tone where supported</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Soft click on taps (iOS, Android, web)</Text>
             </View>
             <Switch
               value={soundEnabled}

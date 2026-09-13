@@ -9,7 +9,7 @@ type UiPrefsState = {
 
 export const useUiPrefsStore = create<UiPrefsState>((set) => ({
   soundEnabled: false,
-  hapticsEnabled: true,
+  hapticsEnabled: false,
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
   setHapticsEnabled: (enabled) => set({ hapticsEnabled: enabled }),
 }));
