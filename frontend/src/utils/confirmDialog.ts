@@ -10,5 +10,9 @@ export function confirmAsync(
 }
 
 export function alertMessage(title: string, message?: string): Promise<void> {
-  return showAppAlert(title, message);
+  const body =
+    typeof message === 'string' && message.trim()
+      ? message.trim()
+      : 'Something went wrong. Please try again.';
+  return showAppAlert(title, body);
 }

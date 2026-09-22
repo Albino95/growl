@@ -30,9 +30,11 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
     setSaving(true);
     try {
       const categories = clampGrowthPaths(selectedCategories);
+      // Persist paths first; cohort friend linking continues in the background on the server.
       await updateProfileOnServer({ categories });
       setOnboardingComplete(categories);
-      await refreshProfile();
+      // Don't block leaving the screen if profile refresh is slow.
+      void refreshProfile();
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
@@ -40,7 +42,10 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
         })
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not save categories on the server.';
+      const msg =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : 'Could not save categories on the server.';
       alertMessage('Could not save', msg);
     } finally {
       setSaving(false);

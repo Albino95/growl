@@ -415,7 +415,7 @@ export default function CheckoutScreen() {
           <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex-row items-center`}>
             <Ionicons name="time-outline" size={20} color="#D97706" style={tw`mr-2`} />
             <Text style={tw`text-amber-800 text-sm font-medium flex-1`}>
-              Checkout opening soon — payments are not enabled yet.
+              Catalog browsing only — payments / checkout are not enabled in this version.
             </Text>
           </View>
         )}

@@ -49,7 +49,14 @@ export type RootStackParamList = {
   Business: undefined;
   Post: undefined;
   Messages: { conversationId?: string; targetUserId?: string } | undefined;
-  Reels: { startPostId?: string; seedPost?: import('../../services/api/feed').FeedPost } | undefined;
+  Reels:
+    | {
+        startPostId?: string;
+        seedPost?: import('../../services/api/feed').FeedPost;
+        /** home = friends/for-you reels; explore = discovery (non-friend) reels */
+        mode?: 'home' | 'explore';
+      }
+    | undefined;
   PublicProfile: { userId: string };
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };

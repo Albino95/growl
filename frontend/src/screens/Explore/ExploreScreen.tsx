@@ -2,7 +2,7 @@
  * Explore — discover people, stories, posts, and shop picks by growth path.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,13 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { addFriend, listFriends } from '../../services/api/friends';
+import {
+  addFriend,
+  listFriends,
+  searchSocial,
+  type PeopleSearchHit,
+  type PostSearchHit,
+} from '../../services/api/friends';
 import { resolveAvatarUri, resolvePostMediaUri, resolveStoryDisplayUri } from '../../utils/images';
 import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/ranking';
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
@@ -38,7 +44,9 @@ import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import CATEGORIES from '../../data/categories';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
-import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
+import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 function SectionTitle({
   title,
@@ -80,8 +88,18 @@ export default function ExploreScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [shopPicks, setShopPicks] = useState<RankedProduct[]>([]);
   const [gridPosts, setGridPosts] = useState<FeedPost[]>([]);
+  const [searchHits, setSearchHits] = useState<PeopleSearchHit[]>([]);
+  const [searchPosts, setSearchPosts] = useState<PostSearchHit[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchTab, setSearchTab] = useState<'all' | 'accounts' | 'posts' | 'shop'>('all');
+  const [accountRole, setAccountRole] = useState<'all' | 'people' | 'instructor' | 'business'>(
+    'all'
+  );
+  const [searchCommitted, setSearchCommitted] = useState(false);
 
   const userPaths = user?.categories || [];
+  const isSearching = query.trim().length > 0;
 
   const load = useCallback(async () => {
     try {
@@ -148,6 +166,67 @@ export default function ExploreScreen() {
     }, [load])
   );
 
+  const runSearch = useCallback(async (raw: string, role = accountRole) => {
+    const q = raw.trim();
+    if (q.length < 1) {
+      setSearchHits([]);
+      setSearchPosts([]);
+      setSearchLoading(false);
+      setSearchError(null);
+      setSearchCommitted(false);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const res = await searchSocial(q, {
+        limit: 30,
+        type: 'all',
+        role: role === 'all' ? 'all' : role,
+      });
+      setSearchHits(res.people);
+      setSearchPosts(res.posts);
+      setSearchCommitted(true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Search failed. Try again.';
+      setSearchError(msg);
+      setSearchHits([]);
+      setSearchPosts([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [accountRole]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 1) {
+      setSearchHits([]);
+      setSearchPosts([]);
+      setSearchLoading(false);
+      setSearchError(null);
+      setSearchCommitted(false);
+      return;
+    }
+    let cancelled = false;
+    setSearchLoading(true);
+    const t = setTimeout(() => {
+      void runSearch(q).finally(() => {
+        if (cancelled) return;
+      });
+    }, 320);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query, accountRole, runSearch]);
+
+  const onSubmitSearch = () => {
+    const q = query.trim();
+    if (!q) return;
+    setSearchTab('all');
+    void runSearch(q);
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     void load();
@@ -196,7 +275,8 @@ export default function ExploreScreen() {
     return people.filter((p) => {
       if (q && !p.username.toLowerCase().includes(q)) return false;
       if (!selectedCategory) return true;
-      return p.latestPost?.category === selectedCategory;
+      if (!p.latestPost) return true;
+      return postMatchesCategoryFilter(p.latestPost, selectedCategory);
     });
   }, [people, query, selectedCategory]);
 
@@ -206,25 +286,43 @@ export default function ExploreScreen() {
       const username = (p.metadata?.username || 'member').toLowerCase();
       const caption = (p.caption || '').toLowerCase();
       if (q && !username.includes(q) && !caption.includes(q)) return false;
-      if (!selectedCategory) return true;
-      return p.category === selectedCategory;
+      return postMatchesCategoryFilter(p, selectedCategory);
     });
   }, [reels, query, selectedCategory]);
 
   const filteredGrid = useMemo(() => {
-    if (!selectedCategory) return gridPosts;
-    return gridPosts.filter((p) => p.category === selectedCategory);
+    return gridPosts.filter((p) => postMatchesCategoryFilter(p, selectedCategory));
   }, [gridPosts, selectedCategory]);
 
   const filteredShop = useMemo(() => {
     if (!selectedCategory) return shopPicks;
-    return shopPicks.filter((p) => (p.category || '').split(':')[0] === selectedCategory);
+    return shopPicks.filter((p) => (p.category || '').split(':')[0] === selectedCategory.split(':')[0]);
   }, [shopPicks, selectedCategory]);
 
   const storyPeople = useMemo(
     () => filteredPeople.filter((p) => p.storyCount > 0).slice(0, 12),
     [filteredPeople]
   );
+
+  const filteredShopHits = useMemo(() => {
+    if (!isSearching) return [];
+    const q = query.trim().toLowerCase();
+    return shopPicks.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q) ||
+        (p.matchLabel || '').toLowerCase().includes(q)
+    );
+  }, [shopPicks, query, isSearching]);
+
+  const accountHits = useMemo(() => {
+    if (accountRole === 'all') return searchHits;
+    return searchHits.filter((h) => {
+      if (accountRole === 'business') return !!h.is_business;
+      if (accountRole === 'instructor') return !!h.is_instructor && !h.is_business;
+      return !h.is_instructor && !h.is_business;
+    });
+  }, [searchHits, accountRole]);
 
   const openProfile = (userId: string) => {
     const root = navigation.getParent?.() || navigation;
@@ -261,6 +359,9 @@ export default function ExploreScreen() {
       const result = await addFriend(userId);
       if (result.connected) {
         setFriendIds((prev) => new Set([...prev, userId]));
+        setSearchHits((prev) =>
+          prev.map((h) => (h.id === userId ? { ...h, isFriend: true } : h))
+        );
       }
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
       Alert.alert(
@@ -278,8 +379,7 @@ export default function ExploreScreen() {
   };
 
   const openReels = () => {
-    const root = navigation.getParent?.() || navigation;
-    (root as { navigate: (a: string) => void }).navigate('Reels');
+    openReelsFeed(navigation, 'explore');
   };
 
   const openMarketplace = () => {
@@ -288,8 +388,7 @@ export default function ExploreScreen() {
 
   const openPostDetail = (p: FeedPost) => {
     if (isReelPost(p)) {
-      const root = navigation.getParent?.() || navigation;
-      openReelsAtPost(navigation, p.id, p);
+      openReelsAtPost(navigation, p.id, p, 'explore');
       return;
     }
     const username = p.metadata?.username || 'Member';
@@ -315,8 +414,262 @@ export default function ExploreScreen() {
     });
   };
 
-  const ListHeader = (
+  const openSearchPost = (p: PostSearchHit) => {
+    const feedLike: FeedPost = {
+      id: p.id,
+      user_id: p.user_id,
+      image_url: p.image_url,
+      caption: p.caption,
+      category: p.category,
+      subcategory: p.subcategory,
+      created_at: p.created_at,
+      metadata: { username: p.username, avatar: p.avatar },
+    };
+    openPostDetail(feedLike);
+  };
+
+  const roleLabel = (hit: PeopleSearchHit) => {
+    if (hit.is_business || hit.account_type === 'business') return 'Business';
+    if (hit.is_instructor || hit.account_type === 'instructor') return 'Instructor';
+    return 'People';
+  };
+
+  const renderAccountRow = (hit: PeopleSearchHit) => {
+    const avatar = resolveAvatarUri(hit.id, hit.username, hit.avatar);
+    const busy = addingId === hit.id;
+    const pathPreview = (hit.categories || []).slice(0, 2).map(getCategoryLabel).join(' · ');
+    return (
+      <View
+        key={hit.id}
+        style={tw`flex-row items-center bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-3 mb-2`}
+      >
+        <TouchableOpacity
+          onPress={() => openProfile(hit.id)}
+          style={tw`flex-row items-center flex-1`}
+        >
+          <Image source={{ uri: avatar }} style={tw`w-12 h-12 rounded-full mr-3`} contentFit="cover" />
+          <View style={tw`flex-1`}>
+            <Text style={tw`font-bold text-stone-900`} numberOfLines={1}>
+              {hit.username}
+            </Text>
+            <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+              {roleLabel(hit)}
+              {pathPreview ? ` · ${pathPreview}` : hit.isFriend ? ' · Connected' : ''}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        {hit.isFriend || friendIds.has(hit.id) ? (
+          <Ionicons name="checkmark-circle" size={22} color="#059669" />
+        ) : (
+          <TouchableOpacity
+            onPress={() => void onAddFriend(hit.id)}
+            disabled={busy}
+            style={tw`bg-emerald-600 px-3 py-2 rounded-xl ${busy ? 'opacity-60' : ''}`}
+          >
+            <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Request'}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  const SearchResultsHeader = (
     <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={tw`mb-3`}
+        contentContainerStyle={tw`pr-2`}
+      >
+        {(
+          [
+            { key: 'all' as const, label: 'All', count: accountHits.length + searchPosts.length + filteredShopHits.length },
+            { key: 'accounts' as const, label: 'Accounts', count: accountHits.length },
+            { key: 'posts' as const, label: 'Posts', count: searchPosts.length },
+            { key: 'shop' as const, label: 'Shop', count: filteredShopHits.length },
+          ] as const
+        ).map((tab) => {
+          const selected = searchTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => setSearchTab(tab.key)}
+              style={tw`mr-2 px-3.5 py-2 rounded-2xl border ${
+                selected ? 'bg-emerald-600 border-emerald-600' : 'bg-[#FFFcf7] border-stone-200'
+              }`}
+            >
+              <Text style={tw`text-sm font-semibold ${selected ? 'text-white' : 'text-stone-800'}`}>
+                {tab.label}
+                {tab.count > 0 ? ` · ${tab.count}` : ''}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {(searchTab === 'all' || searchTab === 'accounts') && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={tw`mb-3`}
+          contentContainerStyle={tw`pr-2`}
+        >
+          {(
+            [
+              { key: 'all' as const, label: 'All accounts' },
+              { key: 'people' as const, label: 'People' },
+              { key: 'instructor' as const, label: 'Instructors' },
+              { key: 'business' as const, label: 'Business' },
+            ] as const
+          ).map((f) => {
+            const selected = accountRole === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setAccountRole(f.key)}
+                style={tw`mr-2 px-3 py-1.5 rounded-full border ${
+                  selected ? 'bg-emerald-100 border-emerald-300' : 'bg-white border-stone-200'
+                }`}
+              >
+                <Text
+                  style={tw`text-xs font-semibold ${selected ? 'text-emerald-800' : 'text-stone-600'}`}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {searchLoading ? (
+        <View style={tw`py-8 items-center`}>
+          <ActivityIndicator color="#059669" />
+          <Text style={tw`text-sm text-stone-500 mt-2`}>Searching…</Text>
+        </View>
+      ) : searchError ? (
+        <View style={tw`mb-4 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
+          <Text style={tw`text-sm text-red-700`}>{searchError}</Text>
+          <TouchableOpacity onPress={onSubmitSearch} style={tw`mt-2`}>
+            <Text style={tw`text-sm font-semibold text-emerald-700`}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          {(searchTab === 'all' || searchTab === 'accounts') && (
+            <>
+              <SectionTitle title="Accounts" />
+              {accountHits.length > 0 ? (
+                <View style={tw`mb-5`}>{accountHits.map(renderAccountRow)}</View>
+              ) : (
+                <Text style={tw`text-sm text-stone-500 mb-5`}>
+                  No accounts match “{query.trim()}”.
+                </Text>
+              )}
+            </>
+          )}
+
+          {(searchTab === 'all' || searchTab === 'posts') && (
+            <>
+              <SectionTitle title="Posts" />
+              {searchPosts.length > 0 ? (
+                <View style={tw`flex-row flex-wrap justify-between mb-5`}>
+                  {searchPosts.map((p) => {
+                    const image = resolvePostMediaUri(p.image_url, p.category, p.id);
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => openSearchPost(p)}
+                        style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
+                      >
+                        <Image source={{ uri: image }} style={tw`w-full h-36`} contentFit="cover" />
+                        <Text style={tw`p-2.5 text-xs font-semibold text-stone-800`} numberOfLines={2}>
+                          {p.caption || p.username}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={tw`text-sm text-stone-500 mb-5`}>
+                  No posts match “{query.trim()}”.
+                </Text>
+              )}
+            </>
+          )}
+
+          {(searchTab === 'all' || searchTab === 'shop') && (
+            <>
+              <SectionTitle title="Shop" actionLabel="Open shop" onAction={openMarketplace} />
+              {filteredShopHits.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={tw`mb-5`}
+                  {...horizontalScrollProps}
+                >
+                  {filteredShopHits.map((product) => (
+                    <TouchableOpacity
+                      key={product.id}
+                      style={tw`w-36 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
+                      onPress={() => {
+                        triggerPressFeedback();
+                        const root = navigation.getParent?.() || navigation;
+                        (root as { navigate: (a: string, b: object) => void }).navigate(
+                          'ProductDetail',
+                          { productId: product.id }
+                        );
+                      }}
+                    >
+                      <Image
+                        source={{ uri: product.image_url || '' }}
+                        style={tw`w-full h-44 bg-stone-100`}
+                        contentFit="cover"
+                      />
+                      <View style={tw`p-2.5`}>
+                        <Text style={tw`text-xs font-semibold text-stone-900`} numberOfLines={2}>
+                          {product.name}
+                        </Text>
+                        <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
+                          ${product.price.toFixed(2)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : (
+                <Text style={tw`text-sm text-stone-500 mb-5`}>No shop picks match this search.</Text>
+              )}
+            </>
+          )}
+
+          {!searchLoading &&
+          accountHits.length === 0 &&
+          searchPosts.length === 0 &&
+          filteredShopHits.length === 0 &&
+          searchCommitted ? (
+            <EmptyState
+              icon="search-outline"
+              title="No results"
+              description={`Nothing found for “${query.trim()}”. Try another name or caption.`}
+              actionLabel="Clear search"
+              onAction={() => setQuery('')}
+            />
+          ) : null}
+        </>
+      )}
+    </>
+  );
+
+  const ListHeader = isSearching ? (
+    SearchResultsHeader
+  ) : (
+    <>
+      <SectionTitle title="Recommended for you" />
+      <Text style={tw`text-sm text-stone-500 mb-4 -mt-1`}>
+        People, stories, and posts matched to your growth paths. Search above to find anyone.
+      </Text>
+
       {/* Stories */}
       <SectionTitle title="Stories to meet" actionLabel="All reels" onAction={openReels} />
       {storyPeople.length > 0 ? (
@@ -537,18 +890,31 @@ export default function ExploreScreen() {
 
         <SearchField
           value={query}
-          onChangeText={setQuery}
-          placeholder="Search people or captions"
+          onChangeText={(t) => {
+            setQuery(t);
+            if (!t.trim()) {
+              setSearchTab('all');
+              setAccountRole('all');
+            }
+          }}
+          onSubmit={onSubmitSearch}
+          placeholder="Search people, instructors, posts…"
         />
 
-        <View style={tw`mt-2 -mx-1`}>
-          <CategoryCapsuleRow
-            items={pathCapsules}
-            selectedKey={selectedCategory}
-            onSelect={setSelectedCategory}
-            allCount={totalCapsuleCount || undefined}
-          />
-        </View>
+        {!isSearching ? (
+          <View style={tw`mt-2 -mx-1`}>
+            <CategoryCapsuleRow
+              items={pathCapsules}
+              selectedKey={selectedCategory}
+              onSelect={setSelectedCategory}
+              allCount={totalCapsuleCount || undefined}
+            />
+          </View>
+        ) : (
+          <Text style={tw`text-xs text-stone-500 mb-1`}>
+            Tap search or press Search on the keyboard · filter by Accounts, Posts, Shop
+          </Text>
+        )}
       </View>
 
       {loadError ? (
@@ -563,7 +929,7 @@ export default function ExploreScreen() {
         </View>
       ) : (
         <FlatList
-          data={filteredReels}
+          data={isSearching ? [] : filteredReels}
           keyExtractor={(p) => p.id}
           ListHeaderComponent={ListHeader}
           renderItem={({ item: p }) => {
@@ -612,6 +978,7 @@ export default function ExploreScreen() {
           }}
           contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           {...feedListPerformanceProps}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -621,7 +988,7 @@ export default function ExploreScreen() {
             />
           }
           ListEmptyComponent={
-            filteredPeople.length === 0 ? (
+            isSearching ? null : filteredPeople.length === 0 ? (
               <EmptyState
                 icon="compass-outline"
                 title="Nothing in this path yet"

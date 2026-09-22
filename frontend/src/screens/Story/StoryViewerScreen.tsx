@@ -8,6 +8,7 @@ import {
   Image,
   Animated,
   PanResponder,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -15,6 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import tw from '../../lib/tw';
 import { resolveStoryDisplayUri, resolveAvatarUri } from '../../utils/images';
+import { useAuth } from '../../store/hooks';
+import { createConversation } from '../../services/api/messages';
+import { alertMessage } from '../../utils/confirmDialog';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -43,11 +48,14 @@ export default function StoryViewerScreen() {
   const navigation = useNavigation();
   const route = useRoute<StoryViewerRouteProp>();
   const { stories: initialStories, initialIndex, onStoriesUpdate } = route.params;
+  const { user: authUser } = useAuth();
 
   const [stories, setStories] = useState(initialStories);
   const storiesRef = useRef(initialStories);
   const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
   const currentIndexRef = useRef(initialIndex || 0);
+  const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
+  const [messageBusy, setMessageBusy] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -311,21 +319,60 @@ export default function StoryViewerScreen() {
           <TouchableOpacity
             style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center`}
             onPress={() => {
-              // Like story
-              console.log('Like story:', currentStory.id);
+              triggerPressFeedback();
+              setLikedIds((prev) => ({
+                ...prev,
+                [currentStory.id]: !prev[currentStory.id],
+              }));
             }}
+            accessibilityLabel={likedIds[currentStory.id] ? 'Unlike story' : 'Like story'}
           >
-            <Ionicons name="heart-outline" size={24} color="#FFFFFF" />
-            <Text style={tw`text-white ml-2 font-semibold`}>Like</Text>
+            <Ionicons
+              name={likedIds[currentStory.id] ? 'heart' : 'heart-outline'}
+              size={24}
+              color={likedIds[currentStory.id] ? '#F87171' : '#FFFFFF'}
+            />
+            <Text style={tw`text-white ml-2 font-semibold`}>
+              {likedIds[currentStory.id] ? 'Liked' : 'Like'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center ml-4`}
-            onPress={() => {
-              // Send message
-              console.log('Send message to:', currentStory.userId);
+            style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center ml-4 ${
+              messageBusy ? 'opacity-60' : ''
+            }`}
+            disabled={messageBusy}
+            onPress={async () => {
+              if (!currentStory.userId) return;
+              if (authUser?.id && authUser.id === currentStory.userId) {
+                alertMessage('Your story', 'You cannot message yourself from here.');
+                return;
+              }
+              setMessageBusy(true);
+              triggerPressFeedback();
+              try {
+                const res = await createConversation(currentStory.userId);
+                const root = navigation.getParent() || navigation;
+                (root as { navigate: (a: string, b?: object) => void }).navigate('Messages', {
+                  conversationId: res.data.conversation.id,
+                  targetUserId: currentStory.userId,
+                });
+              } catch (e: unknown) {
+                const msg =
+                  e instanceof Error
+                    ? e.message
+                    : 'Could not open chat. You may need to be connected as friends first.';
+                alertMessage('Message', msg);
+              } finally {
+                setMessageBusy(false);
+              }
             }}
+            accessibilityLabel="Message story author"
           >
-            <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" />
+            {messageBusy ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" />
+            )}
             <Text style={tw`text-white ml-2 font-semibold`}>Message</Text>
           </TouchableOpacity>
         </View>

@@ -2,7 +2,7 @@ import { Env } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
-import { syncCategoryCohortFriends } from './friends';
+import { resyncCategoryCohortFriends } from './friends';
 import { computeEligibility, countEndorsements, countUserPosts } from '../utils/instructorEligibility';
 import { countEndorsementsGiven, computePostStreak } from '../utils/points';
 
@@ -178,11 +178,20 @@ export async function updateProfile(
       .run();
 
     if (categories && categories.length > 0) {
-      const syncWork = syncCategoryCohortFriends(env, ctx.userId).catch((syncErr) => {
+      // Cohort resync can be O(users) on D1 — never block onboarding/profile save on it.
+      // Background via waitUntil; short soft-await so path-change clients usually see links soon.
+      const syncWork = resyncCategoryCohortFriends(env, ctx.userId).catch((syncErr) => {
         console.error('[updateProfile] Category cohort friend sync failed:', syncErr);
+        return { detached: 0, linked: 0 };
       });
       if (executionCtx) {
-        executionCtx.waitUntil(syncWork);
+        executionCtx.waitUntil(syncWork.then(() => undefined));
+        await Promise.race([
+          syncWork,
+          new Promise<{ detached: number; linked: number }>((resolve) =>
+            setTimeout(() => resolve({ detached: 0, linked: 0 }), 2500)
+          ),
+        ]);
       } else {
         await syncWork;
       }

@@ -22,6 +22,24 @@ type Props = {
   onRetry?: () => void;
 };
 
+/** True only for actual video files — never force Image URLs into the video player. */
+function shouldUseVideoPlayer(opts: {
+  uri: string;
+  isReel?: boolean;
+  mediaType?: string | null;
+  contentType?: string | null;
+  videoEdit?: Partial<VideoEditSettings> | null;
+}): boolean {
+  if (opts.mediaType === 'image') return false;
+  if (opts.mediaType === 'video') return true;
+  if (isVideoMedia({ uri: opts.uri, mediaType: opts.mediaType, contentType: opts.contentType })) {
+    return true;
+  }
+  // Legacy reels with video_edit but missing media_type
+  if (opts.isReel && opts.videoEdit && opts.mediaType !== 'image') return true;
+  return false;
+}
+
 /** Feed/profile media — portrait reels with muted autoplay when visible. */
 export default function FeedReelMedia({
   uri,
@@ -51,6 +69,7 @@ export default function FeedReelMedia({
     reelPlaybackSettingsFromMetadata(videoEdit ? { video_edit: videoEdit } : null) ??
     videoEdit ??
     null;
+  // Feed autoplay stays silent (platform policy + UX). Full sound lives in Reels.
   const playbackSettings = muted
     ? {
         ...(baseSettings || {}),
@@ -61,11 +80,13 @@ export default function FeedReelMedia({
       }
     : baseSettings;
 
-  // Reels / videos must use the player — never Image (extensionless /media/keys fail as images).
-  const treatAsVideo =
-    !!isReel ||
-    isVideoMedia({ uri, mediaType, contentType }) ||
-    mediaType === 'video';
+  const treatAsVideo = shouldUseVideoPlayer({
+    uri,
+    isReel,
+    mediaType,
+    contentType,
+    videoEdit,
+  });
 
   const height = treatAsVideo || isReel ? reelH : photoH;
   const showFailed = (failed || localFailed) && !treatAsVideo;
@@ -116,15 +137,28 @@ export default function FeedReelMedia({
 
   if (displayUri && displayUri.trim() !== '' && !showFailed) {
     return (
-      <Image
-        key={`${postId}-${retryToken}`}
-        source={{ uri: displayUri }}
-        style={[tw`w-full`, { height }]}
-        contentFit="cover"
-        onError={handleImageError}
-        placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-        transition={200}
-      />
+      <View style={[tw`w-full items-center`, { height }]}>
+        <View style={[tw`h-full overflow-hidden bg-stone-200`, { width: mediaW, maxWidth: '100%' }]}>
+          <Image
+            key={`${postId}-${retryToken}`}
+            source={{ uri: displayUri }}
+            style={tw`w-full h-full`}
+            contentFit="cover"
+            onError={handleImageError}
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            transition={200}
+          />
+          {isReel ? (
+            <View
+              style={tw`absolute bottom-3 right-3 flex-row items-center bg-black/50 px-2.5 py-1 rounded-full`}
+              pointerEvents="none"
+            >
+              <Ionicons name="play" size={12} color="#fff" />
+              <Text style={tw`text-white text-[10px] font-bold ml-1`}>Reel</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
     );
   }
 

@@ -1,5 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  Platform,
+  InputAccessoryView,
+  Keyboard,
+  KeyboardAvoidingView,
+  Button,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +21,8 @@ import CATEGORIES from '../../data/categories';
 import { uploadMediaApi } from '../../services/api/media';
 import StickyFooter from '../ui/StickyFooter';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+
+const KEYBOARD_ACCESSORY_ID = 'product-form-done';
 
 interface ProductFormProps {
   visible: boolean;
@@ -83,6 +97,8 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
   const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const priceRef = useRef<TextInput>(null);
+  const stockRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -176,156 +192,203 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
       });
       onClose();
     } catch (error: unknown) {
-      alertMessage('Error', error instanceof Error ? error.message : 'Failed to save product');
+      alertMessage(
+        'Error',
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Failed to save product'
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const inputStyle = tw`bg-[#FFFcf7] border border-stone-200 rounded-xl px-4 py-3 text-base text-stone-900`;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={tw`flex-1 bg-white`}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200`}>
+      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top', 'bottom']}>
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-[#FFFcf7]`}>
           <TouchableOpacity onPress={onClose} hitSlop={12}>
             <Ionicons name="close" size={28} color="#78716C" />
           </TouchableOpacity>
           <Text style={tw`text-lg font-semibold text-stone-900`}>
             {product ? 'Edit product' : 'Add product'}
           </Text>
-          <View style={tw`w-7`} />
+          <TouchableOpacity
+            onPress={() => Keyboard.dismiss()}
+            hitSlop={12}
+            accessibilityLabel="Dismiss keyboard"
+          >
+            <Text style={tw`text-sm font-semibold text-emerald-700`}>Done</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView style={tw`flex-1 px-4 pt-4`} keyboardShouldPersistTaps="handled">
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Product image</Text>
-            {imageUrl ? (
-              <View style={tw`relative`}>
-                <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-xl`} contentFit="cover" />
-                <TouchableOpacity
-                  style={tw`absolute top-2 right-2 bg-red-500 rounded-full p-2`}
-                  onPress={() => setImageUrl('')}
-                >
-                  <Ionicons name="close" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={tw`w-full h-40 bg-stone-50 rounded-xl items-center justify-center border-2 border-dashed border-stone-300`}
-                onPress={() => void handlePickImage()}
-              >
-                <Ionicons name="image-outline" size={40} color="#A8A29E" />
-                <Text style={tw`text-stone-500 mt-2`}>Tap to add image</Text>
-              </TouchableOpacity>
-            )}
-            {uploadNotice ? <Text style={tw`text-xs text-amber-700 mt-2`}>{uploadNotice}</Text> : null}
-          </View>
-
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Name *</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Product name"
-              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base`}
-              placeholderTextColor="#A8A29E"
-            />
-          </View>
-
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Description</Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Optional description"
-              multiline
-              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base min-h-24`}
-              placeholderTextColor="#A8A29E"
-              textAlignVertical="top"
-            />
-          </View>
-
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Category *</Text>
-            <View style={tw`flex-row flex-wrap gap-2`}>
-              {CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.key}
-                  onPress={() => {
-                    setCategory(cat.key);
-                    setSubcategory('');
-                  }}
-                  style={tw`px-3 py-2 rounded-full ${category === cat.key ? 'bg-emerald-600' : 'bg-stone-100'}`}
-                >
-                  <Text style={tw`text-sm font-semibold ${category === cat.key ? 'text-white' : 'text-stone-700'}`}>
-                    {cat.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {selectedCategoryData?.subcategories?.length ? (
+        <KeyboardAvoidingView
+          style={tw`flex-1`}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            style={tw`flex-1 px-4 pt-4`}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={tw`pb-6`}
+          >
             <View style={tw`mb-4`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Subcategory</Text>
-              <View style={tw`flex-row flex-wrap gap-2`}>
-                {selectedCategoryData.subcategories.map((sub) => (
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Product image</Text>
+              {imageUrl ? (
+                <View style={tw`relative`}>
+                  <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-xl`} contentFit="cover" />
                   <TouchableOpacity
-                    key={sub.key}
-                    onPress={() => setSubcategory(sub.key)}
-                    style={tw`px-3 py-2 rounded-full ${
-                      subcategory === sub.key ? 'bg-emerald-600' : 'bg-stone-100'
-                    }`}
+                    style={tw`absolute top-2 right-2 bg-red-500 rounded-full p-2`}
+                    onPress={() => setImageUrl('')}
                   >
-                    <Text
-                      style={tw`text-sm font-semibold ${
-                        subcategory === sub.key ? 'text-white' : 'text-stone-700'
-                      }`}
-                    >
-                      {sub.label}
+                    <Ionicons name="close" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={tw`w-full h-40 bg-[#FFFcf7] rounded-xl items-center justify-center border-2 border-dashed border-stone-300`}
+                  onPress={() => void handlePickImage()}
+                >
+                  <Ionicons name="image-outline" size={40} color="#A8A29E" />
+                  <Text style={tw`text-stone-500 mt-2`}>Tap to add image</Text>
+                </TouchableOpacity>
+              )}
+              {uploadNotice ? <Text style={tw`text-xs text-amber-700 mt-2`}>{uploadNotice}</Text> : null}
+            </View>
+
+            <View style={tw`mb-4`}>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Name *</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Product name"
+                style={inputStyle}
+                placeholderTextColor="#A8A29E"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => priceRef.current?.focus()}
+              />
+            </View>
+
+            <View style={tw`mb-4`}>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Description</Text>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Optional description"
+                multiline
+                style={[inputStyle, tw`min-h-24`]}
+                placeholderTextColor="#A8A29E"
+                textAlignVertical="top"
+                returnKeyType="done"
+                blurOnSubmit
+                onSubmitEditing={() => Keyboard.dismiss()}
+                inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
+              />
+            </View>
+
+            <View style={tw`mb-4`}>
+              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Category *</Text>
+              <View style={tw`flex-row flex-wrap gap-2`}>
+                {CATEGORIES.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => {
+                      setCategory(cat.key);
+                      setSubcategory('');
+                    }}
+                    style={tw`px-3 py-2 rounded-full ${category === cat.key ? 'bg-emerald-600' : 'bg-[#FFFcf7] border border-stone-200'}`}
+                  >
+                    <Text style={tw`text-sm font-semibold ${category === cat.key ? 'text-white' : 'text-stone-700'}`}>
+                      {cat.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
-          ) : null}
 
-          <View style={tw`flex-row gap-3 mb-8`}>
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Price ($) *</Text>
-              <TextInput
-                value={price}
-                onChangeText={setPrice}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base`}
-                placeholderTextColor="#A8A29E"
-              />
-            </View>
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Stock *</Text>
-              <TextInput
-                value={stock}
-                onChangeText={setStock}
-                placeholder="0"
-                keyboardType="number-pad"
-                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-base`}
-                placeholderTextColor="#A8A29E"
-              />
-            </View>
-          </View>
-        </ScrollView>
+            {selectedCategoryData?.subcategories?.length ? (
+              <View style={tw`mb-4`}>
+                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Subcategory</Text>
+                <View style={tw`flex-row flex-wrap gap-2`}>
+                  {selectedCategoryData.subcategories.map((sub) => (
+                    <TouchableOpacity
+                      key={sub.key}
+                      onPress={() => setSubcategory(sub.key)}
+                      style={tw`px-3 py-2 rounded-full ${
+                        subcategory === sub.key ? 'bg-emerald-600' : 'bg-[#FFFcf7] border border-stone-200'
+                      }`}
+                    >
+                      <Text
+                        style={tw`text-sm font-semibold ${
+                          subcategory === sub.key ? 'text-white' : 'text-stone-700'
+                        }`}
+                      >
+                        {sub.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
-        <StickyFooter>
-          <TouchableOpacity
-            style={tw`bg-emerald-600 rounded-xl py-4 items-center ${isSubmitting ? 'opacity-50' : ''}`}
-            onPress={() => void handleSubmit()}
-            disabled={isSubmitting}
-          >
-            <Text style={tw`text-white font-bold text-base`}>
-              {isSubmitting ? 'Saving…' : product ? 'Save changes' : 'Create product'}
-            </Text>
-          </TouchableOpacity>
-        </StickyFooter>
+            <View style={tw`flex-row gap-3 mb-8`}>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Price ($) *</Text>
+                <TextInput
+                  ref={priceRef}
+                  value={price}
+                  onChangeText={setPrice}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  style={inputStyle}
+                  placeholderTextColor="#A8A29E"
+                  returnKeyType="done"
+                  inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
+                  onSubmitEditing={() => stockRef.current?.focus()}
+                />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Stock *</Text>
+                <TextInput
+                  ref={stockRef}
+                  value={stock}
+                  onChangeText={setStock}
+                  placeholder="0"
+                  keyboardType="number-pad"
+                  style={inputStyle}
+                  placeholderTextColor="#A8A29E"
+                  returnKeyType="done"
+                  inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+              </View>
+            </View>
+          </ScrollView>
+
+          <StickyFooter style={tw`bg-[#FFFcf7] border-stone-200/80`}>
+            <TouchableOpacity
+              style={tw`bg-emerald-600 rounded-xl py-4 items-center ${isSubmitting ? 'opacity-50' : ''}`}
+              onPress={() => void handleSubmit()}
+              disabled={isSubmitting}
+            >
+              <Text style={tw`text-white font-bold text-base`}>
+                {isSubmitting ? 'Saving…' : product ? 'Save changes' : 'Create product'}
+              </Text>
+            </TouchableOpacity>
+          </StickyFooter>
+        </KeyboardAvoidingView>
+
+        {Platform.OS === 'ios' ? (
+          <InputAccessoryView nativeID={KEYBOARD_ACCESSORY_ID}>
+            <View
+              style={tw`bg-[#EAE4D6] border-t border-stone-200 px-3 py-2 flex-row justify-end`}
+            >
+              <Button title="Done" onPress={() => Keyboard.dismiss()} color="#059669" />
+            </View>
+          </InputAccessoryView>
+        ) : null}
       </SafeAreaView>
     </Modal>
   );

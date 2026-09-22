@@ -17,12 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
-import { getForYouFeed, getFeedPost, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
+import { getForYouFeed, getFeedPosts, getFeedPost, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { isVideoMedia } from '../../services/api/media';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { isReelPost } from '../../utils/reelNavigation';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
-import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
+import { ReelVideoPlayer, ReelSoundtrack } from '../../components/ui/VideoEditor';
 import CommentsScreen from '../Comments/CommentsScreen';
 import HeartBurst from '../../components/feed/HeartBurst';
 import FeedLikeButton, {
@@ -35,9 +35,19 @@ import tw from '../../lib/tw';
 type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
 type ReelsRoute = RouteProp<
-  { Reels: { startPostId?: string; seedPost?: FeedPost } | undefined },
+  {
+    Reels:
+      | { startPostId?: string; seedPost?: FeedPost; mode?: 'home' | 'explore' }
+      | undefined;
+  },
   'Reels'
 >;
+
+/**
+ * Home vs Explore reels:
+ * - mode=home (default): for-you feed — friends' reels + suggested (same as Home tab entry).
+ * - mode=explore: discovery feed — non-friend reels only (Explore "All reels" / clip taps).
+ */
 
 function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -45,7 +55,15 @@ function formatCompact(n: number): string {
   return String(n);
 }
 
-function ReelsHeader({ onBack, onCreate }: { onBack: () => void; onCreate: () => void }) {
+function ReelsHeader({
+  onBack,
+  onCreate,
+  modeLabel,
+}: {
+  onBack: () => void;
+  onCreate: () => void;
+  modeLabel: string;
+}) {
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -82,7 +100,7 @@ function ReelsHeader({ onBack, onCreate }: { onBack: () => void; onCreate: () =>
           >
             Grow!
           </Text>
-          <Text style={tw`text-white font-bold text-base -mt-0.5`}>Reels</Text>
+          <Text style={tw`text-white font-bold text-base -mt-0.5`}>{modeLabel}</Text>
         </View>
         <TouchableOpacity
           onPress={onCreate}
@@ -123,6 +141,8 @@ export default function ReelsScreen() {
   const pageH = pageSize.h > 0 ? pageSize.h : windowH;
   const startPostId = route.params?.startPostId;
   const seedPost = route.params?.seedPost;
+  const reelsMode = route.params?.mode === 'explore' ? 'explore' : 'home';
+  const modeLabel = reelsMode === 'explore' ? 'Explore Reels' : 'Reels';
   const scrollToId = useRef(startPostId);
 
   const [items, setItems] = useState<ReelRow[]>([]);
@@ -163,19 +183,24 @@ export default function ReelsScreen() {
   const load = useCallback(async () => {
     const targetId = scrollToId.current;
     try {
-      const res = await getForYouFeed();
-      if (!res.success || !res.data) {
-        setItems([]);
-        return;
-      }
-      const following = Array.isArray(res.data.following) ? res.data.following : [];
-      const suggested = Array.isArray(res.data.suggested) ? res.data.suggested : [];
-      const seen = new Set<string>();
-      const merged: FeedPost[] = [];
-      for (const p of [...following, ...suggested]) {
-        if (seen.has(p.id)) continue;
-        seen.add(p.id);
-        merged.push(p);
+      let merged: FeedPost[] = [];
+      if (reelsMode === 'explore') {
+        const res = await getFeedPosts({ mode: 'explore' });
+        merged = res.success && Array.isArray(res.data) ? res.data : [];
+      } else {
+        const res = await getForYouFeed();
+        if (!res.success || !res.data) {
+          setItems([]);
+          return;
+        }
+        const following = Array.isArray(res.data.following) ? res.data.following : [];
+        const suggested = Array.isArray(res.data.suggested) ? res.data.suggested : [];
+        const seen = new Set<string>();
+        for (const p of [...following, ...suggested]) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          merged.push(p);
+        }
       }
 
       if (targetId && !merged.some((p) => p.id === targetId)) {
@@ -228,7 +253,7 @@ export default function ReelsScreen() {
       setRefreshing(false);
       pullRefreshingRef.current = false;
     }
-  }, [seedPost]);
+  }, [seedPost, reelsMode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -435,11 +460,18 @@ export default function ReelsScreen() {
     const uri = resolvePostMediaUri(item.image_url ?? '', item.category, item.id);
     const likes = item.metadata?.likes ?? 0;
     const comments = item.metadata?.comments ?? 0;
-    const isVideo = isVideoMedia({
-      uri,
-      mediaType: item.metadata?.media_type,
-      contentType: item.metadata?.content_type,
-    });
+    const isVideo = (() => {
+      const mt =
+        typeof item.metadata?.media_type === 'string' ? item.metadata.media_type : undefined;
+      const ct =
+        typeof item.metadata?.content_type === 'string' ? item.metadata.content_type : undefined;
+      if (mt === 'image') return false;
+      if (mt === 'video') return true;
+      if (isVideoMedia({ uri, mediaType: mt, contentType: ct })) return true;
+      // Legacy video reels often have video_edit but no media_type
+      if (mt !== 'image' && item.metadata?.video_edit) return true;
+      return false;
+    })();
     const isActive = activeId === item.id;
     const isUserPaused = userPausedIds.has(item.id);
     const shouldPlay = isActive && !isUserPaused && !commentsPost;
@@ -460,12 +492,17 @@ export default function ReelsScreen() {
                 style={StyleSheet.absoluteFillObject}
               />
             ) : (
-              <Image
-                source={{ uri }}
-                style={StyleSheet.absoluteFillObject}
-                contentFit="cover"
-                transition={200}
-              />
+              <>
+                <Image
+                  source={{ uri }}
+                  style={StyleSheet.absoluteFillObject}
+                  contentFit="cover"
+                  transition={200}
+                />
+                {videoEdit ? (
+                  <ReelSoundtrack settings={videoEdit} shouldPlay={shouldPlay} />
+                ) : null}
+              </>
             )}
             <View style={tw`absolute inset-0 bg-black/20`} pointerEvents="none" />
             {isUserPaused ? (
@@ -546,7 +583,7 @@ export default function ReelsScreen() {
   if (loading && items.length === 0) {
     return (
       <View style={tw`flex-1 bg-black`}>
-        <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
+        <ReelsHeader onBack={goBack} onCreate={openCreateReel} modeLabel={modeLabel} />
         <View style={tw`flex-1 items-center justify-center`}>
           <ActivityIndicator color="#fff" size="large" />
           <Text style={tw`text-white/70 mt-4`}>Loading clips…</Text>
@@ -558,7 +595,7 @@ export default function ReelsScreen() {
   if (!loading && items.length === 0) {
     return (
       <View style={tw`flex-1 bg-black`}>
-        <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
+        <ReelsHeader onBack={goBack} onCreate={openCreateReel} modeLabel={modeLabel} />
         <ReelsEmptyState onCreate={openCreateReel} />
       </View>
     );
@@ -613,7 +650,7 @@ export default function ReelsScreen() {
           index,
         })}
       />
-      <ReelsHeader onBack={goBack} onCreate={openCreateReel} />
+      <ReelsHeader onBack={goBack} onCreate={openCreateReel} modeLabel={modeLabel} />
 
       {commentsPost ? (
         <Modal

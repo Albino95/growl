@@ -27,9 +27,16 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 
 - Each selected path contributes cohort keys: e.g. `art:violin` → `{ art:violin, art }`.
 - Any **shared key** between two accounts implies they share a cohort (e.g. `art:piano` and `art:violin` both include `art`).
-- Matching users are **auto-friended** (bidirectional `friend` edges) when categories are saved, on profile load, or via `POST /social/friends/sync-cohort`.
-- **Feed** shows only **your posts** and **friends’ posts** (cohort peers appear once auto-linked).
+- Matching users are **auto-friended** (bidirectional `friend` edges with `source='cohort'`) when categories are saved, on profile load, or via `POST /social/friends/sync-cohort`.
+- **Path change:** saving new categories **detaches** auto-cohort edges that no longer overlap and **attaches** new cohort peers. Explicit `source='manual'` friendships (Add friend) are kept. Legacy edges without `source` are treated as cohort for detach.
+- **Feed** shows **your posts** and **friends’ posts** (cohort peers appear once auto-linked).
 - Friend edges are stored as **`user_relationships.type = 'friend'`** in **both directions** (unless a **block** exists).
+
+### Cross-path posts
+
+- **Home / All Categories:** posts from **all friends**, including cross-path friends (e.g. you are Fitness, friend is Arts → their Arts posts appear under All).
+- **Category-filtered Home or Explore:** only posts whose **category matches** the selected path (parent key matches that parent or leaves under it). Cross-path friends’ posts do **not** appear under an unrelated chip.
+- Explore remains **non-friend discovery**; friends belong on Home.
 
 ---
 
@@ -104,7 +111,7 @@ Apply **`backend/scripts/seed-demo-social.sql`** to D1 (see file header for `wra
 
 - **Auth:** `/auth/sign-up`, `/sign-in`, `/sign-out`, `/sso`
 - **Profile:** `GET/PUT /profile` (categories trigger cohort sync); **`GET /profile/user/:userId`** for another user’s public summary (no email)
-- **Social:** `GET /social/friends`, `POST /social/friends`, `GET /social/friends/status/:id`, `DELETE /social/friends/:id`
+- **Social:** `GET /social/friends`, `POST /social/friends`, `GET /social/friends/status/:id`, `DELETE /social/friends/:id`, `POST /social/friends/sync-cohort`, `GET /social/friends/connections`, `GET /social/search?q=`
 - **Marketplace:** products CRUD, orders, filters `category`, `subcategory`, `search`
 - **Feed / stories / instructor / business:** as registered in `backend/src/index.ts`
 

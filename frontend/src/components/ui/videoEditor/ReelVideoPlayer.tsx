@@ -35,6 +35,104 @@ type HtmlVideoEl = {
   duration: number;
 };
 
+/** Soundtrack-only player for photo reels (image + music, no video decode). */
+export function ReelSoundtrack({
+  settings,
+  shouldPlay = true,
+}: {
+  settings?: Partial<VideoEditSettings> | null;
+  shouldPlay?: boolean;
+}) {
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const webAudioRef = useRef<HTMLAudioElement | null>(null);
+  const edit = normalizeVideoEdit(settings);
+  const soundtrackUrl = getMusicPlaybackUrl(edit.audioTrackId, edit.audioUrl);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (soundRef.current) {
+        try {
+          await soundRef.current.unloadAsync();
+        } catch {
+          /* ignore */
+        }
+        soundRef.current = null;
+      }
+      if (!soundtrackUrl) return;
+      if (Platform.OS === 'web') {
+        if (typeof window === 'undefined') return;
+        if (!webAudioRef.current) webAudioRef.current = new window.Audio();
+        const el = webAudioRef.current;
+        el.loop = true;
+        el.volume = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
+        if (el.src !== soundtrackUrl) {
+          el.src = soundtrackUrl;
+          el.load?.();
+        }
+        return;
+      }
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: soundtrackUrl },
+          { shouldPlay: false, isLooping: true, volume: edit.audioVolume ?? 0.85 }
+        );
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        soundRef.current = sound;
+      } catch {
+        soundRef.current = null;
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (soundRef.current) {
+        void soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      if (webAudioRef.current) {
+        webAudioRef.current.pause();
+        webAudioRef.current.removeAttribute?.('src');
+        webAudioRef.current = null;
+      }
+    };
+  }, [soundtrackUrl, edit.audioVolume]);
+
+  useEffect(() => {
+    if (!shouldPlay || !soundtrackUrl) {
+      void soundRef.current?.pauseAsync();
+      webAudioRef.current?.pause();
+      return;
+    }
+    void (async () => {
+      try {
+        if (soundRef.current) {
+          await soundRef.current.setPositionAsync(0);
+          await soundRef.current.playAsync();
+        }
+        if (webAudioRef.current) {
+          webAudioRef.current.currentTime = 0;
+          await webAudioRef.current.play();
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [shouldPlay, soundtrackUrl]);
+
+  return null;
+}
+
 /** Shared reel video surface — trim, look, flip, volumes, text, soundtrack. */
 export default function ReelVideoPlayer({
   uri,
@@ -206,6 +304,19 @@ export default function ReelVideoPlayer({
       return;
     }
     void (async () => {
+      if (Platform.OS !== 'web') {
+        try {
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            allowsRecordingIOS: false,
+            staysActiveInBackground: false,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
       if (Platform.OS === 'web') {
         const el = htmlVideoRef.current;
         if (el) {
@@ -217,12 +328,20 @@ export default function ReelVideoPlayer({
           }
         }
       } else {
-        await videoRef.current?.setPositionAsync(trimStart);
-        await videoRef.current?.playAsync();
+        try {
+          await videoRef.current?.setPositionAsync(trimStart);
+          await videoRef.current?.playAsync();
+        } catch {
+          /* decode / network */
+        }
       }
       if (soundRef.current) {
-        await soundRef.current.setPositionAsync(0);
-        await soundRef.current.playAsync();
+        try {
+          await soundRef.current.setPositionAsync(0);
+          await soundRef.current.playAsync();
+        } catch {
+          /* ignore */
+        }
       }
       if (webAudioRef.current && soundtrackUrl) {
         try {

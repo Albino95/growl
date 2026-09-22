@@ -9,6 +9,8 @@ import {
   Modal,
   Platform,
   StyleSheet,
+  Animated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -215,6 +217,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'shared'>('posts');
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [pathSyncVisible, setPathSyncVisible] = useState(false);
+  const [pathSyncPhase, setPathSyncPhase] = useState<'leaving' | 'joining' | 'done'>('leaving');
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showClaimWelcome, setShowClaimWelcome] = useState(false);
   const [showFadedPosts, setShowFadedPosts] = useState(false);
@@ -228,6 +232,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
   const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
   connectionsSheetRef.current = connectionsSheet;
+  const cohortBootstrapRef = useRef(false);
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
   const [profileMeta, setProfileMeta] = useState<{
@@ -263,6 +268,22 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       setStories(storyList.map(mapStoryToProfileStory));
       setFollowing(connections.following);
       setFollowers(connections.followers);
+      const cats = me?.categories || user?.categories || [];
+      if (
+        !cohortBootstrapRef.current &&
+        cats.length > 0 &&
+        connections.following.length === 0 &&
+        connections.followers.length === 0
+      ) {
+        cohortBootstrapRef.current = true;
+        try {
+          const cohort = await syncCohortFriends();
+          setFollowing(cohort.following);
+          setFollowers(cohort.followers);
+        } catch (e) {
+          console.warn('[ProfileScreen] cohort bootstrap', e);
+        }
+      }
       if (me) {
         setProfileMeta({
           username: me.username,
@@ -429,19 +450,62 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       alertMessage('Limit reached', `You can save at most ${MAX_GROWTH_PATHS} growth paths.`);
       return;
     }
+
+    const prev = user?.categories || [];
+    const prevSet = new Set(prev.map((c) => c.toLowerCase()));
+    const nextSet = new Set(next.map((c) => c.toLowerCase()));
+    const pathsChanged =
+      prev.length !== next.length ||
+      next.some((c) => !prevSet.has(c.toLowerCase())) ||
+      prev.some((c) => !nextSet.has(c.toLowerCase()));
+
+    if (pathsChanged) {
+      const ok = await confirmAsync(
+        'Update growth paths?',
+        'Changing paths reconnects you with people in your new areas and removes auto-connections from paths you leave. Friends you added yourself stay. Block, restrict, and report still work as usual.',
+        { confirmLabel: 'Update paths', cancelLabel: 'Keep current' }
+      );
+      if (!ok) return;
+    }
+
     try {
+      if (pathsChanged) {
+        setShowCategorySettings(false);
+        setPathSyncPhase('leaving');
+        setPathSyncVisible(true);
+      }
+
       await updateProfileOnServer({ categories: next });
       updateUser({ categories: next });
-      try {
-        const cohort = await syncCohortFriends();
-        setFollowing(cohort.following);
-        setFollowers(cohort.followers);
-      } catch (cohortErr) {
-        console.warn('[ProfileScreen] cohort sync after category update', cohortErr);
+
+      if (pathsChanged) {
+        setPathSyncPhase('joining');
+        try {
+          // Profile PUT already awaited cohort resync; refresh lists for the UI.
+          const cohort = await getConnections();
+          setFollowing(cohort.following);
+          setFollowers(cohort.followers);
+        } catch (cohortErr) {
+          console.warn('[ProfileScreen] connections refresh after category update', cohortErr);
+          try {
+            const cohort = await syncCohortFriends();
+            setFollowing(cohort.following);
+            setFollowers(cohort.followers);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        setPathSyncPhase('done');
+        await new Promise((r) => setTimeout(r, 650));
+        setPathSyncVisible(false);
+        alertMessage('Paths updated', 'Your circle now matches your growth areas.');
+      } else {
+        setShowCategorySettings(false);
+        alertMessage('Saved', 'Growth paths unchanged.');
       }
-      setShowCategorySettings(false);
-      alertMessage('Success', 'Growth paths updated!');
     } catch (err: unknown) {
+      setPathSyncVisible(false);
       const msg = err instanceof Error ? err.message : 'Could not update growth areas';
       alertMessage('Error', msg);
     }
@@ -1112,6 +1176,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         />
       </Modal>
 
+      <PathChangeSyncOverlay visible={pathSyncVisible} phase={pathSyncPhase} />
+
       <Modal
         visible={showClaimWelcome}
         transparent
@@ -1140,6 +1206,159 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         </View>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+/** Full-screen sync state while cohort edges detach / attach after a path change. */
+function PathChangeSyncOverlay({
+  visible,
+  phase,
+}: {
+  visible: boolean;
+  phase: 'leaving' | 'joining' | 'done';
+}) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const ring = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const ringLoop = Animated.loop(
+      Animated.timing(ring, {
+        toValue: 1,
+        duration: 2200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    pulseLoop.start();
+    ringLoop.start();
+    return () => {
+      pulseLoop.stop();
+      ringLoop.stop();
+      pulse.setValue(0);
+      ring.setValue(0);
+    };
+  }, [visible, pulse, ring]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.06] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
+  const rotate = ring.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const copy =
+    phase === 'leaving'
+      ? {
+          title: 'Refreshing your circle',
+          body: 'Letting go of auto-connections from paths you’re leaving…',
+        }
+      : phase === 'joining'
+        ? {
+            title: 'Meeting your new cohort',
+            body: 'Linking with people who share your updated growth areas…',
+          }
+        : {
+            title: 'You’re set',
+            body: 'Following and followers now match your paths.',
+          };
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
+      <View style={tw`flex-1 bg-[#F3EEE4] items-center justify-center px-8`}>
+        <View style={tw`absolute inset-0`}>
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ECFDF5', opacity: 0.55 }]} />
+          <View
+            style={{
+              position: 'absolute',
+              top: -80,
+              right: -60,
+              width: 220,
+              height: 220,
+              borderRadius: 110,
+              backgroundColor: '#059669',
+              opacity: 0.08,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              bottom: -40,
+              left: -40,
+              width: 180,
+              height: 180,
+              borderRadius: 90,
+              backgroundColor: '#059669',
+              opacity: 0.06,
+            }}
+          />
+        </View>
+
+        <Text style={tw`text-[11px] tracking-[4px] uppercase text-emerald-700 font-bold mb-8`}>
+          Grow!
+        </Text>
+
+        <View style={tw`items-center justify-center mb-10`}>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              width: 128,
+              height: 128,
+              borderRadius: 64,
+              borderWidth: 1.5,
+              borderColor: 'rgba(5,150,105,0.25)',
+              borderStyle: 'dashed',
+              transform: [{ rotate }],
+            }}
+          />
+          <Animated.View
+            style={[
+              tw`w-24 h-24 rounded-full items-center justify-center`,
+              {
+                backgroundColor: '#ECFDF5',
+                borderWidth: 1,
+                borderColor: 'rgba(5,150,105,0.35)',
+                transform: [{ scale }],
+                opacity,
+              },
+            ]}
+          >
+            <Ionicons
+              name={phase === 'done' ? 'checkmark' : phase === 'joining' ? 'people' : 'leaf-outline'}
+              size={36}
+              color="#059669"
+            />
+          </Animated.View>
+        </View>
+
+        <Text style={tw`text-2xl font-bold text-stone-900 text-center mb-2`}>{copy.title}</Text>
+        <Text style={tw`text-sm text-stone-500 text-center leading-5 max-w-xs`}>{copy.body}</Text>
+
+        {phase !== 'done' ? (
+          <View style={tw`mt-10 flex-row items-center`}>
+            <View style={tw`w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5`} />
+            <View style={tw`w-1.5 h-1.5 rounded-full bg-emerald-600/50 mr-1.5`} />
+            <View style={tw`w-1.5 h-1.5 rounded-full bg-emerald-600/25`} />
+          </View>
+        ) : null}
+      </View>
+    </Modal>
   );
 }
 

@@ -92,6 +92,9 @@ async function handleRequest(
           social: {
             friends: `${apiPrefix}/social/friends`,
             friendshipStatus: `${apiPrefix}/social/friends/status/:userId`,
+            search: `${apiPrefix}/social/search`,
+            syncCohort: `${apiPrefix}/social/friends/sync-cohort`,
+            connections: `${apiPrefix}/social/friends/connections`,
           },
           stories: `${apiPrefix}/stories`,
           journal: `${apiPrefix}/journal/entries`,
@@ -539,6 +542,9 @@ async function handleRequest(
 
       if (path === `${apiPrefix}/social/friends/sync-cohort` && request.method === 'POST') {
         return friendsRoutes.syncCohortFriendsRoute(request, env, executionCtx);
+      }
+      if (path === `${apiPrefix}/social/search` && request.method === 'GET') {
+        return friendsRoutes.searchPeople(request, env);
       }
       if (path === `${apiPrefix}/social/friends/connections` && request.method === 'GET') {
         return friendsRoutes.listConnections(request, env);

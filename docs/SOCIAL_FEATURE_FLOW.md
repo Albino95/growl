@@ -41,11 +41,22 @@ This guide explains the main social flows (friends, moderation, stories, feed/ex
 ## Feed vs explore behavior
 
 - Home feed:
-  - Own posts and friend posts only
+  - Own posts and friend posts only (including cross-path friends)
   - Includes relevance and engagement metadata
+  - Category chips filter by post category only (All = every friend post)
 - Explore:
   - Non-friend discovery only
+  - People search via `GET /social/search?q=`
   - Optional development mock fallback only when explicitly enabled
+- Reels viewer:
+  - `mode=home` (default): for-you / friends+suggested reels (Home entry)
+  - `mode=explore`: discovery reels from explore feed (Explore entry)
+
+## Cohort path change
+
+- Profile category save runs `resyncCategoryCohortFriends` (detach non-overlapping cohort edges, attach new).
+- Manual friendships (`source=manual`) are preserved across path changes.
+- UI shows consent warning + full-screen sync overlay while attach/detach runs.
 
 ## Moderation model
 

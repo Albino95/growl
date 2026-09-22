@@ -104,39 +104,92 @@ async function hasRelationshipEdge(
   return !!row;
 }
 
-/** Inserts missing friend edges so the pair is bidirectional. Returns true if any row was written. */
-export async function ensureBidirectionalFriend(env: Env, a: string, b: string): Promise<boolean> {
+export type FriendEdgeSource = 'cohort' | 'manual';
+
+type FriendEdgeInfo = { exists: boolean; source: FriendEdgeSource | null };
+
+/** Reads relationship source for a directional friend edge. */
+async function getFriendEdgeInfo(env: Env, from: string, to: string): Promise<FriendEdgeInfo> {
+  const row = await env.DB.prepare(
+    `SELECT source FROM user_relationships
+     WHERE user_id = ? AND target_user_id = ? AND type = 'friend' LIMIT 1`
+  )
+    .bind(from, to)
+    .first<{ source: string | null }>();
+  if (!row) return { exists: false, source: null };
+  if (row.source === 'manual' || row.source === 'cohort') {
+    return { exists: true, source: row.source };
+  }
+  return { exists: true, source: null };
+}
+
+/** True when either direction is an explicit/manual friendship. */
+async function isManualFriendship(env: Env, a: string, b: string): Promise<boolean> {
+  const [ab, ba] = await Promise.all([getFriendEdgeInfo(env, a, b), getFriendEdgeInfo(env, b, a)]);
+  return ab.source === 'manual' || ba.source === 'manual';
+}
+
+/**
+ * Inserts missing friend edges so the pair is bidirectional.
+ * - source 'manual' upgrades existing cohort/null edges to manual.
+ * - source 'cohort' never downgrades a manual edge.
+ * Returns true if any row was written or upgraded.
+ */
+export async function ensureBidirectionalFriend(
+  env: Env,
+  a: string,
+  b: string,
+  source: FriendEdgeSource = 'cohort'
+): Promise<boolean> {
   if (a === b) return false;
   if (await isBlocked(env, a, b)) return false;
 
-  const ab = await hasFriendEdge(env, a, b);
-  const ba = await hasFriendEdge(env, b, a);
-  if (ab && ba) return false;
-
   const now = new Date().toISOString();
   let wrote = false;
-  if (!ab) {
-    await env.DB.prepare(
-      `INSERT INTO user_relationships (id, user_id, target_user_id, type, created_at) VALUES (?, ?, ?, 'friend', ?)`
-    )
-      .bind(generateId('rel'), a, b, now)
-      .run();
-    wrote = true;
-  }
-  if (!ba) {
-    await env.DB.prepare(
-      `INSERT INTO user_relationships (id, user_id, target_user_id, type, created_at) VALUES (?, ?, ?, 'friend', ?)`
-    )
-      .bind(generateId('rel'), b, a, now)
-      .run();
-    wrote = true;
-  }
+
+  const upsertOne = async (from: string, to: string) => {
+    const info = await getFriendEdgeInfo(env, from, to);
+    if (!info.exists) {
+      await env.DB.prepare(
+        `INSERT INTO user_relationships (id, user_id, target_user_id, type, created_at, source)
+         VALUES (?, ?, ?, 'friend', ?, ?)`
+      )
+        .bind(generateId('rel'), from, to, now, source)
+        .run();
+      wrote = true;
+      return;
+    }
+    if (info.source === 'manual') return;
+    if (source === 'manual') {
+      await env.DB.prepare(
+        `UPDATE user_relationships SET source = 'manual'
+         WHERE user_id = ? AND target_user_id = ? AND type = 'friend'`
+      )
+        .bind(from, to)
+        .run();
+      wrote = true;
+      return;
+    }
+    if (info.source == null) {
+      await env.DB.prepare(
+        `UPDATE user_relationships SET source = 'cohort'
+         WHERE user_id = ? AND target_user_id = ? AND type = 'friend'
+           AND (source IS NULL OR source = '')`
+      )
+        .bind(from, to)
+        .run();
+    }
+  };
+
+  await upsertOne(a, b);
+  await upsertOne(b, a);
   return wrote;
 }
 
 /**
  * Connect the user with every other account that shares at least one cohort key
  * (same category path or shared parent category, e.g. art:violin ↔ art:piano via art).
+ * New edges are tagged source='cohort' and never overwrite manual friendships.
  */
 export async function syncCategoryCohortFriends(env: Env, userId: string): Promise<number> {
   const me = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?').bind(userId).first<{ metadata: string }>();
@@ -152,9 +205,49 @@ export async function syncCategoryCohortFriends(env: Env, userId: string): Promi
   for (const row of others.results || []) {
     const theirPaths = parseCategoriesFromMetadata(row.metadata);
     if (!cohortsOverlap(myPaths, theirPaths)) continue;
-    if (await ensureBidirectionalFriend(env, userId, row.id)) pairsCreated += 1;
+    if (await ensureBidirectionalFriend(env, userId, row.id, 'cohort')) pairsCreated += 1;
   }
   return pairsCreated;
+}
+
+/**
+ * After growth paths change: drop auto-cohort edges that no longer overlap,
+ * keep explicit/manual friendships, then attach new cohort peers.
+ * Legacy edges (source NULL) are treated as cohort for detach purposes.
+ */
+export async function resyncCategoryCohortFriends(
+  env: Env,
+  userId: string
+): Promise<{ detached: number; linked: number }> {
+  const me = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ metadata: string }>();
+  if (!me) return { detached: 0, linked: 0 };
+
+  const myPaths = parseCategoriesFromMetadata(me.metadata);
+  const friendIds = await getFriendUserIds(env, userId);
+  let detached = 0;
+
+  for (const friendId of friendIds) {
+    if (await isManualFriendship(env, userId, friendId)) continue;
+
+    const friend = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
+      .bind(friendId)
+      .first<{ metadata: string }>();
+    const theirPaths = parseCategoriesFromMetadata(friend?.metadata);
+    if (myPaths.length > 0 && cohortsOverlap(myPaths, theirPaths)) continue;
+
+    await env.DB.prepare(
+      `DELETE FROM user_relationships WHERE type = 'friend'
+       AND ((user_id = ? AND target_user_id = ?) OR (user_id = ? AND target_user_id = ?))`
+    )
+      .bind(userId, friendId, friendId, userId)
+      .run();
+    detached += 1;
+  }
+
+  const linked = myPaths.length > 0 ? await syncCategoryCohortFriends(env, userId) : 0;
+  return { detached, linked };
 }
 
 /** All friend user ids (either direction of the friend edge). */
@@ -186,26 +279,17 @@ export async function areFriends(env: Env, a: string, b: string): Promise<boolea
 export async function syncCohortFriendsRoute(
   request: Request,
   env: Env,
-  executionCtx?: Pick<ExecutionContext, 'waitUntil'>
+  _executionCtx?: Pick<ExecutionContext, 'waitUntil'>
 ): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
   try {
-    const syncWork = syncCategoryCohortFriends(env, ctx.userId).catch((err) => {
-      console.error('[syncCohortFriends] background sync failed:', err);
-    });
-
-    if (executionCtx) {
-      executionCtx.waitUntil(syncWork);
-      const connections = await listConnectionsPayload(env, ctx.userId);
-      return json({ linked: 0, ...connections, cohortSync: 'scheduled' });
-    }
-
-    const linked = await syncWork;
+    // Always await — clients (profile path change) need detached/linked counts and fresh connections.
+    const result = await resyncCategoryCohortFriends(env, ctx.userId);
     const connections = await listConnectionsPayload(env, ctx.userId);
-    return json({ linked, ...connections });
+    return json({ linked: result.linked, detached: result.detached, ...connections });
   } catch (err) {
     console.error('[syncCohortFriends]', err);
     return error('DATABASE_ERROR', 'Could not sync cohort friends', 500);
@@ -213,36 +297,47 @@ export async function syncCohortFriendsRoute(
 }
 
 /** Maps database user rows into the compact social user payload shape. */
-function mapUserRow(row: { id: string; metadata: string }) {
+function mapUserRow(row: {
+  id: string;
+  metadata: string;
+  is_instructor?: number | boolean;
+  is_business?: number | boolean;
+}) {
   const meta = JSON.parse(row.metadata || '{}');
+  const categories = Array.isArray(meta.categories)
+    ? meta.categories.map((x: unknown) => String(x))
+    : [];
   return {
     id: row.id,
     username: meta.username || row.id.slice(0, 8),
-    avatar: meta.avatar,
+    avatar: meta.avatar ?? null,
+    categories,
+    is_instructor: !!(row.is_instructor ?? meta.is_instructor),
+    is_business: !!(row.is_business ?? meta.is_business),
   };
 }
 
 /** Returns users the current user follows via friend edges. */
 async function listFollowingPayload(env: Env, userId: string) {
   const rows = await env.DB.prepare(
-    `SELECT u.id, u.metadata FROM users u
+    `SELECT u.id, u.metadata, u.is_instructor, u.is_business FROM users u
      INNER JOIN user_relationships r ON r.target_user_id = u.id AND r.user_id = ? AND r.type = 'friend'
      ORDER BY r.created_at DESC`
   )
     .bind(userId)
-    .all<{ id: string; metadata: string }>();
+    .all<{ id: string; metadata: string; is_instructor: number; is_business: number }>();
   return (rows.results || []).map(mapUserRow);
 }
 
 /** Returns users who follow the current user via friend edges. */
 async function listFollowersPayload(env: Env, userId: string) {
   const rows = await env.DB.prepare(
-    `SELECT u.id, u.metadata FROM users u
+    `SELECT u.id, u.metadata, u.is_instructor, u.is_business FROM users u
      INNER JOIN user_relationships r ON r.user_id = u.id AND r.target_user_id = ? AND r.type = 'friend'
      ORDER BY r.created_at DESC`
   )
     .bind(userId)
-    .all<{ id: string; metadata: string }>();
+    .all<{ id: string; metadata: string; is_instructor: number; is_business: number }>();
   return (rows.results || []).map(mapUserRow);
 }
 
@@ -261,7 +356,7 @@ async function listConnectionsPayload(env: Env, userId: string) {
 /** Returns deduplicated friends considering both edge directions. */
 async function listFriendsPayload(env: Env, userId: string) {
   const rows = await env.DB.prepare(
-    `SELECT DISTINCT u.id, u.metadata
+    `SELECT DISTINCT u.id, u.metadata, u.is_instructor, u.is_business
      FROM users u
      INNER JOIN (
        SELECT target_user_id AS fid FROM user_relationships WHERE user_id = ? AND type = 'friend'
@@ -271,7 +366,7 @@ async function listFriendsPayload(env: Env, userId: string) {
      ORDER BY u.id`
   )
     .bind(userId, userId)
-    .all<{ id: string; metadata: string }>();
+    .all<{ id: string; metadata: string; is_instructor: number; is_business: number }>();
 
   return (rows.results || []).map(mapUserRow);
 }
@@ -303,6 +398,179 @@ export async function listFriends(request: Request, env: Env): Promise<Response>
   } catch (err) {
     console.error('[listFriends]', err);
     return error('DATABASE_ERROR', 'Failed to load friends', 500);
+  }
+}
+
+/**
+ * GET /social/search?q=…&type=all|accounts|posts&role=all|people|instructor|business&limit=
+ * Search people (username/email) and posts (caption). Excludes self + blocked for people.
+ */
+export async function searchPeople(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim().toLowerCase();
+  if (q.length < 1) {
+    return json({ people: [], posts: [] });
+  }
+  if (q.length > 64) {
+    return error('VALIDATION_ERROR', 'Search query too long', 400);
+  }
+
+  const typeParam = (url.searchParams.get('type') || 'all').toLowerCase();
+  const roleParam = (url.searchParams.get('role') || 'all').toLowerCase();
+  const wantAccounts = typeParam === 'all' || typeParam === 'accounts' || typeParam === 'people';
+  const wantPosts = typeParam === 'all' || typeParam === 'posts';
+
+  const like = `%${q.replace(/%/g, '').replace(/_/g, '')}%`;
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '24', 10) || 24, 40);
+
+  try {
+    const blocked = await env.DB.prepare(
+      `SELECT target_user_id AS uid FROM user_relationships WHERE user_id = ? AND type = 'block'
+       UNION
+       SELECT user_id AS uid FROM user_relationships WHERE target_user_id = ? AND type = 'block'`
+    )
+      .bind(ctx.userId, ctx.userId)
+      .all<{ uid: string }>();
+    const blockedIds = new Set((blocked.results || []).map((r) => r.uid));
+
+    let people: Array<{
+      id: string;
+      username: string;
+      avatar: string | null;
+      categories: string[];
+      isFriend: boolean;
+      is_instructor: boolean;
+      is_business: boolean;
+      account_type: 'people' | 'instructor' | 'business';
+    }> = [];
+
+    if (wantAccounts) {
+      const rows = await env.DB.prepare(
+        `SELECT id, email, metadata, is_instructor, is_business FROM users
+         WHERE id != ?
+           AND (
+             lower(COALESCE(json_extract(metadata, '$.username'), '')) LIKE ?
+             OR lower(email) LIKE ?
+           )
+         ORDER BY
+           CASE WHEN lower(COALESCE(json_extract(metadata, '$.username'), '')) = ? THEN 0
+                WHEN lower(COALESCE(json_extract(metadata, '$.username'), '')) LIKE ? THEN 1
+                ELSE 2 END,
+           updated_at DESC
+         LIMIT ?`
+      )
+        .bind(ctx.userId, like, like, q, `${q}%`, limit * 3)
+        .all<{
+          id: string;
+          email: string;
+          metadata: string;
+          is_instructor: number;
+          is_business: number;
+        }>();
+
+      const friendIds = await getFriendUserIds(env, ctx.userId);
+      for (const row of rows.results || []) {
+        if (blockedIds.has(row.id)) continue;
+        const meta = JSON.parse(row.metadata || '{}');
+        const username =
+          (typeof meta.username === 'string' && meta.username.trim()) ||
+          row.email?.split('@')[0] ||
+          row.id.slice(0, 8);
+        const categories = Array.isArray(meta.categories)
+          ? meta.categories.map((x: unknown) => String(x))
+          : [];
+        const isInstructor = !!row.is_instructor;
+        const isBusiness = !!row.is_business;
+        if (roleParam === 'instructor' && !isInstructor) continue;
+        if (roleParam === 'business' && !isBusiness) continue;
+        if (roleParam === 'people' && (isInstructor || isBusiness)) continue;
+
+        const account_type: 'people' | 'instructor' | 'business' = isBusiness
+          ? 'business'
+          : isInstructor
+            ? 'instructor'
+            : 'people';
+
+        people.push({
+          id: row.id,
+          username,
+          avatar: meta.avatar ?? null,
+          categories,
+          isFriend: friendIds.has(row.id),
+          is_instructor: isInstructor,
+          is_business: isBusiness,
+          account_type,
+        });
+        if (people.length >= limit) break;
+      }
+    }
+
+    let posts: Array<{
+      id: string;
+      user_id: string;
+      caption: string | null;
+      category: string;
+      subcategory: string | null;
+      image_url: string | null;
+      created_at: string;
+      username: string;
+      avatar: string | null;
+    }> = [];
+
+    if (wantPosts) {
+      const postRows = await env.DB.prepare(
+        `SELECT p.id, p.user_id, p.caption, p.category, p.subcategory, p.image_url, p.created_at,
+                u.metadata AS user_metadata
+         FROM posts p
+         INNER JOIN users u ON u.id = p.user_id
+         WHERE (
+           lower(COALESCE(p.caption, '')) LIKE ?
+           OR lower(COALESCE(json_extract(u.metadata, '$.username'), '')) LIKE ?
+         )
+         ORDER BY p.created_at DESC
+         LIMIT ?`
+      )
+        .bind(like, like, limit * 2)
+        .all<{
+          id: string;
+          user_id: string;
+          caption: string | null;
+          category: string;
+          subcategory: string | null;
+          image_url: string | null;
+          created_at: string;
+          user_metadata: string;
+        }>();
+
+      for (const row of postRows.results || []) {
+        if (blockedIds.has(row.user_id)) continue;
+        const meta = JSON.parse(row.user_metadata || '{}');
+        posts.push({
+          id: row.id,
+          user_id: row.user_id,
+          caption: row.caption,
+          category: row.category,
+          subcategory: row.subcategory,
+          image_url: row.image_url,
+          created_at: row.created_at,
+          username:
+            (typeof meta.username === 'string' && meta.username.trim()) ||
+            row.user_id.slice(0, 8),
+          avatar: meta.avatar ?? null,
+        });
+        if (posts.length >= limit) break;
+      }
+    }
+
+    return json({ people, posts });
+  } catch (err) {
+    console.error('[searchPeople]', err);
+    return error('DATABASE_ERROR', 'Failed to search', 500);
   }
 }
 
@@ -408,7 +676,7 @@ export async function addFriend(request: Request, env: Env): Promise<Response> {
       )
         .bind(targetUserId, ctx.userId)
         .run();
-      await ensureBidirectionalFriend(env, ctx.userId, targetUserId);
+      await ensureBidirectionalFriend(env, ctx.userId, targetUserId, 'manual');
       return json({ ok: true, connected: true, requestSent: false, message: 'Friend request accepted' }, 201);
     }
 

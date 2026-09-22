@@ -260,14 +260,15 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     });
 
   const scopedPosts = scoredPosts.filter((post) => {
-      // Feed mode stays narrow: own posts + friend posts only.
+      // Home / default: own posts + all friends' posts (including cross-path friends).
+      // Category chips on the client narrow further; see docs/FEATURES.md "Cross-path posts".
       if (!isExploreMode) {
         if (post.isOwn) return true;
         if (!categories.length) return false;
         return post.isFriend;
       }
 
-      // Explore mode stays discovery-focused: non-friends only.
+      // Explore: discovery of non-friends only (friends belong on Home).
       if (post.isOwn) return false;
       return !post.isFriend;
     });

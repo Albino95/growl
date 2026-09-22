@@ -44,7 +44,8 @@ import { getStories, viewStory, type StoryItem } from '../../services/api/storie
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
-import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
+import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import type { VideoEditSettings } from '../../components/ui/VideoEditor';
@@ -293,13 +294,12 @@ export default function FeedScreen({ navigation, route }: any) {
         };
       });
       const filtered = selectedCategory
-        ? mapped.filter((post) => {
-            if (selectedCategory.includes(':')) {
-              const [cat, sub] = selectedCategory.split(':');
-              return post.category === cat && post.subcategory === sub;
-            }
-            return post.category === selectedCategory;
-          })
+        ? mapped.filter((post) =>
+            postMatchesCategoryFilter(
+              { category: post.category, subcategory: post.subcategory },
+              selectedCategory
+            )
+          )
         : mapped;
       return filtered.length > 0 ? { title, data: filtered } : null;
     };
@@ -849,8 +849,7 @@ export default function FeedScreen({ navigation, route }: any) {
               <Pressable
                 onPress={() => {
                   triggerPressFeedback();
-                  const rootNavigation = navigation.getParent() || navigation;
-                  rootNavigation.navigate('Reels');
+                  openReelsFeed(navigation, 'home');
                 }}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
                 accessibilityLabel="Reels"
@@ -1113,7 +1112,7 @@ export default function FeedScreen({ navigation, route }: any) {
                 title={selectedCategory ? 'No posts in this category yet' : 'Your feed is quiet'}
                 description={
                   selectedCategory
-                    ? 'Try a different category or clear filters to discover more posts.'
+                    ? 'Posts from friends in other growth paths only show under All. Clear the filter or pick a matching path.'
                     : feedStatus === 'failed'
                       ? 'Could not load posts. Pull down to retry.'
                       : 'Explore people in your growth areas or share your first post.'

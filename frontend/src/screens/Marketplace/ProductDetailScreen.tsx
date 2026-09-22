@@ -13,7 +13,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { getProduct, getProducts, Product } from '../../services/api/marketplace';
+import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
 import { getProductImageUrl, getProductImages, resolveAvatarUri } from '../../utils/images';
 import { verticalScrollProps, horizontalScrollProps } from '../../constants/scroll';
 import { rankMarketplaceProducts } from '../../utils/ranking';
@@ -38,6 +38,7 @@ export default function ProductDetailScreen() {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -46,6 +47,9 @@ export default function ProductDetailScreen() {
 
   useEffect(() => {
     loadProduct();
+    void getPaymentConfig()
+      .then((cfg) => setPaymentsEnabled(!!cfg?.data?.enabled))
+      .catch(() => setPaymentsEnabled(false));
   }, [productId]);
 
   const loadProduct = async () => {
@@ -78,13 +82,20 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = () => {
     if (!product) return;
-    
+
+    if (!paymentsEnabled) {
+      Alert.alert(
+        'Browsing only',
+        'Checkout is not available in this version. You can browse the catalog; purchases will open in a later update.'
+      );
+      return;
+    }
+
     if (product.stock < quantity) {
       Alert.alert('Out of Stock', 'Not enough items in stock');
       return;
     }
 
-    // Navigate to checkout with product
     navigation.navigate('Checkout', {
       items: [
         {
@@ -337,6 +348,13 @@ export default function ProductDetailScreen() {
 
       {/* Bottom Action Bar */}
       <View style={tw`border-t border-stone-200/80 bg-surface-card px-4 py-3 pb-6`}>
+        {!paymentsEnabled ? (
+          <View style={tw`px-3 py-3 rounded-2xl bg-stone-100 border border-stone-200/80 mb-2`}>
+            <Text style={tw`text-sm text-stone-600 text-center`}>
+              Catalog browsing only — checkout is not enabled in this release.
+            </Text>
+          </View>
+        ) : null}
         <View style={tw`flex-row`}>
           <TouchableOpacity
             onPress={handleAddToCart}
@@ -345,16 +363,20 @@ export default function ProductDetailScreen() {
               product.stock === 0 ? 'opacity-50' : ''
             }`}
           >
-            <Text style={tw`font-semibold text-stone-900`}>Add to cart</Text>
+            <Text style={tw`font-semibold text-stone-900`}>
+              {paymentsEnabled ? 'Add to cart' : 'Browse only'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleBuyNow}
-            disabled={product.stock === 0}
+            disabled={product.stock === 0 || !paymentsEnabled}
             style={tw`flex-1 ml-2 px-4 py-3.5 bg-brand-600 rounded-2xl items-center ${
-              product.stock === 0 ? 'opacity-50' : ''
+              product.stock === 0 || !paymentsEnabled ? 'opacity-50' : ''
             }`}
           >
-            <Text style={tw`font-semibold text-white`}>Buy now</Text>
+            <Text style={tw`font-semibold text-white`}>
+              {paymentsEnabled ? 'Buy now' : 'Unavailable'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

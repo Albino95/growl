@@ -330,7 +330,8 @@ export default function GrowScreen() {
   const handleCreatePromo = async () => {
     const code = promoForm.code.trim();
     const value = Number(promoForm.value);
-    const maxUses = promoForm.maxUses.trim() ? Number(promoForm.maxUses) : undefined;
+    const maxUsesRaw = promoForm.maxUses.trim();
+    const maxUses = maxUsesRaw ? Number(maxUsesRaw) : undefined;
     if (!code) {
       alertMessage('Missing code', 'Enter a promo code.');
       return;
@@ -343,19 +344,28 @@ export default function GrowScreen() {
       alertMessage('Invalid percent', 'Percent discount cannot exceed 100.');
       return;
     }
+    if (maxUsesRaw && (!Number.isFinite(maxUses) || (maxUses as number) <= 0)) {
+      alertMessage('Invalid max uses', 'Max uses must be a positive whole number, or leave it blank.');
+      return;
+    }
     try {
       setPromoBusy(true);
       await createPromoCode({
         code,
         type: promoForm.type,
         value,
-        max_uses: maxUses,
+        max_uses:
+          typeof maxUses === 'number' && Number.isFinite(maxUses) ? Math.floor(maxUses) : undefined,
       });
       alertMessage('Created', `Promo code ${code.toUpperCase()} is active.`);
       setPromoForm({ code: '', type: 'percent', value: '', maxUses: '' });
       await dispatch(fetchPromoCodes()).unwrap();
     } catch (e: unknown) {
-      alertMessage('Error', e instanceof Error ? e.message : 'Could not create promo code');
+      const msg =
+        e instanceof Error && e.message.trim()
+          ? e.message
+          : 'Could not create promo code. Check the code is unique and try again.';
+      alertMessage('Could not create promo', msg);
     } finally {
       setPromoBusy(false);
     }

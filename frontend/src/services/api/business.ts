@@ -465,7 +465,10 @@ export async function markBusinessNotificationRead(
 }
 
 export async function listPromoCodes(): Promise<{ promo_codes: PromoCode[] }> {
-  return request<{ promo_codes: PromoCode[] }>('/business/promo-codes');
+  const res = await request<{ success: boolean; data: { promo_codes: PromoCode[] } }>(
+    '/business/promo-codes'
+  );
+  return { promo_codes: res.data?.promo_codes || [] };
 }
 
 export async function createPromoCode(payload: {
@@ -474,10 +477,22 @@ export async function createPromoCode(payload: {
   value: number;
   max_uses?: number;
 }): Promise<PromoCode> {
-  return request<PromoCode>('/business/promo-codes', {
+  const body: Record<string, unknown> = {
+    code: payload.code,
+    type: payload.type,
+    value: payload.value,
+  };
+  if (typeof payload.max_uses === 'number' && Number.isFinite(payload.max_uses) && payload.max_uses > 0) {
+    body.max_uses = Math.floor(payload.max_uses);
+  }
+  const res = await request<{ success: boolean; data: PromoCode }>('/business/promo-codes', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
+  if (!res.success || !res.data) {
+    throw new Error('Could not create promo code');
+  }
+  return res.data;
 }
 
 export async function updatePromoCode(
@@ -490,8 +505,15 @@ export async function updatePromoCode(
     metadata: Record<string, unknown>;
   }>
 ): Promise<PromoCode> {
-  return request<PromoCode>(`/business/promo-codes/${encodeURIComponent(promoId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
+  const res = await request<{ success: boolean; data: PromoCode }>(
+    `/business/promo-codes/${encodeURIComponent(promoId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.success || !res.data) {
+    throw new Error('Could not update promo code');
+  }
+  return res.data;
 }

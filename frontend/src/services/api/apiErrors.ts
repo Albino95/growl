@@ -21,6 +21,7 @@ const APP_ERROR_MESSAGES: Record<string, string> = {
   UNAUTHORIZED: 'Please sign in again to continue.',
   INVALID_JSON: 'Upload failed — please try again.',
   DATABASE_ERROR: 'Something went wrong saving. Please try again.',
+  CONFLICT: 'That item already exists. Try a different code or name.',
 };
 
 type ApiErrorShape = {
@@ -65,13 +66,20 @@ export function messageFromApiError(data: unknown, httpStatus?: number): string 
     }
   }
 
-  if (httpStatus === 409) return AUTH_ERROR_MESSAGES.USER_EXISTS;
+  if (httpStatus === 409) {
+    const errMsg =
+      data && typeof data === 'object'
+        ? (data as { error?: { message?: string } }).error?.message
+        : undefined;
+    if (errMsg && errMsg.trim()) return errMsg.trim();
+    return AUTH_ERROR_MESSAGES.USER_EXISTS;
+  }
   if (httpStatus === 401) return APP_ERROR_MESSAGES.UNAUTHORIZED;
   if (httpStatus === 403) return 'You do not have permission to do that.';
   if (httpStatus === 410) return AUTH_ERROR_MESSAGES.SIGNUP_EXPIRED;
   if (httpStatus === 413) return APP_ERROR_MESSAGES.PAYLOAD_TOO_LARGE;
 
-  return `Request failed${httpStatus ? ` (${httpStatus})` : ''}`;
+  return `Request failed${httpStatus ? ` (${httpStatus})` : ''}. Please try again.`;
 }
 
 export function errorCodeFromApi(data: unknown): string | undefined {

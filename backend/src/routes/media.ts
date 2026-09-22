@@ -258,6 +258,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
 
 /**
  * GET /api/v1/media/:key
+ * Supports HTTP Range so iOS AVPlayer can stream video without a black frame.
  */
 export async function getMedia(request: Request, env: Env, key: string): Promise<Response> {
   if (!env.R2) {
@@ -269,7 +270,11 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
     return error('VALIDATION_ERROR', 'Invalid media key', 400);
   }
 
-  const obj = await env.R2.get(safeKey);
+  const rangeHeader = request.headers.get('Range') || request.headers.get('range');
+  const obj = rangeHeader
+    ? await env.R2.get(safeKey, { range: request.headers })
+    : await env.R2.get(safeKey);
+
   if (!obj) {
     return error('NOT_FOUND', 'Media not found', 404);
   }
@@ -280,9 +285,28 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
   headers.set('Content-Type', ct);
   headers.set('Cache-Control', cacheControl);
   headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+  headers.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
   headers.set('Accept-Ranges', 'bytes');
+
+  const size = obj.size;
+  // R2 ranged get → 206 Partial Content (required by iOS AVPlayer)
+  if (obj.range && typeof obj.range === 'object' && 'offset' in obj.range) {
+    const offset = Number((obj.range as { offset: number }).offset) || 0;
+    const rangeLen = (obj.range as { length?: number }).length;
+    const length =
+      typeof rangeLen === 'number' ? rangeLen : Math.max(0, size - offset);
+    const end = offset + length - 1;
+    headers.set('Content-Range', `bytes ${offset}-${end}/${size}`);
+    headers.set('Content-Length', String(length));
+    return new Response(obj.body, { status: 206, headers });
+  }
+
+  if (typeof size === 'number' && size >= 0) {
+    headers.set('Content-Length', String(size));
+  }
+
   return new Response(obj.body, { status: 200, headers });
 }
 

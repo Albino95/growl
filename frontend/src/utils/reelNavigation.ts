@@ -45,8 +45,19 @@ type Nav = {
 export function openReelsAtPost(
   navigation: Nav,
   postId: string,
-  seedPost?: FeedPost | null
+  seedPost?: FeedPost | null,
+  mode: 'home' | 'explore' = 'home'
 ) {
   const root = getRootNavigator(navigation);
-  root?.navigate('Reels', { startPostId: postId, seedPost: seedPost || undefined });
+  root?.navigate('Reels', {
+    startPostId: postId,
+    seedPost: seedPost || undefined,
+    mode,
+  });
+}
+
+/** Open the reels viewer without a start post (Home = for-you, Explore = discovery). */
+export function openReelsFeed(navigation: Nav, mode: 'home' | 'explore' = 'home') {
+  const root = getRootNavigator(navigation);
+  root?.navigate('Reels', { mode });
 }
