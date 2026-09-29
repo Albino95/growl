@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 
-export type CreateAction = 'post' | 'journal';
+export type CreateAction = 'post' | 'reel' | 'story' | 'journal';
 
 type Props = {
   visible: boolean;
@@ -19,16 +19,28 @@ const ACTIONS: Array<{
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
   {
+    key: 'journal',
+    title: 'Journal entry',
+    subtitle: 'Private by default — reflect on a skill or goal',
+    icon: 'book-outline',
+  },
+  {
     key: 'post',
     title: 'New post',
     subtitle: 'Share progress with your circle',
     icon: 'image-outline',
   },
   {
-    key: 'journal',
-    title: 'Journal entry',
-    subtitle: 'Private by default — reflect first',
-    icon: 'book-outline',
+    key: 'reel',
+    title: 'New reel',
+    subtitle: 'Show a skill unlock in motion',
+    icon: 'film-outline',
+  },
+  {
+    key: 'story',
+    title: 'New story',
+    subtitle: 'Ephemeral update for 24 hours',
+    icon: 'ellipse-outline',
   },
 ];
 
@@ -38,14 +50,16 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={tw`flex-1 justify-end`}>
         <Pressable
-          style={tw`absolute inset-0 bg-black/35`}
+          style={[tw`absolute inset-0 bg-black/35`, { zIndex: 1 }]}
           onPress={onClose}
           accessibilityLabel="Dismiss create menu"
         />
-        <View style={tw`bg-[#FFFcf7] rounded-t-3xl px-5 pt-3 pb-8 border-t border-stone-200`}>
+        <View style={[tw`bg-[#FFFcf7] rounded-t-3xl px-5 pt-3 pb-8 border-t border-stone-200`, { zIndex: 2 }]}>
           <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
           <Text style={tw`text-lg font-semibold text-stone-900 mb-1`}>Create</Text>
-          <Text style={tw`text-sm text-stone-500 mb-4`}>What do you want to add?</Text>
+          <Text style={tw`text-sm text-stone-500 mb-4`}>
+            Journal, share progress, or find your next skill — Shop is always in the tab bar.
+          </Text>
 
           {ACTIONS.map((action) => (
             <Pressable

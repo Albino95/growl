@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { getOrders, type Order } from '../../services/api/marketplace';
 import { CategoryCapsule } from '../../components/ui/CategoryCapsule';
+import { alertMessage } from '../../utils/confirmDialog';
 import { horizontalScrollProps } from '../../constants/scroll';
 
 type OrderItem = {
@@ -25,7 +26,7 @@ const STATUS_META: Record<
   processing: { label: 'Processing', icon: 'sync-outline', tint: 'text-sky-800', chip: 'bg-sky-100' },
   shipped: { label: 'Shipped', icon: 'airplane-outline', tint: 'text-violet-800', chip: 'bg-violet-100' },
   delivered: { label: 'Delivered', icon: 'checkmark-circle-outline', tint: 'text-emerald-800', chip: 'bg-emerald-100' },
-  completed: { label: 'Completed', icon: 'leaf-outline', tint: 'text-emerald-800', chip: 'bg-emerald-100' },
+  completed: { label: 'Completed', icon: 'checkmark-circle-outline', tint: 'text-emerald-800', chip: 'bg-emerald-100' },
   cancelled: { label: 'Cancelled', icon: 'close-circle-outline', tint: 'text-rose-800', chip: 'bg-rose-100' },
 };
 
@@ -35,7 +36,7 @@ const FILTERS: { key: string; label: string; icon?: keyof typeof Ionicons.glyphM
   { key: 'processing', label: 'Processing', icon: 'sync-outline' },
   { key: 'shipped', label: 'Shipped', icon: 'airplane-outline' },
   { key: 'delivered', label: 'Delivered', icon: 'checkmark-circle-outline' },
-  { key: 'completed', label: 'Done', icon: 'leaf-outline' },
+  { key: 'completed', label: 'Done', icon: 'checkmark-circle-outline' },
   { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline' },
 ];
 
@@ -55,11 +56,7 @@ export default function UserOrdersScreen() {
       }
     } catch (error: any) {
       console.error('[UserOrdersScreen] Error loading orders:', error);
-      if (Platform.OS === 'web') {
-        alert(error.message || 'Failed to load orders');
-      } else {
-        Alert.alert('Error', error.message || 'Failed to load orders');
-      }
+      void alertMessage('Error', error.message || 'Failed to load orders');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -210,9 +207,35 @@ export default function UserOrdersScreen() {
                         <Text style={tw`text-xs text-stone-500 ml-1`}>{orderDate}</Text>
                       </View>
                     </View>
-                    <View style={tw`flex-row items-center px-2.5 py-1.5 rounded-full ${meta.chip}`}>
-                      <Ionicons name={meta.icon} size={14} color="#065F46" style={tw`mr-1`} />
-                      <Text style={tw`text-xs font-semibold ${meta.tint}`}>{meta.label}</Text>
+                    <View style={tw`items-end gap-1.5`}>
+                      <View style={tw`flex-row items-center px-2.5 py-1.5 rounded-full ${meta.chip}`}>
+                        <Ionicons name={meta.icon} size={14} color="#065F46" style={tw`mr-1`} />
+                        <Text style={tw`text-xs font-semibold ${meta.tint}`}>{meta.label}</Text>
+                      </View>
+                      {(() => {
+                        const paid = (order.payment_status || '').toLowerCase() === 'paid';
+                        return (
+                          <View
+                            style={tw`flex-row items-center px-2.5 py-1 rounded-full ${
+                              paid ? 'bg-brand-50' : 'bg-stone-100'
+                            }`}
+                          >
+                            <Ionicons
+                              name={paid ? 'card' : 'card-outline'}
+                              size={12}
+                              color={paid ? '#059669' : '#78716C'}
+                              style={tw`mr-1`}
+                            />
+                            <Text
+                              style={tw`text-[11px] font-semibold ${
+                                paid ? 'text-brand-700' : 'text-stone-600'
+                              }`}
+                            >
+                              {paid ? 'Paid' : 'Unpaid'}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
                   </View>
 

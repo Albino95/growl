@@ -200,7 +200,7 @@ export function SellerProductsPage() {
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-stone-700">
           <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} />
           Low stock only (&lt; {threshold})
         </label>
@@ -245,7 +245,7 @@ export function SellerProductsPage() {
                       onChange={() => toggleSelect(p.id)}
                     />
                   </DataTableCell>
-                  <DataTableCell className="font-medium text-slate-900">{p.name}</DataTableCell>
+                  <DataTableCell className="font-medium text-stone-900">{p.name}</DataTableCell>
                   <DataTableCell>
                     {getCategoryLabel(p.category)}
                     {p.subcategory ? ` · ${p.subcategory}` : ''}
@@ -264,7 +264,7 @@ export function SellerProductsPage() {
                   <DataTableCell>
                     <button
                       type="button"
-                      className="mr-2 inline-flex rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                      className="mr-2 inline-flex rounded-lg p-2 text-stone-500 hover:bg-stone-100"
                       onClick={() => openEdit(p)}
                       aria-label="Edit"
                     >
@@ -287,9 +287,9 @@ export function SellerProductsPage() {
       </Card>
 
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/50 p-4 backdrop-blur-sm">
           <Card padding="lg" className="max-h-[90vh] w-full max-w-lg overflow-y-auto">
-            <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            <h2 className="mb-4 text-lg font-semibold text-stone-900">
               {form.id ? 'Edit product' : 'New product'}
             </h2>
             <form onSubmit={onSave}>

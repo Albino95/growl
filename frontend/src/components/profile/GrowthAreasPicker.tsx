@@ -137,7 +137,10 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
                 Growth paths
               </Text>
               <Text style={tw`text-base font-bold text-stone-900 mt-0.5`}>
-                {selectedParentCount} of {MAX_GROWTH_PATHS} selected
+                {selectedParentCount} of {MAX_GROWTH_PATHS} paths
+                {normalized.length > selectedParentCount
+                  ? ` · ${normalized.length} focuses`
+                  : ''}
               </Text>
             </View>
             {normalized.length > 0 ? (

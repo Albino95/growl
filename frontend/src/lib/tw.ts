@@ -10,8 +10,12 @@ export const theme = {
     brand: '#059669',
     brandSoft: '#ECFDF5',
     brandMuted: '#D1FAE5',
-    accent: '#7C3AED',
-    accentSoft: '#EDE9FE',
+    /** Coral — unlocks, streaks, milestones (not violet) */
+    energy: '#F97066',
+    energySoft: '#FFF1F0',
+    /** @deprecated Prefer `energy` for progress; kept for rare tertiary UI */
+    accent: '#F97066',
+    accentSoft: '#FFF1F0',
     textPrimary: '#1C1917',
     textSecondary: '#57534E',
     textMuted: '#78716C',

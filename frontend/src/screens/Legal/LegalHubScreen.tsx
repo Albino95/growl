@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import tw from '../../lib/tw';
-import { LEGAL_HUB_ITEMS, SUPPORT_EMAIL } from '../../content/legal';
+import { LEGAL_HUB_ITEMS, SUPPORT_EMAIL, LEGAL_WEB_BASE } from '../../content/legal';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 
 export default function LegalHubScreen() {
@@ -23,7 +23,7 @@ export default function LegalHubScreen() {
 
       <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4`}>
         <Text style={tw`text-sm text-stone-600 mb-4`}>
-          Policies, terms, and support resources for the Growl community.
+          Policies, terms, and support resources for the Grow! community.
         </Text>
 
         <View style={tw`bg-white rounded-xl overflow-hidden`}>
@@ -63,6 +63,12 @@ export default function LegalHubScreen() {
         >
           <Ionicons name="mail-outline" size={18} color="#059669" />
           <Text style={tw`text-brand-700 font-semibold ml-2`}>{SUPPORT_EMAIL}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => void Linking.openURL(`${LEGAL_WEB_BASE}/privacy`)}
+          style={tw`flex-row items-center justify-center py-2`}
+        >
+          <Text style={tw`text-stone-500 text-sm`}>Also on the web: letsgrow.lu/privacy</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

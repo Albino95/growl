@@ -2,7 +2,7 @@ import { Env } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
-import { syncCategoryCohortFriends } from './friends';
+import { resyncCategoryCohortFriends } from './friends';
 import { computeEligibility, countEndorsements, countUserPosts } from '../utils/instructorEligibility';
 import { countEndorsementsGiven, computePostStreak } from '../utils/points';
 
@@ -133,7 +133,11 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
  * PUT /api/v1/profile
  * Update user profile
  */
-export async function updateProfile(request: Request, env: Env): Promise<Response> {
+export async function updateProfile(
+  request: Request,
+  env: Env,
+  executionCtx?: Pick<ExecutionContext, 'waitUntil'>
+): Promise<Response> {
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -158,9 +162,12 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       ...currentMetadata,
       ...(metadata || {}),
       ...(username && { username }),
-      ...(avatar && { avatar }),
       ...(categories && { categories }),
     };
+
+    if (avatar !== undefined) {
+      updatedMetadata.avatar = avatar || null;
+    }
 
     if (typeof decay_timer === 'number') {
       updatedMetadata.decay_timer = decay_timer;
@@ -171,10 +178,22 @@ export async function updateProfile(request: Request, env: Env): Promise<Respons
       .run();
 
     if (categories && categories.length > 0) {
-      try {
-        await syncCategoryCohortFriends(env, ctx.userId);
-      } catch (syncErr) {
+      // Cohort resync can be O(users) on D1 — never block onboarding/profile save on it.
+      // Background via waitUntil; short soft-await so path-change clients usually see links soon.
+      const syncWork = resyncCategoryCohortFriends(env, ctx.userId).catch((syncErr) => {
         console.error('[updateProfile] Category cohort friend sync failed:', syncErr);
+        return { detached: 0, linked: 0 };
+      });
+      if (executionCtx) {
+        executionCtx.waitUntil(syncWork.then(() => undefined));
+        await Promise.race([
+          syncWork,
+          new Promise<{ detached: number; linked: number }>((resolve) =>
+            setTimeout(() => resolve({ detached: 0, linked: 0 }), 2500)
+          ),
+        ]);
+      } else {
+        await syncWork;
       }
     }
 

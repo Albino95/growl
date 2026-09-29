@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   FlatList,
   Modal,
   Platform,
+  StyleSheet,
+  Animated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -15,11 +18,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl, getCategoryImageUrl, getPostImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { getStoryImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { isVideoMedia } from '../../services/api/media';
+import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
+import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { syncCohortFriends, type FriendSummary } from '../../services/api/friends';
+import { getConnections, syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -36,6 +43,7 @@ import GrowthAreasPicker, {
 } from '../../components/profile/GrowthAreasPicker';
 import DecaySettingsModal from '../../components/profile/DecaySettingsModal';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
+import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { groupGrowthPaths } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
@@ -58,6 +66,11 @@ type Post = {
   createdAt: string;
   daysUntilDecay: number;
   category: string;
+  subcategory?: string;
+  isReel?: boolean;
+  mediaType?: string;
+  contentType?: string;
+  videoEdit?: ReturnType<typeof reelPlaybackSettingsFromMetadata>;
 };
 
 type Story = {
@@ -93,6 +106,11 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     createdAt: p.created_at,
     daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
     category: p.category,
+    subcategory: p.subcategory || undefined,
+    isReel: isReelPost(p),
+    mediaType: typeof p.metadata?.media_type === 'string' ? p.metadata.media_type : undefined,
+    contentType: typeof p.metadata?.content_type === 'string' ? p.metadata.content_type : undefined,
+    videoEdit: reelPlaybackSettingsFromMetadata(p.metadata ?? undefined),
   };
 }
 
@@ -103,11 +121,93 @@ function mapStoryToProfileStory(s: StoryItem): Story {
     userId: s.userId,
     username: s.username,
     avatar: s.avatar,
-    image: s.image,
+    image: s.image || '',
     createdAt: s.createdAt,
     views: s.views ?? 0,
     hasViewed: !!s.hasViewed,
   };
+}
+
+function ProfileStoryThumb({
+  story,
+  userId,
+}: {
+  story: Story;
+  userId?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const ownerId = story.userId || userId || 'me';
+  const uri = resolveStoryDisplayUri(story.image, ownerId, story.id);
+  const fallback = getStoryImageUrl(ownerId, story.id);
+  const isVideo = isVideoMedia({ uri });
+
+  if (isVideo) {
+    return (
+      <View style={tw`w-full h-full bg-stone-900`}>
+        <ReelVideoPlayer
+          uri={uri}
+          shouldPlay={false}
+          contentFit="contain"
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={tw`absolute bottom-1 right-1 bg-black/55 px-1.5 py-0.5 rounded flex-row items-center`}
+          pointerEvents="none"
+        >
+          <Ionicons name="play" size={10} color="#fff" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: failed ? fallback : uri }}
+      style={tw`w-full h-full`}
+      contentFit="contain"
+      placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+      transition={200}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ProfilePostThumb({ post }: { post: Post }) {
+  const isVideo =
+    post.isReel &&
+    isVideoMedia({
+      uri: post.image,
+      mediaType: post.mediaType,
+      contentType: post.contentType,
+    });
+
+  if (isVideo) {
+    return (
+      <View style={tw`w-16 h-16 rounded-xl mr-3 overflow-hidden bg-stone-900`}>
+        <ReelVideoPlayer
+          uri={post.image}
+          settings={post.videoEdit}
+          shouldPlay={false}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={tw`absolute bottom-0.5 right-0.5 bg-black/60 px-1 py-0.5 rounded`}
+          pointerEvents="none"
+        >
+          <Ionicons name="film-outline" size={10} color="#fff" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: post.image }}
+      style={tw`w-16 h-16 rounded-xl mr-3`}
+      contentFit="cover"
+      placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+    />
+  );
 }
 
 export default function ProfileScreen({ navigation: navProp }: any) {
@@ -120,16 +220,22 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'shared'>('posts');
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
+  const [pathSyncVisible, setPathSyncVisible] = useState(false);
+  const [pathSyncPhase, setPathSyncPhase] = useState<'leaving' | 'joining' | 'done'>('leaving');
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showClaimWelcome, setShowClaimWelcome] = useState(false);
   const [showFadedPosts, setShowFadedPosts] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [following, setFollowing] = useState<FriendSummary[]>([]);
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
+  const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
+  connectionsSheetRef.current = connectionsSheet;
+  const cohortBootstrapRef = useRef(false);
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
   const [profileMeta, setProfileMeta] = useState<{
@@ -139,25 +245,48 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     status?: string | null;
   }>({});
 
-  /** Loads posts, stories, cohort connections, and instructor eligibility. */
+  /** Loads posts, stories, connections, and instructor eligibility. */
   const loadProfileContent = useCallback(async () => {
     if (!user?.id) return;
     setProfileLoading(true);
     try {
-      const [postList, storyList, cohort, elig, me] = await Promise.all([
+      // Lightweight GET connections — avoid POST sync-cohort on every focus (that walks all users).
+      const [postList, storyList, connections, elig, me] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
-        syncCohortFriends(),
+        getConnections().catch(() => ({
+          following: [] as FriendSummary[],
+          followers: [] as FriendSummary[],
+          followingCount: 0,
+          followersCount: 0,
+        })),
         getInstructorEligibility().catch(() => null),
         fetchCurrentProfile({ stats: true }).catch(() => null),
       ]);
       if (elig) setEligibility(elig);
       const decay =
         typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
+      setSourcePosts(postList);
       setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
       setStories(storyList.map(mapStoryToProfileStory));
-      setFollowing(cohort.following);
-      setFollowers(cohort.followers);
+      setFollowing(connections.following);
+      setFollowers(connections.followers);
+      const cats = me?.categories || user?.categories || [];
+      if (
+        !cohortBootstrapRef.current &&
+        cats.length > 0 &&
+        connections.following.length === 0 &&
+        connections.followers.length === 0
+      ) {
+        cohortBootstrapRef.current = true;
+        try {
+          const cohort = await syncCohortFriends();
+          setFollowing(cohort.following);
+          setFollowers(cohort.followers);
+        } catch (e) {
+          console.warn('[ProfileScreen] cohort bootstrap', e);
+        }
+      }
       if (me) {
         setProfileMeta({
           username: me.username,
@@ -176,6 +305,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           endorsementsGiven: me.endorsements_given ?? 0,
           streakDays: me.streak_days ?? 0,
           bio: me.bio ?? null,
+          status: me.status ?? null,
+          username: me.username,
+          avatar: me.avatar,
           categories: me.categories,
           isInstructor: me.is_instructor,
         });
@@ -185,10 +317,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     } finally {
       setProfileLoading(false);
     }
-  }, [user?.id, user?.decayTimer, updateUser]);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
+      if (connectionsSheetRef.current) return;
       void loadProfileContent();
     }, [loadProfileContent])
   );
@@ -320,19 +453,62 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       alertMessage('Limit reached', `You can save at most ${MAX_GROWTH_PATHS} growth paths.`);
       return;
     }
+
+    const prev = user?.categories || [];
+    const prevSet = new Set(prev.map((c) => c.toLowerCase()));
+    const nextSet = new Set(next.map((c) => c.toLowerCase()));
+    const pathsChanged =
+      prev.length !== next.length ||
+      next.some((c) => !prevSet.has(c.toLowerCase())) ||
+      prev.some((c) => !nextSet.has(c.toLowerCase()));
+
+    if (pathsChanged) {
+      const ok = await confirmAsync(
+        'Update growth paths?',
+        'Changing paths reconnects you with people in your new areas and removes auto-connections from paths you leave. Friends you added yourself stay. Block, restrict, and report still work as usual.',
+        { confirmLabel: 'Update paths', cancelLabel: 'Keep current' }
+      );
+      if (!ok) return;
+    }
+
     try {
+      if (pathsChanged) {
+        setShowCategorySettings(false);
+        setPathSyncPhase('leaving');
+        setPathSyncVisible(true);
+      }
+
       await updateProfileOnServer({ categories: next });
       updateUser({ categories: next });
-      try {
-        const cohort = await syncCohortFriends();
-        setFollowing(cohort.following);
-        setFollowers(cohort.followers);
-      } catch (cohortErr) {
-        console.warn('[ProfileScreen] cohort sync after category update', cohortErr);
+
+      if (pathsChanged) {
+        setPathSyncPhase('joining');
+        try {
+          // Profile PUT already awaited cohort resync; refresh lists for the UI.
+          const cohort = await getConnections();
+          setFollowing(cohort.following);
+          setFollowers(cohort.followers);
+        } catch (cohortErr) {
+          console.warn('[ProfileScreen] connections refresh after category update', cohortErr);
+          try {
+            const cohort = await syncCohortFriends();
+            setFollowing(cohort.following);
+            setFollowers(cohort.followers);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        setPathSyncPhase('done');
+        await new Promise((r) => setTimeout(r, 650));
+        setPathSyncVisible(false);
+        alertMessage('Paths updated', 'Your circle now matches your growth areas.');
+      } else {
+        setShowCategorySettings(false);
+        alertMessage('Saved', 'Growth paths unchanged.');
       }
-      setShowCategorySettings(false);
-      alertMessage('Success', 'Growth paths updated!');
     } catch (err: unknown) {
+      setPathSyncVisible(false);
       const msg = err instanceof Error ? err.message : 'Could not update growth areas';
       alertMessage('Error', msg);
     }
@@ -403,8 +579,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               source={{
                 uri: resolveAvatarUri(
                   user?.id || 'default',
-                  profileMeta.username || user?.email?.split('@')[0],
-                  profileMeta.avatar
+                  profileMeta.username || user?.username || user?.email?.split('@')[0],
+                  profileMeta.avatar || user?.avatar
                 ),
               }}
               style={tw`w-20 h-20 rounded-full mr-4 border-2 border-white`}
@@ -412,7 +588,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             />
             <View style={tw`flex-1`}>
               <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {profileMeta.username || user?.email?.split('@')[0] || 'User'}
+                {profileMeta.username || user?.username || user?.email?.split('@')[0] || 'User'}
               </Text>
               {isInstructor && (
                 <View style={tw`flex-row items-center mt-1`}>
@@ -455,7 +631,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 </Text>
               </View>
               <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
-                <Ionicons name="leaf" size={28} color="#059669" />
+                <Ionicons name="ribbon" size={28} color="#059669" />
               </View>
             </View>
           </View>
@@ -491,7 +667,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
                   <View
                     style={[
-                      tw`h-full bg-violet-500 rounded-full`,
+                      tw`h-full bg-emerald-600 rounded-full`,
                       {
                         width: `${Math.min(
                           (eligibility.postCount / Math.max(eligibility.postsNeeded, 1)) * 100,
@@ -577,7 +753,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                           : 'All focuses in this path'}
                       </Text>
                     </View>
-                    <Ionicons name="leaf" size={14} color="#059669" />
+                    <Ionicons name="sparkles" size={14} color="#059669" />
                   </View>
                 ))}
               </View>
@@ -692,64 +868,56 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Text style={tw`text-sm text-stone-500 text-center py-6`}>
                 All posts have faded. Tap “Show faded” or extend post lifespan.
               </Text>
-            ) : null}
-            {visiblePosts.map((post) => (
-              <TouchableOpacity
-                key={post.id}
-                style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
-                onPress={() => {
-                  const rootNavigation = navigation.getParent() || navigation;
-                  (rootNavigation as any).navigate('PostDetail', {
-                    post: {
-                      id: post.id,
-                      userId: user?.id || 'me',
-                      username: user?.email?.split('@')[0] || 'User',
-                      avatar: getAvatarUrl(user?.id || 'default', user?.email?.split('@')[0]),
-                      image: post.image,
-                      caption: post.caption,
-                      category: post.category,
-                      likes: post.likes,
-                      comments: post.comments,
-                      createdAt: post.createdAt,
-                      daysUntilDecay: post.daysUntilDecay,
-                      hasLiked: false,
-                      reaction: null,
-                    },
-                  } as never);
-                }}
-              >
-                <View style={tw`flex-row items-center justify-between mb-3`}>
-                  <View style={tw`flex-row items-center`}>
-                    <Image
-                      source={{ uri: post.image }}
-                      style={tw`w-16 h-16 rounded-xl mr-3`}
-                      contentFit="cover"
-                    />
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
-                        {post.caption}
-                      </Text>
-                      <Text style={tw`text-xs text-stone-500 mt-1`}>
-                        {new Date(post.createdAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={tw`flex-row items-center justify-between`}>
-                  <View style={tw`flex-row items-center gap-4`}>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="heart" size={16} color="#EF4444" />
-                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.likes}</Text>
-                    </View>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
-                    </View>
-                  </View>
-                  <DecayCountdownChip daysLeft={post.daysUntilDecay} compact />
-                </View>
-              </TouchableOpacity>
-            ))}
+            ) : (
+              <View style={tw`-mx-4`}>
+                <ProfilePostsGrid
+                  posts={visiblePosts}
+                  emptyTitle="No posts yet"
+                  emptyDescription="Share a photo or reel and it will land here."
+                  onPress={(tile) => {
+                    const post = visiblePosts.find((p) => p.id === tile.id);
+                    if (!post) return;
+                    const rootNavigation = navigation.getParent() || navigation;
+                    if (post.isReel) {
+                      openReelsAtPost(
+                        rootNavigation,
+                        post.id,
+                        sourcePosts.find((p) => p.id === post.id)
+                      );
+                      return;
+                    }
+                    (rootNavigation as any).navigate('PostDetail', {
+                      post: {
+                        id: post.id,
+                        userId: user?.id || 'me',
+                        username:
+                          profileMeta.username ||
+                          user?.username ||
+                          user?.email?.split('@')[0] ||
+                          'User',
+                        avatar: resolveAvatarUri(
+                          user?.id || 'default',
+                          profileMeta.username ||
+                            user?.username ||
+                            user?.email?.split('@')[0],
+                          profileMeta.avatar || user?.avatar
+                        ),
+                        image: post.image,
+                        caption: post.caption,
+                        category: post.category,
+                        subcategory: post.subcategory,
+                        likes: post.likes,
+                        comments: post.comments,
+                        createdAt: post.createdAt,
+                        daysUntilDecay: post.daysUntilDecay,
+                        hasLiked: false,
+                        reaction: null,
+                      },
+                    } as never);
+                  }}
+                />
+              </View>
+            )}
           </View>
         )}
 
@@ -765,7 +933,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     const rootNavigation = navigation.getParent() || navigation;
                     (rootNavigation as any).navigate('CreateStory');
                   }}
-                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-violet-600`}
+                  style={tw`mt-4 px-4 py-2.5 rounded-xl bg-emerald-600`}
                 >
                   <Text style={tw`text-white font-semibold`}>Create Story</Text>
                 </TouchableOpacity>
@@ -780,13 +948,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       onPress={() => openStoriesViewer(story.id)}
                     >
                       <View
-                        style={tw`w-20 h-20 rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-purple-500 overflow-hidden`}
+                        style={tw`w-[72px] h-[128px] rounded-xl bg-stone-100 items-center justify-center mb-2 border-2 border-emerald-500 overflow-hidden`}
                       >
-                        <Image
-                          source={{ uri: resolveStoryDisplayUri(story.image, user?.id || 'me', story.id) }}
-                          style={tw`w-full h-full`}
-                          contentFit="cover"
-                        />
+                        <ProfileStoryThumb story={story} userId={user?.id} />
                       </View>
                       <Text style={tw`text-xs text-stone-500`}>{story.views} views</Text>
                       <Text style={tw`text-xs text-stone-400 mt-1`}>
@@ -843,7 +1007,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     >
                       <View
                         style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
-                          award.unlocked ? 'bg-emerald-600' : 'bg-stone-200'
+                          award.unlocked ? 'bg-energy-600' : 'bg-stone-200'
                         }`}
                       >
                         <Ionicons
@@ -867,7 +1031,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                           <View style={tw`mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden`}>
                             <View
                               style={[
-                                tw`h-full bg-emerald-500 rounded-full`,
+                                tw`h-full bg-energy-600 rounded-full`,
                                 { width: `${Math.min(100, (award.progress / award.target) * 100)}%` },
                               ]}
                             />
@@ -880,8 +1044,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                         ) : null}
                       </View>
                       {award.unlocked ? (
-                        <View style={tw`px-2 py-1 rounded-full bg-emerald-100`}>
-                          <Text style={tw`text-[10px] font-bold text-emerald-800 uppercase`}>Earned</Text>
+                        <View style={tw`px-2 py-1 rounded-full bg-energy-50`}>
+                          <Text style={tw`text-[10px] font-bold text-energy-700 uppercase`}>Earned</Text>
                         </View>
                       ) : (
                         <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
@@ -933,7 +1097,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         visible={connectionsSheet !== null}
         mode={connectionsSheet ?? 'following'}
         users={connectionsSheet === 'followers' ? followers : following}
-        loading={profileLoading}
+        loading={profileLoading && (connectionsSheet === 'followers' ? followers : following).length === 0}
         onClose={() => setConnectionsSheet(null)}
         onSelectUser={(id) => {
           setConnectionsSheet(null);
@@ -993,6 +1157,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         />
       </Modal>
 
+      <PathChangeSyncOverlay visible={pathSyncVisible} phase={pathSyncPhase} />
+
       <Modal
         visible={showClaimWelcome}
         transparent
@@ -1021,6 +1187,159 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         </View>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+/** Full-screen sync state while cohort edges detach / attach after a path change. */
+function PathChangeSyncOverlay({
+  visible,
+  phase,
+}: {
+  visible: boolean;
+  phase: 'leaving' | 'joining' | 'done';
+}) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const ring = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const ringLoop = Animated.loop(
+      Animated.timing(ring, {
+        toValue: 1,
+        duration: 2200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    pulseLoop.start();
+    ringLoop.start();
+    return () => {
+      pulseLoop.stop();
+      ringLoop.stop();
+      pulse.setValue(0);
+      ring.setValue(0);
+    };
+  }, [visible, pulse, ring]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.06] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
+  const rotate = ring.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const copy =
+    phase === 'leaving'
+      ? {
+          title: 'Refreshing your circle',
+          body: 'Letting go of auto-connections from paths you’re leaving…',
+        }
+      : phase === 'joining'
+        ? {
+            title: 'Meeting your new cohort',
+            body: 'Linking with people who share your updated growth areas…',
+          }
+        : {
+            title: 'You’re set',
+            body: 'Following and followers now match your paths.',
+          };
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
+      <View style={tw`flex-1 bg-[#F3EEE4] items-center justify-center px-8`}>
+        <View style={tw`absolute inset-0`}>
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ECFDF5', opacity: 0.55 }]} />
+          <View
+            style={{
+              position: 'absolute',
+              top: -80,
+              right: -60,
+              width: 220,
+              height: 220,
+              borderRadius: 110,
+              backgroundColor: '#059669',
+              opacity: 0.08,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              bottom: -40,
+              left: -40,
+              width: 180,
+              height: 180,
+              borderRadius: 90,
+              backgroundColor: '#059669',
+              opacity: 0.06,
+            }}
+          />
+        </View>
+
+        <Text style={tw`text-[11px] tracking-[4px] uppercase text-emerald-700 font-bold mb-8`}>
+          Grow!
+        </Text>
+
+        <View style={tw`items-center justify-center mb-10`}>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              width: 128,
+              height: 128,
+              borderRadius: 64,
+              borderWidth: 1.5,
+              borderColor: 'rgba(5,150,105,0.25)',
+              borderStyle: 'dashed',
+              transform: [{ rotate }],
+            }}
+          />
+          <Animated.View
+            style={[
+              tw`w-24 h-24 rounded-full items-center justify-center`,
+              {
+                backgroundColor: '#ECFDF5',
+                borderWidth: 1,
+                borderColor: 'rgba(5,150,105,0.35)',
+                transform: [{ scale }],
+                opacity,
+              },
+            ]}
+          >
+            <Ionicons
+              name={phase === 'done' ? 'checkmark' : phase === 'joining' ? 'people' : 'sparkles-outline'}
+              size={36}
+              color="#059669"
+            />
+          </Animated.View>
+        </View>
+
+        <Text style={tw`text-2xl font-bold text-stone-900 text-center mb-2`}>{copy.title}</Text>
+        <Text style={tw`text-sm text-stone-500 text-center leading-5 max-w-xs`}>{copy.body}</Text>
+
+        {phase !== 'done' ? (
+          <View style={tw`mt-10 flex-row items-center`}>
+            <View style={tw`w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5`} />
+            <View style={tw`w-1.5 h-1.5 rounded-full bg-emerald-600/50 mr-1.5`} />
+            <View style={tw`w-1.5 h-1.5 rounded-full bg-emerald-600/25`} />
+          </View>
+        ) : null}
+      </View>
+    </Modal>
   );
 }
 

@@ -9,14 +9,19 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import CATEGORIES from '../../data/categories';
 import { horizontalScrollProps } from '../../constants/scroll';
 import type { JournalMood } from '../../services/api/journal';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import {
+  KeyboardDoneAccessory,
+  formInputAccessoryProps,
+} from '../ui/KeyboardDoneAccessory';
 import {
   ALL_MOODS,
   MOOD_META,
@@ -69,6 +74,10 @@ export default function JournalComposeModal({
     setShowAllMoods(false);
   }, [visible, preferredPath]);
 
+  const insets = useSafeAreaInsets();
+  // Modals often report 0 safe-area insets, which parks the header under the status bar / battery.
+  const topPad = Math.max(insets.top, Platform.OS === 'ios' ? 54 : StatusBar.currentHeight || 24);
+  const bottomPad = Math.max(insets.bottom, 12);
   const moods = showAllMoods ? ALL_MOODS : PRIMARY_MOODS;
   const wash = mood ? MOOD_META[mood].wash : '#F5F0E8';
 
@@ -85,33 +94,46 @@ export default function JournalComposeModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <View style={[tw`flex-1`, { backgroundColor: wash }]}>
-        <SafeAreaView style={tw`flex-1`} edges={['top', 'bottom']}>
-          <KeyboardAvoidingView
-            style={tw`flex-1`}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={[tw`flex-1`, { backgroundColor: wash, paddingTop: topPad, paddingBottom: bottomPad }]}>
+        <View style={tw`px-4 pb-3 flex-row items-center justify-between`}>
+          <Pressable
+            onPress={onClose}
+            hitSlop={16}
+            accessibilityRole="button"
+            accessibilityLabel="Close journal"
+            style={tw`w-11 h-11 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
           >
-            <View style={tw`px-5 pt-2 pb-3 flex-row items-center justify-between`}>
-              <Pressable onPress={onClose} hitSlop={12} style={tw`p-1`}>
-                <Ionicons name="close" size={26} color="#44403C" />
-              </Pressable>
-              <Text style={tw`text-sm font-medium text-stone-500`}>{formatHeroDate()}</Text>
-              <Pressable
-                onPress={submit}
-                disabled={!content.trim() || isSaving}
-                style={tw`px-4 py-2 rounded-full bg-stone-900 ${
-                  !content.trim() || isSaving ? 'opacity-40' : ''
-                }`}
-              >
-                {isSaving ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={tw`text-white font-semibold text-sm`}>Save</Text>
-                )}
-              </Pressable>
-            </View>
+            <Ionicons name="close" size={22} color="#44403C" />
+          </Pressable>
+          <Text style={tw`text-sm font-medium text-stone-500`}>{formatHeroDate()}</Text>
+          <Pressable
+            onPress={submit}
+            disabled={!content.trim() || isSaving}
+            accessibilityRole="button"
+            accessibilityLabel="Save journal entry"
+            style={tw`min-w-[72px] h-11 px-4 rounded-full bg-stone-900 items-center justify-center ${
+              !content.trim() || isSaving ? 'opacity-40' : ''
+            }`}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={tw`text-white font-semibold text-sm`}>Save</Text>
+            )}
+          </Pressable>
+        </View>
 
+        <KeyboardAvoidingView
+          style={tw`flex-1`}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
             <ScrollView
               style={tw`flex-1`}
               contentContainerStyle={tw`px-5 pb-10`}
@@ -122,6 +144,7 @@ export default function JournalComposeModal({
               </Text>
 
               <TextInput
+                {...formInputAccessoryProps()}
                 value={content}
                 onChangeText={setContent}
                 placeholder="Write freely…"
@@ -248,8 +271,8 @@ export default function JournalComposeModal({
                 </View>
               </Pressable>
             </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
+        </KeyboardAvoidingView>
+        <KeyboardDoneAccessory />
       </View>
     </Modal>
   );

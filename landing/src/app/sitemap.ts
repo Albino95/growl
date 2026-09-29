@@ -3,12 +3,12 @@ import { getSiteUrl } from '@/lib/seo';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = getSiteUrl();
-  return [
-    {
-      url: siteUrl,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 1,
-    },
-  ];
+  const lastModified = new Date();
+  const paths = ['', '/privacy', '/terms', '/community', '/support', '/delete-account'];
+  return paths.map((path) => ({
+    url: `${siteUrl}${path}`,
+    lastModified,
+    changeFrequency: path === '' ? 'weekly' : 'monthly',
+    priority: path === '' ? 1 : 0.6,
+  }));
 }

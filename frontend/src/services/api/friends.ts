@@ -4,7 +4,14 @@
 
 import { request } from './http';
 
-export type FriendSummary = { id: string; username: string; avatar?: string };
+export type FriendSummary = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+  categories?: string[];
+  is_instructor?: boolean;
+  is_business?: boolean;
+};
 
 export type ConnectionsPayload = {
   following: FriendSummary[];
@@ -20,22 +27,94 @@ export type FriendMutationResult = {
   message?: string;
 };
 
-/** Re-run cohort auto-friending and return following / followers lists */
+/** Re-run cohort attach/detach and return following / followers lists */
 export async function syncCohortFriends(): Promise<
-  ConnectionsPayload & { linked: number }
+  ConnectionsPayload & { linked: number; detached: number }
 > {
   const res = await request<{
     success: boolean;
-    data: ConnectionsPayload & { linked: number };
+    data: ConnectionsPayload & { linked: number; detached?: number };
   }>('/social/friends/sync-cohort', { method: 'POST' });
   const d = res.data;
   return {
     linked: d?.linked ?? 0,
+    detached: d?.detached ?? 0,
     following: d?.following ?? [],
     followers: d?.followers ?? [],
     followingCount: d?.followingCount ?? d?.following?.length ?? 0,
     followersCount: d?.followersCount ?? d?.followers?.length ?? 0,
   };
+}
+
+export type PeopleSearchHit = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+  categories?: string[];
+  isFriend?: boolean;
+  is_instructor?: boolean;
+  is_business?: boolean;
+  account_type?: 'people' | 'instructor' | 'business';
+};
+
+export type PostSearchHit = {
+  id: string;
+  user_id: string;
+  caption?: string | null;
+  category: string;
+  subcategory?: string | null;
+  image_url?: string | null;
+  created_at: string;
+  username: string;
+  avatar?: string | null;
+};
+
+export type SocialSearchResult = {
+  people: PeopleSearchHit[];
+  posts: PostSearchHit[];
+};
+
+export type SocialSearchOpts = {
+  limit?: number;
+  type?: 'all' | 'accounts' | 'posts';
+  role?: 'all' | 'people' | 'instructor' | 'business';
+};
+
+/** Search people + posts for Explore. Throws on hard failures so UI can show errors. */
+export async function searchSocial(
+  query: string,
+  opts: SocialSearchOpts = {}
+): Promise<SocialSearchResult> {
+  const q = query.trim();
+  if (!q) return { people: [], posts: [] };
+  const params = new URLSearchParams({
+    q,
+    limit: String(opts.limit ?? 24),
+    type: opts.type ?? 'all',
+    role: opts.role ?? 'all',
+  });
+  const res = await request<{
+    success: boolean;
+    data: { people?: PeopleSearchHit[]; posts?: PostSearchHit[] };
+  }>(`/social/search?${params.toString()}`);
+  if (!res.success) {
+    throw new Error('Search failed');
+  }
+  return {
+    people: Array.isArray(res.data?.people) ? res.data.people : [],
+    posts: Array.isArray(res.data?.posts) ? res.data.posts : [],
+  };
+}
+
+/** @deprecated Prefer searchSocial — kept for call sites that only need people. */
+export async function searchPeople(query: string, limit = 24): Promise<PeopleSearchHit[]> {
+  try {
+    const res = await searchSocial(query, { limit, type: 'accounts' });
+    return res.people;
+  } catch (e) {
+    console.warn('[friends] searchPeople failed', e);
+    return [];
+  }
 }
 
 /** Loads following/followers with server-computed counts. */

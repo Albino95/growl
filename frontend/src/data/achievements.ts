@@ -143,7 +143,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     id: 'pts_100',
     name: 'Growing',
     description: 'Reach 100 growth points',
-    icon: 'leaf-outline',
+    icon: 'sparkles-outline',
     tier: 'milestones',
     target: 100,
     metric: 'points',

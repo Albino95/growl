@@ -28,6 +28,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const [showMusicSheet, setShowMusicSheet] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
+  const openEditorAfterPick = useRef(false);
 
   const {
     image,
@@ -51,11 +52,16 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   });
 
   useEffect(() => {
-    if (image) {
+    if (image && openEditorAfterPick.current) {
+      openEditorAfterPick.current = false;
+      setShowEditor(true);
+      return;
+    }
+    if (image && !showEditor) {
       const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
       return () => clearTimeout(timer);
     }
-  }, [image]);
+  }, [image, showEditor]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -72,6 +78,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     });
 
     if (!result.canceled && result.assets[0]) {
+      openEditorAfterPick.current = true;
       setImage(result.assets[0].uri);
     }
   };
@@ -89,6 +96,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     });
 
     if (!result.canceled && result.assets[0]) {
+      openEditorAfterPick.current = true;
       setImage(result.assets[0].uri);
     }
   };
@@ -124,6 +132,9 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     return (
       <PhotoEditor
         imageUri={image}
+        title="Edit Post"
+        preferredAspect="4:5"
+        enableOverlays
         onSave={(editedUri) => {
           setImage(editedUri);
           setShowEditor(false);

@@ -1,6 +1,8 @@
-# Growl — product features
+# Grow! — product features
 
-High-level inventory of what the app ships today (mobile Expo / RN), plus the cohort friends & marketplace behaviors added recently.
+High-level inventory of what the app ships today (mobile Expo / RN), plus cohort, friends, and marketplace behaviors.
+
+**Brand:** consumer name is **Grow!** (tech ids may still say `growl`). See [`docs/brand/BRAND.md`](brand/BRAND.md).
 
 ---
 
@@ -27,9 +29,17 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 
 - Each selected path contributes cohort keys: e.g. `art:violin` → `{ art:violin, art }`.
 - Any **shared key** between two accounts implies they share a cohort (e.g. `art:piano` and `art:violin` both include `art`).
-- Matching users are **auto-friended** (bidirectional `friend` edges) when categories are saved, on profile load, or via `POST /social/friends/sync-cohort`.
-- **Feed** shows only **your posts** and **friends’ posts** (cohort peers appear once auto-linked).
+- Matching users are **auto-friended** (bidirectional `friend` edges with `source='cohort'`) when categories are saved, on profile load, or via `POST /social/friends/sync-cohort`.
+- **Path change:** saving new categories **detaches** auto-cohort edges that no longer overlap and **attaches** new cohort peers. Explicit `source='manual'` friendships (Add friend) are kept. Legacy edges without `source` are treated as cohort for detach.
+- **Feed** shows **your posts** and **friends’ posts** (cohort peers appear once auto-linked).
 - Friend edges are stored as **`user_relationships.type = 'friend'`** in **both directions** (unless a **block** exists).
+
+### Cross-path posts
+
+- **Home / All Categories:** posts from **all friends** (any path) plus **non-friends whose post matches your growth paths**.
+- **Category-filtered Home or Explore:** only posts whose **category matches** the selected path (parent key matches that parent or leaves under it). Cross-path friends’ posts do **not** appear under an unrelated chip.
+- **Profile posts:** each post is labeled with the author’s growth path. If stored post category does not match their paths (legacy/seed data), the profile and feed show their first growth area instead.
+- Explore remains **non-friend discovery**; friends belong on Home.
 
 ---
 
@@ -54,6 +64,17 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 | Comments & likes | Threaded comments; like toggle endpoints. |
 | Stories | 24h stories, views counter; CRUD under `/stories`. |
 | Reels / messaging entry points | Navigation shells present; depth varies by screen. |
+
+---
+
+## Moderation & Trust (ops)
+
+| Feature | Notes |
+|--------|--------|
+| Consumer report / block | In-app menus; writes `reports` / blocks — no Admin UI required for reviewers. |
+| Soft-hide | Admin decide sets `is_hidden` on posts/products (not hard-delete). Appeal overturn restores. Consumer feeds omit hidden rows. |
+| Protected accounts | `review@`, `demo@`, `instructor@`, `business@` cannot be banned/hidden from admin (`403 PROTECTED_ACCOUNT`). |
+| Admin + Seller web | `admin/dashboard` — staff T&S console + scoped seller portal. See [`ADMIN_PHASE0_DEPLOY.md`](ADMIN_PHASE0_DEPLOY.md). |
 
 ---
 
@@ -104,7 +125,7 @@ Apply **`backend/scripts/seed-demo-social.sql`** to D1 (see file header for `wra
 
 - **Auth:** `/auth/sign-up`, `/sign-in`, `/sign-out`, `/sso`
 - **Profile:** `GET/PUT /profile` (categories trigger cohort sync); **`GET /profile/user/:userId`** for another user’s public summary (no email)
-- **Social:** `GET /social/friends`, `POST /social/friends`, `GET /social/friends/status/:id`, `DELETE /social/friends/:id`
+- **Social:** `GET /social/friends`, `POST /social/friends`, `GET /social/friends/status/:id`, `DELETE /social/friends/:id`, `POST /social/friends/sync-cohort`, `GET /social/friends/connections`, `GET /social/search?q=`
 - **Marketplace:** products CRUD, orders, filters `category`, `subcategory`, `search`
 - **Feed / stories / instructor / business:** as registered in `backend/src/index.ts`
 

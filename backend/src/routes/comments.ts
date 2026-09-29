@@ -124,8 +124,10 @@ export async function createComment(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Verify post exists
-  const post = await env.DB.prepare('SELECT id FROM posts WHERE id = ?')
+  // Verify post exists and is not soft-hidden
+  const post = await env.DB.prepare(
+    'SELECT id FROM posts WHERE id = ? AND COALESCE(is_hidden, 0) = 0'
+  )
     .bind(postId)
     .first();
 

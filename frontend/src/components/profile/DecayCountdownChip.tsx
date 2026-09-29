@@ -29,7 +29,7 @@ export default function DecayCountdownChip({ daysLeft, compact }: Props) {
       accessibilityLabel={`Post lifespan: ${label}`}
     >
       <Ionicons
-        name={faded ? 'leaf-outline' : 'timer-outline'}
+        name={faded ? 'hourglass-outline' : 'timer-outline'}
         size={compact ? 13 : 15}
         color={iconColor}
       />

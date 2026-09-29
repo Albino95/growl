@@ -274,10 +274,12 @@ export async function getMessages(
 
     await markConversationRead(env, conversation, ctx.userId);
 
+    // Re-read peer watermark after our mark so concurrent peer reads are not stale.
+    const fresh = await getConversationForUser(env, conversationId, ctx.userId);
     const peerReadAt =
-      conversation.user_a === ctx.userId
-        ? conversation.user_b_last_read_at || null
-        : conversation.user_a_last_read_at || null;
+      (fresh || conversation).user_a === ctx.userId
+        ? (fresh || conversation).user_b_last_read_at || null
+        : (fresh || conversation).user_a_last_read_at || null;
 
     const messages = (rows.results || []).map((m) => ({
       id: m.id,

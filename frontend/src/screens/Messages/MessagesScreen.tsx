@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl } from '../../utils/images';
+import { resolveAvatarUri } from '../../utils/images';
 import {
   getConversations,
   getMessages,
@@ -39,15 +39,25 @@ type ActiveConversation = ConversationSummary & {
   peer_last_read_at?: string | null;
 };
 
+function parseMsgTime(iso?: string | null): number {
+  if (!iso) return 0;
+  const raw = String(iso).trim();
+  // SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" — treat as UTC
+  const normalized = /T/.test(raw)
+    ? raw
+    : raw.replace(' ', 'T') + (raw.endsWith('Z') ? '' : 'Z');
+  const t = new Date(normalized).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
 function messageReceipt(
   msg: ChatMessage,
   peerLastReadAt?: string | null
 ): 'sending' | 'sent' | 'seen' {
   if (msg.id.startsWith('temp-')) return 'sending';
-  if (
-    peerLastReadAt &&
-    new Date(peerLastReadAt).getTime() >= new Date(msg.created_at).getTime()
-  ) {
+  const peerRead = parseMsgTime(peerLastReadAt);
+  const created = parseMsgTime(msg.created_at);
+  if (peerRead > 0 && created > 0 && peerRead >= created) {
     return 'seen';
   }
   return 'sent';
@@ -59,13 +69,14 @@ function ReceiptTicks({
   status: 'sending' | 'sent' | 'seen';
 }) {
   if (status === 'sending') {
-    return <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />;
+    return <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.85)" />;
   }
   if (status === 'seen') {
-    return <Ionicons name="checkmark-done" size={14} color="#A7F3D0" />;
+    // Double tick — read by peer
+    return <Ionicons name="checkmark-done" size={16} color="#ECFDF5" />;
   }
-  // Delivered to server — single tick; peer read upgrades to double emerald
-  return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.65)" />;
+  // Single tick — delivered to server
+  return <Ionicons name="checkmark" size={16} color="rgba(255,255,255,0.9)" />;
 }
 
 type MessagesRouteParams = {
@@ -112,7 +123,7 @@ export default function MessagesScreen() {
   const [messageText, setMessageText] = useState('');
   const [listError, setListError] = useState<string | null>(null);
   const messageInputRef = useRef<TextInput>(null);
-  const bootedFromRouteRef = useRef(false);
+  const lastRouteBootKey = useRef<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
 
   selectedIdRef.current = selectedConversation?.id ?? null;
@@ -188,8 +199,9 @@ export default function MessagesScreen() {
   useEffect(() => {
     const { conversationId, targetUserId } = route.params ?? {};
     if (!conversationId && !targetUserId) return;
-    if (bootedFromRouteRef.current) return;
-    bootedFromRouteRef.current = true;
+    const bootKey = `${conversationId || ''}|${targetUserId || ''}`;
+    if (lastRouteBootKey.current === bootKey) return;
+    lastRouteBootKey.current = bootKey;
 
     const boot = async () => {
       let list = conversations;
@@ -329,7 +341,7 @@ export default function MessagesScreen() {
               <View style={tw`w-10 h-10 rounded-full bg-stone-100 overflow-hidden mr-3 border border-stone-200`}>
                 <Image
                   source={{
-                    uri: getAvatarUrl(
+                    uri: resolveAvatarUri(
                       selectedConversation.peer.id,
                       selectedConversation.peer.username,
                       selectedConversation.peer.avatar
@@ -546,7 +558,7 @@ export default function MessagesScreen() {
                 <View style={tw`w-14 h-14 rounded-full bg-stone-100 overflow-hidden border border-stone-200`}>
                   <Image
                     source={{
-                      uri: getAvatarUrl(item.peer.id, item.peer.username, item.peer.avatar),
+                      uri: resolveAvatarUri(item.peer.id, item.peer.username, item.peer.avatar),
                     }}
                     style={tw`w-full h-full`}
                     contentFit="cover"

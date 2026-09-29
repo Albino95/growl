@@ -12,6 +12,7 @@ import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
+import OrderConfirmationScreen from '../../screens/Marketplace/OrderConfirmationScreen';
 import EditProfileScreen from '../../screens/Profile/EditProfileScreen';
 import SettingsScreen from '../../screens/Profile/SettingsScreen';
 import NotificationPrefsScreen from '../../screens/Profile/NotificationPrefsScreen';
@@ -20,6 +21,7 @@ import LegalDocumentScreen from '../../screens/Legal/LegalDocumentScreen';
 import DeleteAccountScreen from '../../screens/Profile/DeleteAccountScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
+import CreateReelScreen from '../../screens/Reels/CreateReelScreen';
 import { useAppSelector } from '../../store/store';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 
@@ -48,12 +50,24 @@ export type RootStackParamList = {
   Business: undefined;
   Post: undefined;
   Messages: { conversationId?: string; targetUserId?: string } | undefined;
-  Reels: undefined;
+  Reels:
+    | {
+        startPostId?: string;
+        seedPost?: import('../../services/api/feed').FeedPost;
+        /** home = friends/for-you reels; explore = discovery (non-friend) reels */
+        mode?: 'home' | 'explore';
+      }
+    | undefined;
   PublicProfile: { userId: string };
   PostDetail: { post: PostDetailParam };
   ProductDetail: { productId: string };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
+  OrderConfirmation: {
+    orderId?: string;
+    sessionId?: string;
+    cancelled?: boolean;
+  };
   EditProfile: undefined;
   Settings: undefined;
   NotificationPrefs: undefined;
@@ -84,6 +98,7 @@ export type RootStackParamList = {
     }>) => void;
   };
   CreateStory: undefined;
+  CreateReel: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -154,6 +169,11 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name="OrderConfirmation"
+            component={OrderConfirmationScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="EditProfile"
             component={EditProfileScreen}
             options={{ headerShown: false }}
@@ -176,6 +196,15 @@ export default function RootNavigator() {
           <Stack.Screen
             name="CreateStory"
             component={CreateStoryScreen}
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="CreateReel"
+            component={CreateReelScreen}
             options={{
               headerShown: false,
               presentation: 'modal',

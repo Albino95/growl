@@ -12,6 +12,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@react-three/drei": "^10.0.6",
     "@react-three/fiber": "^9.1.2",
     "framer-motion": "^12.6.3",

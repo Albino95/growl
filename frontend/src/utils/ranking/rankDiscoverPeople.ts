@@ -86,11 +86,13 @@ export function rankDiscoverReelPosts(
   return feedPosts
     .filter((p) => p.user_id && p.user_id !== selfId && !friendIds.has(p.user_id))
     .map((p) => {
+      const likes = p.metadata?.likes ?? 0;
+      const comments = p.metadata?.comments ?? 0;
       const score =
-        categoryScore(keys, p.category, p.subcategory) +
-        recencyScore(p.created_at, nowMs) * 0.65 +
-        Math.min(30, ((p.metadata?.likes ?? 0) + (p.metadata?.comments ?? 0)) * 1.2) +
-        jitter(p.id) * 6;
+        categoryScore(keys, p.category, p.subcategory) * 1.2 +
+        recencyScore(p.created_at, nowMs) * 0.9 +
+        Math.min(36, likes * 1.5 + comments * 2.4) +
+        jitter(p.id) * 5;
       return { p, score };
     })
     .sort((a, b) => b.score - a.score)

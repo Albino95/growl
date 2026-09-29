@@ -19,6 +19,7 @@ export type SignUpResponse = {
   requiresEmailVerification: true;
   email: string;
   message: string;
+  expiresAt?: string;
   devVerificationCode?: string;
 };
 
@@ -44,6 +45,17 @@ export async function verifyEmailApi(email: string, code: string): Promise<void>
     method: 'POST',
     body: JSON.stringify({ email, code }),
   });
+}
+
+export async function resendVerificationApi(email: string): Promise<SignUpResponse & { sent?: boolean }> {
+  const res = await request<{ success: boolean; data: SignUpResponse & { sent?: boolean } }>(
+    '/auth/resend-verification',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }
+  );
+  return res.data;
 }
 
 export async function forgotPasswordApi(email: string): Promise<{ message: string; devResetCode?: string }> {

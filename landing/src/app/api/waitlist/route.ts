@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   }
 
   const resendKey = process.env.RESEND_API_KEY?.trim();
-  const to = process.env.WAITLIST_TO?.trim() || 'hello@grow.app';
+  const to = process.env.WAITLIST_TO?.trim() || 'hello@letsgrow.lu';
   const from = process.env.EMAIL_FROM?.trim() || 'Grow! <onboarding@resend.dev>';
 
   if (resendKey) {

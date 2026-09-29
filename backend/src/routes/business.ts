@@ -1658,7 +1658,11 @@ export async function createPromoCode(request: Request, env: Env): Promise<Respo
     );
   } catch (err) {
     console.error('[createPromoCode] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to create promo code', 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE|unique|constraint/i.test(msg)) {
+      return error('CONFLICT', 'That promo code already exists for this business.', 409);
+    }
+    return error('DATABASE_ERROR', 'Failed to create promo code. Please try again.', 500);
   }
 }
 

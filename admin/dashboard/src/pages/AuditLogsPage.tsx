@@ -20,6 +20,7 @@ type AuditLog = {
 export function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [error, setError] = useState('');
+  const [action, setAction] = useState('');
   const [targetType, setTargetType] = useState('');
   const [targetId, setTargetId] = useState('');
   const [limit, setLimit] = useState('100');
@@ -28,6 +29,7 @@ export function AuditLogsPage() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
+    if (action) params.set('action', action);
     if (targetType) params.set('target_type', targetType);
     if (targetId) params.set('target_id', targetId);
     if (limit) params.set('limit', limit);
@@ -35,7 +37,7 @@ export function AuditLogsPage() {
       .then((res) => setLogs(res.logs || []))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [targetType, targetId, limit]);
+  }, [action, targetType, targetId, limit]);
 
   return (
     <div>
@@ -44,9 +46,33 @@ export function AuditLogsPage() {
 
       <Card className="mb-6" padding="md">
         <div className="flex flex-wrap gap-4">
-          <Field label="Target type"><Input value={targetType} onChange={(e) => setTargetType(e.target.value)} placeholder="user, report…" className="min-w-[140px]" /></Field>
-          <Field label="Target ID"><Input value={targetId} onChange={(e) => setTargetId(e.target.value)} className="min-w-[180px]" /></Field>
-          <Field label="Limit"><Select value={limit} onChange={(e) => setLimit(e.target.value)} className="w-24"><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="500">500</option></Select></Field>
+          <Field label="Action contains">
+            <Input
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              placeholder="moderation.decision…"
+              className="min-w-[160px]"
+            />
+          </Field>
+          <Field label="Target type">
+            <Input
+              value={targetType}
+              onChange={(e) => setTargetType(e.target.value)}
+              placeholder="user, report…"
+              className="min-w-[140px]"
+            />
+          </Field>
+          <Field label="Target ID">
+            <Input value={targetId} onChange={(e) => setTargetId(e.target.value)} className="min-w-[180px]" />
+          </Field>
+          <Field label="Limit">
+            <Select value={limit} onChange={(e) => setLimit(e.target.value)} className="w-24">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </Select>
+          </Field>
         </div>
       </Card>
 
@@ -65,11 +91,11 @@ export function AuditLogsPage() {
             <DataTableBody>
               {logs.map((l) => (
                 <DataTableRow key={l.id}>
-                  <DataTableCell className="whitespace-nowrap text-slate-500">{new Date(l.created_at).toLocaleString()}</DataTableCell>
+                  <DataTableCell className="whitespace-nowrap text-stone-500">{new Date(l.created_at).toLocaleString()}</DataTableCell>
                   <DataTableCell>{l.admin_email}</DataTableCell>
-                  <DataTableCell><span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium">{l.action}</span></DataTableCell>
-                  <DataTableCell className="font-mono text-xs text-slate-600">{l.target_type}:{l.target_id}</DataTableCell>
-                  <DataTableCell className="text-slate-500">{l.reason_text || '—'}</DataTableCell>
+                  <DataTableCell><span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium">{l.action}</span></DataTableCell>
+                  <DataTableCell className="font-mono text-xs text-stone-600">{l.target_type}:{l.target_id}</DataTableCell>
+                  <DataTableCell className="text-stone-500">{l.reason_text || '—'}</DataTableCell>
                 </DataTableRow>
               ))}
             </DataTableBody>

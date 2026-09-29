@@ -171,14 +171,14 @@ export function BusinessAccountsPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card padding="lg">
-          <h3 className="mb-4 font-semibold text-slate-800">Register business</h3>
+          <h3 className="mb-4 font-semibold text-stone-800">Register business</h3>
           <form onSubmit={onRegister} className="space-y-4">
             <Field label="Login email">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </Field>
             <Field label="Temporary password">
               <Input type="text" value={temporaryPassword} onChange={(e) => setTemporaryPassword(e.target.value)} required minLength={12} />
-              <p className="mt-1 text-xs text-slate-500">Min 12 chars, upper, lower, number, symbol. Shown once after creation.</p>
+              <p className="mt-1 text-xs text-stone-500">Min 12 chars, upper, lower, number, symbol. Shown once after creation.</p>
             </Field>
             <Field label="Display name">
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
@@ -213,7 +213,7 @@ export function BusinessAccountsPage() {
         </Card>
 
         <Card padding="sm">
-          <h3 className="mb-4 px-2 pt-2 font-semibold text-slate-800">All business accounts</h3>
+          <h3 className="mb-4 px-2 pt-2 font-semibold text-stone-800">All business accounts</h3>
           {accounts.length === 0 ? (
             <EmptyState title="No business accounts yet" description="Register the first business using the form." />
           ) : (
@@ -229,15 +229,15 @@ export function BusinessAccountsPage() {
                   <DataTableRow key={a.id}>
                     <DataTableCell>
                       <div>
-                        <p className="font-medium text-slate-800">{a.display_name}</p>
-                        <p className="text-xs text-slate-500">{a.email}</p>
-                        <p className="text-xs text-slate-400">{FIELD_LABELS[a.field_of_operation] || a.field_of_operation}</p>
+                        <p className="font-medium text-stone-800">{a.display_name}</p>
+                        <p className="text-xs text-stone-500">{a.email}</p>
+                        <p className="text-xs text-stone-400">{FIELD_LABELS[a.field_of_operation] || a.field_of_operation}</p>
                       </div>
                     </DataTableCell>
                     <DataTableCell>
                       <Badge variant={statusBadge(a.verification_status)}>{a.verification_status}</Badge>
                     </DataTableCell>
-                    <DataTableCell className="text-slate-500 text-xs">
+                    <DataTableCell className="text-stone-500 text-xs">
                       {new Date(a.profile_created_at || a.created_at).toLocaleDateString()}
                     </DataTableCell>
                     <DataTableCell>

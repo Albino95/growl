@@ -4,13 +4,13 @@
 
 @layer base {
   body {
-    @apply bg-surface-muted text-slate-900 antialiased;
+    @apply bg-surface-page text-stone-900 antialiased;
   }
 }
 
 @layer components {
   .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:ring-offset-2;
+    @apply focus:outline-none focus:ring-2 focus:ring-brand-600/35 focus:ring-offset-2 focus:ring-offset-surface-page;
   }
 }
 

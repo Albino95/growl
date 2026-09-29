@@ -15,6 +15,8 @@ type Props = {
   onOpenCategory: () => void;
   onOpenMusic?: () => void;
   onSubmit: () => void;
+  /** Override primary CTA (default: Share Post). */
+  submitLabel?: string;
 };
 
 export default function PostStickyBar({
@@ -26,6 +28,7 @@ export default function PostStickyBar({
   onOpenCategory,
   onOpenMusic,
   onSubmit,
+  submitLabel = 'Share Post',
 }: Props) {
   return (
     <StickyFooter transparent style={tw`bg-stone-900 border-t border-white/10`}>
@@ -58,7 +61,7 @@ export default function PostStickyBar({
         </View>
       )}
       <PrimaryButton
-        label="Share Post"
+        label={submitLabel}
         onPress={onSubmit}
         disabled={!canPost}
         loading={isPosting}

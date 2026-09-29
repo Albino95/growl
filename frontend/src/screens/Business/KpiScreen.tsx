@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import { verticalScrollProps } from '../../constants/scroll';
 import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -99,9 +100,8 @@ export default function KpiScreen() {
 
   if (loading && !kpis) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page items-center justify-center`} edges={['bottom']}>
-        <ActivityIndicator size="large" color="#059669" />
-        <Text style={tw`text-stone-500 mt-3`}>Loading analytics…</Text>
+      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['bottom']}>
+        <BrandLoadingScreen variant="page" message="Loading analytics…" manageStatusBar={false} />
       </SafeAreaView>
     );
   }

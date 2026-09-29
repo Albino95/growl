@@ -120,11 +120,23 @@ export default function IndividualTabs() {
 
   const handleCreate = (action: CreateAction) => {
     setCreateOpen(false);
-    if (action === 'post') {
-      navigateFromRoot(navigation, 'Post');
-      return;
-    }
-    tabNavRef.current?.navigate('Journal', { openCompose: true });
+    // iOS drops a stack modal if it is presented while this sheet Modal is still dismissing.
+    const delay = action === 'journal' ? 80 : 320;
+    setTimeout(() => {
+      if (action === 'post') {
+        navigateFromRoot(navigation, 'Post');
+        return;
+      }
+      if (action === 'reel') {
+        navigateFromRoot(navigation, 'CreateReel');
+        return;
+      }
+      if (action === 'story') {
+        navigateFromRoot(navigation, 'CreateStory');
+        return;
+      }
+      tabNavRef.current?.navigate('Journal', { openCompose: true });
+    }, delay);
   };
 
   const bottomPad = Math.max(insets.bottom, 8);

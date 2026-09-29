@@ -1,5 +1,5 @@
 import { Env } from '../../types';
-import { json, error } from '../../utils/response';
+import { json } from '../../utils/response';
 import { requireAdmin } from '../../utils/adminAuth';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
@@ -17,6 +17,8 @@ export async function listAuditLogs(request: Request, env: Env): Promise<Respons
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10), 500);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
   const action = url.searchParams.get('action') || '';
+  const targetType = url.searchParams.get('target_type') || '';
+  const targetId = url.searchParams.get('target_id') || '';
 
   let query = `SELECT l.*, a.email as admin_email FROM admin_audit_logs l
                JOIN admin_users a ON a.id = l.admin_id WHERE 1=1`;
@@ -24,6 +26,14 @@ export async function listAuditLogs(request: Request, env: Env): Promise<Respons
   if (action) {
     query += ` AND l.action LIKE ?`;
     bindings.push(`%${action}%`);
+  }
+  if (targetType) {
+    query += ` AND l.target_type = ?`;
+    bindings.push(targetType);
+  }
+  if (targetId) {
+    query += ` AND l.target_id = ?`;
+    bindings.push(targetId);
   }
   query += ` ORDER BY l.created_at DESC LIMIT ? OFFSET ?`;
   bindings.push(limit, offset);

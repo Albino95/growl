@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import { featureFlags } from '../../constants/featureFlags';
 import {
   fetchCurrentProfile,
@@ -89,9 +90,12 @@ export default function NotificationPrefsScreen() {
       </View>
 
       {loading ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#10B981" />
-        </View>
+        <BrandLoadingScreen
+          variant="page"
+          message="Loading preferences…"
+          showWordmark={false}
+          manageStatusBar={false}
+        />
       ) : (
         <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4`}>
           <View style={tw`bg-white rounded-xl overflow-hidden mb-4`}>
