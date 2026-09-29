@@ -25,10 +25,11 @@ export default function SiteFooter() {
             id="final-cta-heading"
             className="max-w-xl font-display text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.75rem] lg:leading-tight"
           >
-            Start growing with purpose.
+            Start unlocking skills — and sharing them.
           </h2>
           <p className="mt-4 max-w-xl text-lg leading-relaxed text-emerald-100/75">
-            Join early access and be first when Grow! opens on the App Store and Google Play.
+            Join early access for Grow! — goals, coaches, and community. First on App Store and Google
+            Play.
           </p>
           <div className="mt-9 max-w-lg rounded-3xl border border-white/10 bg-[var(--surface)] p-5 sm:p-6">
             <WaitlistForm variant="footer" />
@@ -39,7 +40,7 @@ export default function SiteFooter() {
       <div className="border-t border-white/10">
         <div className="mx-auto flex max-w-6xl flex-col gap-5 px-6 py-8 text-sm text-emerald-100/55 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
           <p className="font-display text-lg font-bold tracking-tight text-white">
-            Grow<span className="text-emerald-400">!</span>
+            Grow<span className="text-[var(--energy)]">!</span>
           </p>
           <nav aria-label="Legal" className="flex flex-wrap gap-x-6 gap-y-2">
             <a href={`${siteUrl}/privacy`} className="transition hover:text-white">

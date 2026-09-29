@@ -12,6 +12,7 @@ import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
 import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
 import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
 import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
+import OrderConfirmationScreen from '../../screens/Marketplace/OrderConfirmationScreen';
 import EditProfileScreen from '../../screens/Profile/EditProfileScreen';
 import SettingsScreen from '../../screens/Profile/SettingsScreen';
 import NotificationPrefsScreen from '../../screens/Profile/NotificationPrefsScreen';
@@ -62,6 +63,11 @@ export type RootStackParamList = {
   ProductDetail: { productId: string };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
+  OrderConfirmation: {
+    orderId?: string;
+    sessionId?: string;
+    cancelled?: boolean;
+  };
   EditProfile: undefined;
   Settings: undefined;
   NotificationPrefs: undefined;
@@ -160,6 +166,11 @@ export default function RootNavigator() {
           <Stack.Screen
             name="UserOrders"
             component={UserOrdersScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="OrderConfirmation"
+            component={OrderConfirmationScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

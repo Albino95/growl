@@ -232,6 +232,12 @@ async function handleRequest(
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'POST') {
         return marketplaceRoutes.createProduct(request, env);
       }
+      // Order by id (before status match is already status-specific)
+      const orderByIdMatch = path.match(new RegExp(`^${apiPrefix}/marketplace/orders/([^/]+)$`));
+      if (orderByIdMatch && request.method === 'GET') {
+        return marketplaceRoutes.getOrder(request, env, orderByIdMatch[1]);
+      }
+
       // Order status update (check before generic orders route)
       const orderStatusMatch = path.match(new RegExp(`^${apiPrefix}/marketplace/orders/([^/]+)/status$`));
       if (orderStatusMatch) {

@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Image,
   Linking,
@@ -14,7 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import PrimaryButton from '../../components/ui/PrimaryButton';
+import FormTextInput from '../../components/ui/FormTextInput';
+import { KeyboardDoneAccessory } from '../../components/ui/KeyboardDoneAccessory';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import {
   getProduct,
   createCheckoutSession,
@@ -45,7 +49,7 @@ type CheckoutRouteParams = {
   };
 };
 
-type CheckoutNavigationProp = StackNavigationProp<any>;
+type CheckoutNavigationProp = StackNavigationProp<RootStackParamList>;
 type CheckoutRouteProp = RouteProp<CheckoutRouteParams, 'Checkout'>;
 
 interface CartItem extends OrderItem {
@@ -353,19 +357,17 @@ export default function CheckoutScreen() {
       });
 
       if (response.success && response.data?.url) {
+        const orderId = response.data.order_id;
+        const sessionId = response.data.session_id;
         const canOpen = await Linking.canOpenURL(response.data.url);
         if (canOpen) {
           await Linking.openURL(response.data.url);
-          alertMessage(
-            'Complete payment',
-            'Finish checkout in the browser. After payment you will land on the success page; return to the app to see your order.'
-          );
-        } else {
-          alertMessage(
-            'Checkout Ready',
-            'Complete your payment in the browser to finish your order.'
-          );
         }
+        navigation.replace('OrderConfirmation', {
+          orderId,
+          sessionId,
+          cancelled: false,
+        });
       } else {
         alertMessage('Error', 'Failed to start checkout. Please try again.');
       }
@@ -382,10 +384,7 @@ export default function CheckoutScreen() {
   if (loading || !configLoaded) {
     return (
       <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#059669" />
-          <Text style={tw`mt-4 text-stone-600`}>Loading checkout...</Text>
-        </View>
+        <BrandLoadingScreen variant="page" message="Loading checkout…" manageStatusBar={false} />
       </SafeAreaView>
     );
   }
@@ -478,14 +477,15 @@ export default function CheckoutScreen() {
             <Text style={tw`text-lg font-semibold text-stone-900`}>Shipping Address</Text>
           </View>
           <View style={tw`px-4 py-4`}>
-            <TextInput
+            <FormTextInput
               placeholder="Full Name"
               value={shipping.name}
               onChangeText={(text) => {
                 setShipping({ ...shipping, name: text });
                 clearFieldError('name');
               }}
-              style={tw`${fieldBorder(!!fieldErrors.name)} mb-1`}
+              error={!!fieldErrors.name}
+              style={tw`mb-1`}
             />
             {fieldErrors.name ? (
               <Text style={tw`text-red-600 text-xs mb-2`}>{fieldErrors.name}</Text>
@@ -493,14 +493,15 @@ export default function CheckoutScreen() {
               <View style={tw`mb-2`} />
             )}
 
-            <TextInput
+            <FormTextInput
               placeholder="Street Address"
               value={shipping.street}
               onChangeText={(text) => {
                 setShipping({ ...shipping, street: text });
                 clearFieldError('street');
               }}
-              style={tw`${fieldBorder(!!fieldErrors.street)} mb-1`}
+              error={!!fieldErrors.street}
+              style={tw`mb-1`}
             />
             {fieldErrors.street ? (
               <Text style={tw`text-red-600 text-xs mb-2`}>{fieldErrors.street}</Text>
@@ -565,11 +566,11 @@ export default function CheckoutScreen() {
                 <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
                   {regionLabel} (optional)
                 </Text>
-                <TextInput
+                <FormTextInput
                   placeholder="District / area (optional)"
                   value={shipping.state === 'N/A' ? '' : shipping.state}
                   onChangeText={(text) => setShipping({ ...shipping, state: text })}
-                  style={tw`${fieldBorder(false)} mb-3`}
+                  style={tw`mb-3`}
                 />
               </>
             ) : null}
@@ -611,14 +612,15 @@ export default function CheckoutScreen() {
               </>
             ) : (
               <>
-                <TextInput
+                <FormTextInput
                   placeholder="City / Town"
                   value={shipping.city}
                   onChangeText={(text) => {
                     setShipping({ ...shipping, city: text });
                     clearFieldError('city');
                   }}
-                  style={tw`${fieldBorder(!!fieldErrors.city)} mb-1`}
+                  error={!!fieldErrors.city}
+                  style={tw`mb-1`}
                 />
                 {fieldErrors.city ? (
                   <Text style={tw`text-red-600 text-xs mb-1`}>{fieldErrors.city}</Text>
@@ -642,7 +644,7 @@ export default function CheckoutScreen() {
             <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
               {zipLabel}
             </Text>
-            <TextInput
+            <FormTextInput
               placeholder={zipLabel}
               value={shipping.zip}
               onChangeText={(text) => {
@@ -650,7 +652,7 @@ export default function CheckoutScreen() {
                 clearFieldError('zip');
               }}
               autoCapitalize="characters"
-              style={tw`${fieldBorder(!!fieldErrors.zip)}`}
+              error={!!fieldErrors.zip}
             />
             {fieldErrors.zip ? (
               <Text style={tw`text-red-600 text-xs mt-1`}>{fieldErrors.zip}</Text>
@@ -689,21 +691,12 @@ export default function CheckoutScreen() {
       </ScrollView>
 
       <View style={tw`bg-surface-card border-t border-stone-200/80 px-4 py-4`}>
-        <TouchableOpacity
+        <PrimaryButton
+          label={paymentsEnabled ? 'Proceed to Payment' : 'Checkout Unavailable'}
           onPress={() => void handlePlaceOrder()}
+          loading={processing}
           disabled={processing || cartItems.length === 0 || !paymentsEnabled}
-          style={tw`bg-brand-600 rounded-2xl py-4 items-center ${
-            processing || cartItems.length === 0 || !paymentsEnabled ? 'opacity-50' : ''
-          }`}
-        >
-          {processing ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={tw`text-white font-bold text-lg`}>
-              {paymentsEnabled ? 'Proceed to Payment' : 'Checkout Unavailable'}
-            </Text>
-          )}
-        </TouchableOpacity>
+        />
         <Text style={tw`text-xs text-stone-500 text-center mt-2`}>
           By placing this order, you agree to our{' '}
           <Text
@@ -722,6 +715,8 @@ export default function CheckoutScreen() {
           .
         </Text>
       </View>
+
+      <KeyboardDoneAccessory />
 
       <LocationPickerSheet
         visible={picker === 'country'}

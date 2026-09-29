@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom';
 import { Layout, AuthLoadingShell } from '../components/Layout';
 import { SellerLayout } from '../components/SellerLayout';
 import { RequirePerm } from '../components/RequirePerm';
@@ -25,12 +25,16 @@ import { SellerReportsPage } from '../pages/seller/SellerReportsPage';
 import { SellerSettingsPage } from '../pages/seller/SellerSettingsPage';
 
 function Protected({ children }: { children: React.ReactNode }) {
-  const { loading, admin } = useAdminAuth();
+  const { loading, admin, mustEnrollMfa } = useAdminAuth();
   const { loading: sellerLoading, seller } = useSellerAuth();
+  const location = useLocation();
   if (loading || sellerLoading) return <AuthLoadingShell />;
   if (!admin) {
     if (seller) return <Navigate to="/seller" replace />;
     return <Navigate to="/login" replace />;
+  }
+  if (mustEnrollMfa && !location.pathname.startsWith('/settings/mfa')) {
+    return <Navigate to="/settings/mfa" replace />;
   }
   return <>{children}</>;
 }
@@ -167,7 +171,10 @@ export const router = createBrowserRouter([
           </RequirePerm>
         ),
       },
-      { path: 'settings/mfa', element: <MfaSetupPage /> },
+      {
+        path: 'settings/mfa',
+        element: <MfaSetupPage />,
+      },
     ],
   },
 ]);

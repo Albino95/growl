@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
-  TextInput,
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +16,9 @@ import { useAuth } from '../../store/hooks';
 import { exportAccountData, deleteAccount } from '../../services/api/privacy';
 import { resetNavigationToAuth } from '../../app/navigation/rootNavigation';
 import { alertMessage } from '../../utils/confirmDialog';
+import FormTextInput from '../../components/ui/FormTextInput';
+import { KeyboardDoneAccessory } from '../../components/ui/KeyboardDoneAccessory';
+import PrimaryButton from '../../components/ui/PrimaryButton';
 
 export default function DeleteAccountScreen() {
   const navigation = useNavigation();
@@ -120,32 +122,29 @@ export default function DeleteAccountScreen() {
             <Text style={tw`text-sm font-medium text-stone-800 mb-2`}>
               Type <Text style={tw`font-bold text-red-600`}>DELETE</Text> to confirm
             </Text>
-            <TextInput
+            <FormTextInput
               value={confirmText}
               onChangeText={setConfirmText}
               autoCapitalize="characters"
               autoCorrect={false}
               placeholder="DELETE"
-              placeholderTextColor="#A8A29E"
-              style={tw`border border-stone-200 rounded-xl px-3 py-3 text-base text-stone-900 bg-stone-50 mb-4`}
+              style={tw`mb-4 bg-stone-50 rounded-xl`}
             />
             <View style={tw`flex-row gap-3`}>
-              <TouchableOpacity
-                onPress={() => setConfirmOpen(false)}
-                style={tw`flex-1 py-3 rounded-xl bg-stone-100 items-center`}
-              >
-                <Text style={tw`font-semibold text-stone-700`}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => void performDelete()}
-                disabled={confirmText.trim() !== 'DELETE' || deleting}
-                style={tw`flex-1 py-3 rounded-xl bg-red-600 items-center ${
-                  confirmText.trim() !== 'DELETE' || deleting ? 'opacity-50' : ''
-                }`}
-              >
-                <Text style={tw`font-semibold text-white`}>Delete</Text>
-              </TouchableOpacity>
+              <View style={tw`flex-1`}>
+                <PrimaryButton label="Cancel" variant="ghost" onPress={() => setConfirmOpen(false)} />
+              </View>
+              <View style={tw`flex-1`}>
+                <PrimaryButton
+                  label="Delete"
+                  onPress={() => void performDelete()}
+                  disabled={confirmText.trim() !== 'DELETE' || deleting}
+                  loading={deleting}
+                  style={{ backgroundColor: '#DC2626' }}
+                />
+              </View>
             </View>
+            <KeyboardDoneAccessory />
           </Pressable>
         </Pressable>
       </Modal>

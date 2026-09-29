@@ -43,6 +43,7 @@ import GrowthAreasPicker, {
 } from '../../components/profile/GrowthAreasPicker';
 import DecaySettingsModal from '../../components/profile/DecaySettingsModal';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
+import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { groupGrowthPaths } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import {
@@ -65,6 +66,7 @@ type Post = {
   createdAt: string;
   daysUntilDecay: number;
   category: string;
+  subcategory?: string;
   isReel?: boolean;
   mediaType?: string;
   contentType?: string;
@@ -104,6 +106,7 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     createdAt: p.created_at,
     daysUntilDecay: daysLeftUntilDecay(p.created_at, decayDays),
     category: p.category,
+    subcategory: p.subcategory || undefined,
     isReel: isReelPost(p),
     mediaType: typeof p.metadata?.media_type === 'string' ? p.metadata.media_type : undefined,
     contentType: typeof p.metadata?.content_type === 'string' ? p.metadata.content_type : undefined,
@@ -628,7 +631,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 </Text>
               </View>
               <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
-                <Ionicons name="leaf" size={28} color="#059669" />
+                <Ionicons name="ribbon" size={28} color="#059669" />
               </View>
             </View>
           </View>
@@ -750,7 +753,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                           : 'All focuses in this path'}
                       </Text>
                     </View>
-                    <Ionicons name="leaf" size={14} color="#059669" />
+                    <Ionicons name="sparkles" size={14} color="#059669" />
                   </View>
                 ))}
               </View>
@@ -865,78 +868,56 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Text style={tw`text-sm text-stone-500 text-center py-6`}>
                 All posts have faded. Tap “Show faded” or extend post lifespan.
               </Text>
-            ) : null}
-            {visiblePosts.map((post) => (
-              <TouchableOpacity
-                key={post.id}
-                style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-3`}
-                onPress={() => {
-                  const rootNavigation = navigation.getParent() || navigation;
-                  if (post.isReel) {
-                    openReelsAtPost(
-                      rootNavigation,
-                      post.id,
-                      sourcePosts.find((p) => p.id === post.id)
-                    );
-                    return;
-                  }
-                  (rootNavigation as any).navigate('PostDetail', {
-                    post: {
-                      id: post.id,
-                      userId: user?.id || 'me',
-                      username:
-                        profileMeta.username ||
-                        user?.username ||
-                        user?.email?.split('@')[0] ||
-                        'User',
-                      avatar: resolveAvatarUri(
-                        user?.id || 'default',
-                        profileMeta.username ||
+            ) : (
+              <View style={tw`-mx-4`}>
+                <ProfilePostsGrid
+                  posts={visiblePosts}
+                  emptyTitle="No posts yet"
+                  emptyDescription="Share a photo or reel and it will land here."
+                  onPress={(tile) => {
+                    const post = visiblePosts.find((p) => p.id === tile.id);
+                    if (!post) return;
+                    const rootNavigation = navigation.getParent() || navigation;
+                    if (post.isReel) {
+                      openReelsAtPost(
+                        rootNavigation,
+                        post.id,
+                        sourcePosts.find((p) => p.id === post.id)
+                      );
+                      return;
+                    }
+                    (rootNavigation as any).navigate('PostDetail', {
+                      post: {
+                        id: post.id,
+                        userId: user?.id || 'me',
+                        username:
+                          profileMeta.username ||
                           user?.username ||
-                          user?.email?.split('@')[0],
-                        profileMeta.avatar || user?.avatar
-                      ),
-                      image: post.image,
-                      caption: post.caption,
-                      category: post.category,
-                      likes: post.likes,
-                      comments: post.comments,
-                      createdAt: post.createdAt,
-                      daysUntilDecay: post.daysUntilDecay,
-                      hasLiked: false,
-                      reaction: null,
-                    },
-                  } as never);
-                }}
-              >
-                <View style={tw`flex-row items-center justify-between mb-3`}>
-                  <View style={tw`flex-row items-center`}>
-                    <ProfilePostThumb post={post} />
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
-                        {post.caption}
-                      </Text>
-                      <Text style={tw`text-xs text-stone-500 mt-1`}>
-                        {new Date(post.createdAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={tw`flex-row items-center justify-between`}>
-                  <View style={tw`flex-row items-center gap-4`}>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="heart" size={16} color="#EF4444" />
-                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.likes}</Text>
-                    </View>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
-                    </View>
-                  </View>
-                  <DecayCountdownChip daysLeft={post.daysUntilDecay} compact />
-                </View>
-              </TouchableOpacity>
-            ))}
+                          user?.email?.split('@')[0] ||
+                          'User',
+                        avatar: resolveAvatarUri(
+                          user?.id || 'default',
+                          profileMeta.username ||
+                            user?.username ||
+                            user?.email?.split('@')[0],
+                          profileMeta.avatar || user?.avatar
+                        ),
+                        image: post.image,
+                        caption: post.caption,
+                        category: post.category,
+                        subcategory: post.subcategory,
+                        likes: post.likes,
+                        comments: post.comments,
+                        createdAt: post.createdAt,
+                        daysUntilDecay: post.daysUntilDecay,
+                        hasLiked: false,
+                        reaction: null,
+                      },
+                    } as never);
+                  }}
+                />
+              </View>
+            )}
           </View>
         )}
 
@@ -1026,7 +1007,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     >
                       <View
                         style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
-                          award.unlocked ? 'bg-emerald-600' : 'bg-stone-200'
+                          award.unlocked ? 'bg-energy-600' : 'bg-stone-200'
                         }`}
                       >
                         <Ionicons
@@ -1050,7 +1031,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                           <View style={tw`mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden`}>
                             <View
                               style={[
-                                tw`h-full bg-emerald-500 rounded-full`,
+                                tw`h-full bg-energy-600 rounded-full`,
                                 { width: `${Math.min(100, (award.progress / award.target) * 100)}%` },
                               ]}
                             />
@@ -1063,8 +1044,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                         ) : null}
                       </View>
                       {award.unlocked ? (
-                        <View style={tw`px-2 py-1 rounded-full bg-emerald-100`}>
-                          <Text style={tw`text-[10px] font-bold text-emerald-800 uppercase`}>Earned</Text>
+                        <View style={tw`px-2 py-1 rounded-full bg-energy-50`}>
+                          <Text style={tw`text-[10px] font-bold text-energy-700 uppercase`}>Earned</Text>
                         </View>
                       ) : (
                         <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
@@ -1340,7 +1321,7 @@ function PathChangeSyncOverlay({
             ]}
           >
             <Ionicons
-              name={phase === 'done' ? 'checkmark' : phase === 'joining' ? 'people' : 'leaf-outline'}
+              name={phase === 'done' ? 'checkmark' : phase === 'joining' ? 'people' : 'sparkles-outline'}
               size={36}
               color="#059669"
             />

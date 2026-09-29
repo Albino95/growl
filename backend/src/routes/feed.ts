@@ -3,7 +3,7 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, createPostSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
-import { categoryRelevanceScore } from '../utils/categories';
+import { alignPostTaxonomy, categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 import { POINTS, awardPoints } from '../utils/points';
 
@@ -176,6 +176,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
     LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.created_at > datetime('now', '${recencyWindow}')
+      AND COALESCE(p.is_hidden, 0) = 0
   `;
 
   const bindings: any[] = [];
@@ -220,7 +221,11 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       } catch {
         postMeta = {};
       }
-      const catScore = categoryRelevanceScore(categories, post.category, post.subcategory);
+      const ownerPaths = Array.isArray(userMeta.categories)
+        ? userMeta.categories.map((x: unknown) => String(x))
+        : [];
+      const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
+      const catScore = categoryRelevanceScore(categories, aligned.category, aligned.subcategory);
       const daysSincePost =
         (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
       const isOwn = post.user_id === ctx.userId;
@@ -238,6 +243,8 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
       return {
         ...post,
+        category: aligned.category,
+        subcategory: aligned.subcategory,
         metadata: {
           ...postMeta,
           likes: post.likes_count || 0,
@@ -260,12 +267,12 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     });
 
   const scopedPosts = scoredPosts.filter((post) => {
-      // Home / default: own posts + all friends' posts (including cross-path friends).
+      // Home: own + friends (any path) + non-friends whose post matches the viewer's paths.
       // Category chips on the client narrow further; see docs/FEATURES.md "Cross-path posts".
       if (!isExploreMode) {
-        if (post.isOwn) return true;
+        if (post.isOwn || post.isFriend) return true;
         if (!categories.length) return false;
-        return post.isFriend;
+        return categoryRelevanceScore(categories, post.category, post.subcategory) > 0;
       }
 
       // Explore: discovery of non-friends only (friends belong on Home).
@@ -491,6 +498,7 @@ export async function getPost(
     LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
     LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.id = ?
+      AND COALESCE(p.is_hidden, 0) = 0
     GROUP BY p.id`
   )
     .bind(viewerId, viewerId, postId)
@@ -519,9 +527,15 @@ export async function getPost(
   } catch {
     postMeta = {};
   }
+  const ownerPaths = Array.isArray(userMeta.categories)
+    ? userMeta.categories.map((x: unknown) => String(x))
+    : [];
+  const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
 
   return json({
     ...post,
+    category: aligned.category,
+    subcategory: aligned.subcategory,
     metadata: {
       ...postMeta,
       likes: post.likes_count || 0,
@@ -682,6 +696,7 @@ export async function getUserPosts(
       LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
       LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
       WHERE p.user_id = ?
+        AND COALESCE(p.is_hidden, 0) = 0
       GROUP BY p.id
       ORDER BY p.created_at DESC
       LIMIT 100`
@@ -711,8 +726,14 @@ export async function getUserPosts(
       } catch {
         postMeta = {};
       }
+      const ownerPaths = Array.isArray(userMeta.categories)
+        ? userMeta.categories.map((x: unknown) => String(x))
+        : [];
+      const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
       return {
         ...post,
+        category: aligned.category,
+        subcategory: aligned.subcategory,
         metadata: {
           ...postMeta,
           likes: post.likes_count || 0,

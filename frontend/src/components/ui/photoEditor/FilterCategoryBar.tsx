@@ -13,7 +13,7 @@ type CatMeta = {
 };
 
 export const FILTER_CATEGORY_META: CatMeta[] = [
-  { id: 'natural', label: 'Natural', icon: 'leaf-outline', accent: '#34D399' },
+  { id: 'natural', label: 'Natural', icon: 'sunny-outline', accent: '#34D399' },
   { id: 'portrait', label: 'Portrait', icon: 'person-outline', accent: '#F472B6' },
   { id: 'film', label: 'Film', icon: 'film-outline', accent: '#FBBF24' },
   { id: 'moody', label: 'Moody', icon: 'moon-outline', accent: '#818CF8' },

@@ -13,7 +13,6 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import CommentsScreen from '../Comments/CommentsScreen';
-import CO2Calculator from '../../components/ui/CO2Calculator';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { toggleFeedPostLike } from '../../services/api/feed';
@@ -220,8 +219,6 @@ export default function PostDetailScreen() {
               </TouchableOpacity>
               <Text style={tw`text-stone-900 text-base`}> {post.caption}</Text>
             </View>
-
-            <CO2Calculator category={post.category} activityType="post" />
 
             {post.daysUntilDecay !== undefined && (
               <View style={tw`mt-2`}>

@@ -33,6 +33,7 @@ import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import { getProducts } from '../../services/api/marketplace';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import {
   feedListPerformanceProps,
   horizontalScrollProps,
@@ -924,8 +925,13 @@ export default function ExploreScreen() {
       ) : null}
 
       {loading && filteredPeople.length === 0 && filteredReels.length === 0 ? (
-        <View style={tw`flex-1 items-center justify-center py-20`}>
-          <ActivityIndicator size="large" color="#059669" />
+        <View style={tw`flex-1`}>
+          <BrandLoadingScreen
+            variant="page"
+            message="Discovering…"
+            showWordmark={false}
+            manageStatusBar={false}
+          />
         </View>
       ) : (
         <FlatList
@@ -995,7 +1001,7 @@ export default function ExploreScreen() {
                 description={
                   query || selectedCategory
                     ? 'Try All, or clear search.'
-                    : 'Refresh after more community activity — or open Shop to browse gear.'
+                    : 'Refresh after more community activity — or open Journal to capture today’s progress.'
                 }
                 actionLabel={selectedCategory ? 'Show all' : 'Open shop'}
                 onAction={() =>

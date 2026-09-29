@@ -532,6 +532,7 @@ export async function searchPeople(request: Request, env: Env): Promise<Response
            lower(COALESCE(p.caption, '')) LIKE ?
            OR lower(COALESCE(json_extract(u.metadata, '$.username'), '')) LIKE ?
          )
+         AND COALESCE(p.is_hidden, 0) = 0
          ORDER BY p.created_at DESC
          LIMIT ?`
       )
@@ -873,11 +874,19 @@ export async function reportContent(request: Request, env: Env): Promise<Respons
   }
 
   try {
+    const postOwner =
+      targetType === 'post'
+        ? await env.DB.prepare('SELECT user_id FROM posts WHERE id = ?').bind(targetId).first<{ user_id: string }>()
+        : null;
+    const details = JSON.stringify({
+      userId: postOwner?.user_id || (targetType === 'user' ? targetId : undefined),
+      source: 'consumer_report',
+    });
     await env.DB.prepare(
-      `INSERT INTO reports (id, reporter_id, target_id, target_type, reason, status, created_at)
-       VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))`
+      `INSERT INTO reports (id, reporter_id, target_id, target_type, reason, status, workflow_status, priority, details, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'pending', 'pending', 'normal', ?, datetime('now'), datetime('now'))`
     )
-      .bind(generateId('report'), ctx.userId, targetId, targetType, reason)
+      .bind(generateId('report'), ctx.userId, targetId, targetType, reason, details)
       .run();
     return json({ ok: true });
   } catch (err) {

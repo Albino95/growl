@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleProp, ViewStyle } from 'react-native';
+import { View, Text, Image, StyleProp, ViewStyle } from 'react-native';
 import tw from '../../lib/tw';
 
 type Props = {
@@ -12,7 +12,7 @@ type Props = {
 
 /**
  * Compact top chrome shared by Feed and other primary tabs —
- * green Grow! wordmark + optional actions.
+ * Grow! mark + wordmark + optional actions.
  */
 export default function GrowChromeHeader({ right, leftAccessory, style }: Props) {
   return (
@@ -24,6 +24,11 @@ export default function GrowChromeHeader({ right, leftAccessory, style }: Props)
     >
       <View style={tw`flex-row items-center flex-1 pr-2`}>
         {leftAccessory ? <View style={tw`mr-2`}>{leftAccessory}</View> : null}
+        <Image
+          source={require('../../../assets/icon.png')}
+          style={{ width: 26, height: 26, borderRadius: 7, marginRight: 8 }}
+          accessibilityLabel="Grow!"
+        />
         <Text style={tw`text-[15px] tracking-[2.5px] uppercase text-emerald-700 font-bold`}>
           Grow!
         </Text>

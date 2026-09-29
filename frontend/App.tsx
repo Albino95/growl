@@ -11,6 +11,10 @@ import { hydrateAuth } from './src/store/slices/authSlice';
 import FullScreenLoader from './src/components/common/FullScreenLoader';
 import AppDialogHost from './src/components/ui/AppDialog';
 import { initMonitoring } from './src/services/monitoring';
+import {
+  navigationRef,
+  handleCheckoutDeepLink,
+} from './src/app/navigation/navigationRef';
 
 initMonitoring();
 
@@ -26,10 +30,8 @@ function AppContent() {
 
   useEffect(() => {
     const onUrl = ({ url }: { url: string }) => {
-      if (url.startsWith('growl://checkout/success')) {
-        console.log('[deep-link] checkout success', url);
-      } else if (url.startsWith('growl://checkout/cancel')) {
-        console.log('[deep-link] checkout cancel', url);
+      if (url.startsWith('growl://checkout/')) {
+        handleCheckoutDeepLink(url);
       } else if (url.startsWith('growl://reset-password')) {
         console.log('[deep-link] reset password', url);
       }
@@ -42,11 +44,11 @@ function AppContent() {
   }, []);
 
   if (!hydrated) {
-    return <FullScreenLoader />;
+    return <FullScreenLoader message="Growing your session…" variant="splash" />;
   }
 
   return (
-    <NavigationContainer key={token || 'no-token'}>
+    <NavigationContainer key={token || 'no-token'} ref={navigationRef}>
       <StatusBar style="auto" />
       <RootNavigator />
     </NavigationContainer>

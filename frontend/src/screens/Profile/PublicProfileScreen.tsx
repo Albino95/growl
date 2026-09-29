@@ -18,6 +18,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { groupGrowthPaths } from '../../utils/categoryLabels';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import {
   addFriend,
   removeFriend,
@@ -42,6 +43,7 @@ import {
 } from '../../services/api/instructor';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import EmptyState from '../../components/ui/EmptyState';
+import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { alertMessage } from '../../utils/confirmDialog';
 
 type Post = {
@@ -52,6 +54,7 @@ type Post = {
   comments: number;
   createdAt: string;
   category: string;
+  subcategory?: string;
   isReel?: boolean;
 };
 
@@ -93,6 +96,7 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
     comments: p.metadata?.comments ?? 0,
     createdAt: p.created_at,
     category: p.category,
+    subcategory: p.subcategory || undefined,
     isReel: isReelPost(p),
   };
 }
@@ -574,10 +578,7 @@ export default function PublicProfileScreen() {
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#059669" />
-          <Text style={tw`text-stone-500 mt-4`}>Loading profile...</Text>
-        </View>
+        <BrandLoadingScreen variant="page" message="Loading profile…" manageStatusBar={false} />
       </SafeAreaView>
     );
   }
@@ -792,7 +793,7 @@ export default function PublicProfileScreen() {
                 <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{profileUser.points}</Text>
               </View>
               <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
-                <Ionicons name="leaf" size={28} color="#059669" />
+                <Ionicons name="ribbon" size={28} color="#059669" />
               </View>
             </View>
             {!profileUser.isInstructor && endorseStatus ? (
@@ -877,84 +878,52 @@ export default function PublicProfileScreen() {
             <ActivityIndicator size="large" color="#059669" />
           </View>
         ) : activeTab === 'posts' ? (
-          <View style={tw`p-4`}>
-            {posts.length > 0 ? (
-              posts.map((post) => (
-                <TouchableOpacity
-                  key={post.id}
-                  style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-xl p-4 mb-3`}
-                  onPress={() => {
-                    if (!profileUser) return;
-                    const rootNavigation = navigation.getParent() || navigation;
-                    if (post.isReel) {
-                      openReelsAtPost(
-                        rootNavigation,
-                        post.id,
-                        sourcePosts.find((p) => p.id === post.id)
-                      );
-                      return;
-                    }
-                    (rootNavigation as any).navigate('PostDetail', {
-                      post: {
-                        id: post.id,
-                        userId: profileUser.id,
-                        username: profileUser.username,
-                        avatar: resolveAvatarUri(
-                          profileUser.id,
-                          profileUser.username,
-                          profileUser.avatar
-                        ),
-                        image: post.image,
-                        caption: post.caption,
-                        category: post.category,
-                        likes: post.likes,
-                        comments: post.comments,
-                        createdAt: post.createdAt,
-                        hasLiked: false,
-                        reaction: null,
-                      },
-                    });
-                  }}
-                >
-                  <View style={tw`flex-row items-center justify-between mb-3`}>
-                    <View style={tw`flex-row items-center`}>
-                      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-[#EAE4D6]`}>
-                        <Image
-                          source={{ uri: post.image }}
-                          style={tw`w-full h-full`}
-                          contentFit="cover"
-                        />
-                      </View>
-                      <View style={tw`flex-1`}>
-                        <Text style={tw`font-semibold text-stone-900`} numberOfLines={2}>
-                          {post.caption}
-                        </Text>
-                        <Text style={tw`text-xs text-stone-500 mt-1`}>
-                          {new Date(post.createdAt).toLocaleDateString()}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={tw`flex-row items-center gap-4`}>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="heart" size={16} color="#EF4444" />
-                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.likes}</Text>
-                    </View>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="chatbubble" size={16} color="#78716C" />
-                      <Text style={tw`text-sm text-stone-600 ml-1`}>{post.comments}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <EmptyState
-                icon="images-outline"
-                title="No posts yet"
-                description="This user has not shared posts yet."
-              />
-            )}
-          </View>
+          <ProfilePostsGrid
+            posts={posts}
+            emptyTitle={
+              profileUser.postsCount > 0 ? 'Could not load posts' : 'No posts yet'
+            }
+            emptyDescription={
+              profileUser.postsCount > 0
+                ? 'Pull back and open this profile again to retry.'
+                : 'This person has not shared a post yet. You can still add them as a friend.'
+            }
+            onPress={(tile) => {
+              if (!profileUser) return;
+              const post = posts.find((p) => p.id === tile.id);
+              if (!post) return;
+              const rootNavigation = navigation.getParent() || navigation;
+              if (post.isReel) {
+                openReelsAtPost(
+                  rootNavigation,
+                  post.id,
+                  sourcePosts.find((p) => p.id === post.id)
+                );
+                return;
+              }
+              (rootNavigation as any).navigate('PostDetail', {
+                post: {
+                  id: post.id,
+                  userId: profileUser.id,
+                  username: profileUser.username,
+                  avatar: resolveAvatarUri(
+                    profileUser.id,
+                    profileUser.username,
+                    profileUser.avatar
+                  ),
+                  image: post.image,
+                  caption: post.caption,
+                  category: post.category,
+                  subcategory: post.subcategory,
+                  likes: post.likes,
+                  comments: post.comments,
+                  createdAt: post.createdAt,
+                  hasLiked: false,
+                  reaction: null,
+                },
+              });
+            }}
+          />
         ) : activeTab === 'stories' ? (
           <View style={tw`p-4`}>
             {stories.length > 0 ? (

@@ -121,7 +121,7 @@ export function SellerOrdersPage() {
                     <Badge variant={statusBadge(o.status)}>{o.status}</Badge>
                   </DataTableCell>
                   <DataTableCell>${Number(o.total).toFixed(2)}</DataTableCell>
-                  <DataTableCell className="text-slate-500">
+                  <DataTableCell className="text-stone-500">
                     {new Date(o.created_at).toLocaleString()}
                   </DataTableCell>
                 </DataTableRow>
@@ -134,10 +134,10 @@ export function SellerOrdersPage() {
       <SlideOver open={!!selected} title="Order detail" onClose={() => setSelected(null)}>
         {selected && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-500">ID: {selected.id}</p>
+            <p className="text-sm text-stone-500">ID: {selected.id}</p>
             <ul className="space-y-2 text-sm">
               {(selected.items || []).map((item) => (
-                <li key={item.id} className="flex justify-between border-b border-slate-100 py-2">
+                <li key={item.id} className="flex justify-between border-b border-stone-100 py-2">
                   <span>
                     {item.product_name || item.product_id} × {item.quantity}
                   </span>
@@ -160,7 +160,7 @@ export function SellerOrdersPage() {
             <Field label="Tracking number">
               <Input value={tracking} onChange={(e) => setTracking(e.target.value)} />
             </Field>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-stone-500">
               Updating carrier/tracking requires at least one fulfillment field. Status updates use the marketplace
               order API.
             </p>

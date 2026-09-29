@@ -19,6 +19,10 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET?: string;
   /** Vitest only — never set on remote Workers */
   ALLOW_TEST_AUTH_BYPASS?: string;
+  /** When "true", staff must have MFA enabled to log in (keep false on prod during App Review) */
+  ADMIN_MFA_REQUIRED?: string;
+  /** Optional AES key material for encrypting admin MFA secrets; falls back to JWT_SECRET */
+  ADMIN_MFA_KEY?: string;
 }
 
 // User types
@@ -58,6 +62,9 @@ export interface Post {
   subcategory?: string;
   engagement_score: number;
   metadata: string; // JSON string
+  is_hidden?: number;
+  hidden_at?: string | null;
+  hidden_reason?: string | null;
   created_at: string;
   updated_at: string;
 }

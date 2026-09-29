@@ -24,7 +24,7 @@ export function DataTable({ children }: { children: ReactNode }) {
 export function DataTableHead({ children }: { children: ReactNode }) {
   return (
     <thead>
-      <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <tr className="border-b border-surface-border text-xs font-semibold uppercase tracking-wide text-stone-500">
         {children}
       </tr>
     </thead>
@@ -32,11 +32,11 @@ export function DataTableHead({ children }: { children: ReactNode }) {
 }
 
 export function DataTableBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-slate-100">{children}</tbody>;
+  return <tbody className="divide-y divide-surface-border">{children}</tbody>;
 }
 
 export function DataTableRow({ children }: { children: ReactNode }) {
-  return <tr className="transition-colors hover:bg-slate-50/80">{children}</tr>;
+  return <tr className="transition-colors hover:bg-surface-page/80">{children}</tr>;
 }
 
 export function DataTableCell({ children, className = '' }: { children: ReactNode; className?: string }) {

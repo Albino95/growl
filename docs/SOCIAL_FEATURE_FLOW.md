@@ -64,6 +64,8 @@ This guide explains the main social flows (friends, moderation, stories, feed/ex
 - Block/mute are applied server-side in feed and stories queries.
 - Block removes active friendship edges between the two users.
 - Report writes moderation records into `reports`.
+- Staff decide (Admin web / `POST /admin/moderation/reports/:id/decision`) **soft-hides** content via `is_hidden` — consumer feed/detail omit or 404 hidden rows. Protected review/demo emails cannot be enforced.
+- Ops deploy and smoke: [`docs/ADMIN_PHASE0_DEPLOY.md`](ADMIN_PHASE0_DEPLOY.md), console: [`admin/README.md`](../admin/README.md).
 
 ## Story model
 

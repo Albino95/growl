@@ -4,8 +4,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,12 +11,15 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
 import { getProductImageUrl, getProductImages, resolveAvatarUri } from '../../utils/images';
 import { verticalScrollProps, horizontalScrollProps } from '../../constants/scroll';
 import { rankMarketplaceProducts } from '../../utils/ranking';
 import { useAuth } from '../../store/hooks';
 import SectionLabel from '../../components/ui/SectionLabel';
+import { alertMessage } from '../../utils/confirmDialog';
 
 const { width } = Dimensions.get('window');
 
@@ -69,11 +70,11 @@ export default function ProductDetailScreen() {
           );
         }
       } else {
-        Alert.alert('Error', 'Failed to load product');
+        void alertMessage('Error', 'Failed to load product');
         navigation.goBack();
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to load product');
+      void alertMessage('Error', error.message || 'Failed to load product');
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -84,7 +85,7 @@ export default function ProductDetailScreen() {
     if (!product) return;
 
     if (!paymentsEnabled) {
-      Alert.alert(
+      void alertMessage(
         'Browsing only',
         'Checkout is not available in this version. You can browse the catalog; purchases will open in a later update.'
       );
@@ -92,7 +93,7 @@ export default function ProductDetailScreen() {
     }
 
     if (product.stock < quantity) {
-      Alert.alert('Out of Stock', 'Not enough items in stock');
+      void alertMessage('Out of Stock', 'Not enough items in stock');
       return;
     }
 
@@ -113,10 +114,7 @@ export default function ProductDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#059669" />
-          <Text style={tw`mt-4 text-stone-500`}>Loading product…</Text>
-        </View>
+        <BrandLoadingScreen variant="page" message="Loading product…" manageStatusBar={false} />
       </SafeAreaView>
     );
   }
@@ -355,29 +353,22 @@ export default function ProductDetailScreen() {
             </Text>
           </View>
         ) : null}
-        <View style={tw`flex-row`}>
-          <TouchableOpacity
-            onPress={handleAddToCart}
-            disabled={product.stock === 0}
-            style={tw`flex-1 mr-2 px-4 py-3.5 bg-surface-subtle border border-stone-200/80 rounded-2xl items-center ${
-              product.stock === 0 ? 'opacity-50' : ''
-            }`}
-          >
-            <Text style={tw`font-semibold text-stone-900`}>
-              {paymentsEnabled ? 'Add to cart' : 'Browse only'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleBuyNow}
-            disabled={product.stock === 0 || !paymentsEnabled}
-            style={tw`flex-1 ml-2 px-4 py-3.5 bg-brand-600 rounded-2xl items-center ${
-              product.stock === 0 || !paymentsEnabled ? 'opacity-50' : ''
-            }`}
-          >
-            <Text style={tw`font-semibold text-white`}>
-              {paymentsEnabled ? 'Buy now' : 'Unavailable'}
-            </Text>
-          </TouchableOpacity>
+        <View style={tw`flex-row gap-2`}>
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label={paymentsEnabled ? 'Add to cart' : 'Browse only'}
+              variant="ghost"
+              onPress={handleAddToCart}
+              disabled={product.stock === 0}
+            />
+          </View>
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label={paymentsEnabled ? 'Buy now' : 'Unavailable'}
+              onPress={handleBuyNow}
+              disabled={product.stock === 0 || !paymentsEnabled}
+            />
+          </View>
         </View>
       </View>
     </SafeAreaView>

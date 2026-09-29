@@ -5,7 +5,9 @@ type AdminAuthState = {
   loading: boolean;
   admin: { id: string; email: string; role: string } | null;
   permissions: string[];
-  login: (email: string, password: string, totp?: string) => Promise<void>;
+  mustEnrollMfa: boolean;
+  clearMustEnrollMfa: () => void;
+  login: (email: string, password: string, totp?: string, recoveryCode?: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -15,6 +17,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [admin, setAdmin] = useState<AdminAuthState['admin']>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [mustEnrollMfa, setMustEnrollMfa] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -34,11 +37,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string, totp?: string) => {
-    const res = await adminLogin(email, password, totp);
+  const login = useCallback(async (email: string, password: string, totp?: string, recoveryCode?: string) => {
+    const res = await adminLogin(email, password, totp, recoveryCode);
     setAdminToken(res.token);
     setAdmin(res.admin);
     setPermissions(res.permissions || []);
+    setMustEnrollMfa(!!res.must_enroll_mfa);
   }, []);
 
   const logout = useCallback(async () => {
@@ -48,12 +52,15 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       setAdminToken(null);
       setAdmin(null);
       setPermissions([]);
+      setMustEnrollMfa(false);
     }
   }, []);
 
+  const clearMustEnrollMfa = useCallback(() => setMustEnrollMfa(false), []);
+
   const value = useMemo(
-    () => ({ loading, admin, permissions, login, logout }),
-    [loading, admin, permissions, login, logout]
+    () => ({ loading, admin, permissions, mustEnrollMfa, clearMustEnrollMfa, login, logout }),
+    [loading, admin, permissions, mustEnrollMfa, clearMustEnrollMfa, login, logout]
   );
 
   return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;

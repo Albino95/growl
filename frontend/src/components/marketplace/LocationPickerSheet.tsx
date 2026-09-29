@@ -8,9 +8,14 @@ import {
   TextInput,
   Platform,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import {
+  FORM_KEYBOARD_DONE_ID,
+  KeyboardDoneAccessory,
+} from '../ui/KeyboardDoneAccessory';
 
 export type LocationOption = {
   key: string;
@@ -81,7 +86,10 @@ export default function LocationPickerSheet({
               placeholder={placeholder}
               placeholderTextColor="#A8A29E"
               style={tw`flex-1 ml-2 text-[15px] text-stone-900 py-0`}
-              returnKeyType="search"
+              returnKeyType="done"
+              blurOnSubmit
+              onSubmitEditing={() => Keyboard.dismiss()}
+              inputAccessoryViewID={Platform.OS === 'ios' ? FORM_KEYBOARD_DONE_ID : undefined}
               autoCorrect={false}
               autoCapitalize="none"
               clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
@@ -135,6 +143,7 @@ export default function LocationPickerSheet({
             }}
           />
         </View>
+        <KeyboardDoneAccessory />
       </KeyboardAvoidingView>
     </Modal>
   );

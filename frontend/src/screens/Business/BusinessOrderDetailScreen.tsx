@@ -3,14 +3,16 @@ import {
   View,
   Text,
   ScrollView,
-  ActivityIndicator,
   TouchableOpacity,
-  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import FormTextInput from '../../components/ui/FormTextInput';
+import { KeyboardDoneAccessory } from '../../components/ui/KeyboardDoneAccessory';
+import PrimaryButton from '../../components/ui/PrimaryButton';
 import {
   getBusinessOrderDetail,
   updateOrderFulfillment,
@@ -194,7 +196,7 @@ export default function BusinessOrderDetailScreen() {
         'Could not open chat',
         e instanceof Error
           ? e.message
-          : 'You can only message customers who are friends on Growl.'
+          : 'You can only message customers who are friends on Grow!.'
       );
     } finally {
       setBusy(false);
@@ -203,8 +205,8 @@ export default function BusinessOrderDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50 items-center justify-center`}>
-        <ActivityIndicator size="large" color="#059669" />
+      <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+        <BrandLoadingScreen variant="page" message="Loading order…" manageStatusBar={false} />
       </SafeAreaView>
     );
   }
@@ -281,38 +283,34 @@ export default function BusinessOrderDetailScreen() {
         <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-3`}>
           <Text style={tw`text-base font-semibold text-stone-900 mb-3`}>Fulfillment</Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Tracking number</Text>
-          <TextInput
+          <FormTextInput
             value={trackingNumber}
             onChangeText={setTrackingNumber}
             placeholder="1Z999..."
-            placeholderTextColor="#A8A29E"
             autoCapitalize="characters"
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+            style={tw`mb-3 bg-stone-50 rounded-xl`}
           />
           <Text style={tw`text-sm text-stone-600 mb-1`}>Carrier</Text>
-          <TextInput
+          <FormTextInput
             value={carrier}
             onChangeText={setCarrier}
             placeholder="USPS, UPS, FedEx…"
-            placeholderTextColor="#A8A29E"
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+            style={tw`mb-3 bg-stone-50 rounded-xl`}
           />
           <Text style={tw`text-sm text-stone-600 mb-1`}>Label URL</Text>
-          <TextInput
+          <FormTextInput
             value={labelUrl}
             onChangeText={setLabelUrl}
             placeholder="https://..."
-            placeholderTextColor="#A8A29E"
             autoCapitalize="none"
-            style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+            style={tw`mb-3 bg-stone-50 rounded-xl`}
           />
-          <TouchableOpacity
-            style={tw`bg-emerald-600 rounded-xl py-3 items-center ${busy ? 'opacity-50' : ''}`}
-            disabled={busy}
+          <PrimaryButton
+            label="Save fulfillment"
             onPress={() => void saveFulfillment()}
-          >
-            <Text style={tw`text-white font-bold`}>Save fulfillment</Text>
-          </TouchableOpacity>
+            loading={busy}
+            disabled={busy}
+          />
         </View>
 
         {defaultShippingNote ? (
@@ -352,35 +350,34 @@ export default function BusinessOrderDetailScreen() {
         </View>
 
         {next ? (
-          <TouchableOpacity
-            style={tw`bg-emerald-600 rounded-xl py-4 items-center mb-3 ${busy ? 'opacity-50' : ''}`}
-            disabled={busy}
+          <PrimaryButton
+            label={`Mark as ${next}`}
             onPress={() => void advance()}
-          >
-            <Text style={tw`text-white font-bold`}>Mark as {next}</Text>
-          </TouchableOpacity>
+            loading={busy}
+            disabled={busy}
+            style={tw`mb-3`}
+          />
         ) : null}
 
         {!refundPending && order.status !== 'cancelled' ? (
           <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-3`}>
             <Text style={tw`text-base font-semibold text-stone-900 mb-2`}>Refund request</Text>
-            <TextInput
+            <FormTextInput
               value={refundReason}
               onChangeText={setRefundReason}
               placeholder="Reason for refund…"
-              placeholderTextColor="#A8A29E"
               multiline
               numberOfLines={2}
-              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900 min-h-[64px]`}
+              style={tw`mb-3 bg-stone-50 rounded-xl min-h-[64px]`}
               textAlignVertical="top"
             />
-            <TouchableOpacity
-              style={tw`bg-red-50 border border-red-200 rounded-xl py-3 items-center ${busy ? 'opacity-50' : ''}`}
-              disabled={busy}
+            <PrimaryButton
+              label="Request refund"
               onPress={() => void submitRefundRequest()}
-            >
-              <Text style={tw`text-red-700 font-bold`}>Request refund</Text>
-            </TouchableOpacity>
+              disabled={busy}
+              loading={busy}
+              style={{ backgroundColor: '#DC2626' }}
+            />
           </View>
         ) : null}
 
@@ -395,6 +392,7 @@ export default function BusinessOrderDetailScreen() {
           <Text style={tw`text-emerald-700 font-bold`}>Message customer</Text>
         </TouchableOpacity>
       </ScrollView>
+      <KeyboardDoneAccessory />
     </SafeAreaView>
   );
 }

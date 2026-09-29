@@ -16,6 +16,11 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import tw from '../../lib/tw';
+import PrimaryButton from '../../components/ui/PrimaryButton';
+import {
+  KeyboardDoneAccessory,
+  formInputAccessoryProps,
+} from '../../components/ui/KeyboardDoneAccessory';
 import { resetNavigationToAuth, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { SUPPORT_EMAIL } from '../../content/legal';
 import {
@@ -229,6 +234,7 @@ export default function BizSettings() {
           </Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Business name</Text>
           <TextInput
+                        {...formInputAccessoryProps()}
             value={businessName}
             onChangeText={setBusinessName}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
@@ -263,6 +269,7 @@ export default function BizSettings() {
           </Text>
           <Text style={tw`text-sm text-stone-600 mb-1`}>Low stock threshold (units)</Text>
           <TextInput
+                        {...formInputAccessoryProps()}
             value={lowStockThreshold}
             onChangeText={setLowStockThreshold}
             keyboardType="numeric"
@@ -272,6 +279,7 @@ export default function BizSettings() {
           />
           <Text style={tw`text-sm text-stone-600 mb-1`}>Default shipping note</Text>
           <TextInput
+                        {...formInputAccessoryProps()}
             value={defaultShippingNote}
             onChangeText={setDefaultShippingNote}
             multiline
@@ -457,13 +465,12 @@ export default function BizSettings() {
         </View>
 
         <View style={tw`px-5 pb-2 pt-4`}>
-          <TouchableOpacity
+          <PrimaryButton
+            label={saving ? 'Saving…' : 'Save settings'}
             onPress={() => void saveSettings()}
             disabled={saving || loading}
-            style={tw`bg-emerald-600 rounded-2xl py-3.5 items-center ${saving || loading ? 'opacity-60' : ''}`}
-          >
-            <Text style={tw`text-white font-semibold`}>{saving ? 'Saving…' : 'Save settings'}</Text>
-          </TouchableOpacity>
+            loading={saving}
+          />
         </View>
 
         <View style={tw`px-5 py-4 mb-6`}>
@@ -476,6 +483,7 @@ export default function BizSettings() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <KeyboardDoneAccessory />
     </SafeAreaView>
   );
 }

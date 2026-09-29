@@ -409,19 +409,43 @@ async function exportViaCanvas(
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
+const EXPORT_MAX_EDGE = 1600;
+
+/** Shrink phone photos before the pixel pass. Full-res decode is what makes Done feel stuck. */
+async function prepareExportSource(uri: string): Promise<string> {
+  try {
+    const { width, height } = await getImageDimensions(uri);
+    const longEdge = Math.max(width, height);
+    const actions: Parameters<typeof ImageManipulator.manipulateAsync>[1] = [];
+    if (longEdge > EXPORT_MAX_EDGE) {
+      const scale = EXPORT_MAX_EDGE / longEdge;
+      actions.push({
+        resize: {
+          width: Math.max(1, Math.round(width * scale)),
+          height: Math.max(1, Math.round(height * scale)),
+        },
+      });
+    }
+    const normalized = await ImageManipulator.manipulateAsync(uri, actions, {
+      compress: 0.82,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    return normalized.uri;
+  } catch {
+    return uri;
+  }
+}
+
 async function exportViaJpegJs(
   uri: string,
   adjustments: EditAdjustments,
   options?: ExportOptions
 ): Promise<string> {
   try {
-    let sourceUri = uri;
-    if (Platform.OS !== 'web' && !uri.toLowerCase().includes('.jpg') && !uri.toLowerCase().includes('.jpeg')) {
-      const normalized = await ImageManipulator.manipulateAsync(sourceUri, [], {
-        compress: 0.92,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      sourceUri = normalized.uri;
+    const sourceUri = await prepareExportSource(uri);
+    const overlays = (options?.overlays || []).filter((o) => o.text.trim());
+    if (isAdjustmentsNeutral(adjustments) && overlays.length === 0) {
+      return sourceUri;
     }
 
     const response = await fetch(sourceUri);
@@ -434,7 +458,6 @@ async function exportViaJpegJs(
     };
     processPixelBuffer(pixelBuffer, adjustments);
 
-    const overlays = (options?.overlays || []).filter((o) => o.text.trim());
     if (overlays.length) {
       bakeTextOverlaysOnBuffer(pixelBuffer, overlays);
     }

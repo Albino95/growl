@@ -31,6 +31,7 @@ import FeedLikeButton, {
 } from '../../components/feed/FeedLikeButton';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import tw from '../../lib/tw';
+import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 
 type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
@@ -584,10 +585,12 @@ export default function ReelsScreen() {
     return (
       <View style={tw`flex-1 bg-black`}>
         <ReelsHeader onBack={goBack} onCreate={openCreateReel} modeLabel={modeLabel} />
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#fff" size="large" />
-          <Text style={tw`text-white/70 mt-4`}>Loading clips…</Text>
-        </View>
+        <BrandLoadingScreen
+          variant="dark"
+          message="Loading clips…"
+          showWordmark={false}
+          manageStatusBar={false}
+        />
       </View>
     );
   }

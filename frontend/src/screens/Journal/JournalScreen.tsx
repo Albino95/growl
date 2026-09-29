@@ -357,11 +357,11 @@ export default function JournalScreen() {
               {streak > 0 ? (
                 <View style={tw`items-center`}>
                   <View
-                    style={tw`w-14 h-14 rounded-full border-2 border-stone-900/20 items-center justify-center bg-white/50`}
+                    style={tw`w-14 h-14 rounded-full border-2 border-energy-600 items-center justify-center bg-energy-50`}
                   >
-                    <Text style={tw`text-lg font-bold text-stone-900`}>{streak}</Text>
+                    <Text style={tw`text-lg font-bold text-energy-700`}>{streak}</Text>
                   </View>
-                  <Text style={tw`text-[10px] text-stone-500 mt-1 font-medium`}>day streak</Text>
+                  <Text style={tw`text-[10px] text-energy-700 mt-1 font-medium`}>day streak</Text>
                 </View>
               ) : null}
             </View>

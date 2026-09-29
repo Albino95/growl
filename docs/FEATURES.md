@@ -1,6 +1,8 @@
-# Growl — product features
+# Grow! — product features
 
-High-level inventory of what the app ships today (mobile Expo / RN), plus the cohort friends & marketplace behaviors added recently.
+High-level inventory of what the app ships today (mobile Expo / RN), plus cohort, friends, and marketplace behaviors.
+
+**Brand:** consumer name is **Grow!** (tech ids may still say `growl`). See [`docs/brand/BRAND.md`](brand/BRAND.md).
 
 ---
 
@@ -34,8 +36,9 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 
 ### Cross-path posts
 
-- **Home / All Categories:** posts from **all friends**, including cross-path friends (e.g. you are Fitness, friend is Arts → their Arts posts appear under All).
+- **Home / All Categories:** posts from **all friends** (any path) plus **non-friends whose post matches your growth paths**.
 - **Category-filtered Home or Explore:** only posts whose **category matches** the selected path (parent key matches that parent or leaves under it). Cross-path friends’ posts do **not** appear under an unrelated chip.
+- **Profile posts:** each post is labeled with the author’s growth path. If stored post category does not match their paths (legacy/seed data), the profile and feed show their first growth area instead.
 - Explore remains **non-friend discovery**; friends belong on Home.
 
 ---
@@ -61,6 +64,17 @@ High-level inventory of what the app ships today (mobile Expo / RN), plus the co
 | Comments & likes | Threaded comments; like toggle endpoints. |
 | Stories | 24h stories, views counter; CRUD under `/stories`. |
 | Reels / messaging entry points | Navigation shells present; depth varies by screen. |
+
+---
+
+## Moderation & Trust (ops)
+
+| Feature | Notes |
+|--------|--------|
+| Consumer report / block | In-app menus; writes `reports` / blocks — no Admin UI required for reviewers. |
+| Soft-hide | Admin decide sets `is_hidden` on posts/products (not hard-delete). Appeal overturn restores. Consumer feeds omit hidden rows. |
+| Protected accounts | `review@`, `demo@`, `instructor@`, `business@` cannot be banned/hidden from admin (`403 PROTECTED_ACCOUNT`). |
+| Admin + Seller web | `admin/dashboard` — staff T&S console + scoped seller portal. See [`ADMIN_PHASE0_DEPLOY.md`](ADMIN_PHASE0_DEPLOY.md). |
 
 ---
 

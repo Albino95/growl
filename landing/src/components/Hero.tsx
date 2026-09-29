@@ -33,7 +33,7 @@ export default function Hero() {
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             className="font-display text-[clamp(3.5rem,12vw,7.5rem)] font-extrabold leading-[0.88] tracking-tight text-stone-900"
           >
-            Grow<span className="text-emerald-600">!</span>
+            Grow<span className="text-[var(--energy)]">!</span>
           </motion.p>
 
           <motion.h1
@@ -42,7 +42,7 @@ export default function Hero() {
             transition={{ duration: 0.6, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
             className="mt-6 max-w-lg font-display text-2xl font-semibold tracking-tight text-stone-800 sm:text-3xl lg:text-[2.15rem] lg:leading-[1.15]"
           >
-            Grow by scrolling with purpose.
+            Grow by unlocking skills — and sharing them.
           </motion.h1>
 
           <motion.p
@@ -51,7 +51,8 @@ export default function Hero() {
             transition={{ duration: 0.6, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
             className="mt-4 max-w-md text-base leading-relaxed text-stone-600 sm:text-lg"
           >
-            Interest feeds, reels, peer instructors, and a curated marketplace that move you forward.
+            Interest feeds, peer instructors, and private-by-default journaling that turn intent into
+            progress you can be proud of.
           </motion.p>
 
           <motion.div

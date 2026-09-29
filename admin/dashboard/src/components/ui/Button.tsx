@@ -7,8 +7,8 @@ type Variant = 'primary' | 'danger' | 'ghost' | 'outline';
 const variants: Record<Variant, string> = {
   primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
   danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm',
-  ghost: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-  outline: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+  ghost: 'bg-surface-page text-stone-700 hover:bg-surface-muted',
+  outline: 'border border-surface-border bg-surface text-stone-700 hover:bg-surface-page',
 };
 
 type Props = Omit<HTMLMotionProps<'button'>, 'children'> & {

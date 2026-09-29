@@ -130,7 +130,7 @@ const CATALOG = [
   ['prod-dense-086', 'Travel Backpack 40L', 'Laptop sleeve, rain cover, lockable zips.', 'sustainability', 'sustainable-living', 84.0, 21, 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=1080&q=80'],
   ['prod-dense-087', 'Seed Starter Kit', 'Native wildflower mix and biodegradable pots.', 'sustainability', 'conservation', 19.5, 37, 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=900&q=80'],
   ['prod-dense-088', 'LED Desk Lamp Solar', 'Daylight LEDs plus small solar panel.', 'sustainability', 'green-building', 45.0, 19, 'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=900&q=80'],
-  ['prod-dense-089', 'Carbon Offset Pack', 'Support a verified tree-planting project (10 trees).', 'sustainability', 'carbon-footprint', 25.0, 500, 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&q=80'],
+  ['prod-dense-089', 'Skill Starter Kit', 'Notebook, markers, and habit cards for a new growth path.', 'mindset', 'goal-setting', 25.0, 500, 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&q=80'],
 
   // Wellness
   ['prod-dense-090', 'Weighted Blanket 7kg', 'Cotton cover, glass-bead fill. Queen size.', 'wellness', 'sleep', 89.0, 14, 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=1080&q=80'],

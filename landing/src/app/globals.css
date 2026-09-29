@@ -5,13 +5,15 @@
   --brand-deep: #047857;
   --brand-dark: #064e3b;
   --brand-glow: #34d399;
+  --energy: #F97066;
+  --energy-soft: #FFF1F0;
   --stone-ink: #1c1917;
   --stone-muted: #57534e;
   --stone-soft: #a8a29e;
   --surface: #f3eee4;
   --surface-elevated: #fffcf7;
   --surface-alt: #eae4d6;
-  --surface-deep: #0c1f17;
+  --surface-deep: #1c1917;
   --radius: 1rem;
   --nav-offset: 4.25rem;
 }
@@ -69,7 +71,7 @@ body {
 
 .hero-atmosphere {
   background:
-    radial-gradient(ellipse 55% 50% at 88% 18%, rgba(52, 211, 153, 0.22), transparent 55%),
+    radial-gradient(ellipse 55% 50% at 88% 18%, rgba(249, 112, 102, 0.16), transparent 55%),
     radial-gradient(ellipse 45% 40% at 8% 78%, rgba(5, 150, 105, 0.14), transparent 50%),
     linear-gradient(180deg, #f7f3ea 0%, #f3eee4 48%, #ebe4d4 100%);
 }

@@ -9,11 +9,15 @@ import {
   ScrollView,
   Alert,
   Animated,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Screen from '../../components/ui/Screen';
-import SectionLabel from '../../components/ui/SectionLabel';
 import PrimaryButton from '../../components/ui/PrimaryButton';
+import {
+  KeyboardDoneAccessory,
+  formInputAccessoryProps,
+} from '../../components/ui/KeyboardDoneAccessory';
 import { useAuth } from '../../store/hooks';
 import { validatePasswordStrength } from '../../utils/passwordPolicy';
 import {
@@ -23,7 +27,6 @@ import {
   signInWithFacebookPrompt,
 } from '../../services/auth/oauth';
 import { isAppleSignInAvailable, signInWithApplePrompt } from '../../services/auth/apple';
-import { DEMO_ACCOUNTS, DEMO_ACCOUNT_PASSWORD } from '../../constants/demoAccounts';
 import { featureFlags } from '../../constants/featureFlags';
 import {
   forgotPasswordApi,
@@ -96,7 +99,7 @@ function AuthAtmosphere() {
       />
       <View
         style={[
-          tw`absolute rounded-full bg-emerald-500/8`,
+          tw`absolute rounded-full bg-energy-600/10`,
           { width: 160, height: 160, bottom: 120, right: -40 },
         ]}
       />
@@ -132,9 +135,16 @@ function AuthBrandBlock({
         },
       ]}
     >
-      <Text style={tw`text-[42px] leading-[46px] tracking-[3px] uppercase text-emerald-700 font-bold`}>
-        Grow!
-      </Text>
+      <View style={tw`flex-row items-center`}>
+        <Image
+          source={require('../../../assets/icon.png')}
+          style={{ width: 52, height: 52, borderRadius: 12 }}
+          accessibilityLabel="Grow! mark"
+        />
+        <Text style={tw`ml-3 text-[36px] leading-[40px] tracking-[3px] uppercase text-emerald-700 font-bold`}>
+          Grow!
+        </Text>
+      </View>
       <Text style={tw`text-xl font-semibold text-stone-800 mt-4`}>{title}</Text>
       <Text style={tw`text-sm text-stone-500 mt-2 leading-5`}>{subtitle}</Text>
     </Animated.View>
@@ -337,22 +347,6 @@ export default function AuthScreen() {
     }
   };
 
-  const fillDemoAndSignIn = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword(DEMO_ACCOUNT_PASSWORD);
-    setIsSignUp(false);
-    setLocalLoading(true);
-    try {
-      await signIn(demoEmail, DEMO_ACCOUNT_PASSWORD).unwrap();
-      void refreshProfile();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Demo sign-in failed';
-      notify('Demo account unavailable', `${msg}\n\nRun: cd backend && npm run demo:local`);
-    } finally {
-      setLocalLoading(false);
-    }
-  };
-
   const handleGoogle = async () => {
     if (!isGoogleOAuthConfigured()) {
       notify(
@@ -474,6 +468,7 @@ export default function AuthScreen() {
             <View style={tw`max-w-md w-full self-center`}>{body}</View>
           </ScrollView>
         </KeyboardAvoidingView>
+        <KeyboardDoneAccessory />
       </View>
     </Screen>
   );
@@ -490,6 +485,7 @@ export default function AuthScreen() {
         <Animated.View style={{ opacity: formFade }}>
           <FieldLabel>Email</FieldLabel>
           <TextInput
+                        {...formInputAccessoryProps()}
             placeholder="you@example.com"
             autoCapitalize="none"
             keyboardType="email-address"
@@ -531,6 +527,7 @@ export default function AuthScreen() {
           ) : null}
           <FieldLabel>Reset code</FieldLabel>
           <TextInput
+                        {...formInputAccessoryProps()}
             placeholder="123456"
             keyboardType="number-pad"
             value={resetCode}
@@ -542,6 +539,7 @@ export default function AuthScreen() {
           />
           <FieldLabel>New password</FieldLabel>
           <TextInput
+                        {...formInputAccessoryProps()}
             placeholder="Create a strong password"
             secureTextEntry={!showPassword}
             value={password}
@@ -603,6 +601,7 @@ export default function AuthScreen() {
           ) : null}
           <FieldLabel>Verification code</FieldLabel>
           <TextInput
+                        {...formInputAccessoryProps()}
             placeholder="123456"
             keyboardType="number-pad"
             value={verifyCode}
@@ -677,6 +676,7 @@ export default function AuthScreen() {
             <FieldLabel>Email</FieldLabel>
             <View style={tw`relative`}>
               <TextInput
+                                {...formInputAccessoryProps()}
                 placeholder="you@example.com"
                 autoCapitalize="none"
                 keyboardType="email-address"
@@ -698,6 +698,7 @@ export default function AuthScreen() {
             <FieldLabel>Password</FieldLabel>
             <View style={tw`relative`}>
               <TextInput
+                                {...formInputAccessoryProps()}
                 placeholder={isSignUp ? 'Create a strong password' : 'Your password'}
                 secureTextEntry={!showPassword}
                 value={password}
@@ -809,33 +810,6 @@ export default function AuthScreen() {
           </>
         ) : null}
 
-        {featureFlags.showDemoAccounts ? (
-          <View style={tw`mt-10 pt-6 border-t border-stone-200/80`}>
-            <SectionLabel variant="caps">Demo accounts</SectionLabel>
-            <Text style={tw`text-xs text-stone-400 mb-3`}>
-              Password: {DEMO_ACCOUNT_PASSWORD} · seed with npm run demo:local
-            </Text>
-            <View style={tw`gap-2`}>
-              {DEMO_ACCOUNTS.map((demo) => (
-                <TouchableOpacity
-                  key={demo.email}
-                  onPress={() => void fillDemoAndSignIn(demo.email)}
-                  disabled={busy}
-                  style={tw`flex-row items-center border border-emerald-100 rounded-2xl px-3 py-3 bg-emerald-50/80`}
-                >
-                  <View style={tw`w-9 h-9 rounded-full bg-emerald-600 items-center justify-center mr-3`}>
-                    <Text style={tw`text-white font-bold text-sm`}>{demo.label.charAt(0)}</Text>
-                  </View>
-                  <View style={tw`flex-1`}>
-                    <Text style={tw`text-sm font-semibold text-stone-800`}>{demo.label}</Text>
-                    <Text style={tw`text-xs text-stone-500`}>{demo.email}</Text>
-                  </View>
-                  <Ionicons name="log-in-outline" size={20} color="#059669" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ) : null}
       </Animated.View>
     </>
   );

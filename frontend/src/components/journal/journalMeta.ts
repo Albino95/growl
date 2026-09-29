@@ -6,7 +6,7 @@ export const MOOD_META: Record<
 > = {
   happy: { label: 'Happy', glyph: '😊', color: '#CA8A04', wash: '#FEF9C3' },
   excited: { label: 'Excited', glyph: '⚡', color: '#EA580C', wash: '#FFEDD5' },
-  calm: { label: 'Calm', glyph: '🌿', color: '#059669', wash: '#D1FAE5' },
+  calm: { label: 'Calm', glyph: '◇', color: '#059669', wash: '#D1FAE5' },
   grateful: { label: 'Grateful', glyph: '💚', color: '#0D9488', wash: '#CCFBF1' },
   proud: { label: 'Proud', glyph: '🏆', color: '#B45309', wash: '#FEF3C7' },
   motivated: { label: 'Motivated', glyph: '🔥', color: '#DC2626', wash: '#FEE2E2' },

@@ -1,11 +1,15 @@
 import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import tw from '../../lib/tw';
+import BrandLoadingScreen, { type BrandLoadingVariant } from './BrandLoadingScreen';
 
-export default function FullScreenLoader() {
-  return (
-    <View style={tw`flex-1 items-center justify-center bg-white`}>
-      <ActivityIndicator />
-    </View>
-  );
+type Props = {
+  message?: string;
+  variant?: BrandLoadingVariant;
+};
+
+/** App bootstrap / full-screen gate — animated Grow! brand loader. */
+export default function FullScreenLoader({
+  message = 'Getting things ready…',
+  variant = 'splash',
+}: Props) {
+  return <BrandLoadingScreen variant={variant} message={message} showWordmark />;
 }

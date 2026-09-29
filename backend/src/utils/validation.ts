@@ -299,6 +299,7 @@ export const adminLoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
   totp: z.string().min(6).max(8).optional(),
+  recoveryCode: z.string().min(8).max(32).optional(),
 });
 
 export const adminMfaEnableSchema = z.object({
@@ -314,7 +315,7 @@ export const reportDecisionSchema = z.object({
     reasonText: z.string().min(3),
     enforcement: z
       .object({
-        contentAction: z.enum(['none', 'remove']).optional(),
+        contentAction: z.enum(['none', 'remove', 'hide']).optional(),
         userAction: z.enum(['none', 'warn', 'suspend', 'ban']).optional(),
         strikeDelta: z.number().int().min(0).optional(),
         suspendDays: z.number().int().min(1).max(365).optional(),

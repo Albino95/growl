@@ -17,7 +17,7 @@ const defineConfig = (): ExpoConfig => ({
   splash: {
     image: './assets/splash.png',
     resizeMode: 'contain',
-    backgroundColor: '#F3EEE4',
+    backgroundColor: '#049669',
   },
   updates: {
     fallbackToCacheTimeout: 0,
@@ -26,7 +26,7 @@ const defineConfig = (): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'app.growl.mobile',
-    buildNumber: '1',
+    buildNumber: '2',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription: 'Grow! uses the camera so you can take photos and videos for posts, stories, reels, and your profile.',
@@ -59,10 +59,10 @@ const defineConfig = (): ExpoConfig => ({
   },
   android: {
     package: 'app.growl.mobile',
-    versionCode: 1,
+    versionCode: 2,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#059669',
+      backgroundColor: '#049669',
     },
     permissions: ['CAMERA', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'RECORD_AUDIO'],
     blockedPermissions: ['android.permission.AD_ID'],
@@ -82,7 +82,7 @@ const defineConfig = (): ExpoConfig => ({
     name: 'Grow!',
     shortName: 'Grow!',
     lang: 'en',
-    description: 'Grow! — grow by scrolling with purpose.',
+    description: 'Grow! — unlock skills and share your growth.',
   },
   plugins: [
     [

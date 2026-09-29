@@ -27,7 +27,6 @@ import {
 } from '../../constants/scroll';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
-import CO2Calculator from '../../components/ui/CO2Calculator';
 import EmptyState from '../../components/ui/EmptyState';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -1074,11 +1073,6 @@ export default function FeedScreen({ navigation, route }: any) {
                       Watch in Reels
                     </Text>
                   </Pressable>
-                ) : null}
-
-                {/* CO2 Calculator — posts only */}
-                {!item.isReel ? (
-                  <CO2Calculator category={item.category} activityType="post" />
                 ) : null}
 
                 {/* Comments */}

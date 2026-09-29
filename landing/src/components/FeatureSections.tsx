@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, ChatsCircle, ShoppingBag, UsersThree } from '@phosphor-icons/react';
+import { ArrowRight, ChatsCircle, BookOpen, UsersThree } from '@phosphor-icons/react';
 import { GROWTH_PATHS } from '@/lib/content';
 
 function Reveal({
@@ -108,8 +108,8 @@ const beats = [
   },
   {
     title: 'Improve',
-    body: 'Act on what you see with tools from the marketplace.',
-    icon: ShoppingBag,
+    body: 'Journal privately, share milestones, and learn with coaches in your path.',
+    icon: BookOpen,
   },
 ];
 
@@ -123,8 +123,8 @@ export default function FeatureSections() {
               A social platform where scrolling makes you better.
             </h2>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-stone-600">
-              Grow! ties interest-based content, peer-earned instructors, and a curated shop into one
-              habit. Time online compounds into real progress.
+              Grow! ties interest-based content, peer-earned instructors, and private journaling into
+              one habit. Time online compounds into skills you can share with pride.
             </p>
           </Reveal>
           <Reveal delay={0.1}>

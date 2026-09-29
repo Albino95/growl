@@ -30,6 +30,29 @@ export function postMatchesUserCategories(
   return false;
 }
 
+/** When a post's stored path doesn't match the author's growth areas, use their first path. */
+export function alignPostTaxonomy(
+  ownerPaths: string[],
+  category: string | null | undefined,
+  subcategory?: string | null
+): { category: string; subcategory: string | null } {
+  const cat = String(category || '').trim();
+  const sub = subcategory != null && String(subcategory).trim() ? String(subcategory).trim() : null;
+  if (!ownerPaths?.length) {
+    return { category: cat || 'general', subcategory: sub };
+  }
+  if (cat && postMatchesUserCategories(ownerPaths, cat, sub)) {
+    return { category: cat, subcategory: sub };
+  }
+  const first = String(ownerPaths[0] || '').trim();
+  if (!first) return { category: cat || 'general', subcategory: sub };
+  if (first.includes(':')) {
+    const [c, s] = first.split(':');
+    return { category: c, subcategory: s || null };
+  }
+  return { category: first, subcategory: null };
+}
+
 export function categoryRelevanceScore(
   userPaths: string[],
   postCategory: string,

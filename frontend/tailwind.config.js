@@ -17,9 +17,17 @@ module.exports = {
           900: '#064e3b',
         },
         accent: {
-          500: '#8b5cf6',
-          600: '#7c3aed',
-          700: '#6d28d9',
+          // Coral energy (unlocks / streaks) — replaces violet brand accent
+          500: '#fb8a7f',
+          600: '#F97066',
+          700: '#e85d55',
+        },
+        energy: {
+          50: '#FFF1F0',
+          100: '#ffe4e1',
+          500: '#fb8a7f',
+          600: '#F97066',
+          700: '#e85d55',
         },
         surface: {
           page: '#F3EEE4',

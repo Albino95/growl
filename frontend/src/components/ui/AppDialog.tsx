@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import PrimaryButton from './PrimaryButton';
 
 export type DialogButton = {
   label: string;
@@ -57,7 +58,7 @@ export function showAppAlert(title: string, message?: string): Promise<void> {
       message,
       buttons: [
         {
-          label: 'OK',
+          label: 'Got it',
           style: 'default',
           onPress: () => resolve(),
         },
@@ -94,24 +95,6 @@ export function showAppConfirm(
   });
 }
 
-function buttonClasses(style: DialogButton['style'], primary: boolean) {
-  if (style === 'destructive') {
-    return primary
-      ? tw`bg-red-600 border-red-500`
-      : tw`bg-red-50 border-red-200`;
-  }
-  if (style === 'cancel') {
-    return tw`bg-stone-100 border-stone-200`;
-  }
-  return tw`bg-brand-600 border-brand-500`;
-}
-
-function buttonTextClasses(style: DialogButton['style']) {
-  if (style === 'cancel') return tw`text-stone-700`;
-  if (style === 'destructive') return tw`text-white`;
-  return tw`text-white`;
-}
-
 function iconFor(req: DialogRequest): keyof typeof Ionicons.glyphMap {
   const destructive = req.buttons.some((b) => b.style === 'destructive');
   if (destructive) return 'warning-outline';
@@ -134,6 +117,7 @@ export default function AppDialogHost() {
 
   const icon = iconFor(request);
   const destructive = request.buttons.some((b) => b.style === 'destructive');
+  const multi = request.buttons.length > 1;
 
   return (
     <Modal
@@ -154,51 +138,53 @@ export default function AppDialogHost() {
           }}
         />
         <View
-          style={tw`w-full max-w-sm bg-[#FFFcf7] rounded-3xl px-5 pt-5 pb-4 border border-stone-200`}
+          style={[
+            tw`w-full max-w-sm rounded-3xl px-5 pt-5 pb-4 border`,
+            { backgroundColor: '#FFFcf7', borderColor: '#E7E5E4' },
+          ]}
         >
           <View
             style={[
               tw`w-12 h-12 rounded-2xl items-center justify-center mb-3`,
-              destructive ? tw`bg-red-100` : tw`bg-brand-50`,
+              { backgroundColor: destructive ? '#FEE2E2' : '#ECFDF5' },
             ]}
           >
-            <Ionicons
-              name={icon}
-              size={24}
-              color={destructive ? '#DC2626' : '#059669'}
-            />
+            <Ionicons name={icon} size={24} color={destructive ? '#DC2626' : '#059669'} />
           </View>
-          <Text style={tw`text-stone-900 text-lg font-bold mb-1`}>{request.title}</Text>
+          <Text style={{ color: '#1C1917', fontSize: 18, fontWeight: '700', marginBottom: 4 }}>
+            {request.title}
+          </Text>
           {request.message ? (
-            <Text style={tw`text-stone-500 text-sm leading-5 mb-4`}>{request.message}</Text>
+            <Text
+              style={{
+                color: '#78716C',
+                fontSize: 14,
+                lineHeight: 20,
+                marginBottom: 16,
+              }}
+            >
+              {request.message}
+            </Text>
           ) : (
             <View style={tw`mb-3`} />
           )}
-          <View
-            style={
-              request.buttons.length > 1
-                ? tw`flex-row gap-2`
-                : tw`flex-col`
-            }
-          >
-            {request.buttons.map((btn, index) => {
-              const primary =
-                btn.style === 'default' ||
-                btn.style === 'destructive' ||
-                (request.buttons.length === 1 && index === 0);
+          <View style={multi ? tw`flex-row gap-2` : tw`flex-col`}>
+            {request.buttons.map((btn) => {
+              const isCancel = btn.style === 'cancel';
+              const isDestructive = btn.style === 'destructive';
               return (
-                <Pressable
-                  key={`${btn.label}-${index}`}
-                  onPress={() => closeWith(btn)}
-                  style={[
-                    tw`flex-1 py-3.5 rounded-2xl border items-center`,
-                    buttonClasses(btn.style, primary),
-                  ]}
-                >
-                  <Text style={[tw`font-bold text-sm`, buttonTextClasses(btn.style)]}>
-                    {btn.label}
-                  </Text>
-                </Pressable>
+                <View key={`${btn.label}-${request.id}`} style={multi ? tw`flex-1` : undefined}>
+                  <PrimaryButton
+                    label={btn.label || (isCancel ? 'Cancel' : 'Got it')}
+                    onPress={() => closeWith(btn)}
+                    variant={isCancel ? 'ghost' : 'solid'}
+                    style={
+                      isDestructive
+                        ? { backgroundColor: '#DC2626', borderColor: '#DC2626' }
+                        : undefined
+                    }
+                  />
+                </View>
               );
             })}
           </View>

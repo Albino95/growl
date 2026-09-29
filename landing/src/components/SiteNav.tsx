@@ -55,7 +55,7 @@ export default function SiteNav() {
           className="font-display text-xl font-extrabold tracking-tight text-stone-900"
           onClick={() => setOpen(false)}
         >
-          Grow<span className="text-emerald-600">!</span>
+          Grow<span className="text-[var(--energy)]">!</span>
         </a>
 
         <div className="hidden items-center gap-7 md:flex">

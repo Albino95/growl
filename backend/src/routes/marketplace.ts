@@ -277,7 +277,7 @@ export async function getProducts(request: Request, env: Env): Promise<Response>
     SELECT p.*, u.metadata as user_metadata
     FROM products p
     JOIN users u ON p.user_id = u.id
-    WHERE 1=1
+    WHERE COALESCE(p.is_hidden, 0) = 0
   `;
   const bindings: any[] = [];
 
@@ -350,7 +350,7 @@ export async function getProduct(
       `SELECT p.*, u.metadata as user_metadata
        FROM products p
        JOIN users u ON p.user_id = u.id
-       WHERE p.id = ?`
+       WHERE p.id = ? AND COALESCE(p.is_hidden, 0) = 0`
     )
       .bind(productId)
       .first<Product & { user_metadata: string }>();
@@ -866,6 +866,52 @@ export async function getOrders(request: Request, env: Env): Promise<Response> {
   } catch (err) {
     console.error('[getOrders] Error:', err);
     return error('DATABASE_ERROR', 'Failed to fetch orders', 500);
+  }
+}
+
+/**
+ * GET /api/v1/marketplace/orders/:orderId
+ * Buyer-owned order detail (used for payment confirmation polling).
+ */
+export async function getOrder(request: Request, env: Env, orderId: string): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const order = await env.DB.prepare(
+      `SELECT o.*,
+       (SELECT json_group_array(json_object(
+         'id', oi.id,
+         'product_id', oi.product_id,
+         'quantity', oi.quantity,
+         'price', oi.price,
+         'product_name', p.name,
+         'product_image', p.image_url
+       ))
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = o.id) as items
+       FROM orders o
+       WHERE o.id = ? AND o.user_id = ?`
+    )
+      .bind(orderId, ctx.userId)
+      .first<Order & { items: string; payment_status?: string }>();
+
+    if (!order) {
+      return error('NOT_FOUND', 'Order not found', 404);
+    }
+
+    return json({
+      ...order,
+      shipping_address: JSON.parse(order.shipping_address || '{}'),
+      metadata: JSON.parse(order.metadata || '{}'),
+      items: JSON.parse(order.items || '[]'),
+    });
+  } catch (err) {
+    console.error('[getOrder] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to fetch order', 500);
   }
 }
 

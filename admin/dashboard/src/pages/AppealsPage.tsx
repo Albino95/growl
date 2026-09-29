@@ -75,7 +75,7 @@ export function AppealsPage() {
                   <DataTableCell>{a.action}</DataTableCell>
                   <DataTableCell>{a.reason_code}</DataTableCell>
                   <DataTableCell><Badge variant={statusBadge(a.status)}>{a.status}</Badge></DataTableCell>
-                  <DataTableCell className="text-slate-500">{new Date(a.created_at).toLocaleString()}</DataTableCell>
+                  <DataTableCell className="text-stone-500">{new Date(a.created_at).toLocaleString()}</DataTableCell>
                   <DataTableCell>
                     <div className="flex gap-2">
                       <Button variant="ghost" disabled={busyId === a.id || a.status !== 'pending'} onClick={() => setPrompt({ id: a.id, status: 'upheld' })}>Uphold</Button>

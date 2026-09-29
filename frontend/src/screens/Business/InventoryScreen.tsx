@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedListPerformanceProps } from '../../constants/scroll';
 import { createProduct, updateProduct, deleteProduct } from '../../services/api/marketplace';
 import ProductForm from '../../components/business/ProductForm';
@@ -138,15 +139,15 @@ export default function InventoryScreen() {
           </View>
         </View>
         <View style={tw`flex-row gap-2 mt-3`}>
-          <TouchableOpacity
-            style={tw`flex-1 py-2.5 bg-emerald-600 rounded-xl items-center`}
-            onPress={() => {
-              setEditingProduct(product);
-              setShowProductForm(true);
-            }}
-          >
-            <Text style={tw`text-white font-semibold`}>Edit</Text>
-          </TouchableOpacity>
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label="Edit"
+              onPress={() => {
+                setEditingProduct(product);
+                setShowProductForm(true);
+              }}
+            />
+          </View>
           <TouchableOpacity
             style={tw`px-4 py-2.5 bg-red-50 rounded-xl items-center justify-center`}
             onPress={() => void handleDeleteProduct(product)}
@@ -251,16 +252,13 @@ export default function InventoryScreen() {
       />
 
       <View style={tw`px-5 pb-4 pt-2 border-t border-stone-200/60 bg-surface-page`}>
-        <TouchableOpacity
-          style={tw`bg-emerald-600 rounded-2xl py-4 flex-row items-center justify-center`}
+        <PrimaryButton
+          label="Add product"
           onPress={() => {
             setEditingProduct(null);
             setShowProductForm(true);
           }}
-        >
-          <Ionicons name="add-circle" size={22} color="#FFFFFF" style={tw`mr-2`} />
-          <Text style={tw`text-white font-bold text-base`}>Add product</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       <ProductForm
