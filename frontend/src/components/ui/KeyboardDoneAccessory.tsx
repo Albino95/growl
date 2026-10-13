@@ -34,11 +34,21 @@ export function KeyboardDoneAccessory({
   );
 }
 
-export function formInputAccessoryProps(nativeID: string = FORM_KEYBOARD_DONE_ID) {
+export function formInputAccessoryProps(
+  nativeIDOrOpts: string | { nativeID?: string; multiline?: boolean } = FORM_KEYBOARD_DONE_ID,
+  maybeOpts?: { multiline?: boolean }
+) {
+  const opts =
+    typeof nativeIDOrOpts === 'string'
+      ? { nativeID: nativeIDOrOpts, ...(maybeOpts || {}) }
+      : nativeIDOrOpts || {};
+  const nativeID = opts.nativeID || FORM_KEYBOARD_DONE_ID;
+  const multiline = !!opts.multiline;
   return {
-    returnKeyType: 'done' as const,
-    blurOnSubmit: true,
-    onSubmitEditing: () => Keyboard.dismiss(),
+    // Multiline needs Return for newlines; Done lives on the accessory bar.
+    returnKeyType: (multiline ? 'default' : 'done') as 'default' | 'done',
+    blurOnSubmit: !multiline,
+    ...(multiline ? {} : { onSubmitEditing: () => Keyboard.dismiss() }),
     inputAccessoryViewID: Platform.OS === 'ios' ? nativeID : undefined,
   };
 }

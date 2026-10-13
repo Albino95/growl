@@ -28,7 +28,8 @@ import {
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
 import EmptyState from '../../components/ui/EmptyState';
-import SkeletonCard from '../../components/ui/SkeletonCard';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
+import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
 import HeartBurst from '../../components/feed/HeartBurst';
@@ -37,7 +38,7 @@ import FeedLikeButton, {
   ReactionPickerBar,
   type FeedReaction,
 } from '../../components/feed/FeedLikeButton';
-import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
 import { blockUser, reportContent } from '../../services/api/friends';
@@ -46,8 +47,11 @@ import { alertMessage } from '../../utils/confirmDialog';
 import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
 import type { VideoEditSettings } from '../../components/ui/VideoEditor';
+import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import { createConversation } from '../../services/api/messages';
 
 type Story = {
   id: string;
@@ -85,6 +89,7 @@ type Post = {
   audioUrl?: string;
   audioTitle?: string;
   isReel?: boolean;
+  isInstructor?: boolean;
   mediaType?: string;
   contentType?: string;
   videoEdit?: VideoEditSettings | null;
@@ -183,6 +188,7 @@ export default function FeedScreen({ navigation, route }: any) {
       audioUrl,
       audioTitle,
       isReel: isReelPost(post),
+      isInstructor: !!(post.metadata as { isInstructor?: boolean } | undefined)?.isInstructor,
       mediaType:
         typeof post.metadata?.media_type === 'string' ? post.metadata.media_type : undefined,
       contentType:
@@ -276,12 +282,20 @@ export default function FeedScreen({ navigation, route }: any) {
     if (feedStatus !== 'succeeded') return;
     const all = [...feedFollowing, ...feedSuggested];
     const source = all.length > 0 ? all : feedItems;
-    setPosts(source.map(toLocalPost));
+    // Never show posts without a real hosted media URL (no stock substitutes).
+    setPosts(
+      source
+        .filter((p) => typeof p.image_url === 'string' && /^https:\/\//i.test(p.image_url.trim()))
+        .map(toLocalPost)
+        .filter((p) => Boolean(p.image?.trim()))
+    );
   }, [feedFollowing, feedSuggested, feedItems, feedStatus, user?.id]);
 
   const feedSections = useMemo(() => {
     const mapSection = (items: typeof feedFollowing, title: string) => {
-      const mapped = items.map((raw) => {
+      const mapped = items
+        .filter((raw) => typeof raw.image_url === 'string' && /^https:\/\//i.test(raw.image_url.trim()))
+        .map((raw) => {
         const post = toLocalPost(raw);
         const reaction = reactionsById[post.id];
         if (reaction === undefined) return post;
@@ -291,7 +305,8 @@ export default function FeedScreen({ navigation, route }: any) {
           reaction,
           hasLiked: reaction != null,
         };
-      });
+      })
+        .filter((post) => Boolean(post.image?.trim()));
       const filtered = selectedCategory
         ? mapped.filter((post) =>
             postMatchesCategoryFilter(
@@ -404,6 +419,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
     // Optimistic Redux patch so SectionList re-renders with a filled heart.
     if (opts?.fromDoubleTap && wasLiked) {
+      feedback.like(true);
       playHeartBurst(postId);
       return;
     }
@@ -412,6 +428,8 @@ export default function FeedScreen({ navigation, route }: any) {
     const nextLikes = nextLiked
       ? (current?.likes ?? 0) + 1
       : Math.max(0, (current?.likes ?? 0) - 1);
+
+    feedback.like(nextLiked);
 
     dispatch(
       patchFeedPostEngagement({
@@ -465,7 +483,6 @@ export default function FeedScreen({ navigation, route }: any) {
     const last = lastTapRef.current;
     if (last && last.id === post.id && now - last.at < 320) {
       lastTapRef.current = null;
-      triggerPressFeedback();
       void toggleLike(post.id, { fromDoubleTap: true });
       return;
     }
@@ -751,13 +768,13 @@ export default function FeedScreen({ navigation, route }: any) {
                   style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-[#FFFcf7] overflow-hidden bg-emerald-100`}
                 >
                   <Image
-                    source={{
-                      uri: resolveAvatarUri(
+                    source={avatarSource(
+                      resolveAvatarUri(
                         storyUser.userId,
                         storyUser.username,
                         storyUser.avatar
-                      ),
-                    }}
+                      )
+                    )}
                     style={tw`w-full h-full`}
                     contentFit="cover"
                   />
@@ -786,6 +803,109 @@ export default function FeedScreen({ navigation, route }: any) {
         />
       </View>
 
+      {selectedCategory ? (
+        <View style={tw`mx-4 mt-2 px-4 py-3.5 rounded-2xl bg-[#FFFcf7] border border-emerald-200/80`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            Path home
+          </Text>
+          <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>
+            {getCategoryLabel(selectedCategory)}
+          </Text>
+          <Text style={tw`text-sm text-stone-500 mt-1 leading-5`}>
+            Posts, peers, and instructors on this path. Clear the filter to see everything.
+          </Text>
+          <View style={tw`flex-row mt-3 gap-2`}>
+            <TouchableOpacity
+              onPress={() => {
+                feedback.open();
+                const root = navigation.getParent() || navigation;
+                root.navigate('Post' as never, { category: selectedCategory } as never);
+              }}
+              style={tw`flex-1 py-2.5 rounded-xl bg-emerald-600 items-center`}
+            >
+              <Text style={tw`text-white font-bold text-sm`}>Post on path</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                feedback.select();
+                setSelectedCategory(null);
+              }}
+              style={tw`px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white/70 items-center justify-center`}
+            >
+              <Text style={tw`text-stone-700 font-semibold text-sm`}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      <View style={tw`px-4 mt-3`}>
+        <InstructorDiscoveryStrip
+          forPaths
+          category={selectedCategory}
+          title={
+            selectedCategory
+              ? `Instructors · ${getCategoryLabel(selectedCategory)}`
+              : 'Instructors on your paths'
+          }
+          onOpenProfile={(userId) => {
+            const root = navigation.getParent() || navigation;
+            root.navigate('PublicProfile' as never, { userId } as never);
+          }}
+          onMessage={(person) => {
+            void (async () => {
+              try {
+                const res = await createConversation(person.id);
+                feedback.send();
+                const root = navigation.getParent() || navigation;
+                root.navigate('Messages' as never, {
+                  conversationId: res.data.conversation.id,
+                  targetUserId: person.id,
+                  draftText: `Hi ${person.username} — I’d love guidance on ${
+                    person.shared_categories[0]
+                      ? getCategoryLabel(person.shared_categories[0])
+                      : 'my growth path'
+                  }.`,
+                } as never);
+              } catch (e) {
+                Alert.alert(
+                  'Cannot message',
+                  e instanceof Error ? e.message : 'Become friends to message this instructor.'
+                );
+              }
+            })();
+          }}
+        />
+      </View>
+
+      {(!user?.categories || user.categories.length === 0) && (
+        <View style={tw`mx-4 mt-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            Start here
+          </Text>
+          <Text style={tw`text-[15px] font-bold text-stone-900 mt-1`}>Pick your growth paths</Text>
+          <Text style={tw`text-sm text-stone-500 mt-1 leading-5`}>
+            Paths personalize Home, connect you with peers, and unlock endorsements.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              triggerPressFeedback();
+              navigation.navigate('Profile');
+            }}
+            style={tw`mt-3 py-2.5 rounded-2xl bg-emerald-600 items-center`}
+          >
+            <Text style={tw`text-white font-bold text-sm`}>Choose paths</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {user?.categories && user.categories.length > 0 && posts.length > 0 ? (
+        <View style={tw`mx-4 mt-2`}>
+          <Text style={tw`text-xs text-stone-500 leading-4`}>
+            Suggested faces share a path with you — open a profile to see overlap.
+          </Text>
+        </View>
+      ) : null}
+
       {!hasPostedToday && posts.length > 0 && (
         <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
           <View style={tw`flex-row items-center gap-2`}>
@@ -795,6 +915,7 @@ export default function FeedScreen({ navigation, route }: any) {
             </Text>
             <TouchableOpacity
               onPress={() => {
+                triggerPressFeedback();
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('Post');
               }}
@@ -861,8 +982,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
         {feedStatus === 'loading' && posts.length === 0 ? (
           <View style={tw`px-5 pt-2`}>
-            <SkeletonCard />
-            <SkeletonCard />
+            <SkeletonList variant="post" count={3} />
           </View>
         ) : null}
 
@@ -908,7 +1028,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   }}
                 >
                   <Image
-                    source={{ uri: item.avatar }}
+                    source={avatarSource(item.avatar)}
                     style={tw`w-11 h-11 rounded-full mr-3 shadow-sm`}
                     contentFit="cover"
                   />
@@ -923,6 +1043,14 @@ export default function FeedScreen({ navigation, route }: any) {
                             : item.category}
                         </Text>
                       </View>
+                      {item.isInstructor ? (
+                        <View style={tw`px-2 py-0.5 rounded-full bg-emerald-100 flex-row items-center`}>
+                          <Ionicons name="school" size={10} color="#047857" />
+                          <Text style={tw`text-[10px] font-semibold text-emerald-800 ml-0.5`}>
+                            Instructor
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -1170,58 +1298,58 @@ export default function FeedScreen({ navigation, route }: any) {
           </Modal>
         )}
 
-        {likesModal && (
-          <Modal
-            visible={!!likesModal}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setLikesModal(null)}
-          >
-            <View style={tw`flex-1 bg-black/40 justify-end`}>
-              <View style={tw`bg-white rounded-t-3xl p-4 max-h-[70%]`}>
-                <View style={tw`flex-row items-center justify-between mb-2`}>
-                  <Text style={tw`text-lg font-bold text-stone-900`}>{likesModal.title}</Text>
-                  <TouchableOpacity onPress={() => setLikesModal(null)}>
-                    <Ionicons name="close" size={22} color="#6B7280" />
-                  </TouchableOpacity>
-                </View>
-                {likesModal.subtitle ? (
-                  <Text style={tw`text-sm text-stone-500 mb-3`}>{likesModal.subtitle}</Text>
-                ) : null}
-                {likesLoading ? (
-                  <View style={tw`py-10 items-center`}>
-                    <Text style={tw`text-stone-500`}>Loading likes...</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={likesModal.users}
-                    keyExtractor={(u) => u.id}
-                    renderItem={({ item }) => (
-                      <View style={tw`flex-row items-center py-2.5 border-b border-stone-100`}>
-                        <Image
-                          source={{ uri: resolveAvatarUri(item.id, item.username, item.avatar || null) }}
-                          style={tw`w-9 h-9 rounded-full bg-stone-100 mr-3`}
-                          contentFit="cover"
-                        />
-                        <View style={tw`flex-1`}>
-                          <Text style={tw`font-semibold text-stone-900`}>{item.username}</Text>
-                          {item.isFriend ? (
-                            <Text style={tw`text-xs text-emerald-600`}>Friend</Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    )}
-                    ListEmptyComponent={
-                      <View style={tw`py-8 items-center`}>
-                        <Text style={tw`text-stone-500`}>No likes to show.</Text>
-                      </View>
-                    }
-                  />
-                )}
+        <AnimatedBottomSheet
+          visible={!!likesModal}
+          onClose={() => setLikesModal(null)}
+          maxHeightRatio={0.7}
+        >
+          {({ close }) => (
+            <View style={tw`px-4 pb-2`}>
+              <View style={tw`flex-row items-center justify-between mb-2`}>
+                <Text style={tw`text-lg font-bold text-stone-900`}>
+                  {likesModal?.title || 'Likes'}
+                </Text>
+                <TouchableOpacity onPress={close}>
+                  <Ionicons name="close" size={22} color="#78716C" />
+                </TouchableOpacity>
               </View>
+              {likesModal?.subtitle ? (
+                <Text style={tw`text-sm text-stone-500 mb-3`}>{likesModal.subtitle}</Text>
+              ) : null}
+              {likesLoading ? (
+                <SkeletonList variant="inbox" count={4} />
+              ) : (
+                <FlatList
+                  data={likesModal?.users || []}
+                  keyExtractor={(u) => u.id}
+                  style={{ maxHeight: 360 }}
+                  renderItem={({ item }) => (
+                    <View style={tw`flex-row items-center py-2.5 border-b border-stone-100`}>
+                      <Image
+                        source={avatarSource(
+                          resolveAvatarUri(item.id, item.username, item.avatar || null)
+                        )}
+                        style={tw`w-9 h-9 rounded-full bg-stone-100 mr-3`}
+                        contentFit="cover"
+                      />
+                      <View style={tw`flex-1`}>
+                        <Text style={tw`font-semibold text-stone-900`}>{item.username}</Text>
+                        {item.isFriend ? (
+                          <Text style={tw`text-xs text-emerald-600`}>Friend</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  )}
+                  ListEmptyComponent={
+                    <View style={tw`py-8 items-center`}>
+                      <Text style={tw`text-stone-500`}>No likes to show.</Text>
+                    </View>
+                  }
+                />
+              )}
             </View>
-          </Modal>
-        )}
+          )}
+        </AnimatedBottomSheet>
 
         {postMenuPost && (
           <Modal

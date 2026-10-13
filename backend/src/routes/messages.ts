@@ -122,9 +122,11 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
       const peerId = peerIdFor(row, ctx.userId);
       if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) continue;
 
-      const peer = await env.DB.prepare('SELECT id, metadata FROM users WHERE id = ?')
+      const peer = await env.DB.prepare(
+        'SELECT id, metadata, is_instructor, is_business FROM users WHERE id = ?'
+      )
         .bind(peerId)
-        .first<{ id: string; metadata: string }>();
+        .first<{ id: string; metadata: string; is_instructor: number; is_business: number }>();
 
       if (!peer) continue;
 
@@ -143,6 +145,8 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
           id: peer.id,
           username: meta.username || 'User',
           avatar: meta.avatar || null,
+          is_instructor: !!peer.is_instructor,
+          is_business: !!peer.is_business,
         },
         last_message: row.last_message,
         last_sender_id: row.last_sender_id,
@@ -178,9 +182,11 @@ export async function createConversation(request: Request, env: Env): Promise<Re
     return error('INVALID_REQUEST', 'Cannot message yourself', 400);
   }
 
-  const target = await env.DB.prepare('SELECT id, metadata FROM users WHERE id = ?')
+  const target = await env.DB.prepare(
+    'SELECT id, metadata, is_instructor, is_business FROM users WHERE id = ?'
+  )
     .bind(targetUserId)
-    .first<{ id: string; metadata: string }>();
+    .first<{ id: string; metadata: string; is_instructor: number; is_business: number }>();
 
   if (!target) {
     return error('NOT_FOUND', 'User not found', 404);
@@ -223,6 +229,8 @@ export async function createConversation(request: Request, env: Env): Promise<Re
           id: target.id,
           username: meta.username || 'User',
           avatar: meta.avatar || null,
+          is_instructor: !!target.is_instructor,
+          is_business: !!target.is_business,
         },
         created_at: conversation!.created_at,
         updated_at: conversation!.updated_at,

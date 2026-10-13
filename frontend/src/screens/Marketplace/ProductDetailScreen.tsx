@@ -14,7 +14,7 @@ import tw from '../../lib/tw';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
-import { getProductImageUrl, getProductImages, resolveAvatarUri } from '../../utils/images';
+import { resolveProductImageUri, resolveAvatarUri, avatarSource } from '../../utils/images';
 import { verticalScrollProps, horizontalScrollProps } from '../../constants/scroll';
 import { rankMarketplaceProducts } from '../../utils/ranking';
 import { useAuth } from '../../store/hooks';
@@ -136,13 +136,14 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const productImages = product.images && product.images.length > 0
+  const productImages = (product.images && product.images.length > 0
     ? product.images
     : product.image_url
-    ? [product.image_url]
-    : getProductImages(product.category, product.id, 3);
-
-  const mainImage = productImages[selectedImageIndex] || getProductImageUrl(product.category, product.id);
+      ? [product.image_url]
+      : []
+  )
+    .map((u) => resolveProductImageUri(u))
+    .filter(Boolean);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
@@ -161,47 +162,61 @@ export default function ProductDetailScreen() {
         </View>
 
         <View style={tw`bg-surface-subtle`}>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onMomentumScrollEnd={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / width);
-              setSelectedImageIndex(index);
-            }}
-            style={tw`h-96`}
-          >
-            {productImages.map((image: string, index: number) => (
-              <Image
-                key={index}
-                source={{
-                  uri: failedImageIndexes[index]
-                    ? getProductImageUrl(product.category, `${product.id}-fallback-${index}`)
-                    : image,
+          {productImages.length > 0 ? (
+            <>
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                onMomentumScrollEnd={(e) => {
+                  const index = Math.round(e.nativeEvent.contentOffset.x / width);
+                  setSelectedImageIndex(index);
                 }}
-                style={{ width, height: 384 }}
-                contentFit="cover"
-                onError={() => {
-                  setFailedImageIndexes((prev) =>
-                    prev[index] ? prev : { ...prev, [index]: true }
-                  );
-                }}
-              />
-            ))}
-          </ScrollView>
-
-          {/* Image Indicators */}
-          {productImages.length > 1 && (
-            <View style={tw`flex-row justify-center py-2`}>
-              {productImages.map((_: string, index: number) => (
-                <View
-                  key={index}
-                  style={tw`w-2 h-2 rounded-full mx-1 ${
-                    index === selectedImageIndex ? 'bg-brand-600' : 'bg-stone-300'
-                  }`}
-                />
-              ))}
+                style={tw`h-96`}
+              >
+                {productImages.map((image: string, index: number) =>
+                  failedImageIndexes[index] ? (
+                    <View
+                      key={index}
+                      style={[
+                        tw`items-center justify-center bg-stone-200`,
+                        { width, height: 384 },
+                      ]}
+                    >
+                      <Ionicons name="image-outline" size={40} color="#A8A29E" />
+                    </View>
+                  ) : (
+                    <Image
+                      key={index}
+                      source={{ uri: image }}
+                      style={{ width, height: 384 }}
+                      contentFit="cover"
+                      onError={() => {
+                        setFailedImageIndexes((prev) =>
+                          prev[index] ? prev : { ...prev, [index]: true }
+                        );
+                      }}
+                    />
+                  )
+                )}
+              </ScrollView>
+              {productImages.length > 1 ? (
+                <View style={tw`flex-row justify-center py-2`}>
+                  {productImages.map((_: string, index: number) => (
+                    <View
+                      key={index}
+                      style={tw`w-2 h-2 rounded-full mx-1 ${
+                        index === selectedImageIndex ? 'bg-brand-600' : 'bg-stone-300'
+                      }`}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <View style={[tw`items-center justify-center bg-stone-200`, { height: 384 }]}>
+              <Ionicons name="image-outline" size={40} color="#A8A29E" />
             </View>
           )}
         </View>
@@ -212,13 +227,13 @@ export default function ProductDetailScreen() {
           {product.business && (
             <View style={tw`flex-row items-center mb-4`}>
               <Image
-                source={{
-                  uri: resolveAvatarUri(
+                source={avatarSource(
+                  resolveAvatarUri(
                     product.business.id,
                     product.business.username,
                     product.business.avatar
-                  ),
-                }}
+                  )
+                )}
                 style={tw`w-8 h-8 rounded-full mr-2 bg-surface-subtle`}
               />
               <Text style={tw`text-sm text-stone-600`}>
@@ -313,8 +328,7 @@ export default function ProductDetailScreen() {
               <SectionLabel variant="caps">You may also like</SectionLabel>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} {...horizontalScrollProps}>
                 {relatedProducts.map((item) => {
-                  const thumb =
-                    item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
+                  const thumb = resolveProductImageUri(item.image_url, item.images);
                   return (
                     <TouchableOpacity
                       key={item.id}
@@ -326,7 +340,13 @@ export default function ProductDetailScreen() {
                       }
                       style={tw`w-36 mr-3 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}
                     >
-                      <Image source={{ uri: thumb }} style={tw`w-full h-40 bg-surface-subtle`} contentFit="cover" />
+                      {thumb ? (
+                        <Image source={{ uri: thumb }} style={tw`w-full h-40 bg-surface-subtle`} contentFit="cover" />
+                      ) : (
+                        <View style={tw`w-full h-40 bg-surface-subtle items-center justify-center`}>
+                          <Ionicons name="image-outline" size={28} color="#A8A29E" />
+                        </View>
+                      )}
                       <View style={tw`p-2`}>
                         <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
                           {item.name}

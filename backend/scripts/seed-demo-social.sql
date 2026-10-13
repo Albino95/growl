@@ -1,19 +1,9 @@
--- Demo users, posts, stories, sample engagement, and friend edges for Growl (D1 / SQLite).
---
--- Apply locally (from repo root):
---   cd backend && npx wrangler d1 execute growl-db --local --file=scripts/seed-demo-social.sql
--- Or absolute:
---   cd /path/to/growl_rn_ts_twrnc_sdk54_v5/backend && npx wrangler d1 execute growl-db --local --file=scripts/seed-demo-social.sql
--- Remote (production Worker DB binding uses database_name = growl-db):
---   cd backend && npx wrangler d1 execute growl-db --remote --file=scripts/seed-demo-social.sql
---
--- Sign-in: plain password over HTTPS — password for every account below: growlseed123
--- Emails: demo-fitness@growl.seed, demo-art@growl.seed, demo-violin@growl.seed, demo-mind@growl.seed, demo-nutrition@growl.seed
---         demo-runner@growl.seed, demo-yoga@growl.seed, demo-reader@growl.seed, demo-creator@growl.seed, demo-coder@growl.seed
+-- Curated demo users/posts/stories — category + image + caption aligned.
+-- Password for every account below: growlseed123
+-- Avatars/images are HTTPS URLs stored in D1 (backend-owned), not client catalogs.
 
 PRAGMA foreign_keys = ON;
 
--- Shared password hash (SHA-256 hex of "growlseed123")
 INSERT OR REPLACE INTO users (
   id, email, password_hash, points, is_instructor, is_business, metadata,
   email_verified, email_verification_token_hash, email_verification_expires_at,
@@ -21,75 +11,111 @@ INSERT OR REPLACE INTO users (
 )
 VALUES
   ('seed-u-fitness', 'demo-fitness@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 420, 1, 0,
-   '{"username":"Jordan Miles","avatar":"https://i.pravatar.cc/150?img=12","categories":["fitness:losing-weight"]}',
+   '{"username":"Jordan Miles","avatar":"https://randomuser.me/api/portraits/men/32.jpg","bio":"Rebuilding habits around movement — walks, weights, honest weeks.","status":"Hit my step goal before noon.","categories":["fitness:losing-weight","fitness:strength"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-art', 'demo-art@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 310, 1, 0,
-   '{"username":"River Keys","avatar":"https://i.pravatar.cc/150?img=33","categories":["art:piano"]}',
+   '{"username":"River Keys","avatar":"https://randomuser.me/api/portraits/women/44.jpg","bio":"Piano after a long break. Scales before songs.","status":"30 focused minutes at the keys.","categories":["art:piano"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-violin', 'demo-violin@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 280, 0, 0,
-   '{"username":"Casey Strings","avatar":"https://i.pravatar.cc/150?img=47","categories":["art:violin"]}',
+   '{"username":"Casey Strings","avatar":"https://randomuser.me/api/portraits/women/68.jpg","bio":"Violin practice logs live here.","status":"Bow rosined. Ready.","categories":["art:violin"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-mind', 'demo-mind@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 195, 0, 0,
-   '{"username":"Morgan Calm","avatar":"https://i.pravatar.cc/150?img=5","categories":["mindset:meditation"]}',
+   '{"username":"Morgan Calm","avatar":"https://randomuser.me/api/portraits/women/12.jpg","bio":"Stress tools that fit a busy calendar.","status":"Nervous system reset complete.","categories":["mindset:stress-management","mindset:positive-thinking"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-nutrition', 'demo-nutrition@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 240, 0, 0,
-   '{"username":"Sam Prep","avatar":"https://i.pravatar.cc/150?img=56","categories":["nutrition:meal-planning"]}',
+   '{"username":"Sam Prep","avatar":"https://randomuser.me/api/portraits/men/52.jpg","bio":"Meal prep Sundays. Future me says thanks.","status":"Prep done for the week.","categories":["nutrition:meal-planning","nutrition:healthy-eating"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-runner', 'demo-runner@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 268, 0, 0,
-   '{"username":"Avery Pace","avatar":"https://i.pravatar.cc/150?img=21","categories":["fitness:cardio","mindset:discipline"]}',
+   '{"username":"Avery Pace","avatar":"https://randomuser.me/api/portraits/women/21.jpg","bio":"Running for clarity as much as fitness.","status":"Negative split on the 5K.","categories":["fitness:cardio","discipline:habit-building"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-yoga', 'demo-yoga@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 332, 1, 0,
-   '{"username":"Nina Flow","avatar":"https://i.pravatar.cc/150?img=31","categories":["fitness:flexibility","mindset:meditation"]}',
+   '{"username":"Nina Flow","avatar":"https://randomuser.me/api/portraits/women/31.jpg","bio":"Yoga + mobility for desk athletes.","status":"Evening flow done.","categories":["fitness:flexibility","wellness:self-care"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-reader', 'demo-reader@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 180, 0, 0,
-   '{"username":"Leo Notes","avatar":"https://i.pravatar.cc/150?img=36","categories":["mindset:focus","art:writing"]}',
+   '{"username":"Leo Notes","avatar":"https://randomuser.me/api/portraits/men/36.jpg","bio":"Protecting attention like a scarce resource.","status":"Deep-work block complete.","categories":["discipline:productivity","mindset:self-confidence"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-creator', 'demo-creator@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 226, 0, 0,
-   '{"username":"Mia Canvas","avatar":"https://i.pravatar.cc/150?img=42","categories":["art:drawing","art:piano"]}',
+   '{"username":"Mia Canvas","avatar":"https://randomuser.me/api/portraits/women/42.jpg","bio":"Drawing every day — sketchbooks over scrolls.","status":"Filled three pages today.","categories":["art:drawing","art:painting"]}',
    1, NULL, NULL, datetime('now'), datetime('now')),
   ('seed-u-coder', 'demo-coder@growl.seed', 'ae68d3ddb474a3769a06f7c5e5a34bd24f5c8d42a19c1b02fcf06b3f84082beb', 410, 0, 0,
-   '{"username":"Kai Build","avatar":"https://i.pravatar.cc/150?img=62","categories":["mindset:discipline","nutrition:healthy-eating"]}',
+   '{"username":"Kai Build","avatar":"https://randomuser.me/api/portraits/men/62.jpg","bio":"Web + mobile shipping. Small PRs, clear builds.","status":"Build green.","categories":["coding:web-development","coding:mobile-development"]}',
    1, NULL, NULL, datetime('now'), datetime('now'));
 
--- Posts (real HTTPS images — good for feed / reels / explore)
 INSERT OR IGNORE INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at)
 VALUES
-  ('seed-post-001', 'seed-u-fitness', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b84d4?w=900&q=80',
-   'Leg day checkpoint — slow reps, clean form.', 'fitness', 'losing-weight', 42, '{}', datetime('now', '-2 hours'), datetime('now', '-2 hours')),
-  ('seed-post-002', 'seed-u-fitness', 'https://images.unsplash.com/photo-1517836357483-507a3093906b?w=900&q=80',
-   'Morning mobility stack before work.', 'fitness', 'flexibility', 28, '{}', datetime('now', '-14 hours'), datetime('now', '-14 hours')),
-  ('seed-post-003', 'seed-u-art', 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=900&q=80',
-   'Recording a practice loop — left hand finally relaxed.', 'art', 'piano', 55, '{}', datetime('now', '-5 hours'), datetime('now', '-5 hours')),
-  ('seed-post-004', 'seed-u-art', 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=900&q=80',
-   'Sketch warm-ups before studio time.', 'art', 'drawing', 19, '{}', datetime('now', '-30 hours'), datetime('now', '-30 hours')),
-  ('seed-post-005', 'seed-u-violin', 'https://images.unsplash.com/photo-1465821185615-75bee83ea78f?w=900&q=80',
-   'Intonation drills — boring but it compounds.', 'art', 'violin', 33, '{}', datetime('now', '-8 hours'), datetime('now', '-8 hours')),
-  ('seed-post-006', 'seed-u-mind', 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=900&q=80',
-   'Ten mindful breaths between meetings.', 'mindset', 'meditation', 61, '{}', datetime('now', '-1 hours'), datetime('now', '-1 hours')),
-  ('seed-post-007', 'seed-u-mind', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=900&q=80',
-   'Evening wind-down stretch + journaling.', 'mindset', 'stress-management', 22, '{}', datetime('now', '-40 hours'), datetime('now', '-40 hours')),
-  ('seed-post-008', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=900&q=80',
-   'Batch roasted veg for the week — less delivery guilt.', 'nutrition', 'meal-planning', 37, '{}', datetime('now', '-3 hours'), datetime('now', '-3 hours')),
-  ('seed-post-009', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=900&q=80',
-   'High-protein bowl template I rotate.', 'nutrition', 'healthy-eating', 44, '{}', datetime('now', '-18 hours'), datetime('now', '-18 hours')),
-  ('seed-post-010', 'seed-u-fitness', 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=900&q=80',
-   'Easy interval run — staying conversational.', 'fitness', 'cardio', 31, '{}', datetime('now', '-50 hours'), datetime('now', '-50 hours')),
-  ('seed-post-011', 'seed-u-runner', 'https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=900&q=80',
-   'Tempo run before sunrise. 5k negative split.', 'fitness', 'cardio', 36, '{}', datetime('now', '-4 hours'), datetime('now', '-4 hours')),
-  ('seed-post-012', 'seed-u-yoga', 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=900&q=80',
-   'Mobility + breathwork circuit for desk workers.', 'fitness', 'flexibility', 41, '{}', datetime('now', '-6 hours'), datetime('now', '-6 hours')),
-  ('seed-post-013', 'seed-u-reader', 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=900&q=80',
-   '25 minutes deep reading, phone in another room.', 'mindset', 'focus', 24, '{}', datetime('now', '-7 hours'), datetime('now', '-7 hours')),
-  ('seed-post-014', 'seed-u-creator', 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=900&q=80',
-   'Gesture sketches to loosen the wrist.', 'art', 'drawing', 29, '{}', datetime('now', '-9 hours'), datetime('now', '-9 hours')),
-  ('seed-post-015', 'seed-u-coder', 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=900&q=80',
-   'Batch-cooked lunch + code sprint. Better energy all day.', 'nutrition', 'healthy-eating', 38, '{}', datetime('now', '-11 hours'), datetime('now', '-11 hours')),
-  ('seed-post-016', 'demo-core-user', 'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=900&q=80',
-   'Back to consistency: 20 min training + 10 min journal.', 'fitness', 'building-muscle', 47, '{}', datetime('now', '-2.5 hours'), datetime('now', '-2.5 hours')),
-  ('seed-post-017', 'demo-core-user', 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=900&q=80',
-   'Meal prep Sunday done. Future me says thanks.', 'nutrition', 'meal-planning', 34, '{}', datetime('now', '-16 hours'), datetime('now', '-16 hours'));
+  ('seed-post-001', 'seed-u-fitness', 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=1080&h=1350&fit=crop&q=80',
+   'Morning walk + light weights. Consistency over intensity this week.', 'fitness', 'losing-weight', 42,
+   '{"username":"Jordan Miles","avatar":"https://randomuser.me/api/portraits/men/32.jpg","likes":18,"comments":2,"isInstructor":true}',
+   datetime('now', '-2 hours'), datetime('now', '-2 hours')),
+  ('seed-post-002', 'seed-u-fitness', 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1080&h=1350&fit=crop&q=80',
+   'Strength block: heavy compounds, long rests.', 'fitness', 'strength', 28,
+   '{"username":"Jordan Miles","avatar":"https://randomuser.me/api/portraits/men/32.jpg","likes":12,"comments":1,"isInstructor":true}',
+   datetime('now', '-14 hours'), datetime('now', '-14 hours')),
+  ('seed-post-003', 'seed-u-art', 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=1080&h=1350&fit=crop&q=80',
+   'Recording a practice loop — left hand finally relaxed.', 'art', 'piano', 55,
+   '{"username":"River Keys","avatar":"https://randomuser.me/api/portraits/women/44.jpg","likes":24,"comments":3,"isInstructor":true}',
+   datetime('now', '-5 hours'), datetime('now', '-5 hours')),
+  ('seed-post-004', 'seed-u-creator', 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1080&h=1350&fit=crop&q=80',
+   'Gesture sketches to loosen the wrist.', 'art', 'drawing', 19,
+   '{"username":"Mia Canvas","avatar":"https://randomuser.me/api/portraits/women/42.jpg","likes":9,"comments":1}',
+   datetime('now', '-30 hours'), datetime('now', '-30 hours')),
+  ('seed-post-005', 'seed-u-violin', 'https://images.unsplash.com/photo-1612225330812-01a9c6b355ec?w=1080&h=1350&fit=crop&q=80',
+   'Intonation drills — boring but it compounds.', 'art', 'violin', 33,
+   '{"username":"Casey Strings","avatar":"https://randomuser.me/api/portraits/women/68.jpg","likes":14,"comments":2}',
+   datetime('now', '-8 hours'), datetime('now', '-8 hours')),
+  ('seed-post-006', 'seed-u-mind', 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1080&h=1350&fit=crop&q=80',
+   'Ten mindful breaths between meetings.', 'mindset', 'stress-management', 61,
+   '{"username":"Morgan Calm","avatar":"https://randomuser.me/api/portraits/women/12.jpg","likes":31,"comments":4}',
+   datetime('now', '-1 hours'), datetime('now', '-1 hours')),
+  ('seed-post-007', 'seed-u-mind', 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?w=1080&h=1350&fit=crop&q=80',
+   'Wrote three things that went right before checking email.', 'mindset', 'positive-thinking', 22,
+   '{"username":"Morgan Calm","avatar":"https://randomuser.me/api/portraits/women/12.jpg","likes":11,"comments":1}',
+   datetime('now', '-40 hours'), datetime('now', '-40 hours')),
+  ('seed-post-008', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=1080&h=1350&fit=crop&q=80',
+   'Sunday prep: roasted veg + proteins for four days.', 'nutrition', 'meal-planning', 37,
+   '{"username":"Sam Prep","avatar":"https://randomuser.me/api/portraits/men/52.jpg","likes":16,"comments":2}',
+   datetime('now', '-3 hours'), datetime('now', '-3 hours')),
+  ('seed-post-009', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=1080&h=1350&fit=crop&q=80',
+   'Colorful plate rule: half vegetables today.', 'nutrition', 'healthy-eating', 44,
+   '{"username":"Sam Prep","avatar":"https://randomuser.me/api/portraits/men/52.jpg","likes":20,"comments":2}',
+   datetime('now', '-18 hours'), datetime('now', '-18 hours')),
+  ('seed-post-010', 'seed-u-runner', 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=1080&h=1350&fit=crop&q=80',
+   'Easy 5K — stayed conversational the whole way.', 'fitness', 'cardio', 31,
+   '{"username":"Avery Pace","avatar":"https://randomuser.me/api/portraits/women/21.jpg","likes":13,"comments":1}',
+   datetime('now', '-50 hours'), datetime('now', '-50 hours')),
+  ('seed-post-011', 'seed-u-runner', 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=1080&h=1350&fit=crop&q=80',
+   'Sunrise intervals. Legs heavy, mood lighter.', 'fitness', 'cardio', 36,
+   '{"username":"Avery Pace","avatar":"https://randomuser.me/api/portraits/women/21.jpg","likes":15,"comments":2}',
+   datetime('now', '-4 hours'), datetime('now', '-4 hours')),
+  ('seed-post-012', 'seed-u-yoga', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=1080&h=1350&fit=crop&q=80',
+   '20-minute yoga flow — spine finally happy.', 'fitness', 'flexibility', 41,
+   '{"username":"Nina Flow","avatar":"https://randomuser.me/api/portraits/women/31.jpg","likes":19,"comments":2,"isInstructor":true}',
+   datetime('now', '-6 hours'), datetime('now', '-6 hours')),
+  ('seed-post-013', 'seed-u-reader', 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=1080&h=1350&fit=crop&q=80',
+   'Two deep-work blocks. Phone in another room.', 'discipline', 'productivity', 24,
+   '{"username":"Leo Notes","avatar":"https://randomuser.me/api/portraits/men/36.jpg","likes":10,"comments":1}',
+   datetime('now', '-7 hours'), datetime('now', '-7 hours')),
+  ('seed-post-014', 'seed-u-creator', 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=1080&h=1350&fit=crop&q=80',
+   'Underpainting done. Color tomorrow.', 'art', 'painting', 29,
+   '{"username":"Mia Canvas","avatar":"https://randomuser.me/api/portraits/women/42.jpg","likes":12,"comments":1}',
+   datetime('now', '-9 hours'), datetime('now', '-9 hours')),
+  ('seed-post-015', 'seed-u-coder', 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=1080&h=1350&fit=crop&q=80',
+   'Shipped a small UI polish PR. Details compound.', 'coding', 'web-development', 38,
+   '{"username":"Kai Build","avatar":"https://randomuser.me/api/portraits/men/62.jpg","likes":17,"comments":3}',
+   datetime('now', '-11 hours'), datetime('now', '-11 hours')),
+  ('seed-post-016', 'demo-core-user', 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1080&h=1350&fit=crop&q=80',
+   'Pull day locked in — slow eccentrics on rows.', 'fitness', 'building-muscle', 47,
+   '{"username":"Demo User","avatar":"https://randomuser.me/api/portraits/men/32.jpg","likes":22,"comments":2}',
+   datetime('now', '-2.5 hours'), datetime('now', '-2.5 hours')),
+  ('seed-post-017', 'demo-core-user', 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1080&h=1350&fit=crop&q=80',
+   'Meal prep Sunday done. Future me says thanks.', 'nutrition', 'meal-planning', 34,
+   '{"username":"Demo User","avatar":"https://randomuser.me/api/portraits/men/32.jpg","likes":14,"comments":1}',
+   datetime('now', '-16 hours'), datetime('now', '-16 hours')),
+  ('seed-post-018', 'seed-u-coder', 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=1080&h=1350&fit=crop&q=80',
+   'Simulator run of the onboarding flow. One less friction point.', 'coding', 'mobile-development', 27,
+   '{"username":"Kai Build","avatar":"https://randomuser.me/api/portraits/men/62.jpg","likes":11,"comments":1}',
+   datetime('now', '-22 hours'), datetime('now', '-22 hours'));
 
--- Sample likes so Explore / feed engagement signals are non-zero
 INSERT OR IGNORE INTO post_engagement (id, post_id, user_id, type, content, created_at)
 VALUES
   ('seed-pe-like-1', 'seed-post-001', 'seed-u-art', 'like', NULL, datetime('now', '-1 hours')),
@@ -103,33 +129,34 @@ VALUES
   ('seed-pe-like-9', 'seed-post-016', 'seed-u-yoga', 'like', NULL, datetime('now', '-62 minutes')),
   ('seed-pe-like-10', 'seed-post-017', 'seed-u-nutrition', 'like', NULL, datetime('now', '-40 minutes')),
   ('seed-pe-like-11', 'seed-post-015', 'demo-core-user', 'like', NULL, datetime('now', '-30 minutes')),
-  ('seed-pe-cmt-1', 'seed-post-003', 'seed-u-violin', 'comment', 'Love this progress!', datetime('now', '-4 hours')),
-  ('seed-pe-cmt-2', 'seed-post-016', 'seed-u-fitness', 'comment', 'Strong comeback. Keep stacking days.', datetime('now', '-55 minutes')),
-  ('seed-pe-cmt-3', 'seed-post-017', 'seed-u-coder', 'comment', 'Meal prep is the hidden superpower.', datetime('now', '-35 minutes'));
+  ('seed-pe-cmt-1', 'seed-post-003', 'seed-u-violin', 'comment', 'Love this practice progress!', datetime('now', '-4 hours')),
+  ('seed-pe-cmt-2', 'seed-post-016', 'seed-u-fitness', 'comment', 'Form looks solid. Keep stacking sessions.', datetime('now', '-55 minutes')),
+  ('seed-pe-cmt-3', 'seed-post-017', 'seed-u-coder', 'comment', 'Meal prep is the hidden superpower.', datetime('now', '-35 minutes')),
+  ('seed-pe-cmt-4', 'seed-post-015', 'seed-u-reader', 'comment', 'Nice ship. Details compound.', datetime('now', '-20 minutes'));
 
--- Stories (24h window on feed ring for others; profile uses longer window for owner)
 INSERT OR IGNORE INTO stories (id, user_id, image_url, caption, views, expires_at, created_at, updated_at)
 VALUES
-  ('seed-story-001', 'seed-u-fitness', 'https://images.unsplash.com/photo-1517836357483-507a3093906b?w=800&q=80',
-   'Mobility stack', 0, datetime('now', '+20 hours'), datetime('now', '-1 hours'), datetime('now', '-1 hours')),
-  ('seed-story-002', 'seed-u-fitness', 'https://images.unsplash.com/photo-1576678927484-cc907957088c?w=800&q=80',
-   'Post-run shake', 0, datetime('now', '+18 hours'), datetime('now', '-20 minutes'), datetime('now', '-20 minutes')),
-  ('seed-story-003', 'seed-u-art', 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=800&q=80',
-   'Studio tonight', 0, datetime('now', '+22 hours'), datetime('now', '-3 hours'), datetime('now', '-3 hours')),
-  ('seed-story-004', 'seed-u-violin', 'https://images.unsplash.com/photo-1465821185615-75bee83ea78f?w=800&q=80',
-   'Bow rosined ✓', 0, datetime('now', '+21 hours'), datetime('now', '-45 minutes'), datetime('now', '-45 minutes')),
-  ('seed-story-005', 'seed-u-mind', 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&q=80',
-   'Reset breaths', 0, datetime('now', '+23 hours'), datetime('now', '-2 hours'), datetime('now', '-2 hours')),
-  ('seed-story-006', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
-   'Lunch prep done', 0, datetime('now', '+19 hours'), datetime('now', '-90 minutes'), datetime('now', '-90 minutes')),
-  ('seed-story-007', 'seed-u-runner', 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&q=80',
-   'Track session complete', 0, datetime('now', '+20 hours'), datetime('now', '-50 minutes'), datetime('now', '-50 minutes')),
-  ('seed-story-008', 'seed-u-yoga', 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&q=80',
-   'Sunset flow', 0, datetime('now', '+21 hours'), datetime('now', '-35 minutes'), datetime('now', '-35 minutes')),
-  ('seed-story-009', 'demo-core-user', 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80',
-   'Consistency > intensity', 0, datetime('now', '+22 hours'), datetime('now', '-28 minutes'), datetime('now', '-28 minutes'));
+  ('seed-story-001', 'seed-u-fitness', 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1080&h=1350&fit=crop&q=80',
+   'Gym check-in', 0, datetime('now', '+20 hours'), datetime('now', '-1 hours'), datetime('now', '-1 hours')),
+  ('seed-story-002', 'seed-u-fitness', 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=1080&h=1350&fit=crop&q=80',
+   'Walk done', 0, datetime('now', '+18 hours'), datetime('now', '-20 minutes'), datetime('now', '-20 minutes')),
+  ('seed-story-003', 'seed-u-art', 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=1080&h=1350&fit=crop&q=80',
+   'Keys warm', 0, datetime('now', '+22 hours'), datetime('now', '-3 hours'), datetime('now', '-3 hours')),
+  ('seed-story-004', 'seed-u-violin', 'https://images.unsplash.com/photo-1612225330812-01a9c6b355ec?w=1080&h=1350&fit=crop&q=80',
+   'Rosined', 0, datetime('now', '+21 hours'), datetime('now', '-45 minutes'), datetime('now', '-45 minutes')),
+  ('seed-story-005', 'seed-u-mind', 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1080&h=1350&fit=crop&q=80',
+   'Breathe', 0, datetime('now', '+23 hours'), datetime('now', '-2 hours'), datetime('now', '-2 hours')),
+  ('seed-story-006', 'seed-u-nutrition', 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=1080&h=1350&fit=crop&q=80',
+   'Prep day', 0, datetime('now', '+19 hours'), datetime('now', '-90 minutes'), datetime('now', '-90 minutes')),
+  ('seed-story-007', 'seed-u-runner', 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=1080&h=1350&fit=crop&q=80',
+   'Miles logged', 0, datetime('now', '+20 hours'), datetime('now', '-50 minutes'), datetime('now', '-50 minutes')),
+  ('seed-story-008', 'seed-u-yoga', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=1080&h=1350&fit=crop&q=80',
+   'On the mat', 0, datetime('now', '+21 hours'), datetime('now', '-35 minutes'), datetime('now', '-35 minutes')),
+  ('seed-story-009', 'demo-core-user', 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1080&h=1350&fit=crop&q=80',
+   'Pull session', 0, datetime('now', '+22 hours'), datetime('now', '-28 minutes'), datetime('now', '-28 minutes')),
+  ('seed-story-010', 'seed-u-coder', 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=1080&h=1350&fit=crop&q=80',
+   'PR shipped', 0, datetime('now', '+20 hours'), datetime('now', '-40 minutes'), datetime('now', '-40 minutes'));
 
--- Mutual friends (cohort overlap: art↔art, fitness↔nutrition, demo user↔fitness seed)
 INSERT OR IGNORE INTO user_relationships (id, user_id, target_user_id, type, created_at)
 VALUES
   ('seed-rel-friend-1', 'seed-u-art', 'seed-u-violin', 'friend', datetime('now')),

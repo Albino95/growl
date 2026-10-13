@@ -26,7 +26,7 @@ import {
   OrderItem,
   ShippingAddress,
 } from '../../services/api/marketplace';
-import { getProductImageUrl } from '../../utils/images';
+import { resolveProductImageUri } from '../../utils/images';
 import type { Product } from '../../services/api/marketplace';
 import LocationPickerSheet, {
   type LocationOption,
@@ -431,10 +431,9 @@ export default function CheckoutScreen() {
             <Text style={tw`text-lg font-semibold text-stone-900`}>Order Items</Text>
           </View>
           {cartItems.map((item, index) => {
-            const productImage =
-              item.product?.image_url ||
-              item.product?.images?.[0] ||
-              (item.product ? getProductImageUrl(item.product.category, item.product.id) : '');
+            const productImage = item.product
+              ? resolveProductImageUri(item.product.image_url, item.product.images)
+              : '';
             const isLast = index === cartItems.length - 1;
             return (
               <View

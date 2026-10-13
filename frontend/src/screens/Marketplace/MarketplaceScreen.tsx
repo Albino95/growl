@@ -3,10 +3,8 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Modal,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,17 +15,21 @@ import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
 import tw from '../../lib/tw';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
-import { getProductImageUrl } from '../../utils/images';
+import { resolveProductImageUri } from '../../utils/images';
 import EmptyState from '../../components/ui/EmptyState';
 import SearchField from '../../components/ui/SearchField';
 import SectionLabel from '../../components/ui/SectionLabel';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import MarketplaceCategoryBar from '../../components/marketplace/MarketplaceCategoryBar';
+import PressableScale from '../../components/ui/PressableScale';
+import FadeInUp from '../../components/ui/FadeInUp';
+import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
 import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import CATEGORIES from '../../data/categories';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { feedback } from '../../utils/interactionFeedback';
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
@@ -39,6 +41,11 @@ export default function MarketplaceScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [failedProductImages, setFailedProductImages] = useState<Record<string, boolean>>({});
+
+  const productThumb = (item: ApiProduct) => {
+    if (failedProductImages[item.id]) return '';
+    return resolveProductImageUri(item.image_url, item.images);
+  };
   const [filterOpen, setFilterOpen] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [onMyPathsOnly, setOnMyPathsOnly] = useState(false);
@@ -213,33 +220,39 @@ export default function MarketplaceScreen() {
         <GrowChromeHeader
           right={
             <>
-              <TouchableOpacity
-                onPress={() => setFilterOpen(true)}
+              <PressableScale
+                onPress={() => {
+                  feedback.open();
+                  setFilterOpen(true);
+                }}
+                feedback={false}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
                 accessibilityLabel="Open filters"
               >
                 <Ionicons name="options-outline" size={17} color="#059669" />
-              </TouchableOpacity>
-              <TouchableOpacity
+              </PressableScale>
+              <PressableScale
                 onPress={() => {
+                  feedback.open();
                   const rootNavigation = navigation.getParent() || navigation;
                   rootNavigation.navigate('UserOrders' as never);
                 }}
+                feedback={false}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
                 accessibilityLabel="Your orders"
               >
                 <Ionicons name="receipt-outline" size={17} color="#059669" />
-              </TouchableOpacity>
+              </PressableScale>
             </>
           }
         />
 
-        <View style={tw`px-5 pt-3 pb-2`}>
+        <FadeInUp style={tw`px-5 pt-3 pb-2`}>
           <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Shop</Text>
           <Text style={tw`text-sm text-stone-500 mb-2`}>
             Gear ranked for your growth paths — filter with the capsules below.
           </Text>
-        </View>
+        </FadeInUp>
 
         <MarketplaceCategoryBar
           categoryKeys={categories}
@@ -274,12 +287,12 @@ export default function MarketplaceScreen() {
             }
             ListHeaderComponent={
               <>
-                <View style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
+                <FadeInUp style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
                   <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
                   <Text style={tw`text-emerald-100 text-sm mt-1`}>
                     Products ranked by your interests and community picks.
                   </Text>
-                </View>
+                </FadeInUp>
                 <SearchField
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -331,15 +344,13 @@ export default function MarketplaceScreen() {
                       {...horizontalScrollProps}
                     >
                       {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
-                        const defaultImage =
-                          item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
-                        const productImage = failedProductImages[item.id]
-                          ? getProductImageUrl(item.category, item.id)
-                          : defaultImage;
+                        const productImage = productThumb(item);
                         return (
-                          <TouchableOpacity
+                          <PressableScale
                             key={item.id}
-                            style={tw`w-40 mr-3 bg-white border border-stone-100 rounded-2xl overflow-hidden`}
+                            feedback="open"
+                            pressedScale={0.97}
+                            style={tw`w-40 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
                             onPress={() => {
                               const rootNavigation = navigation.getParent() || navigation;
                               (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
@@ -348,11 +359,22 @@ export default function MarketplaceScreen() {
                               );
                             }}
                           >
-                            <Image
-                              source={{ uri: productImage }}
-                              style={tw`w-full h-48 bg-stone-100`}
-                              contentFit="cover"
-                            />
+                            {productImage ? (
+                              <Image
+                                source={{ uri: productImage }}
+                                style={tw`w-full h-48 bg-stone-100`}
+                                contentFit="cover"
+                                onError={() => {
+                                  setFailedProductImages((prev) =>
+                                    prev[item.id] ? prev : { ...prev, [item.id]: true }
+                                  );
+                                }}
+                              />
+                            ) : (
+                              <View style={tw`w-full h-48 bg-stone-100 items-center justify-center`}>
+                                <Ionicons name="image-outline" size={28} color="#A8A29E" />
+                              </View>
+                            )}
                             <View style={tw`p-2.5`}>
                               <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
                                 {item.name}
@@ -368,7 +390,7 @@ export default function MarketplaceScreen() {
                                 <Text style={tw`text-[10px] text-violet-600 mt-0.5`}>New</Text>
                               ) : null}
                             </View>
-                          </TouchableOpacity>
+                          </PressableScale>
                         );
                       })}
                     </ScrollView>
@@ -386,14 +408,12 @@ export default function MarketplaceScreen() {
               </>
             }
             renderItem={({ item }) => {
-              const defaultImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
-              const productImage = failedProductImages[item.id]
-                ? getProductImageUrl(item.category, item.id)
-                : defaultImage;
+              const productImage = productThumb(item);
               return (
-                <TouchableOpacity
-                  style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
-                  activeOpacity={0.85}
+                <PressableScale
+                  style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4 mb-3`}
+                  feedback="open"
+                  pressedScale={0.985}
                   onPress={() => {
                     const rootNavigation = navigation.getParent() || navigation;
                     (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
@@ -402,17 +422,28 @@ export default function MarketplaceScreen() {
                   }}
                 >
                   <View style={tw`flex-row`}>
-                    <Image
-                      source={{ uri: productImage }}
-                      style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 96, height: 120 }]}
-                      contentFit="cover"
-                      transition={150}
-                      onError={() => {
-                        setFailedProductImages((prev) =>
-                          prev[item.id] ? prev : { ...prev, [item.id]: true }
-                        );
-                      }}
-                    />
+                    {productImage ? (
+                      <Image
+                        source={{ uri: productImage }}
+                        style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 96, height: 120 }]}
+                        contentFit="cover"
+                        transition={150}
+                        onError={() => {
+                          setFailedProductImages((prev) =>
+                            prev[item.id] ? prev : { ...prev, [item.id]: true }
+                          );
+                        }}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          tw`rounded-xl mr-3 bg-stone-100 items-center justify-center`,
+                          { width: 96, height: 120 },
+                        ]}
+                      >
+                        <Ionicons name="image-outline" size={24} color="#A8A29E" />
+                      </View>
+                    )}
                     <View style={tw`flex-1`}>
                       <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
                         {item.name}
@@ -446,7 +477,7 @@ export default function MarketplaceScreen() {
                       ) : null}
                     </View>
                   </View>
-                </TouchableOpacity>
+                </PressableScale>
               );
             }}
             ListEmptyComponent={
@@ -486,9 +517,9 @@ export default function MarketplaceScreen() {
         )}
       </View>
 
-      <Modal visible={filterOpen} animationType="slide" transparent onRequestClose={() => setFilterOpen(false)}>
-        <View style={tw`flex-1 justify-end bg-black/40`}>
-          <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-5 pb-10 max-h-[88%]`}>
+      <AnimatedBottomSheet visible={filterOpen} onClose={() => setFilterOpen(false)}>
+        {({ close }) => (
+          <View style={tw`px-5 pt-1 pb-2`}>
             <View style={tw`flex-row items-center justify-between mb-4`}>
               <View>
                 <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
@@ -496,9 +527,9 @@ export default function MarketplaceScreen() {
                 </Text>
                 <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
               </View>
-              <TouchableOpacity onPress={() => setFilterOpen(false)}>
+              <PressableScale onPress={close} feedback={false} accessibilityLabel="Close filters">
                 <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
+              </PressableScale>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -506,7 +537,10 @@ export default function MarketplaceScreen() {
                 <Text style={tw`text-base text-stone-800`}>In stock only</Text>
                 <Switch
                   value={inStockOnly}
-                  onValueChange={setInStockOnly}
+                  onValueChange={(v) => {
+                    feedback.toggle();
+                    setInStockOnly(v);
+                  }}
                   trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
                   thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
                 />
@@ -519,7 +553,10 @@ export default function MarketplaceScreen() {
                 </View>
                 <Switch
                   value={onMyPathsOnly}
-                  onValueChange={setOnMyPathsOnly}
+                  onValueChange={(v) => {
+                    feedback.toggle();
+                    setOnMyPathsOnly(v);
+                  }}
                   trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
                   thumbColor={onMyPathsOnly ? '#059669' : '#F5F5F4'}
                 />
@@ -535,9 +572,13 @@ export default function MarketplaceScreen() {
                     { key: 'price_desc', label: 'Price ↓' },
                   ] as const
                 ).map((opt) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={opt.key}
-                    onPress={() => setSortBy(opt.key)}
+                    onPress={() => {
+                      feedback.select();
+                      setSortBy(opt.key);
+                    }}
+                    feedback={false}
                     style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                       sortBy === opt.key ? 'bg-emerald-600' : 'bg-white border border-stone-200'
                     }`}
@@ -549,14 +590,18 @@ export default function MarketplaceScreen() {
                     >
                       {opt.label}
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
               <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Min price</Text>
               <View style={tw`flex-row flex-wrap`}>
-                <TouchableOpacity
-                  onPress={() => setMinPrice(null)}
+                <PressableScale
+                  onPress={() => {
+                    feedback.select();
+                    setMinPrice(null);
+                  }}
+                  feedback={false}
                   style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                     minPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
                   }`}
@@ -566,11 +611,15 @@ export default function MarketplaceScreen() {
                   >
                     Any
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
                 {minPriceTiers.map((tier) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={tier}
-                    onPress={() => setMinPrice(tier)}
+                    onPress={() => {
+                      feedback.select();
+                      setMinPrice(tier);
+                    }}
+                    feedback={false}
                     style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                       minPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
                     }`}
@@ -582,14 +631,18 @@ export default function MarketplaceScreen() {
                     >
                       ${tier}+
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
               <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
               <View style={tw`flex-row flex-wrap`}>
-                <TouchableOpacity
-                  onPress={() => setMaxPrice(null)}
+                <PressableScale
+                  onPress={() => {
+                    feedback.select();
+                    setMaxPrice(null);
+                  }}
+                  feedback={false}
                   style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                     maxPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
                   }`}
@@ -599,11 +652,15 @@ export default function MarketplaceScreen() {
                   >
                     Any
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
                 {priceTiers.map((tier) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={tier}
-                    onPress={() => setMaxPrice(tier)}
+                    onPress={() => {
+                      feedback.select();
+                      setMaxPrice(tier);
+                    }}
+                    feedback={false}
                     style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
                       maxPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
                     }`}
@@ -615,24 +672,28 @@ export default function MarketplaceScreen() {
                     >
                       Under ${tier}
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
-              <TouchableOpacity onPress={clearShopFilters} style={tw`mt-4 py-3 items-center`}>
+              <PressableScale onPress={clearShopFilters} feedback="tap" style={tw`mt-4 py-3 items-center`}>
                 <Text style={tw`text-emerald-700 font-semibold`}>Clear filters</Text>
-              </TouchableOpacity>
+              </PressableScale>
 
-              <TouchableOpacity
-                onPress={() => setFilterOpen(false)}
+              <PressableScale
+                onPress={() => {
+                  feedback.success();
+                  close();
+                }}
+                feedback={false}
                 style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center mb-2`}
               >
                 <Text style={tw`text-white font-semibold`}>Show results</Text>
-              </TouchableOpacity>
+              </PressableScale>
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+        )}
+      </AnimatedBottomSheet>
     </SafeAreaView>
   );
 }

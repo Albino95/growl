@@ -1,27 +1,41 @@
 import { Env } from '../types';
 import { buildBrandedEmailHtml } from './emailTemplates';
 
+function requireResendKey(env: Env, subject: string, to: string, html: string): string | null {
+  const key = (env.RESEND_API_KEY || '').trim();
+  if (key) return key;
+
+  // Local/dev only: log the message instead of calling Resend.
+  if (env.ENVIRONMENT === 'production' || env.ENVIRONMENT === 'qa') {
+    console.error(
+      `[email] RESEND_API_KEY missing/empty on ${env.ENVIRONMENT}; cannot send "${subject}" to ${to}`
+    );
+    throw new Error('RESEND_API_KEY is not configured');
+  }
+
+  console.log(`[email] ${subject} (dev — no RESEND_API_KEY):`);
+  console.log(`  To: ${to}`);
+  console.log(`  HTML: ${html.replace(/<[^>]+>/g, ' ').slice(0, 200)}`);
+  return null;
+}
+
 async function sendResendEmail(
   env: Env,
   to: string,
   subject: string,
   html: string
 ): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    console.log(`[email] ${subject} (dev — no RESEND_API_KEY):`);
-    console.log(`  To: ${to}`);
-    console.log(`  HTML: ${html.replace(/<[^>]+>/g, ' ').slice(0, 200)}`);
-    return;
-  }
+  const key = requireResendKey(env, subject, to, html);
+  if (!key) return;
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: env.EMAIL_FROM || 'Growl <onboarding@resend.dev>',
+      from: env.EMAIL_FROM || 'Grow! <noreply@letsgrow.lu>',
       to: [to],
       subject,
       html,
@@ -61,14 +75,6 @@ export async function sendVerificationEmail(
     footerNote: 'If the button does not work, copy and paste this link into your browser: ' + link,
   });
 
-  if (!env.RESEND_API_KEY) {
-    console.log('[email] Verification (dev — no RESEND_API_KEY):');
-    console.log(`  To: ${to}`);
-    console.log(`  Code: ${verifyToken}`);
-    console.log(`  Link: ${link}`);
-    return;
-  }
-
   await sendResendEmail(env, to, 'Welcome to Grow! — verify your email', html);
 }
 
@@ -99,14 +105,6 @@ export async function sendPasswordResetEmail(
     cta: { label: 'Reset in Grow!', href: deepLink },
     footerNote: `You can also reset your password on the web: ${link}`,
   });
-
-  if (!env.RESEND_API_KEY) {
-    console.log('[email] Password reset (dev — no RESEND_API_KEY):');
-    console.log(`  To: ${to}`);
-    console.log(`  Code: ${resetCode}`);
-    console.log(`  Deep link: ${deepLink}`);
-    return;
-  }
 
   await sendResendEmail(env, to, 'Reset your Grow! password', html);
 }

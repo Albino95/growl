@@ -3,6 +3,7 @@ import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import { formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
 
 const PRESETS = [1, 3, 7, 14, 30, 90];
 
@@ -66,6 +67,7 @@ export default function DecaySettingsModal({ visible, initialDays, onClose, onSa
               Days until fade
             </Text>
             <TextInput
+              {...formInputAccessoryProps()}
               value={String(days)}
               onChangeText={(text) => {
                 const num = parseInt(text.replace(/\D/g, ''), 10);
@@ -106,8 +108,8 @@ export default function DecaySettingsModal({ visible, initialDays, onClose, onSa
               <View style={tw`flex-1`}>
                 <Text style={tw`text-sm font-bold text-stone-900`}>Soft-hide, not delete</Text>
                 <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
-                  Faded posts leave feeds and your public Posts tab. You can still open them from
-                  detail links while we build an archive.
+                  After decay, posts leave feeds and your public Posts tab. You can still open them
+                  from detail links while we build an archive.
                 </Text>
               </View>
             </View>

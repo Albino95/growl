@@ -96,7 +96,8 @@ export default function FeedReelMedia({
       : uri;
 
   const handleImageError = useCallback(() => {
-    if (retryToken < 1 && uri) {
+    // Quiet retries — never surface "tap to reload" copy in the feed.
+    if (retryToken < 2 && uri) {
       setRetryToken((t) => t + 1);
       return;
     }
@@ -162,15 +163,14 @@ export default function FeedReelMedia({
     );
   }
 
-  // Soft placeholder — never show "Media unavailable" copy
+  // Quiet placeholder — no "tap to reload" / unavailable copy in the feed.
   return (
     <Pressable
       onPress={handleRetry}
       style={[tw`w-full bg-[#EAE4D6] items-center justify-center`, { height }]}
-      accessibilityLabel="Reload media"
+      accessibilityLabel="Post media"
     >
-      <Ionicons name="image-outline" size={40} color="#A8A29E" />
-      <Text style={tw`text-stone-500 text-sm mt-2 font-medium`}>Tap to reload</Text>
+      <View style={[tw`overflow-hidden bg-stone-200`, { width: mediaW, maxWidth: '100%', height: '100%' }]} />
     </Pressable>
   );
 }

@@ -30,6 +30,7 @@ import {
   promptForDay,
   tagsWithGrowthPath,
 } from './journalMeta';
+import GoingPublicSheet from './GoingPublicSheet';
 
 type Props = {
   visible: boolean;
@@ -58,6 +59,7 @@ export default function JournalComposeModal({
   const [mood, setMood] = useState<JournalMood | null>(null);
   const [path, setPath] = useState<string | null>(preferredPath ?? null);
   const [isPublic, setIsPublic] = useState(false);
+  const [publicConfirmOpen, setPublicConfirmOpen] = useState(false);
   const [showAllMoods, setShowAllMoods] = useState(false);
 
   const prompt = useMemo(
@@ -71,6 +73,7 @@ export default function JournalComposeModal({
     setMood(null);
     setPath(preferredPath ?? null);
     setIsPublic(false);
+    setPublicConfirmOpen(false);
     setShowAllMoods(false);
   }, [visible, preferredPath]);
 
@@ -144,7 +147,7 @@ export default function JournalComposeModal({
               </Text>
 
               <TextInput
-                {...formInputAccessoryProps()}
+                {...formInputAccessoryProps({ multiline: true })}
                 value={content}
                 onChangeText={setContent}
                 placeholder="Write freely…"
@@ -236,23 +239,27 @@ export default function JournalComposeModal({
               <Pressable
                 onPress={() => {
                   triggerPressFeedback();
-                  setIsPublic((v) => !v);
+                  if (isPublic) {
+                    setIsPublic(false);
+                    return;
+                  }
+                  setPublicConfirmOpen(true);
                 }}
                 style={tw`flex-row items-center justify-between bg-white/80 border border-stone-200 rounded-2xl px-4 py-3.5`}
               >
                 <View style={tw`flex-row items-center flex-1 pr-3`}>
                   <Ionicons
-                    name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
+                    name={isPublic ? 'people-outline' : 'lock-closed-outline'}
                     size={20}
                     color="#44403C"
                   />
                   <View style={tw`ml-3`}>
                     <Text style={tw`text-stone-900 font-semibold`}>
-                      {isPublic ? 'Shared on profile' : 'Private'}
+                      {isPublic ? 'Shared with circle' : 'Private'}
                     </Text>
                     <Text style={tw`text-xs text-stone-500 mt-0.5`}>
                       {isPublic
-                        ? 'Visible on your public Journal tab'
+                        ? 'Friends can see this in Circle and may message you'
                         : 'Only you can read this entry'}
                     </Text>
                   </View>
@@ -273,6 +280,14 @@ export default function JournalComposeModal({
             </ScrollView>
         </KeyboardAvoidingView>
         <KeyboardDoneAccessory />
+        <GoingPublicSheet
+          visible={publicConfirmOpen}
+          onCancel={() => setPublicConfirmOpen(false)}
+          onConfirm={() => {
+            setIsPublic(true);
+            setPublicConfirmOpen(false);
+          }}
+        />
       </View>
     </Modal>
   );

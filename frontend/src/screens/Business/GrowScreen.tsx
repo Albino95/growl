@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import { verticalScrollProps } from '../../constants/scroll';
 import { useAppDispatch, useAppSelector, useAuth } from '../../store/hooks';
 import { fetchBusinessGrow, fetchPromoCodes } from '../../store/slices/businessSlice';
@@ -35,7 +36,7 @@ import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { getCategoryLabel } from '../../utils/categoryLabels';
-import { getAvatarUrl } from '../../utils/images';
+import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import BusinessScreen from '../../components/business/BusinessScreen';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
@@ -90,11 +91,8 @@ function PartnerAvatar({
   avatar?: string | null;
   size?: number;
 }) {
-  const uri =
-    avatar && (avatar.startsWith('http') || avatar.startsWith('data:'))
-      ? avatar
-      : getAvatarUrl(id, name);
-  const showEmoji = avatar && avatar.length <= 4 && !avatar.startsWith('http');
+  const uri = resolveAvatarUri(id, name, avatar);
+  const showEmoji = Boolean(avatar && avatar.length <= 4 && !avatar.startsWith('http'));
   return (
     <View
       style={[
@@ -105,7 +103,7 @@ function PartnerAvatar({
       {showEmoji ? (
         <Text style={{ fontSize: size * 0.42 }}>{avatar}</Text>
       ) : (
-        <Image source={{ uri }} style={{ width: size, height: size }} />
+        <Image source={avatarSource(uri)} style={{ width: size, height: size }} />
       )}
     </View>
   );
@@ -816,6 +814,7 @@ export default function GrowScreen() {
               <Text style={tw`text-base font-bold text-stone-900 mb-3`}>New promo code</Text>
               <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Code</Text>
               <TextInput
+                {...formInputAccessoryProps()}
                 value={promoForm.code}
                 onChangeText={(code) => setPromoForm((p) => ({ ...p, code }))}
                 placeholder="SUMMER20"
@@ -847,6 +846,7 @@ export default function GrowScreen() {
                 Value {promoForm.type === 'percent' ? '(%)' : '(USD)'}
               </Text>
               <TextInput
+                {...formInputAccessoryProps()}
                 value={promoForm.value}
                 onChangeText={(value) => setPromoForm((p) => ({ ...p, value }))}
                 placeholder={promoForm.type === 'percent' ? '20' : '10'}
@@ -856,6 +856,7 @@ export default function GrowScreen() {
               />
               <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Max uses (optional)</Text>
               <TextInput
+                {...formInputAccessoryProps()}
                 value={promoForm.maxUses}
                 onChangeText={(maxUses) => setPromoForm((p) => ({ ...p, maxUses }))}
                 placeholder="100"
@@ -945,6 +946,7 @@ export default function GrowScreen() {
 
             <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Campaign name</Text>
             <TextInput
+                {...formInputAccessoryProps()}
               value={campaignForm.name}
               onChangeText={(name) => setCampaignForm((p) => ({ ...p, name }))}
               placeholder="e.g. Summer Strength Bundle"
@@ -975,6 +977,7 @@ export default function GrowScreen() {
 
             <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Budget (USD)</Text>
             <TextInput
+                {...formInputAccessoryProps()}
               value={campaignForm.budget}
               onChangeText={(budget) => setCampaignForm((p) => ({ ...p, budget }))}
               placeholder="1500"
@@ -985,6 +988,7 @@ export default function GrowScreen() {
 
             <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>End date (YYYY-MM-DD)</Text>
             <TextInput
+                {...formInputAccessoryProps()}
               value={campaignForm.endDate}
               onChangeText={(endDate) => setCampaignForm((p) => ({ ...p, endDate }))}
               placeholder="2026-08-01"
@@ -1177,6 +1181,7 @@ export default function GrowScreen() {
                   </View>
                   <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Commission rate (%)</Text>
                   <TextInput
+                {...formInputAccessoryProps()}
                     value={requestCommission}
                     onChangeText={setRequestCommission}
                     keyboardType="numeric"
@@ -1186,6 +1191,7 @@ export default function GrowScreen() {
                   />
                   <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Message (optional)</Text>
                   <TextInput
+                {...formInputAccessoryProps({ multiline: true })}
                     value={requestMessage}
                     onChangeText={setRequestMessage}
                     placeholder="Tell them why you'd like to partner…"

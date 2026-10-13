@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -17,10 +16,11 @@ import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { useAuth } from '../../store/hooks';
 import { fetchCurrentProfile, updateProfileOnServer } from '../../services/api/profile';
-import { resolveAvatarUri } from '../../utils/images';
-import { uploadMediaApi } from '../../services/api/media';
-import { isRemoteMediaUrl, uriToDataUrl } from '../../utils/mediaUri';
+import { resolveAvatarUri, avatarSource } from '../../utils/images';
+import { uploadMediaApi, uploadMediaFile } from '../../services/api/media';
+import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { alertMessage } from '../../utils/confirmDialog';
+import FormTextInput from '../../components/ui/FormTextInput';
 
 const FETCH_MS = 8000;
 
@@ -93,10 +93,15 @@ export default function EditProfileScreen() {
     setLocalPreview(uri);
     setUploadingAvatar(true);
     try {
-      const dataUrl = isRemoteMediaUrl(uri) ? uri : await uriToDataUrl(uri);
-      const hosted = isRemoteMediaUrl(dataUrl)
-        ? dataUrl
-        : await uploadMediaApi(dataUrl, 'avatar');
+      let hosted = uri;
+      if (!isRemoteMediaUrl(uri)) {
+        if (uri.toLowerCase().startsWith('data:')) {
+          hosted = await uploadMediaApi(uri, 'avatar');
+        } else {
+          const uploaded = await uploadMediaFile(uri, 'avatar');
+          hosted = uploaded.url;
+        }
+      }
       setAvatar(hosted);
       setLocalPreview(hosted);
     } catch (e: unknown) {
@@ -237,7 +242,7 @@ export default function EditProfileScreen() {
             <View
               style={tw`w-32 h-32 rounded-full overflow-hidden bg-[#EAE4D6] border-[3px] border-white`}
             >
-              <Image source={{ uri: previewUri }} style={tw`w-full h-full`} contentFit="cover" />
+              <Image source={avatarSource(previewUri)} style={tw`w-full h-full`} contentFit="cover" />
               {uploadingAvatar ? (
                 <View style={tw`absolute inset-0 bg-black/45 items-center justify-center`}>
                   <ActivityIndicator color="#FFFFFF" />
@@ -273,36 +278,33 @@ export default function EditProfileScreen() {
           </Text>
 
           <Text style={tw`text-sm font-semibold text-stone-800 mb-1.5`}>Username</Text>
-          <TextInput
+          <FormTextInput
             value={username}
             onChangeText={setUsername}
             placeholder="Your display name"
-            placeholderTextColor="#A8A29E"
             autoCapitalize="none"
             autoCorrect={false}
-            style={tw`bg-[#F3EEE4] border border-stone-200 rounded-xl px-4 py-3 text-stone-900 mb-1`}
+            style={tw`bg-[#F3EEE4] border-stone-200 rounded-xl mb-1`}
           />
           <Text style={tw`text-xs text-stone-500 mb-4`}>At least 3 characters</Text>
 
           <Text style={tw`text-sm font-semibold text-stone-800 mb-1.5`}>Status</Text>
-          <TextInput
+          <FormTextInput
             value={status}
             onChangeText={setStatus}
             placeholder="What are you focusing on?"
-            placeholderTextColor="#A8A29E"
             maxLength={80}
-            style={tw`bg-[#F3EEE4] border border-stone-200 rounded-xl px-4 py-3 text-stone-900 mb-4`}
+            style={tw`bg-[#F3EEE4] border-stone-200 rounded-xl mb-4`}
           />
 
           <Text style={tw`text-sm font-semibold text-stone-800 mb-1.5`}>Bio</Text>
-          <TextInput
+          <FormTextInput
             value={bio}
             onChangeText={setBio}
             placeholder="A short intro about your growth journey"
-            placeholderTextColor="#A8A29E"
             multiline
             maxLength={280}
-            style={tw`bg-[#F3EEE4] border border-stone-200 rounded-xl px-4 py-3 text-stone-900 min-h-[96px]`}
+            style={tw`bg-[#F3EEE4] border-stone-200 rounded-xl min-h-[96px]`}
             textAlignVertical="top"
           />
         </View>

@@ -3,6 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp, useRoute } from '@react-navigation/native';
 import PhotoEditor from '../../components/ui/PhotoEditor';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
@@ -14,6 +15,7 @@ import PostCaptionOverlay from './components/PostCaptionOverlay';
 import PostCategorySheet from './components/PostCategorySheet';
 import PostMusicSheet from './components/PostMusicSheet';
 import PostStickyBar from './components/PostStickyBar';
+import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 
 type PostScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Post'>;
@@ -23,12 +25,22 @@ interface PostScreenProps {
 }
 
 export default function PostScreen({ navigation }: PostScreenProps) {
+  const route = useRoute<RouteProp<RootStackParamList, 'Post'>>();
+  const { user } = useAuth();
   const [showEditor, setShowEditor] = useState(false);
   const [showCategorySheet, setShowCategorySheet] = useState(false);
   const [showMusicSheet, setShowMusicSheet] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
   const openEditorAfterPick = useRef(false);
+  const seeded = useRef(false);
+
+  const promoteExtras = {
+    productId: route.params?.productId,
+    promoteBusinessId: route.params?.promoteBusinessId,
+    promoteBusinessName: route.params?.promoteBusinessName,
+    referralInstructorId: user?.isInstructor ? user.id : undefined,
+  };
 
   const {
     image,
@@ -49,7 +61,14 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     setTimeout(() => {
       navigation.goBack();
     }, 600);
-  });
+  }, promoteExtras);
+
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    if (route.params?.caption) setCaption(route.params.caption);
+    if (route.params?.category) setCategory(route.params.category);
+  }, [route.params?.caption, route.params?.category, setCaption, setCategory]);
 
   useEffect(() => {
     if (image && openEditorAfterPick.current) {
@@ -145,6 +164,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   }
 
   const canPost = Boolean(image && selectedCategory && !isPosting);
+  const promoteName = route.params?.promoteBusinessName;
 
   return (
     <PostComposerLayout
@@ -164,7 +184,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       }
     >
       <ScreenHeader
-        title="Create Post"
+        title={promoteName ? 'Promote' : 'Create Post'}
         onBack={handleClose}
         backIcon="close"
         transparent
@@ -183,6 +203,20 @@ export default function PostScreen({ navigation }: PostScreenProps) {
           ) : undefined
         }
       />
+
+      {promoteName ? (
+        <View
+          style={tw`absolute top-24 left-4 right-4 z-30 px-3.5 py-2.5 rounded-2xl bg-emerald-700/95 border border-emerald-500/40`}
+          pointerEvents="none"
+        >
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-100 uppercase`}>
+            Partnership
+          </Text>
+          <Text style={tw`text-sm font-bold text-white mt-0.5`} numberOfLines={1}>
+            Promoting {promoteName}
+          </Text>
+        </View>
+      ) : null}
 
       {showSuccess && (
         <View style={tw`absolute inset-0 z-50 bg-brand-600/90 items-center justify-center`}>

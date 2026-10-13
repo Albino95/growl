@@ -7,9 +7,10 @@ type UiPrefsState = {
   setHapticsEnabled: (enabled: boolean) => void;
 };
 
+/** On by default so the app feels alive; Settings can mute either channel. */
 export const useUiPrefsStore = create<UiPrefsState>((set) => ({
-  soundEnabled: false,
-  hapticsEnabled: false,
+  soundEnabled: true,
+  hapticsEnabled: true,
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
   setHapticsEnabled: (enabled) => set({ hapticsEnabled: enabled }),
 }));

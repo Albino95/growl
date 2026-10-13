@@ -6,6 +6,7 @@ import InventoryScreen from '../../../screens/Business/InventoryScreen';
 import OrdersScreen from '../../../screens/Business/OrdersScreen';
 import GrowScreen from '../../../screens/Business/GrowScreen';
 import { useAppSelector } from '../../../store/hooks';
+import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
 
 export type BusinessTabsParamList = {
   Home: undefined;
@@ -21,8 +22,13 @@ export default function BusinessTabs() {
 
   return (
     <Tab.Navigator
+      detachInactiveScreens={false}
       screenOptions={({ route }) => ({
         headerShown: false,
+        animation: 'shift',
+        transitionSpec: GrowTabTransitionSpec,
+        sceneStyleInterpolator: forGrowTabScene,
+        freezeOnBlur: false,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'home';
           if (route.name === 'Home') iconName = focused ? 'grid' : 'grid-outline';

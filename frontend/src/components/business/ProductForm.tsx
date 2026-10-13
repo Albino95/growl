@@ -265,6 +265,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 placeholder="Product name"
                 style={inputStyle}
                 placeholderTextColor="#A8A29E"
+                inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                 returnKeyType="next"
                 blurOnSubmit={false}
                 onSubmitEditing={() => priceRef.current?.focus()}

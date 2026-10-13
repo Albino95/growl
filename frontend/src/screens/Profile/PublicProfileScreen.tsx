@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { groupGrowthPaths } from '../../utils/categoryLabels';
+import { getCategoryLabel, groupGrowthPaths } from '../../utils/categoryLabels';
 import tw from '../../lib/tw';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import {
@@ -32,7 +32,7 @@ import {
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
 import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
+import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 import { getUserPublicJournalEntries } from '../../services/api/journal';
 import { createConversation } from '../../services/api/messages';
@@ -601,24 +601,30 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
-      {/* Header with Back Button */}
-      <View style={tw`px-4 pt-2 pb-3 border-b border-stone-200/80 bg-[#FFFcf7] flex-row items-center`}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <View style={tw`px-4 py-2.5 flex-row items-center border-b border-stone-200/50`}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={tw`mr-3`}
+          style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center mr-3`}
+          accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={24} color="#1C1917" />
+          <Ionicons name="arrow-back" size={20} color="#1C1917" />
         </TouchableOpacity>
-        <Text style={tw`text-lg font-semibold text-stone-900 flex-1`}>
-          {profileUser.username}
-        </Text>
+        <View style={tw`flex-1`}>
+          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            Profile
+          </Text>
+          <Text style={tw`text-[17px] font-bold text-stone-900`} numberOfLines={1}>
+            {profileUser.username}
+          </Text>
+        </View>
         <TouchableOpacity
-          style={tw`w-11 h-11 items-center justify-center`}
+          style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           onPress={openOptionsMenu}
+          accessibilityLabel="More options"
         >
-          <Ionicons name="ellipsis-horizontal" size={24} color="#57534E" />
+          <Ionicons name="ellipsis-horizontal" size={20} color="#57534E" />
         </TouchableOpacity>
       </View>
 
@@ -626,242 +632,332 @@ export default function PublicProfileScreen() {
         style={tw`flex-1`}
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
       >
-        {/* Profile Header */}
-        <View style={tw`px-5 pt-6 pb-6`}>
-          <View style={tw`flex-row items-center mb-4`}>
-            <View style={tw`w-20 h-20 rounded-full overflow-hidden mr-4 bg-[#ECFDF5] border-2 border-white`}>
-              <Image
-                source={{ uri: resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar) }}
-                style={tw`w-full h-full`}
-                contentFit="cover"
-              />
-            </View>
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {profileUser.username}
-              </Text>
-              {profileUser.isInstructor && (
-                <View style={tw`flex-row items-center mt-1`}>
-                  <Ionicons name="school" size={16} color="#059669" />
-                  <Text style={tw`text-sm text-emerald-700 ml-1 font-semibold`}>Instructor</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {profileUser.status ? (
-            <Text style={tw`text-sm text-stone-800 mb-2 leading-5`}>{profileUser.status}</Text>
-          ) : null}
-          {profileUser.bio ? (
-            <Text style={tw`text-sm text-stone-500 mb-4 leading-5`}>{profileUser.bio}</Text>
-          ) : null}
-
-          <View style={tw`flex-row justify-around mb-4 py-2`}>
-            <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.postsCount}</Text>
-              <Text style={tw`text-xs text-stone-500`}>Posts</Text>
-            </View>
-            <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.storiesCount}</Text>
-              <Text style={tw`text-xs text-stone-500`}>Stories</Text>
-            </View>
-            <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-emerald-700`}>{profileUser.points}</Text>
-              <Text style={tw`text-xs text-stone-500`}>Points</Text>
-            </View>
-          </View>
-
-          {!isOwnProfile && currentUser?.id ? (
-            <View style={tw`gap-3 mb-4`}>
-              <TouchableOpacity
-                onPress={() => void onToggleFriend()}
-                disabled={friendBusy}
-                style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
-                  friendConnected || friendRequestSent
-                    ? 'bg-[#FFFcf7] border border-stone-200'
-                    : friendRequestReceived
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-600'
-                } ${friendBusy ? 'opacity-60' : ''}`}
-              >
-                {friendBusy ? (
-                  <ActivityIndicator
-                    color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
-                  />
-                ) : (
-                  <Ionicons
-                    name={
-                      friendConnected
-                        ? 'checkmark-circle'
-                        : friendRequestSent
-                          ? 'time'
-                          : friendRequestReceived
-                            ? 'mail-open'
-                            : 'person-add'
-                    }
-                    size={20}
-                    color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
-                  />
-                )}
-                <Text
-                  style={tw`font-semibold text-base ${
-                    friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
-                  }`}
-                >
-                  {friendBusy
-                    ? 'Updating…'
-                    : friendConnected
-                      ? 'Friends'
-                      : friendRequestSent
-                        ? 'Requested'
-                        : friendRequestReceived
-                          ? 'Accept Request'
-                          : 'Add Friend'}
-                </Text>
-              </TouchableOpacity>
-
-              {friendConnected ? (
-                <TouchableOpacity
-                  onPress={() => void onMessageFriend()}
-                  disabled={messageBusy}
-                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 bg-emerald-600 ${
-                    messageBusy ? 'opacity-60' : ''
-                  }`}
-                >
-                  {messageBusy ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+        <View style={tw`px-5 pt-4 pb-3`}>
+          <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-3xl px-4 pt-5 pb-4`}>
+            <View style={tw`flex-row items-center mb-3`}>
+              <View style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-[#ECFDF5]`}>
+                <Image
+                  source={avatarSource(
+                    resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar)
                   )}
-                  <Text style={tw`font-semibold text-base text-white`}>Message</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {endorseStatus ? (
-                <TouchableOpacity
-                  onPress={() => void onEndorse()}
-                  disabled={!endorseStatus.canEndorse || endorseBusy}
-                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
-                    endorseStatus.alreadyEndorsed
-                      ? 'bg-[#ECFDF5] border border-emerald-200'
-                      : endorseStatus.canEndorse
-                        ? 'bg-emerald-600'
-                        : 'bg-[#FFFcf7] border border-stone-200'
-                  } ${endorseBusy ? 'opacity-60' : ''}`}
-                >
-                  {endorseBusy ? (
-                    <ActivityIndicator color={endorseStatus.canEndorse ? '#fff' : '#57534E'} />
-                  ) : (
-                    <Ionicons
-                      name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
-                      size={20}
-                      color={
-                        endorseStatus.alreadyEndorsed
-                          ? '#059669'
-                          : endorseStatus.canEndorse
-                            ? '#fff'
-                            : '#78716C'
-                      }
-                    />
-                  )}
-                  <Text
-                    style={tw`font-semibold text-base ${
-                      endorseStatus.alreadyEndorsed
-                        ? 'text-emerald-700'
-                        : endorseStatus.canEndorse
-                          ? 'text-white'
-                          : 'text-stone-500'
-                    }`}
-                  >
-                    {endorseStatus.alreadyEndorsed
-                      ? 'Endorsed'
-                      : endorseStatus.canEndorse
-                        ? 'Endorse as instructor'
-                        : 'No shared growth area'}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
-
-          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
-            <View style={tw`flex-row items-center justify-between`}>
-              <View style={tw`flex-1 pr-3`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
-                  Growth points
-                </Text>
-                <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{profileUser.points}</Text>
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
               </View>
-              <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
-                <Ionicons name="ribbon" size={28} color="#059669" />
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-2xl font-bold text-stone-900`} numberOfLines={2}>
+                  {profileUser.username}
+                </Text>
+                {profileUser.isInstructor ? (
+                  <View style={tw`flex-row items-center mt-1.5 self-start px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200`}>
+                    <Ionicons name="school" size={13} color="#059669" />
+                    <Text style={tw`text-xs text-emerald-800 font-semibold ml-1`}>Instructor</Text>
+                    {(profileUser.endorsementsReceived || 0) > 0 ? (
+                      <Text style={tw`text-xs text-emerald-700 ml-1.5`}>
+                        · {profileUser.endorsementsReceived} endorsements
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
             </View>
-            {!profileUser.isInstructor && endorseStatus ? (
-              <View style={tw`mt-3 pt-3 border-t border-stone-200/80`}>
-                <Text style={tw`text-sm text-stone-600`}>
-                  Instructor endorsements: {endorseStatus.endorsementCount}
+
+            {profileUser.isInstructor && profileUser.teachingHeadline ? (
+              <View style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-emerald-50 border border-emerald-100`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                  Teaching
+                </Text>
+                <Text style={tw`text-[15px] text-stone-800 mt-1 leading-5`}>
+                  {profileUser.teachingHeadline}
                 </Text>
               </View>
             ) : null}
+
+            {profileUser.status ? (
+              <View style={tw`mb-2 px-3 py-2 rounded-2xl bg-[#EAE4D6] border border-stone-200/60`}>
+                <Text style={tw`text-[13px] text-stone-800 leading-5`}>{profileUser.status}</Text>
+              </View>
+            ) : null}
+            {profileUser.bio ? (
+              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileUser.bio}</Text>
+            ) : null}
+
+            <View style={tw`flex-row bg-[#EAE4D6] border border-stone-200/70 rounded-2xl overflow-hidden mb-3.5`}>
+              <View style={tw`flex-1 items-center py-2.5`}>
+                <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.postsCount}</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Posts</Text>
+              </View>
+              <View style={tw`w-px bg-stone-200/80 my-2`} />
+              <View style={tw`flex-1 items-center py-2.5`}>
+                <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.storiesCount}</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Stories</Text>
+              </View>
+              <View style={tw`w-px bg-stone-200/80 my-2`} />
+              <View style={tw`flex-1 items-center py-2.5`}>
+                <Text style={tw`text-lg font-bold text-emerald-700`}>{profileUser.points}</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Points</Text>
+              </View>
+            </View>
+
+            {!isOwnProfile && currentUser?.id ? (
+              <View style={tw`gap-2`}>
+                <View style={tw`flex-row gap-2`}>
+                  <TouchableOpacity
+                    onPress={() => void onToggleFriend()}
+                    disabled={friendBusy}
+                    style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 ${
+                      friendConnected || friendRequestSent
+                        ? 'bg-[#EAE4D6] border border-stone-200'
+                        : friendRequestReceived
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-600'
+                    } ${friendBusy ? 'opacity-60' : ''}`}
+                  >
+                    {friendBusy ? (
+                      <ActivityIndicator
+                        color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
+                      />
+                    ) : (
+                      <Ionicons
+                        name={
+                          friendConnected
+                            ? 'checkmark-circle'
+                            : friendRequestSent
+                              ? 'time'
+                              : friendRequestReceived
+                                ? 'mail-open'
+                                : 'person-add'
+                        }
+                        size={18}
+                        color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
+                      />
+                    )}
+                    <Text
+                      style={tw`font-bold text-sm ${
+                        friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
+                      }`}
+                    >
+                      {friendBusy
+                        ? '…'
+                        : friendConnected
+                          ? 'Friends'
+                          : friendRequestSent
+                            ? 'Requested'
+                            : friendRequestReceived
+                              ? 'Accept'
+                              : 'Add friend'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {friendConnected ? (
+                    <TouchableOpacity
+                      onPress={() => void onMessageFriend()}
+                      disabled={messageBusy}
+                      style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                        messageBusy ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {messageBusy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                      )}
+                      <Text style={tw`font-bold text-sm text-white`}>
+                        {profileUser.isInstructor ? 'Message coach' : 'Message'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : profileUser.isInstructor ? (
+                    <View style={tw`flex-1 py-3 rounded-2xl items-center justify-center bg-[#ECFDF5] border border-emerald-100 px-2`}>
+                      <Text style={tw`text-xs font-semibold text-emerald-800 text-center`}>
+                        Add friend to message coach
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {endorseStatus &&
+                (endorseStatus.alreadyEndorsed ||
+                  endorseStatus.canEndorse ||
+                  (endorseStatus.sharedCategories?.length ?? 0) === 0) ? (
+                  <TouchableOpacity
+                    onPress={() => void onEndorse()}
+                    disabled={!endorseStatus.canEndorse || endorseBusy}
+                    style={tw`py-3 rounded-2xl flex-row items-center justify-center gap-1.5 ${
+                      endorseStatus.alreadyEndorsed
+                        ? 'bg-[#ECFDF5] border border-emerald-200'
+                        : endorseStatus.canEndorse
+                          ? 'bg-stone-900'
+                          : 'bg-[#EAE4D6] border border-stone-200'
+                    } ${endorseBusy ? 'opacity-60' : ''}`}
+                  >
+                    {endorseBusy ? (
+                      <ActivityIndicator
+                        color={endorseStatus.canEndorse ? '#fff' : '#57534E'}
+                      />
+                    ) : (
+                      <Ionicons
+                        name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
+                        size={18}
+                        color={
+                          endorseStatus.alreadyEndorsed
+                            ? '#059669'
+                            : endorseStatus.canEndorse
+                              ? '#fff'
+                              : '#78716C'
+                        }
+                      />
+                    )}
+                    <Text
+                      style={tw`font-bold text-sm ${
+                        endorseStatus.alreadyEndorsed
+                          ? 'text-emerald-700'
+                          : endorseStatus.canEndorse
+                            ? 'text-white'
+                            : 'text-stone-500'
+                      }`}
+                    >
+                      {endorseStatus.alreadyEndorsed
+                        ? 'Endorsed'
+                        : endorseStatus.canEndorse
+                          ? 'Endorse as instructor'
+                          : !(currentUser?.categories && currentUser.categories.length > 0)
+                            ? 'Add your paths to endorse'
+                            : 'Paths don’t overlap yet'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
           </View>
+
+          {!profileUser.isInstructor && endorseStatus ? (
+            <View style={tw`mt-3 px-4 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200/80 flex-row items-center`}>
+              <View style={tw`w-10 h-10 rounded-full bg-emerald-600/15 items-center justify-center mr-3`}>
+                <Ionicons name="ribbon" size={20} color="#059669" />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Instructor track
+                </Text>
+                <Text style={tw`text-sm text-stone-800 mt-0.5 font-medium`}>
+                  {endorseStatus.endorsementCount} endorsement
+                  {endorseStatus.endorsementCount === 1 ? '' : 's'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
-        {/* Categories */}
-        {profileUser.categories && profileUser.categories.length > 0 && (
-          <View style={tw`px-4 pb-4`}>
-            <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
-                Grow!
-              </Text>
-              <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>Growth Areas</Text>
-              <View style={tw`flex-row flex-wrap`}>
+        {/* Growth paths */}
+        <View style={tw`px-5 pb-3`}>
+          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
+            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              Grow!
+            </Text>
+            <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>Growth paths</Text>
+
+            {endorseStatus && (endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
+              <View style={tw`mb-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase mb-2`}>
+                  Shared with you
+                </Text>
+                <View style={tw`flex-row flex-wrap`}>
+                  {endorseStatus.sharedCategories.map((key) => (
+                    <View
+                      key={`shared-${key}`}
+                      style={tw`bg-emerald-600 px-3 py-1.5 rounded-full mr-2 mb-2 flex-row items-center`}
+                    >
+                      <Ionicons name="git-compare-outline" size={12} color="#fff" style={tw`mr-1`} />
+                      <Text style={tw`text-sm text-white font-semibold`}>
+                        {getCategoryLabel(key)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {profileUser.categories && profileUser.categories.length > 0 ? (
+              <View>
                 {groupGrowthPaths(profileUser.categories).map((group) => {
-                  const label =
-                    group.focusLabels.length > 0
-                      ? `${group.parentLabel}: ${group.focusLabels.join(', ')}`
-                      : group.parentLabel;
+                  const isShared = (endorseStatus?.sharedCategories || []).some((s) => {
+                    const parent = s.includes(':') ? s.split(':')[0] : s;
+                    return parent === group.parentKey || s === group.parentKey;
+                  });
                   return (
                     <View
                       key={group.parentKey}
-                      style={tw`bg-[#ECFDF5] border border-emerald-200/80 px-3 py-1.5 rounded-full mr-2 mb-2`}
+                      style={tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border ${
+                        isShared
+                          ? 'bg-[#ECFDF5] border-emerald-200'
+                          : 'bg-[#FFFcf7] border-stone-200/70'
+                      }`}
                     >
-                      <Text style={tw`text-sm text-emerald-800 font-medium`}>{label}</Text>
+                      <View
+                        style={tw`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
+                          isShared ? 'bg-emerald-600' : 'bg-emerald-600/12'
+                        }`}
+                      >
+                        <Ionicons
+                          name={group.icon}
+                          size={20}
+                          color={isShared ? '#fff' : '#059669'}
+                        />
+                      </View>
+                      <View style={tw`flex-1`}>
+                        <Text style={tw`text-[15px] font-bold text-stone-900`}>
+                          {group.parentLabel}
+                        </Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                          {group.focusLabels.length > 0
+                            ? group.focusLabels.join(' · ')
+                            : isShared
+                              ? 'Shared path with you'
+                              : 'Growing here'}
+                        </Text>
+                      </View>
                     </View>
                   );
                 })}
               </View>
-            </View>
+            ) : (
+              <Text style={tw`text-sm text-stone-600`}>
+                Paths aren’t listed yet — you can still connect and message.
+              </Text>
+            )}
           </View>
-        )}
+        </View>
 
         {/* Tabs */}
-        <View style={tw`flex-row border-b border-stone-200`}>
-          {[
-            { key: 'posts', label: 'Posts', icon: 'grid' },
-            { key: 'stories', label: 'Stories', icon: 'images' },
-            { key: 'journal', label: 'Journal', icon: 'book' },
-          ].map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key as 'posts' | 'stories' | 'journal')}
-              style={tw`flex-1 py-3 items-center border-b-2 ${
-                activeTab === tab.key ? 'border-emerald-600' : 'border-transparent'
-              }`}
-            >
-              <Ionicons
-                name={tab.icon as any}
-                size={20}
-                color={activeTab === tab.key ? '#059669' : '#A8A29E'}
-              />
-              <Text
-                style={tw`text-xs mt-1 ${
-                  activeTab === tab.key ? 'text-emerald-700 font-semibold' : 'text-stone-500'
-                }`}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={tw`px-5 pt-1`}>
+          <View style={tw`flex-row gap-5 border-b border-stone-200/80`}>
+            {(
+              [
+                { key: 'posts' as const, label: 'Posts' },
+                { key: 'stories' as const, label: 'Stories' },
+                { key: 'journal' as const, label: 'Journal' },
+              ] as const
+            ).map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={tw`pb-2.5 border-b-2 ${
+                    active ? 'border-emerald-600' : 'border-transparent'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-[15px] ${
+                      active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                    }`}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         {/* Content */}

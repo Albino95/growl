@@ -33,7 +33,7 @@ import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import { getProducts } from '../../services/api/marketplace';
 import tw from '../../lib/tw';
-import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 import {
   feedListPerformanceProps,
   horizontalScrollProps,
@@ -48,6 +48,13 @@ import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { featureFlags } from '../../constants/featureFlags';
+import { getApiBaseUrl } from '../../services/api/http';
+import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
+import { createConversation } from '../../services/api/messages';
+import type { DiscoverInstructor } from '../../services/api/instructor';
+import { feedback } from '../../utils/interactionFeedback';
+import PressableScale from '../../components/ui/PressableScale';
 
 function SectionTitle({
   title,
@@ -81,6 +88,7 @@ export default function ExploreScreen() {
     Array<{ userId: string; username: string; avatar: string | null; stories: StoryItem[] }>
   >([]);
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
+  const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -101,6 +109,8 @@ export default function ExploreScreen() {
 
   const userPaths = user?.categories || [];
   const isSearching = query.trim().length > 0;
+  const isQaEnv =
+    featureFlags.appEnv === 'qa' || getApiBaseUrl().includes('growl-backend-qa');
 
   const load = useCallback(async () => {
     try {
@@ -187,6 +197,14 @@ export default function ExploreScreen() {
       });
       setSearchHits(res.people);
       setSearchPosts(res.posts);
+      setPendingRequestIds((prev) => {
+        const next = new Set(prev);
+        for (const p of res.people) {
+          if (p.requestSent) next.add(p.id);
+          if (p.isFriend) next.delete(p.id);
+        }
+        return next;
+      });
       setSearchCommitted(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Search failed. Try again.';
@@ -355,13 +373,28 @@ export default function ExploreScreen() {
 
   const onAddFriend = async (userId: string) => {
     if (addingId) return;
+    if (friendIds.has(userId) || pendingRequestIds.has(userId)) return;
     setAddingId(userId);
     try {
       const result = await addFriend(userId);
       if (result.connected) {
         setFriendIds((prev) => new Set([...prev, userId]));
+        setPendingRequestIds((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
         setSearchHits((prev) =>
-          prev.map((h) => (h.id === userId ? { ...h, isFriend: true } : h))
+          prev.map((h) =>
+            h.id === userId ? { ...h, isFriend: true, requestSent: false } : h
+          )
+        );
+      } else if (result.requestSent) {
+        setPendingRequestIds((prev) => new Set([...prev, userId]));
+        setSearchHits((prev) =>
+          prev.map((h) =>
+            h.id === userId ? { ...h, isFriend: false, requestSent: true } : h
+          )
         );
       }
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
@@ -385,6 +418,28 @@ export default function ExploreScreen() {
 
   const openMarketplace = () => {
     navigation.navigate('Marketplace' as never);
+  };
+
+  const messageInstructor = async (person: DiscoverInstructor) => {
+    try {
+      const res = await createConversation(person.id);
+      feedback.send();
+      const root = navigation.getParent?.() || navigation;
+      (root as { navigate: (a: string, b: object) => void }).navigate('Messages', {
+        conversationId: res.data.conversation.id,
+        targetUserId: person.id,
+        draftText: `Hi ${person.username} — I’d love guidance on ${
+          person.shared_categories[0]
+            ? getCategoryLabel(person.shared_categories[0])
+            : 'my growth path'
+        }.`,
+      });
+    } catch (e) {
+      Alert.alert(
+        'Cannot message',
+        e instanceof Error ? e.message : 'Become friends to message this instructor.'
+      );
+    }
   };
 
   const openPostDetail = (p: FeedPost) => {
@@ -438,7 +493,16 @@ export default function ExploreScreen() {
   const renderAccountRow = (hit: PeopleSearchHit) => {
     const avatar = resolveAvatarUri(hit.id, hit.username, hit.avatar);
     const busy = addingId === hit.id;
+    const isFriend = !!(hit.isFriend || friendIds.has(hit.id));
+    const isRequested = !isFriend && !!(hit.requestSent || pendingRequestIds.has(hit.id));
     const pathPreview = (hit.categories || []).slice(0, 2).map(getCategoryLabel).join(' · ');
+    const statusHint = pathPreview
+      ? ` · ${pathPreview}`
+      : isFriend
+        ? ' · Connected'
+        : isRequested
+          ? ' · Requested'
+          : '';
     return (
       <View
         key={hit.id}
@@ -455,12 +519,16 @@ export default function ExploreScreen() {
             </Text>
             <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
               {roleLabel(hit)}
-              {pathPreview ? ` · ${pathPreview}` : hit.isFriend ? ' · Connected' : ''}
+              {statusHint}
             </Text>
           </View>
         </TouchableOpacity>
-        {hit.isFriend || friendIds.has(hit.id) ? (
+        {isFriend ? (
           <Ionicons name="checkmark-circle" size={22} color="#059669" />
+        ) : isRequested ? (
+          <View style={tw`bg-stone-100 border border-stone-200 px-3 py-2 rounded-xl`}>
+            <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
+          </View>
         ) : (
           <TouchableOpacity
             onPress={() => void onAddFriend(hit.id)}
@@ -652,7 +720,11 @@ export default function ExploreScreen() {
             <EmptyState
               icon="search-outline"
               title="No results"
-              description={`Nothing found for “${query.trim()}”. Try another name or caption.`}
+              description={
+                isQaEnv
+                  ? `Nothing found for “${query.trim()}” on the QA server. Friends who signed up in the App Store / production app won’t appear here.`
+                  : `Nothing found for “${query.trim()}”. Try another name or caption.`
+              }
               actionLabel="Clear search"
               onAction={() => setQuery('')}
             />
@@ -671,6 +743,18 @@ export default function ExploreScreen() {
         People, stories, and posts matched to your growth paths. Search above to find anyone.
       </Text>
 
+      <InstructorDiscoveryStrip
+        forPaths
+        category={selectedCategory}
+        title={
+          selectedCategory
+            ? `Instructors · ${getCategoryLabel(selectedCategory)}`
+            : 'Instructors on your paths'
+        }
+        onOpenProfile={openProfile}
+        onMessage={(p) => void messageInstructor(p)}
+      />
+
       {/* Stories */}
       <SectionTitle title="Stories to meet" actionLabel="All reels" onAction={openReels} />
       {storyPeople.length > 0 ? (
@@ -684,12 +768,11 @@ export default function ExploreScreen() {
             const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
             const thumb = resolveStoryDisplayUri(person.latestStoryImage, person.userId);
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={person.userId}
-                onPress={() => {
-                  triggerPressFeedback();
-                  openStoryViewer(person);
-                }}
+                onPress={() => openStoryViewer(person)}
+                feedback="open"
+                pressedScale={0.94}
                 style={tw`items-center mr-4 w-20`}
               >
                 <View style={tw`w-16 h-16 rounded-full border-2 border-emerald-500 p-0.5`}>
@@ -702,7 +785,7 @@ export default function ExploreScreen() {
                 <Text style={tw`text-xs text-stone-600 mt-1.5 text-center`} numberOfLines={1}>
                   {person.username.split(' ')[0]}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </ScrollView>
@@ -722,11 +805,12 @@ export default function ExploreScreen() {
           {...horizontalScrollProps}
         >
           {filteredShop.map((product) => (
-            <TouchableOpacity
+            <PressableScale
               key={product.id}
+              feedback="open"
+              pressedScale={0.97}
               style={tw`w-36 mr-3 bg-white border border-stone-200/80 rounded-2xl overflow-hidden`}
               onPress={() => {
-                triggerPressFeedback();
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
                   productId: product.id,
@@ -753,7 +837,7 @@ export default function ExploreScreen() {
                   </Text>
                 ) : null}
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           ))}
         </ScrollView>
       ) : (
@@ -841,17 +925,27 @@ export default function ExploreScreen() {
                   >
                     <Text style={tw`text-stone-700 text-xs font-semibold`}>Profile</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => void onAddFriend(person.userId)}
-                    disabled={busy || friendIds.has(person.userId)}
-                    style={tw`flex-1 py-2 rounded-xl bg-emerald-600 items-center ${
-                      busy ? 'opacity-60' : ''
-                    }`}
-                  >
-                    <Text style={tw`text-white text-xs font-bold`}>
-                      {busy ? '…' : 'Request'}
-                    </Text>
-                  </TouchableOpacity>
+                  {friendIds.has(person.userId) ? (
+                    <View style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}>
+                      <Text style={tw`text-stone-600 text-xs font-bold`}>Friends</Text>
+                    </View>
+                  ) : pendingRequestIds.has(person.userId) ? (
+                    <View style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}>
+                      <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => void onAddFriend(person.userId)}
+                      disabled={busy}
+                      style={tw`flex-1 py-2 rounded-xl bg-emerald-600 items-center ${
+                        busy ? 'opacity-60' : ''
+                      }`}
+                    >
+                      <Text style={tw`text-white text-xs font-bold`}>
+                        {busy ? '…' : 'Request'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             );
@@ -882,7 +976,14 @@ export default function ExploreScreen() {
       />
 
       <View style={tw`px-5 pt-3 pb-2`}>
-        <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Explore</Text>
+        <View style={tw`flex-row items-center mb-0.5`}>
+          <Text style={tw`text-lg font-bold text-stone-900`}>Explore</Text>
+          {isQaEnv ? (
+            <View style={tw`ml-2 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300`}>
+              <Text style={tw`text-[10px] font-bold text-amber-800 tracking-wide`}>QA</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={tw`text-sm text-stone-500 mb-3`}>
           {userPaths.length
             ? `Discover people and progress outside your circle · ${userPaths.length} growth path${userPaths.length === 1 ? '' : 's'}`
@@ -925,13 +1026,8 @@ export default function ExploreScreen() {
       ) : null}
 
       {loading && filteredPeople.length === 0 && filteredReels.length === 0 ? (
-        <View style={tw`flex-1`}>
-          <BrandLoadingScreen
-            variant="page"
-            message="Discovering…"
-            showWordmark={false}
-            manageStatusBar={false}
-          />
+        <View style={tw`flex-1 px-5 pt-2`}>
+          <SkeletonList variant="explore" count={3} />
         </View>
       ) : (
         <FlatList
@@ -943,6 +1039,7 @@ export default function ExploreScreen() {
             const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
             const image = resolvePostMediaUri(p.image_url, p.category, p.id);
             const isFriend = friendIds.has(p.user_id);
+            const isRequested = !isFriend && pendingRequestIds.has(p.user_id);
             return (
               <TouchableOpacity
                 style={tw`bg-white border border-stone-200/80 rounded-2xl overflow-hidden mb-3`}
@@ -960,7 +1057,13 @@ export default function ExploreScreen() {
                     <Text style={tw`font-semibold text-stone-900`}>{username}</Text>
                     <Text style={tw`text-xs text-stone-500 capitalize`}>{p.category}</Text>
                   </View>
-                  {!isFriend ? (
+                  {isFriend ? (
+                    <Ionicons name="checkmark-circle" size={22} color="#059669" />
+                  ) : isRequested ? (
+                    <View style={tw`bg-stone-100 px-2.5 py-1.5 rounded-lg`}>
+                      <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
+                    </View>
+                  ) : (
                     <TouchableOpacity
                       onPress={(e) => {
                         e.stopPropagation?.();
@@ -970,8 +1073,6 @@ export default function ExploreScreen() {
                     >
                       <Text style={tw`text-emerald-800 text-xs font-bold`}>+ Request</Text>
                     </TouchableOpacity>
-                  ) : (
-                    <Ionicons name="checkmark-circle" size={22} color="#059669" />
                   )}
                 </View>
                 {p.caption ? (

@@ -151,7 +151,6 @@ async function handleRequest(
       const userPostsMatch = path.match(new RegExp(`^${apiPrefix}/feed/posts/user/([^/]+)$`));
       if (userPostsMatch) {
         const userId = userPostsMatch[1];
-        console.log('[index.ts] Matched user posts route for userId:', userId);
         if (request.method === 'GET') {
           return feedRoutes.getUserPosts(request, env, userId);
         }
@@ -306,6 +305,12 @@ async function handleRequest(
 
       if (path === `${apiPrefix}/instructor/eligibility` && request.method === 'GET') {
         return instructorRoutes.getEligibility(request, env);
+      }
+      if (
+        path === `${apiPrefix}/instructor/eligibility/suggest-endorsers` &&
+        request.method === 'GET'
+      ) {
+        return instructorRoutes.suggestEndorsers(request, env);
       }
       if (path === `${apiPrefix}/instructor/claim` && request.method === 'POST') {
         return instructorRoutes.claimInstructor(request, env);
@@ -483,6 +488,35 @@ async function handleRequest(
       }
 
       // Journal routes
+      if (path === `${apiPrefix}/journal/circle` && request.method === 'GET') {
+        return journalRoutes.getCircleJournalEntries(request, env);
+      }
+      if (path === `${apiPrefix}/journal/reflections` && request.method === 'GET') {
+        return journalRoutes.getJournalReflections(request, env);
+      }
+      if (path === `${apiPrefix}/journal/mute` && request.method === 'POST') {
+        return journalRoutes.muteJournalAuthor(request, env);
+      }
+
+      const journalFeelMatch = path.match(
+        new RegExp(`^${apiPrefix}/journal/entries/([^/]+)/feel$`)
+      );
+      if (journalFeelMatch && request.method === 'POST') {
+        return journalRoutes.feelJournalEntry(request, env, journalFeelMatch[1]);
+      }
+
+      const journalRepliesMatch = path.match(
+        new RegExp(`^${apiPrefix}/journal/entries/([^/]+)/replies$`)
+      );
+      if (journalRepliesMatch) {
+        if (request.method === 'GET') {
+          return journalRoutes.listJournalReplies(request, env, journalRepliesMatch[1]);
+        }
+        if (request.method === 'POST') {
+          return journalRoutes.createJournalReply(request, env, journalRepliesMatch[1]);
+        }
+      }
+
       const journalUserMatch = path.match(new RegExp(`^${apiPrefix}/journal/entries/user/([^/]+)$`));
       if (journalUserMatch && request.method === 'GET') {
         return journalRoutes.getUserPublicJournalEntries(request, env, journalUserMatch[1]);

@@ -8,20 +8,20 @@ type Props = {
   compact?: boolean;
 };
 
-/** Countdown chip for post soft-hide lifespan. */
+/** Countdown chip for post decay lifespan. */
 export default function DecayCountdownChip({ daysLeft, compact }: Props) {
-  const faded = daysLeft <= 0;
-  const urgent = daysLeft <= 1 && !faded;
+  const decayed = daysLeft <= 0;
+  const urgent = daysLeft <= 1 && !decayed;
 
-  const label = faded
-    ? 'Faded'
+  const label = decayed
+    ? 'Decayed'
     : daysLeft <= 1
-      ? 'Fades today'
+      ? 'Decays today'
       : `${daysLeft}d left`;
 
-  const chipBg = faded ? 'bg-stone-200' : urgent ? 'bg-amber-100' : 'bg-emerald-50';
-  const textColor = faded ? 'text-stone-600' : urgent ? 'text-amber-900' : 'text-emerald-800';
-  const iconColor = faded ? '#78716C' : urgent ? '#B45309' : '#059669';
+  const chipBg = decayed ? 'bg-stone-200' : urgent ? 'bg-amber-100' : 'bg-emerald-50';
+  const textColor = decayed ? 'text-stone-600' : urgent ? 'text-amber-900' : 'text-emerald-800';
+  const iconColor = decayed ? '#78716C' : urgent ? '#B45309' : '#059669';
 
   return (
     <View
@@ -29,7 +29,7 @@ export default function DecayCountdownChip({ daysLeft, compact }: Props) {
       accessibilityLabel={`Post lifespan: ${label}`}
     >
       <Ionicons
-        name={faded ? 'hourglass-outline' : 'timer-outline'}
+        name={decayed ? 'hourglass-outline' : 'timer-outline'}
         size={compact ? 13 : 15}
         color={iconColor}
       />

@@ -1,22 +1,11 @@
 import { Env, RequestContext, Post } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createPostSchema } from '../utils/validation';
+import { validateRequest, createPostSchema, isPublishableMediaUrl } from '../utils/validation';
 import { generateId } from '../utils/id';
 import { alignPostTaxonomy, categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 import { POINTS, awardPoints } from '../utils/points';
-
-const MOCK_USER_COUNT = 60;
-const MOCK_POSTS_PER_USER = 10;
-const MOCK_CATEGORIES = [
-  ['fitness', 'building-muscle'],
-  ['fitness', 'cardio'],
-  ['nutrition', 'meal-planning'],
-  ['mindset', 'meditation'],
-  ['skills', 'learning-systems'],
-  ['productivity', 'deep-work'],
-] as const;
 
 type FeedLiker = {
   id: string;
@@ -24,87 +13,6 @@ type FeedLiker = {
   avatar: string | null;
   isFriend: boolean;
 };
-
-function parseMockPostId(postId: string): { userIdx: number; postIdx: number } | null {
-  const modern = postId.match(/^mock-explore-post-(\d+)-(\d+)$/);
-  if (modern) {
-    return { userIdx: Number(modern[1]), postIdx: Number(modern[2]) };
-  }
-  const legacy = postId.match(/^mock-explore-post-(\d+)$/);
-  if (legacy) {
-    return { userIdx: Number(legacy[1]), postIdx: 1 };
-  }
-  return null;
-}
-
-function makeMockUser(userIdx: number) {
-  return {
-    id: `mock-user-${String(userIdx).padStart(2, '0')}`,
-    username: `Creator ${String(userIdx).padStart(2, '0')}`,
-    avatar: `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`,
-  };
-}
-
-function computeMockEngagement(userIdx: number, postIdx: number) {
-  return {
-    likes: 70 + ((userIdx * 11 + postIdx * 17) % 180),
-    comments: 8 + ((userIdx * 7 + postIdx * 5) % 40),
-  };
-}
-
-function buildMockLikers(userIdx: number, postIdx: number, count: number): FeedLiker[] {
-  const likers: FeedLiker[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const base = (userIdx * 13 + postIdx * 19 + i) % 500;
-    const likerIdx = base + 1;
-    likers.push({
-      id: `mock-liker-${String(likerIdx).padStart(3, '0')}`,
-      username: `User ${String(likerIdx).padStart(3, '0')}`,
-      avatar: `https://i.pravatar.cc/200?img=${(likerIdx % 70) + 1}`,
-      isFriend: i % 4 === 0,
-    });
-  }
-  return likers;
-}
-
-/** Development-only fallback payload used for explore mode demos. */
-function buildMockExplorePosts() {
-  const now = Date.now();
-  const items: Array<Record<string, unknown>> = [];
-  for (let userIdx = 1; userIdx <= MOCK_USER_COUNT; userIdx += 1) {
-    const user = makeMockUser(userIdx);
-    for (let postIdx = 1; postIdx <= MOCK_POSTS_PER_USER; postIdx += 1) {
-      const [category, subcategory] = MOCK_CATEGORIES[(userIdx + postIdx) % MOCK_CATEGORIES.length];
-      const { likes, comments } = computeMockEngagement(userIdx, postIdx);
-      const likers = buildMockLikers(userIdx, postIdx, likes);
-      const friendLikers = likers.filter((x) => x.isFriend).slice(0, 8).map((x) => x.username);
-      const createdAt = new Date(now - (userIdx * 6 + postIdx * 37) * 60000).toISOString();
-      items.push({
-        id: `mock-explore-post-${userIdx}-${postIdx}`,
-        user_id: user.id,
-        image_url: `https://picsum.photos/seed/mock-post-${userIdx}-${postIdx}/1200/1200`,
-        caption: `${user.username}: progress update #${postIdx} in ${category}.`,
-        category,
-        subcategory,
-        engagement_score: 60 + ((userIdx * 5 + postIdx * 3) % 40),
-        created_at: createdAt,
-        updated_at: createdAt,
-        metadata: {
-          likes,
-          comments,
-          has_liked: false,
-          friend_likes_count: friendLikers.length,
-          friend_likers: friendLikers,
-          is_friend: false,
-          isInstructor: userIdx % 5 === 0,
-          username: user.username,
-          avatar: user.avatar,
-        },
-      });
-    }
-  }
-  return items;
-}
 
 /**
  * GET /api/v1/feed/feed
@@ -115,7 +23,6 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   const feedMode = url.searchParams.get('mode') || 'home';
   const isExploreMode = feedMode === 'explore';
   const isForYouMode = feedMode === 'foryou' || feedMode === 'home';
-  const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -177,6 +84,9 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.created_at > datetime('now', '${recencyWindow}')
       AND COALESCE(p.is_hidden, 0) = 0
+      AND p.image_url IS NOT NULL
+      AND trim(p.image_url) != ''
+      AND p.image_url LIKE 'https://%'
   `;
 
   const bindings: any[] = [];
@@ -210,7 +120,12 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const friendIds = await getFriendUserIds(env, ctx.userId);
 
-  const scoredPosts = (posts.results || []).map((post) => {
+  const scoredPosts = (posts.results || [])
+    .filter((post) => {
+      const url = typeof post.image_url === 'string' ? post.image_url.trim() : '';
+      return /^https:\/\//i.test(url);
+    })
+    .map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
       let postMeta: Record<string, unknown> = {};
       try {
@@ -331,10 +246,6 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     );
   }
 
-  if (isExploreMode && allowDevMock && personalizedPosts.length === 0) {
-    return json(buildMockExplorePosts(), 200);
-  }
-
   return json(personalizedPosts.map(formatPost), 200);
 }
 
@@ -344,20 +255,11 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
  */
 /** Creates a feed post after schema validation and inserts base engagement fields. */
 export async function createPost(request: Request, env: Env): Promise<Response> {
-  console.log('[createPost] ===== POST CREATION STARTED =====');
   const ctx = await getRequestContext(request, env);
-  console.log('[createPost] Context:', {
-    isAuthenticated: ctx.isAuthenticated,
-    userId: ctx.userId,
-    hasUser: !!ctx.user,
-  });
-  
   if (!ctx.isAuthenticated || !ctx.userId) {
     console.error('[createPost] ❌ Unauthenticated request');
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
-
-  console.log('[createPost] Creating post for user:', ctx.userId);
 
   const validation = await validateRequest(request, createPostSchema);
   if (!validation.success) {
@@ -366,10 +268,17 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
   }
 
   const { image_url, caption, category, subcategory, metadata } = validation.data;
-  console.log('[createPost] Validated data:', { category, subcategory, hasImage: !!image_url, hasCaption: !!caption });
+
+  // Fail closed: never insert a wall post without hosted media (no stock substitution).
+  if (!isPublishableMediaUrl(image_url)) {
+    return error(
+      'MEDIA_REQUIRED',
+      'Your photo was not saved. The post was not published — your draft is still on your device. Upload again and retry.',
+      400
+    );
+  }
 
   const postId = generateId('post');
-  console.log('[createPost] Generated post ID:', postId);
 
   const userRow = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
     .bind(ctx.userId)
@@ -404,7 +313,7 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       .bind(
         postId,
         ctx.userId,
-        image_url || null,
+        image_url.trim(),
         caption || null,
         category,
         subcategory || null,
@@ -413,8 +322,6 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       .run();
 
     const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CREATE_POST);
-
-    console.log('[createPost] Post created successfully:', postId, 'for user:', ctx.userId);
 
     return json(
       {
@@ -499,6 +406,9 @@ export async function getPost(
     LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.id = ?
       AND COALESCE(p.is_hidden, 0) = 0
+      AND p.image_url IS NOT NULL
+      AND trim(p.image_url) != ''
+      AND p.image_url LIKE 'https://%'
     GROUP BY p.id`
   )
     .bind(viewerId, viewerId, postId)
@@ -613,26 +523,6 @@ export async function getPostLikes(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const mockParsed = parseMockPostId(postId);
-  if (mockParsed) {
-    const { userIdx, postIdx } = mockParsed;
-    const legacyLikeMap: Record<string, number> = {
-      'mock-explore-post-1': 187,
-      'mock-explore-post-2': 133,
-      'mock-explore-post-3': 101,
-    };
-    const { likes: computedLikes } = computeMockEngagement(userIdx, postIdx);
-    const likes = legacyLikeMap[postId] ?? computedLikes;
-    const likers = buildMockLikers(userIdx, postIdx, likes);
-    const friendLikers = likers.filter((x) => x.isFriend);
-    return json({
-      likes: likers.length,
-      likers,
-      friendLikesCount: friendLikers.length,
-      friendLikers,
-    });
-  }
-
   const friendIds = await getFriendUserIds(env, ctx.userId);
   const rows = await env.DB.prepare(
     `SELECT pe.user_id, u.metadata
@@ -677,8 +567,6 @@ export async function getUserPosts(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  console.log('[getUserPosts] Request for userId:', userId, 'authenticated:', ctx.isAuthenticated, 'requestingUserId:', ctx.userId);
-  
   try {
     const posts = await env.DB.prepare(
       `SELECT 
@@ -697,6 +585,9 @@ export async function getUserPosts(
       LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
       WHERE p.user_id = ?
         AND COALESCE(p.is_hidden, 0) = 0
+        AND p.image_url IS NOT NULL
+        AND trim(p.image_url) != ''
+        AND p.image_url LIKE 'https://%'
       GROUP BY p.id
       ORDER BY p.created_at DESC
       LIMIT 100`
@@ -713,7 +604,19 @@ export async function getUserPosts(
         }
       >();
 
-    console.log('[getUserPosts] Found posts:', posts.results?.length || 0);
+    let pinnedIds: string[] = [];
+    try {
+      const ownerRow = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
+        .bind(userId)
+        .first<{ metadata: string }>();
+      const om = JSON.parse(ownerRow?.metadata || '{}');
+      pinnedIds = Array.isArray(om.pinned_post_ids)
+        ? om.pinned_post_ids.filter((x: unknown) => typeof x === 'string').slice(0, 3)
+        : [];
+    } catch {
+      pinnedIds = [];
+    }
+    const pinRank = new Map(pinnedIds.map((id, i) => [id, i]));
 
     const userPosts = posts.results.map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
@@ -730,6 +633,7 @@ export async function getUserPosts(
         ? userMeta.categories.map((x: unknown) => String(x))
         : [];
       const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
+      const isPinned = pinRank.has(post.id);
       return {
         ...post,
         category: aligned.category,
@@ -743,11 +647,18 @@ export async function getUserPosts(
           isInstructor: post.is_instructor,
           username: userMeta.username,
           avatar: userMeta.avatar,
+          is_pinned: isPinned,
         },
       };
     });
 
-    console.log('[getUserPosts] Returning', userPosts.length, 'posts');
+    userPosts.sort((a, b) => {
+      const ap = pinRank.has(a.id) ? pinRank.get(a.id)! : 999;
+      const bp = pinRank.has(b.id) ? pinRank.get(b.id)! : 999;
+      if (ap !== bp) return ap - bp;
+      return String(b.created_at).localeCompare(String(a.created_at));
+    });
+
     return json(userPosts);
   } catch (err) {
     console.error('[getUserPosts] Error:', err);

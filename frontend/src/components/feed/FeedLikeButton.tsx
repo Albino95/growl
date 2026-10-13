@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import { feedback } from '../../utils/interactionFeedback';
 
 export type FeedReaction = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
@@ -47,7 +47,7 @@ function ReactionGlyph({
   }
 }
 
-/** Like / reaction control with a bounce when the heart fills. */
+/** Like / reaction control with a punchy heart pop when filled. */
 export default function FeedLikeButton({
   hasLiked,
   reaction,
@@ -57,24 +57,62 @@ export default function FeedLikeButton({
   compact = false,
 }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
+  const ring = useRef(new Animated.Value(0)).current;
   const prevLiked = useRef(hasLiked);
 
   useEffect(() => {
     if (hasLiked && !prevLiked.current) {
-      Animated.sequence([
-        Animated.spring(scale, { toValue: 1.4, friction: 3, tension: 240, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 5, tension: 160, useNativeDriver: true }),
+      ring.setValue(0);
+      Animated.parallel([
+        Animated.sequence([
+          Animated.spring(scale, {
+            toValue: 1.45,
+            friction: 3,
+            tension: 260,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scale, {
+            toValue: 1,
+            friction: 5,
+            tension: 170,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(ring, {
+          toValue: 1,
+          duration: 420,
+          useNativeDriver: true,
+        }),
       ]).start();
     } else if (!hasLiked && prevLiked.current) {
       Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }).start();
+      ring.setValue(0);
     }
     prevLiked.current = hasLiked;
-  }, [hasLiked, scale]);
+  }, [hasLiked, scale, ring]);
 
   return (
     <Pressable
+      onPressIn={() => {
+        Animated.spring(scale, {
+          toValue: 0.88,
+          useNativeDriver: true,
+          speed: 40,
+          bounciness: 0,
+        }).start();
+      }}
+      onPressOut={() => {
+        if (!hasLiked) {
+          Animated.spring(scale, {
+            toValue: 1,
+            useNativeDriver: true,
+            speed: 28,
+            bounciness: 6,
+          }).start();
+        }
+      }}
       onPress={() => {
-        triggerPressFeedback();
+        // Parent toggles like + fires feedback.like; keep a light tap if already synced.
         onPress();
       }}
       onLongPress={onLongPress}
@@ -84,9 +122,34 @@ export default function FeedLikeButton({
       accessibilityRole="button"
       accessibilityLabel={hasLiked ? 'Unlike' : 'Like'}
     >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <ReactionGlyph reaction={reaction} hasLiked={hasLiked} tone={tone} />
-      </Animated.View>
+      <View style={tw`items-center justify-center w-9 h-9`}>
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            borderWidth: 2,
+            borderColor: '#F97066',
+            opacity: ring.interpolate({
+              inputRange: [0, 0.35, 1],
+              outputRange: [0.55, 0.35, 0],
+            }),
+            transform: [
+              {
+                scale: ring.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.6, 1.65],
+                }),
+              },
+            ],
+          }}
+        />
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <ReactionGlyph reaction={reaction} hasLiked={hasLiked} tone={tone} />
+        </Animated.View>
+      </View>
     </Pressable>
   );
 }
@@ -153,7 +216,7 @@ export function ReactionPickerBar({
         <Pressable
           key={item.key}
           onPress={() => {
-            triggerPressFeedback();
+            feedback.like(true);
             onPick(item.key);
           }}
           style={({ pressed }) => [

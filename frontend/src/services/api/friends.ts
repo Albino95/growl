@@ -52,6 +52,8 @@ export type PeopleSearchHit = {
   avatar?: string | null;
   categories?: string[];
   isFriend?: boolean;
+  /** Outgoing friend request pending acceptance */
+  requestSent?: boolean;
   is_instructor?: boolean;
   is_business?: boolean;
   account_type?: 'people' | 'instructor' | 'business';

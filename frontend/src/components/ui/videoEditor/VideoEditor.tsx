@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
+import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
 import type { TextOverlay, TextOverlayStyle, EditAdjustments } from '../photoEditor/types';
 import { TEXT_COLORS, TEXT_QUICK_PHRASES, DEFAULT_ADJUSTMENTS } from '../photoEditor/types';
 import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
@@ -696,6 +697,7 @@ export default function VideoEditor({
               {activeOverlay ? (
                 <>
                   <TextInput
+                    {...formInputAccessoryProps()}
                     value={activeOverlay.text}
                     onChangeText={(t) => updateActive({ text: t.slice(0, 48) })}
                     placeholder="Type your text…"

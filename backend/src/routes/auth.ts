@@ -98,7 +98,8 @@ async function sendPendingVerification(
     return null;
   } catch (mailErr) {
     console.error('[auth] Email send failed:', mailErr);
-    if (env.ENVIRONMENT === 'production') {
+    // QA and production must never silently "succeed" without a real send.
+    if (env.ENVIRONMENT === 'production' || env.ENVIRONMENT === 'qa') {
       return error('EMAIL_SEND_FAILED', 'Could not send verification email. Try again later.', 503);
     }
     return null;

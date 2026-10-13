@@ -2,6 +2,7 @@ import { Env } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
+import { usernameSearchRank } from '../utils/usernameSearch';
 
 /** Normalize onboarding paths like art:violin → cohort keys include leaf + parent (art). */
 export function expandCohortKeys(paths: string[]): Set<string> {
@@ -262,6 +263,17 @@ export async function getFriendUserIds(env: Env, userId: string): Promise<Set<st
   return new Set((rows.results || []).map((r) => r.fid));
 }
 
+/** Outgoing friend-request targets (pending until accepted). */
+export async function getOutgoingFriendRequestIds(env: Env, userId: string): Promise<Set<string>> {
+  const rows = await env.DB.prepare(
+    `SELECT target_user_id AS tid FROM user_relationships
+     WHERE user_id = ? AND type = 'friend_request'`
+  )
+    .bind(userId)
+    .all<{ tid: string }>();
+  return new Set((rows.results || []).map((r) => r.tid));
+}
+
 /** Resolves friendship by checking either direction of the friend relationship. */
 export async function areFriends(env: Env, a: string, b: string): Promise<boolean> {
   if (a === b) return false;
@@ -444,36 +456,47 @@ export async function searchPeople(request: Request, env: Env): Promise<Response
       avatar: string | null;
       categories: string[];
       isFriend: boolean;
+      requestSent: boolean;
       is_instructor: boolean;
       is_business: boolean;
       account_type: 'people' | 'instructor' | 'business';
     }> = [];
 
     if (wantAccounts) {
+      // Prefix pull + fuzzy rank so near-miss usernames (e.g. vasiandreu vs vasianndreu) still hit.
+      const prefixLen = Math.min(4, Math.max(1, q.length));
+      const prefixLike = `${q.slice(0, prefixLen).replace(/%/g, '').replace(/_/g, '')}%`;
       const rows = await env.DB.prepare(
-        `SELECT id, email, metadata, is_instructor, is_business FROM users
+        `SELECT id, email, metadata, is_instructor, is_business, updated_at FROM users
          WHERE id != ?
            AND (
              lower(COALESCE(json_extract(metadata, '$.username'), '')) LIKE ?
              OR lower(email) LIKE ?
+             OR lower(COALESCE(json_extract(metadata, '$.username'), '')) LIKE ?
+             OR lower(email) LIKE ?
            )
-         ORDER BY
-           CASE WHEN lower(COALESCE(json_extract(metadata, '$.username'), '')) = ? THEN 0
-                WHEN lower(COALESCE(json_extract(metadata, '$.username'), '')) LIKE ? THEN 1
-                ELSE 2 END,
-           updated_at DESC
          LIMIT ?`
       )
-        .bind(ctx.userId, like, like, q, `${q}%`, limit * 3)
+        .bind(ctx.userId, like, like, prefixLike, prefixLike, Math.max(limit * 8, 80))
         .all<{
           id: string;
           email: string;
           metadata: string;
           is_instructor: number;
           is_business: number;
+          updated_at?: string;
         }>();
 
-      const friendIds = await getFriendUserIds(env, ctx.userId);
+      const [friendIds, outgoingRequestIds] = await Promise.all([
+        getFriendUserIds(env, ctx.userId),
+        getOutgoingFriendRequestIds(env, ctx.userId),
+      ]);
+      const ranked: Array<{
+        rank: number;
+        updated_at: string;
+        hit: (typeof people)[number];
+      }> = [];
+
       for (const row of rows.results || []) {
         if (blockedIds.has(row.id)) continue;
         const meta = JSON.parse(row.metadata || '{}');
@@ -481,6 +504,17 @@ export async function searchPeople(request: Request, env: Env): Promise<Response
           (typeof meta.username === 'string' && meta.username.trim()) ||
           row.email?.split('@')[0] ||
           row.id.slice(0, 8);
+        const emailLocal = (row.email || '').split('@')[0] || '';
+        const rank = (() => {
+          const byUser = usernameSearchRank(username, q);
+          const byEmail = usernameSearchRank(emailLocal, q);
+          if (byUser == null && byEmail == null) return null;
+          if (byUser == null) return byEmail as number;
+          if (byEmail == null) return byUser;
+          return Math.min(byUser, byEmail);
+        })();
+        if (rank == null) continue;
+
         const categories = Array.isArray(meta.categories)
           ? meta.categories.map((x: unknown) => String(x))
           : [];
@@ -496,18 +530,25 @@ export async function searchPeople(request: Request, env: Env): Promise<Response
             ? 'instructor'
             : 'people';
 
-        people.push({
-          id: row.id,
-          username,
-          avatar: meta.avatar ?? null,
-          categories,
-          isFriend: friendIds.has(row.id),
-          is_instructor: isInstructor,
-          is_business: isBusiness,
-          account_type,
+        ranked.push({
+          rank,
+          updated_at: row.updated_at || '',
+          hit: {
+            id: row.id,
+            username,
+            avatar: meta.avatar ?? null,
+            categories,
+            isFriend: friendIds.has(row.id),
+            requestSent: !friendIds.has(row.id) && outgoingRequestIds.has(row.id),
+            is_instructor: isInstructor,
+            is_business: isBusiness,
+            account_type,
+          },
         });
-        if (people.length >= limit) break;
       }
+
+      ranked.sort((a, b) => a.rank - b.rank || (a.updated_at < b.updated_at ? 1 : -1));
+      people = ranked.slice(0, limit).map((r) => r.hit);
     }
 
     let posts: Array<{
@@ -533,6 +574,9 @@ export async function searchPeople(request: Request, env: Env): Promise<Response
            OR lower(COALESCE(json_extract(u.metadata, '$.username'), '')) LIKE ?
          )
          AND COALESCE(p.is_hidden, 0) = 0
+         AND p.image_url IS NOT NULL
+         AND trim(p.image_url) != ''
+         AND p.image_url LIKE 'https://%'
          ORDER BY p.created_at DESC
          LIMIT ?`
       )

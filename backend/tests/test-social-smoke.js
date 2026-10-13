@@ -109,10 +109,29 @@ async function run() {
   const selfId = payload.userId;
 
   const feedResp = await api('GET', '/feed/feed', null, token);
-  const feedOk = ensureApiSuccess(feedResp) && Array.isArray(feedResp.json?.data);
-  const feedItems = feedOk ? feedResp.json.data : [];
+  const feedData = feedResp.json?.data;
+  // Home/For You returns { following, suggested }; explore returns an array.
+  const feedItems = Array.isArray(feedData)
+    ? feedData
+    : [
+        ...(Array.isArray(feedData?.following) ? feedData.following : []),
+        ...(Array.isArray(feedData?.suggested) ? feedData.suggested : []),
+      ];
+  const feedOk = ensureApiSuccess(feedResp) && feedItems.length >= 0 && (Array.isArray(feedData) || !!feedData);
   const feedHasItems = feedOk && feedItems.length > 0;
-  record('feed-load', feedHasItems, `items=${feedItems.length}`);
+  const httpsMedia = feedItems.filter(
+    (p) => typeof p?.image_url === 'string' && /^https:\/\//i.test(p.image_url.trim())
+  ).length;
+  record(
+    'feed-load',
+    feedHasItems,
+    `items=${feedItems.length} following=${feedData?.following?.length ?? 'n/a'} suggested=${feedData?.suggested?.length ?? 'n/a'}`
+  );
+  record(
+    'feed-https-media',
+    !feedHasItems || httpsMedia === feedItems.length,
+    `https=${httpsMedia}/${feedItems.length}`
+  );
   if (!feedHasItems) process.exit(1);
 
   const candidate = feedItems.find((p) => p?.user_id && p.user_id !== selfId) || feedItems[0];
@@ -176,9 +195,16 @@ async function run() {
     record('block-status-reflects-true', ensureApiSuccess(statusResp) && blocked, `blocked=${blocked}`);
 
     const feedAfterBlock = await api('GET', '/feed/feed', null, token);
-    const feedAfterOk = ensureApiSuccess(feedAfterBlock) && Array.isArray(feedAfterBlock.json?.data);
+    const afterData = feedAfterBlock.json?.data;
+    const afterItems = Array.isArray(afterData)
+      ? afterData
+      : [
+          ...(Array.isArray(afterData?.following) ? afterData.following : []),
+          ...(Array.isArray(afterData?.suggested) ? afterData.suggested : []),
+        ];
+    const feedAfterOk = ensureApiSuccess(feedAfterBlock);
     const stillVisible = feedAfterOk
-      ? feedAfterBlock.json.data.some((p) => p?.user_id === targetUserId)
+      ? afterItems.some((p) => p?.user_id === targetUserId)
       : true;
     record('blocked-user-hidden-in-feed', feedAfterOk && !stillVisible, `stillVisible=${stillVisible}`);
 

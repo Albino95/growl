@@ -28,6 +28,7 @@ export type InstructorEndorser = {
   avatar?: string | null;
   points: number;
   categories: string[];
+  shared_categories?: string[];
   endorsed_at: string;
   is_friend: boolean;
 };
@@ -59,6 +60,28 @@ export type InstructorPartnership = {
   attributed_orders: number;
 };
 
+export type DiscoverInstructor = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+  points: number;
+  vote_count: number;
+  categories: string[];
+  shared_categories: string[];
+  teaching_headline?: string | null;
+  created_at: string;
+};
+
+export type EndorsementSuggestion = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+  points: number;
+  categories: string[];
+  shared_categories: string[];
+  is_instructor: boolean;
+};
+
 export type InstructorHub = {
   stats: {
     points: number;
@@ -69,10 +92,19 @@ export type InstructorHub = {
     active_partnerships: number;
     referral_revenue: number;
     referral_orders: number;
+    unread_messages?: number;
+    learners?: number;
   };
   endorsers: InstructorEndorser[];
+  learners?: InstructorEndorser[];
   pending_requests: InstructorPartnershipRequest[];
   partnerships: InstructorPartnership[];
+  actions?: {
+    teach_today?: boolean;
+    open_inbox?: boolean;
+    review_partners?: boolean;
+    check_in_learners?: boolean;
+  };
 };
 
 export async function getInstructorEligibility(): Promise<InstructorEligibility> {
@@ -141,6 +173,35 @@ export async function getInstructorHub(): Promise<InstructorHub> {
   const res = await request<{ success: boolean; data: InstructorHub }>('/instructor/hub');
   if (!res.success || !res.data) throw new Error('Failed to load instructor hub');
   return res.data;
+}
+
+export async function listInstructors(params?: {
+  limit?: number;
+  offset?: number;
+  category?: string;
+  forPaths?: boolean;
+}): Promise<DiscoverInstructor[]> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.append('limit', String(params.limit));
+  if (params?.offset) query.append('offset', String(params.offset));
+  if (params?.category) query.append('category', params.category);
+  if (params?.forPaths) query.append('for_paths', '1');
+  const qs = query.toString();
+  const res = await request<{
+    success: boolean;
+    data: { instructors: DiscoverInstructor[] };
+  }>(`/instructor/instructors${qs ? `?${qs}` : ''}`);
+  if (!res.success) throw new Error('Failed to load instructors');
+  return res.data?.instructors ?? [];
+}
+
+export async function suggestEndorsers(): Promise<EndorsementSuggestion[]> {
+  const res = await request<{
+    success: boolean;
+    data: { suggestions: EndorsementSuggestion[] };
+  }>('/instructor/eligibility/suggest-endorsers');
+  if (!res.success) throw new Error('Failed to load suggestions');
+  return res.data?.suggestions ?? [];
 }
 
 export async function respondToPartnershipRequest(

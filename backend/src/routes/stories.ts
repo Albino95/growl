@@ -5,52 +5,25 @@ import { generateId } from '../utils/id';
 import { validateRequest } from '../utils/validation';
 import { z } from 'zod';
 
-/** Development-only grouped stories fallback used in explore mode. */
-function buildMockExploreStories() {
-  const now = Date.now();
-  const groups: Array<{
-    userId: string;
-    username: string;
-    avatar: string;
-    stories: Array<{
-      id: string;
-      userId: string;
-      username: string;
-      avatar: string;
-      image: string;
-      caption: string;
-      views: number;
-      hasViewed: boolean;
-      createdAt: string;
-    }>;
-  }> = [];
-
-  for (let userIdx = 1; userIdx <= 60; userIdx += 1) {
-    const userId = `mock-user-${String(userIdx).padStart(2, '0')}`;
-    const username = `Creator ${String(userIdx).padStart(2, '0')}`;
-    const avatar = `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`;
-    const stories = Array.from({ length: 10 }).map((_, storyIdx) => {
-      const createdAt = new Date(now - (userIdx * 5 + storyIdx * 15) * 60000).toISOString();
-      return {
-        id: `mock-story-${userIdx}-${storyIdx + 1}`,
-        userId,
-        username,
-        avatar,
-        image: `https://picsum.photos/seed/mock-story-${userIdx}-${storyIdx + 1}/900/1400`,
-        caption: `Story ${storyIdx + 1} from ${username}`,
-        views: 120 + ((userIdx * 9 + storyIdx * 13) % 400),
-        hasViewed: false,
-        createdAt,
-      };
-    });
-    groups.push({ userId, username, avatar, stories });
-  }
-
-  return groups;
-}
-
 const createStorySchema = z.object({
-  image_url: z.string().url('Invalid image URL'),
+  image_url: z
+    .string()
+    .trim()
+    .min(1, 'Image is required')
+    .refine(
+      (v) => {
+        if (!/^https:\/\//i.test(v)) return false;
+        try {
+          return /\/api\/[^/]+\/media\//i.test(new URL(v).pathname || '');
+        } catch {
+          return false;
+        }
+      },
+      {
+        message:
+          'Your photo was not uploaded successfully. The story was not published — try again.',
+      }
+    ),
   caption: z.string().max(500, 'Caption too long').optional(),
 });
 
@@ -59,10 +32,6 @@ const createStorySchema = z.object({
  * Get all active stories (stories from last 24 hours)
  */
 export async function getStories(request: Request, env: Env): Promise<Response> {
-  // Explore mode and mock toggles are opt-in to avoid accidental production fallback.
-  const url = new URL(request.url);
-  const isExploreMode = url.searchParams.get('mode') === 'explore';
-  const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
   const ctx = await getRequestContext(request, env);
   const viewerId = ctx.userId || '';
   
@@ -90,6 +59,9 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
       FROM stories s
       JOIN users u ON s.user_id = u.id
       WHERE s.created_at > datetime('now', '-24 hours')
+        AND s.image_url IS NOT NULL
+        AND trim(s.image_url) != ''
+        AND s.image_url LIKE 'https://%'
       ${
         viewerId
           ? `AND NOT EXISTS (
@@ -156,14 +128,6 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
       avatar: stories[0]?.avatar || null,
       stories,
     }));
-
-    if (isExploreMode && allowDevMock && grouped.length === 0) {
-      const mockGrouped = buildMockExploreStories();
-      return json({
-        stories: mockGrouped.flatMap((group) => group.stories),
-        grouped: mockGrouped,
-      });
-    }
 
     return json({
       stories: Object.values(groupedStories).flat(),

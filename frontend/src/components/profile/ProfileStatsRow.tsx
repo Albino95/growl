@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type StatProps = {
   label: string;
@@ -17,9 +18,14 @@ function Stat({ label, value, onPress }: StatProps) {
   );
   if (onPress) {
     return (
-      <TouchableOpacity onPress={onPress} style={tw`flex-1 items-center py-1`} activeOpacity={0.7}>
+      <PressableScale
+        onPress={onPress}
+        feedback="open"
+        pressedScale={0.96}
+        style={tw`flex-1 items-center py-1`}
+      >
         {inner}
-      </TouchableOpacity>
+      </PressableScale>
     );
   }
   return <View style={tw`flex-1 items-center py-1`}>{inner}</View>;
@@ -41,11 +47,13 @@ export default function ProfileStatsRow({
   onPressFollowers,
 }: Props) {
   return (
-    <View style={tw`flex-row border border-stone-100 rounded-2xl bg-stone-50/80 overflow-hidden`}>
+    <View
+      style={tw`flex-row border border-stone-200/80 rounded-2xl bg-[#FFFcf7] overflow-hidden`}
+    >
       <Stat label="Posts" value={postsCount} />
-      <View style={tw`w-px bg-stone-200 my-2`} />
+      <View style={tw`w-px bg-stone-200/80 my-2.5`} />
       <Stat label="Following" value={followingCount} onPress={onPressFollowing} />
-      <View style={tw`w-px bg-stone-200 my-2`} />
+      <View style={tw`w-px bg-stone-200/80 my-2.5`} />
       <Stat label="Followers" value={followersCount} onPress={onPressFollowers} />
     </View>
   );

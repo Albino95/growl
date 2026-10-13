@@ -3,7 +3,12 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { validateRequest, updateUserSchema } from '../utils/validation';
 import { resyncCategoryCohortFriends } from './friends';
-import { computeEligibility, countEndorsements, countUserPosts } from '../utils/instructorEligibility';
+import {
+  computeEligibility,
+  countEndorsements,
+  countUserPosts,
+  resolveUserCategories,
+} from '../utils/instructorEligibility';
 import { countEndorsementsGiven, computePostStreak } from '../utils/points';
 
 /**
@@ -42,6 +47,12 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
       .bind(targetUserId)
       .first<{ n: number }>();
 
+    const categories = await resolveUserCategories(env, targetUserId, row.metadata);
+    const endorsements_received = await countEndorsements(env, targetUserId);
+    const pinned_post_ids = Array.isArray(meta.pinned_post_ids)
+      ? meta.pinned_post_ids.filter((x: unknown) => typeof x === 'string').slice(0, 3)
+      : [];
+
     return json({
       id: row.id,
       username: meta.username ?? null,
@@ -51,9 +62,13 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
       points: row.points,
       is_instructor: !!row.is_instructor,
       is_business: !!row.is_business,
-      categories: Array.isArray(meta.categories) ? meta.categories : [],
+      categories,
       posts_count: Number(postsRow?.n ?? 0),
       stories_count: Number(storiesRow?.n ?? 0),
+      endorsements_received,
+      teaching_headline:
+        typeof meta.teaching_headline === 'string' ? meta.teaching_headline : null,
+      pinned_post_ids,
       created_at: row.created_at,
     });
   } catch (err) {
@@ -158,15 +173,26 @@ export async function updateProfile(
     }
 
     const currentMetadata = JSON.parse(user.metadata || '{}');
+    const incomingMeta =
+      metadata && typeof metadata === 'object' ? { ...metadata } : {};
+    // Avatar must come from top-level field (https-validated). Never accept arbitrary metadata.avatar.
+    delete (incomingMeta as Record<string, unknown>).avatar;
+
     const updatedMetadata: Record<string, unknown> = {
       ...currentMetadata,
-      ...(metadata || {}),
+      ...incomingMeta,
       ...(username && { username }),
       ...(categories && { categories }),
     };
 
     if (avatar !== undefined) {
       updatedMetadata.avatar = avatar || null;
+    } else if (
+      typeof updatedMetadata.avatar === 'string' &&
+      updatedMetadata.avatar &&
+      !/^https:\/\//i.test(updatedMetadata.avatar)
+    ) {
+      updatedMetadata.avatar = null;
     }
 
     if (typeof decay_timer === 'number') {

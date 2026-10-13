@@ -48,7 +48,15 @@ export type RootStackParamList = {
   Categories: undefined;
   Individual: undefined;
   Business: undefined;
-  Post: undefined;
+  Post:
+    | {
+        category?: string;
+        caption?: string;
+        promoteBusinessId?: string;
+        promoteBusinessName?: string;
+        productId?: string;
+      }
+    | undefined;
   Messages: { conversationId?: string; targetUserId?: string } | undefined;
   Reels:
     | {

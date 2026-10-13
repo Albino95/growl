@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -28,11 +27,24 @@ import {
   type ChatMessage,
 } from '../../services/api/messages';
 import tw from '../../lib/tw';
-import { CategoryCapsuleRow } from '../../components/ui/CategoryCapsule';
 import EmptyState from '../../components/ui/EmptyState';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import PressableScale from '../../components/ui/PressableScale';
+import SkeletonCard, { SkeletonList } from '../../components/ui/SkeletonCard';
+import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
+import {
+  KeyboardDoneAccessory,
+  formInputAccessoryProps,
+} from '../../components/ui/KeyboardDoneAccessory';
+import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 
 type InboxTab = 'friends' | 'shop' | 'coaches';
+
+function conversationLane(c: ConversationSummary): InboxTab {
+  if (c.peer.is_business) return 'shop';
+  if (c.peer.is_instructor) return 'coaches';
+  return 'friends';
+}
 
 type ActiveConversation = ConversationSummary & {
   messages: ChatMessage[];
@@ -42,7 +54,6 @@ type ActiveConversation = ConversationSummary & {
 function parseMsgTime(iso?: string | null): number {
   if (!iso) return 0;
   const raw = String(iso).trim();
-  // SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" — treat as UTC
   const normalized = /T/.test(raw)
     ? raw
     : raw.replace(' ', 'T') + (raw.endsWith('Z') ? '' : 'Z');
@@ -63,19 +74,13 @@ function messageReceipt(
   return 'sent';
 }
 
-function ReceiptTicks({
-  status,
-}: {
-  status: 'sending' | 'sent' | 'seen';
-}) {
+function ReceiptTicks({ status }: { status: 'sending' | 'sent' | 'seen' }) {
   if (status === 'sending') {
     return <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.85)" />;
   }
   if (status === 'seen') {
-    // Double tick — read by peer
     return <Ionicons name="checkmark-done" size={16} color="#ECFDF5" />;
   }
-  // Single tick — delivered to server
   return <Ionicons name="checkmark" size={16} color="rgba(255,255,255,0.9)" />;
 }
 
@@ -83,6 +88,7 @@ type MessagesRouteParams = {
   Messages: {
     conversationId?: string;
     targetUserId?: string;
+    draftText?: string;
   };
 };
 
@@ -128,6 +134,17 @@ export default function MessagesScreen() {
 
   selectedIdRef.current = selectedConversation?.id ?? null;
 
+  const filteredConversations = useMemo(
+    () => conversations.filter((c) => conversationLane(c) === inboxTab),
+    [conversations, inboxTab]
+  );
+
+  const laneCounts = useMemo(() => {
+    const counts = { friends: 0, shop: 0, coaches: 0 };
+    for (const c of conversations) counts[conversationLane(c)] += 1;
+    return counts;
+  }, [conversations]);
+
   const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoadingConversations(true);
     try {
@@ -148,12 +165,12 @@ export default function MessagesScreen() {
     setSelectedConversation({ ...conversation, messages: [], unread: false });
     try {
       const res = await getMessages(conversation.id);
-        setSelectedConversation({
-          ...conversation,
-          unread: false,
-          messages: res.data?.messages ?? [],
-          peer_last_read_at: res.data?.peer_last_read_at ?? null,
-        });
+      setSelectedConversation({
+        ...conversation,
+        unread: false,
+        messages: res.data?.messages ?? [],
+        peer_last_read_at: res.data?.peer_last_read_at ?? null,
+      });
       setConversations((prev) =>
         prev.map((c) => (c.id === conversation.id ? { ...c, unread: false } : c))
       );
@@ -170,7 +187,6 @@ export default function MessagesScreen() {
     void loadConversations();
   }, [loadConversations]);
 
-  // Poll conversation list while on inbox; poll thread while open.
   useEffect(() => {
     const id = setInterval(() => {
       if (selectedIdRef.current) {
@@ -196,78 +212,69 @@ export default function MessagesScreen() {
     return () => clearInterval(id);
   }, [loadConversations]);
 
+  // Deep-link / draft from profile / journal
   useEffect(() => {
-    const { conversationId, targetUserId } = route.params ?? {};
+    const { conversationId, targetUserId, draftText } = route.params || {};
+    const bootKey = `${conversationId || ''}|${targetUserId || ''}|${draftText || ''}`;
     if (!conversationId && !targetUserId) return;
-    const bootKey = `${conversationId || ''}|${targetUserId || ''}`;
     if (lastRouteBootKey.current === bootKey) return;
     lastRouteBootKey.current = bootKey;
 
-    const boot = async () => {
-      let list = conversations;
-      if (!list.length) {
-        try {
-          const res = await getConversations();
-          list = res.data?.conversations ?? [];
-          setConversations(list);
-        } catch {
-          list = [];
-        }
-      }
+    if (typeof draftText === 'string' && draftText.trim()) {
+      setMessageText(draftText);
+    }
 
-      if (conversationId) {
-        const found = list.find((c) => c.id === conversationId);
-        if (found) {
-          await openConversation(found);
-          return;
+    void (async () => {
+      try {
+        if (conversationId) {
+          const found = conversations.find((c) => c.id === conversationId);
+          if (found) {
+            await openConversation(found);
+            return;
+          }
         }
-      }
-
-      if (targetUserId) {
-        try {
+        if (targetUserId) {
+          const existing = conversations.find((c) => c.peer.id === targetUserId);
+          if (existing) {
+            await openConversation(existing);
+            return;
+          }
           const created = await createConversation(targetUserId);
-          await openConversation(created.data.conversation);
-          void loadConversations({ silent: true });
-        } catch (e) {
-          Alert.alert(
-            'Cannot message',
-            e instanceof Error ? e.message : 'You can only message mutual friends.'
-          );
+          const summary = created.data?.conversation;
+          if (summary) {
+            setConversations((prev) => {
+              if (prev.some((c) => c.id === summary.id)) return prev;
+              return [summary, ...prev];
+            });
+            await openConversation(summary);
+          }
         }
+      } catch (e) {
+        Alert.alert(
+          'Inbox',
+          e instanceof Error ? e.message : 'Could not open conversation'
+        );
       }
-    };
-
-    void boot();
-  }, [route.params, conversations, openConversation, loadConversations]);
+    })();
+  }, [route.params, conversations, openConversation]);
 
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !selectedConversation || sending) return;
-
     const body = messageText.trim();
-    setMessageText('');
+    if (!body || !selectedConversation || sending) return;
     setSending(true);
-    triggerPressFeedback();
-
+    const tempId = `temp-${Date.now()}`;
     const optimistic: ChatMessage = {
-      id: `temp-${Date.now()}`,
+      id: tempId,
       conversation_id: selectedConversation.id,
-      sender_id: user?.id || 'me',
+      sender_id: user?.id || '',
       body,
       created_at: new Date().toISOString(),
       is_own: true,
     };
-
     setSelectedConversation((prev) =>
-      prev
-        ? {
-            ...prev,
-            messages: [...prev.messages, optimistic],
-            last_message: body,
-            last_message_at: optimistic.created_at,
-          }
-        : prev
+      prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev
     );
-
+    setMessageText('');
     try {
       const res = await sendMessage(selectedConversation.id, body);
       const saved = res.data;
@@ -275,29 +282,39 @@ export default function MessagesScreen() {
         if (!prev) return prev;
         return {
           ...prev,
-          messages: prev.messages.map((m) => (m.id === optimistic.id ? saved : m)),
-          last_message: saved.body,
-          last_message_at: saved.created_at,
+          messages: prev.messages.map((m) =>
+            m.id === tempId && saved ? { ...saved, is_own: true } : m
+          ),
+          last_message: saved?.body ?? body,
+          last_message_at: saved?.created_at ?? optimistic.created_at,
         };
       });
-      void loadConversations({ silent: true });
+      setConversations((prev) => {
+        const next = prev.map((c) =>
+          c.id === selectedConversation.id
+            ? {
+                ...c,
+                last_message: saved?.body ?? body,
+                last_message_at: saved?.created_at ?? optimistic.created_at,
+              }
+            : c
+        );
+        return next.sort(
+          (a, b) => parseMsgTime(b.last_message_at) - parseMsgTime(a.last_message_at)
+        );
+      });
     } catch (e) {
-      setSelectedConversation((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          messages: prev.messages.filter((m) => m.id !== optimistic.id),
-        };
-      });
+      setSelectedConversation((prev) =>
+        prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== tempId) } : prev
+      );
       setMessageText(body);
-      Alert.alert('Send failed', e instanceof Error ? e.message : 'Try again.');
+      Alert.alert('Send failed', e instanceof Error ? e.message : 'Try again');
     } finally {
       setSending(false);
     }
   };
 
   const goBackRoot = () => {
-    // Prefer the navigator that pushed this screen (e.g. Business stack → BusinessMessages).
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
@@ -315,17 +332,18 @@ export default function MessagesScreen() {
   };
 
   if (selectedConversation) {
+    const canSend = !!messageText.trim() && !sending;
     return (
-      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
         <KeyboardAvoidingView
           style={tw`flex-1`}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          <View style={tw`flex-row items-center px-4 py-3`}>
+          <View style={tw`px-4 py-2.5 flex-row items-center border-b border-stone-200/50`}>
             <TouchableOpacity
               onPress={() => setSelectedConversation(null)}
-              style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+              style={tw`mr-3 w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
             >
               <Ionicons name="arrow-back" size={20} color="#1C1917" />
             </TouchableOpacity>
@@ -338,7 +356,7 @@ export default function MessagesScreen() {
               }}
               style={tw`flex-row items-center flex-1`}
             >
-              <View style={tw`w-10 h-10 rounded-full bg-stone-100 overflow-hidden mr-3 border border-stone-200`}>
+              <View style={tw`w-10 h-10 rounded-full overflow-hidden mr-3 border border-emerald-100 bg-[#ECFDF5]`}>
                 <Image
                   source={{
                     uri: resolveAvatarUri(
@@ -352,23 +370,24 @@ export default function MessagesScreen() {
                 />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`font-semibold text-stone-900`}>
+                <Text style={tw`font-bold text-stone-900`} numberOfLines={1}>
                   {selectedConversation.peer.username}
                 </Text>
-                <Text style={tw`text-xs text-stone-500`}>Friend · tap for profile</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Friend · tap for profile</Text>
               </View>
             </Pressable>
           </View>
 
           {loadingMessages && selectedConversation.messages.length === 0 ? (
-            <View style={tw`flex-1 items-center justify-center`}>
-              <ActivityIndicator color="#059669" />
+            <View style={tw`flex-1 px-4 pt-4`}>
+              <SkeletonCard variant="message" />
+              <SkeletonCard variant="message" />
             </View>
           ) : (
             <FlatList
               data={selectedConversation.messages}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={tw`px-4 py-2 pb-4`}
+              contentContainerStyle={tw`px-4 py-3 pb-4`}
               renderItem={({ item }) => (
                 <View style={tw`mb-2.5 flex-row ${item.is_own ? 'justify-end' : 'justify-start'}`}>
                   <View
@@ -376,7 +395,7 @@ export default function MessagesScreen() {
                       tw`max-w-[78%] rounded-2xl px-4 py-2.5`,
                       item.is_own
                         ? tw`bg-emerald-600 rounded-tr-md`
-                        : tw`bg-white border border-stone-200/80 rounded-tl-md`,
+                        : tw`bg-[#FFFcf7] border border-stone-200/80 rounded-tl-md`,
                     ]}
                   >
                     <Text
@@ -405,7 +424,10 @@ export default function MessagesScreen() {
               )}
               ListEmptyComponent={
                 <View style={tw`items-center py-16 px-6`}>
-                  <Text style={tw`text-stone-600 text-center`}>
+                  <View style={tw`w-14 h-14 rounded-full bg-[#EAE4D6] items-center justify-center mb-3`}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={24} color="#059669" />
+                  </View>
+                  <Text style={tw`text-stone-600 text-center leading-5`}>
                     No messages yet. Say hello — keep it kind.
                   </Text>
                 </View>
@@ -413,79 +435,116 @@ export default function MessagesScreen() {
             />
           )}
 
-          <View style={tw`px-4 pb-3 pt-2 bg-[#F3EEE4]`}>
-            <View style={tw`flex-row items-end bg-white border border-stone-200 rounded-full px-3 py-1.5`}>
-              <TextInput
-                ref={messageInputRef}
-                placeholder="Message..."
-                value={messageText}
-                onChangeText={setMessageText}
-                multiline
-                style={tw`flex-1 text-base text-stone-900 max-h-24 py-2 px-1`}
-                placeholderTextColor="#A8A29E"
-                returnKeyType="default"
-                blurOnSubmit={false}
-              />
-              {messageText.trim() ? (
-                <TouchableOpacity
-                  onPress={() => void handleSendMessage()}
-                  disabled={sending}
-                  style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center mb-0.5 ${
-                    sending ? 'opacity-60' : ''
-                  }`}
-                >
-                  <Ionicons name="send" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    messageInputRef.current?.blur();
-                    Keyboard.dismiss();
-                  }}
-                  style={tw`px-3 py-2 mb-0.5`}
-                >
-                  <Text style={tw`text-xs text-stone-500 font-semibold`}>Done</Text>
-                </TouchableOpacity>
-              )}
+          {/* Composer — matches FormTextInput / Journal cream surfaces */}
+          <View style={tw`px-4 pt-2 pb-3 border-t border-stone-200/50 bg-surface-page`}>
+            <View style={tw`flex-row items-end gap-2`}>
+              <View
+                style={tw`flex-1 flex-row items-end bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-1 min-h-[48px]`}
+              >
+                <TextInput
+                  ref={messageInputRef}
+                  {...formInputAccessoryProps({ multiline: true })}
+                  placeholder="Write a message…"
+                  value={messageText}
+                  onChangeText={setMessageText}
+                  multiline
+                  style={tw`flex-1 text-[15px] text-stone-900 max-h-28 py-2.5`}
+                  placeholderTextColor="#A8A29E"
+                  textAlignVertical="top"
+                />
+              </View>
+              <TouchableOpacity
+                onPress={() => void handleSendMessage()}
+                disabled={!canSend}
+                style={tw`w-12 h-12 rounded-2xl items-center justify-center ${
+                  canSend ? 'bg-emerald-600' : 'bg-[#EAE4D6]'
+                } ${sending ? 'opacity-60' : ''}`}
+                accessibilityLabel="Send message"
+              >
+                {sending ? (
+                  <ActivityIndicator color={canSend ? '#fff' : '#78716C'} />
+                ) : (
+                  <Ionicons
+                    name="send"
+                    size={18}
+                    color={canSend ? '#FFFFFF' : '#A8A29E'}
+                  />
+                )}
+              </TouchableOpacity>
             </View>
           </View>
+          <KeyboardDoneAccessory />
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <View style={tw`flex-row items-center mb-1`}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <GrowChromeHeader
+        leftAccessory={
           <TouchableOpacity
             onPress={goBackRoot}
-            style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            accessibilityLabel="Back"
           >
-            <Ionicons name="arrow-back" size={20} color="#1C1917" />
+            <Ionicons name="arrow-back" size={18} color="#1C1917" />
           </TouchableOpacity>
-          <View style={tw`flex-1`}>
-            <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-              Grow!
-            </Text>
-            <Text style={tw`text-3xl text-stone-900 mt-0.5`}>Inbox</Text>
-          </View>
-        </View>
-        <Text style={tw`text-sm text-stone-500 mb-3 ml-13`}>
-          Message friends. Shop and coach threads open when you have a real connection.
+        }
+      />
+
+      <View style={tw`px-5 pt-3 pb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          Messages
+        </Text>
+        <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>Inbox</Text>
+        <Text style={tw`text-sm text-stone-500 mt-1 mb-3`}>
+          Friends, coaches, and shop support — each in its own lane.
         </Text>
 
-        <CategoryCapsuleRow
-          items={[
-            { key: 'friends', label: 'Friends', icon: 'people-outline' },
-            { key: 'shop', label: 'Shop', icon: 'storefront-outline' },
-            { key: 'coaches', label: 'Coaches', icon: 'school-outline' },
-          ]}
-          selectedKey={inboxTab}
-          onSelect={(key) => setInboxTab((key as InboxTab) || 'friends')}
-          showAll={false}
-          allowDeselect={false}
-        />
+        <View style={tw`flex-row gap-5 border-b border-stone-200/80`}>
+          {(
+            [
+              { key: 'friends' as const, label: 'Friends' },
+              { key: 'coaches' as const, label: 'Coaches' },
+              { key: 'shop' as const, label: 'Shop' },
+            ] as const
+          ).map((tab) => {
+            const active = inboxTab === tab.key;
+            const count = laneCounts[tab.key];
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => {
+                  feedback.select();
+                  setInboxTab(tab.key);
+                }}
+                style={tw`pb-2.5 border-b-2 flex-row items-center ${
+                  active ? 'border-emerald-600' : 'border-transparent'
+                }`}
+              >
+                <Text
+                  style={tw`text-[15px] ${
+                    active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                  }`}
+                >
+                  {tab.label}
+                </Text>
+                {count > 0 ? (
+                  <View
+                    style={tw`ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center ${
+                      active ? 'bg-emerald-600' : 'bg-stone-300'
+                    }`}
+                  >
+                    <Text style={tw`text-[10px] font-bold ${active ? 'text-white' : 'text-stone-700'}`}>
+                      {count}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       {listError ? (
@@ -494,48 +553,15 @@ export default function MessagesScreen() {
         </View>
       ) : null}
 
-      {inboxTab === 'shop' ? (
-        <EmptyState
-          icon="storefront-outline"
-          title="Shop messages"
-          description="When you order from a seller, you can message them here about shipping and support."
-          actionLabel="Browse shop"
-          onAction={() => {
-            const root = navigation.getParent() || navigation;
-            root.navigate('Individual' as never);
-            // Land on Marketplace tab via nested navigate after a tick is fragile; use Marketplace from stack if available
-            setTimeout(() => {
-              try {
-                (navigation as any).navigate('Individual', { screen: 'Marketplace' });
-              } catch {
-                /* ignore */
-              }
-            }, 0);
-          }}
-        />
-      ) : inboxTab === 'coaches' ? (
-        <EmptyState
-          icon="school-outline"
-          title="Coach messages"
-          description="Once you connect with an instructor, your coaching chats will live here."
-          actionLabel="Explore people"
-          onAction={() => {
-            try {
-              (navigation as any).navigate('Individual', { screen: 'Explore' });
-            } catch {
-              goBackRoot();
-            }
-          }}
-        />
-      ) : loadingConversations && conversations.length === 0 ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" size="large" />
+      {loadingConversations && conversations.length === 0 ? (
+        <View style={tw`flex-1 px-5 pt-2`}>
+          <SkeletonList variant="inbox" count={5} />
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={filteredConversations}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`px-5 pb-10`}
+          contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -547,15 +573,12 @@ export default function MessagesScreen() {
             />
           }
           renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => {
-                triggerPressFeedback();
-                void openConversation(item);
-              }}
-              style={tw`flex-row items-center py-3.5 mb-1 bg-white/70 border border-stone-200/80 rounded-2xl px-3`}
+            <PressableScale
+              onPress={() => void openConversation(item)}
+              style={tw`flex-row items-center py-3.5 mb-2 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3`}
             >
               <View style={tw`relative`}>
-                <View style={tw`w-14 h-14 rounded-full bg-stone-100 overflow-hidden border border-stone-200`}>
+                <View style={tw`w-14 h-14 rounded-full overflow-hidden border border-emerald-100 bg-[#ECFDF5]`}>
                   <Image
                     source={{
                       uri: resolveAvatarUri(item.peer.id, item.peer.username, item.peer.avatar),
@@ -565,17 +588,18 @@ export default function MessagesScreen() {
                   />
                 </View>
                 {item.unread ? (
-                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white`} />
+                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#FFFcf7]`} />
                 ) : null}
               </View>
               <View style={tw`flex-1 ml-3`}>
                 <View style={tw`flex-row items-center justify-between mb-0.5`}>
                   <Text
-                    style={tw`font-semibold ${item.unread ? 'text-stone-900' : 'text-stone-800'}`}
+                    style={tw`font-bold ${item.unread ? 'text-stone-900' : 'text-stone-800'}`}
+                    numberOfLines={1}
                   >
                     {item.peer.username}
                   </Text>
-                  <Text style={tw`text-xs text-stone-400`}>
+                  <Text style={tw`text-xs text-stone-400 ml-2`}>
                     {formatRelativeTime(item.last_message_at)}
                   </Text>
                 </View>
@@ -586,14 +610,50 @@ export default function MessagesScreen() {
                   {item.last_message || 'Start a conversation'}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           )}
           ListEmptyComponent={
-            <EmptyState
-              icon="chatbubbles-outline"
-              title="No conversations yet"
-              description="Message a friend from their profile. Only mutual friends can chat here."
-            />
+            inboxTab === 'shop' ? (
+              <EmptyState
+                icon="storefront-outline"
+                title="No shop threads yet"
+                description="When you message a seller, support chats land here."
+                actionLabel="Browse shop"
+                onAction={() => {
+                  try {
+                    (navigation as { navigate: (a: string, b: object) => void }).navigate(
+                      'Individual',
+                      { screen: 'Marketplace' }
+                    );
+                  } catch {
+                    goBackRoot();
+                  }
+                }}
+              />
+            ) : inboxTab === 'coaches' ? (
+              <EmptyState
+                icon="school-outline"
+                title="No coach threads yet"
+                description="Message an instructor from their profile — coaching chats live here."
+                actionLabel="Explore people"
+                onAction={() => {
+                  try {
+                    (navigation as { navigate: (a: string, b: object) => void }).navigate(
+                      'Individual',
+                      { screen: 'Explore' }
+                    );
+                  } catch {
+                    goBackRoot();
+                  }
+                }}
+              />
+            ) : (
+              <EmptyState
+                icon="chatbubbles-outline"
+                title="No conversations yet"
+                description="Message a friend from their profile. Only mutual friends can chat here."
+              />
+            )
           }
         />
       )}

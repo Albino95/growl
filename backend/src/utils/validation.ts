@@ -79,21 +79,34 @@ export const ssoSchema = z
     { message: 'Google and Apple require idToken; Facebook requires accessToken', path: ['idToken'] }
   );
 
+/**
+ * Published posts require a real hosted HTTPS media URL.
+ * Local picker URIs / empty / optional media are rejected — never invent stock photos server-side.
+ */
+export function isPublishableMediaUrl(raw: unknown): raw is string {
+  if (typeof raw !== 'string') return false;
+  const s = raw.trim();
+  if (!s) return false;
+  if (!/^https:\/\//i.test(s)) return false;
+  if (/^(blob:|file:|content:|ph:|data:)/i.test(s)) return false;
+  // Must be our uploaded media path (R2 via Worker), not an arbitrary remote placeholder.
+  try {
+    const path = new URL(s).pathname || '';
+    return /\/api\/[^/]+\/media\//i.test(path);
+  } catch {
+    return false;
+  }
+}
+
 export const createPostSchema = z.object({
-  image_url: z.preprocess(
-    (val) => {
-      if (val === undefined || val === null) return undefined;
-      const s = String(val).trim();
-      if (!s) return undefined;
-      return s;
-    },
-    z
-      .string()
-      .refine((v) => /^https?:\/\//i.test(v), {
-        message: 'Uploaded media URL is invalid — try publishing again',
-      })
-      .optional()
-  ),
+  image_url: z
+    .string({ required_error: 'Image is required' })
+    .trim()
+    .min(1, 'Image is required')
+    .refine((v) => isPublishableMediaUrl(v), {
+      message:
+        'Your photo was not uploaded successfully. The post was not published — keep your draft and try again.',
+    }),
   caption: z.preprocess(
     (val) => (val === undefined || val === null ? undefined : String(val)),
     z.string().max(2000, 'Caption too long').optional()
@@ -194,8 +207,19 @@ export const checkoutSessionSchema = z.object({
 
 export const updateUserSchema = z.object({
   username: z.string().min(3).optional(),
-  /** HTTPS media URL, or empty string to clear the avatar. */
-  avatar: z.union([z.string().url(), z.literal('')]).optional(),
+  /**
+   * Avatar URL persisted in user metadata (backend-owned).
+   * Empty string clears. Only https: URLs accepted (API media or seeded hosts).
+   */
+  avatar: z
+    .union([
+      z
+        .string()
+        .url()
+        .refine((u) => /^https:\/\//i.test(u), { message: 'Avatar must be an https URL' }),
+      z.literal(''),
+    ])
+    .optional(),
   categories: z
     .array(z.string())
     .optional()

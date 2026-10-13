@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-na
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
+import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
 import type { TextAlign, TextOverlay, TextOverlayStyle } from './types';
 import { TEXT_COLORS, TEXT_QUICK_PHRASES } from './types';
 import { AdjustSlider } from './AdjustSlider';
@@ -214,6 +215,7 @@ export default function TextOverlayPanel({
             Content
           </Text>
           <TextInput
+            {...formInputAccessoryProps()}
             value={activeOverlay.text}
             onChangeText={(t) => onUpdate({ text: t.slice(0, 48) })}
             placeholder="Type your text…"

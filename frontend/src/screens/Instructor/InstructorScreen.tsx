@@ -18,7 +18,9 @@ import {
   getInstructorEligibility,
   getInstructorHub,
   respondToPartnershipRequest,
+  suggestEndorsers,
   updateInstructorPartnership,
+  type EndorsementSuggestion,
   type InstructorEligibility,
   type InstructorEndorser,
   type InstructorHub,
@@ -31,6 +33,7 @@ import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import { feedback } from '../../utils/interactionFeedback';
 import tw from '../../lib/tw';
 
 type HubTab = 'overview' | 'community' | 'partnerships';
@@ -128,13 +131,20 @@ export default function InstructorScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [claimBusy, setClaimBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<EndorsementSuggestion[]>([]);
+  const [justClaimed, setJustClaimed] = useState(false);
 
   const loadEligibility = useCallback(async () => {
     try {
-      const elig = await getInstructorEligibility();
+      const [elig, sug] = await Promise.all([
+        getInstructorEligibility(),
+        suggestEndorsers().catch(() => [] as EndorsementSuggestion[]),
+      ]);
       setEligibility(elig);
+      setSuggestions(sug);
     } catch {
       setEligibility(null);
+      setSuggestions([]);
     }
   }, []);
 
@@ -183,16 +193,51 @@ export default function InstructorScreen({ navigation }: any) {
     setClaimBusy(true);
     try {
       const result = await claimInstructor();
+      feedback.success();
       updateUser({ isInstructor: true });
       await refreshProfile();
       setEligibility(result);
+      setJustClaimed(true);
       await loadHub();
-      alertMessage('Welcome', 'You’re an instructor. Your hub is ready.');
+      setActiveTab('overview');
     } catch (e) {
+      feedback.error();
       alertMessage('Could not claim', e instanceof Error ? e.message : 'Try again');
     } finally {
       setClaimBusy(false);
     }
+  };
+
+  const askEndorsement = async (person: EndorsementSuggestion) => {
+    setBusyId(person.id);
+    try {
+      const res = await createConversation(person.id);
+      feedback.send();
+      const path =
+        person.shared_categories[0] != null
+          ? getCategoryLabel(person.shared_categories[0])
+          : 'our shared growth path';
+      navigateFromRoot(navigation, 'Messages', {
+        conversationId: res.data.conversation.id,
+        targetUserId: person.id,
+        draftText: `Hey ${person.username} — would you endorse me on Grow! for ${path}? It unlocks the Instructor Hub so I can coach peers on that path.`,
+      });
+    } catch (e) {
+      alertMessage('Could not message', e instanceof Error ? e.message : 'Try again');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const promotePartnership = (p: InstructorPartnership) => {
+    feedback.open();
+    const path = (user?.categories || [])[0];
+    navigateFromRoot(navigation, 'Post', {
+      category: typeof path === 'string' ? path : undefined,
+      caption: `Partnered with ${p.business_name} — gear that supports the work. #grow`,
+      promoteBusinessId: p.business_id,
+      promoteBusinessName: p.business_name,
+    });
   };
 
   const openProfile = (userId: string) => {
@@ -329,28 +374,74 @@ export default function InstructorScreen({ navigation }: any) {
                 />
               </View>
               {eligibility.canClaim ? (
-                <TouchableOpacity
-                  onPress={() => void onClaim()}
-                  disabled={claimBusy}
-                  style={tw`bg-emerald-700 rounded-xl py-3.5 items-center ${claimBusy ? 'opacity-60' : ''}`}
-                >
-                  <Text style={tw`text-white font-bold`}>
-                    {claimBusy ? 'Claiming…' : 'Claim instructor status'}
+                <View style={tw`rounded-2xl bg-[#FFF1F0] border border-[#FECACA] px-4 py-4 mb-2`}>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase`}>
+                    Ready
                   </Text>
-                </TouchableOpacity>
+                  <Text style={tw`text-lg font-bold text-stone-900 mt-1`}>You hit the bar</Text>
+                  <Text style={tw`text-sm text-stone-600 mt-1 leading-5 mb-3`}>
+                    Unlock community coaching, partner brands, and the Coaches inbox lane.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => void onClaim()}
+                    disabled={claimBusy}
+                    style={tw`bg-energy-600 rounded-xl py-3.5 items-center ${claimBusy ? 'opacity-60' : ''}`}
+                  >
+                    <Text style={tw`text-white font-bold`}>
+                      {claimBusy ? 'Claiming…' : 'Claim instructor status'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               ) : (
                 <View>
                   <Text style={tw`text-sm text-stone-500 leading-5 mb-4`}>
-                    Keep sharing progress and ask people in your categories to endorse you from your
-                    public profile.
+                    Ask friends on shared paths to endorse you — or keep posting progress.
                   </Text>
                   <TouchableOpacity
                     onPress={() => navigateFromRoot(navigation, 'Post')}
-                    style={tw`flex-row items-center justify-center py-3 border border-stone-200/80 rounded-xl bg-white/60`}
+                    style={tw`flex-row items-center justify-center py-3 border border-stone-200/80 rounded-xl bg-white/60 mb-5`}
                   >
                     <Ionicons name="create-outline" size={18} color="#059669" />
                     <Text style={tw`text-emerald-700 font-semibold ml-2`}>Create a post</Text>
                   </TouchableOpacity>
+
+                  {suggestions.length > 0 ? (
+                    <>
+                      <Text
+                        style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                      >
+                        Ask for endorsement
+                      </Text>
+                      {suggestions.map((person) => (
+                        <View
+                          key={person.id}
+                          style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
+                        >
+                          <TouchableOpacity onPress={() => openProfile(person.id)}>
+                            <AvatarBubble avatar={person.avatar} name={person.username} />
+                          </TouchableOpacity>
+                          <View style={tw`flex-1 ml-3 pr-2`}>
+                            <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>
+                            <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+                              {(person.shared_categories || [])
+                                .slice(0, 2)
+                                .map(getCategoryLabel)
+                                .join(' · ')}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => void askEndorsement(person)}
+                            disabled={busyId === person.id}
+                            style={tw`px-3 py-1.5 rounded-full bg-emerald-600`}
+                          >
+                            <Text style={tw`text-xs font-bold text-white`}>
+                              {busyId === person.id ? '…' : 'Ask'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
                 </View>
               )}
             </View>
@@ -452,7 +543,95 @@ export default function InstructorScreen({ navigation }: any) {
         >
           {activeTab === 'overview' && stats ? (
             <View style={tw`px-5 pt-2`}>
-              <View style={tw`flex-row border-b border-stone-200/80`}>
+              {justClaimed ? (
+                <View style={tw`mb-4 px-4 py-4 rounded-2xl bg-[#FFF1F0] border border-[#FECACA]`}>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase`}>
+                    You’re in
+                  </Text>
+                  <Text style={tw`text-lg font-bold text-stone-900 mt-1`}>Instructor unlocked</Text>
+                  <Text style={tw`text-sm text-stone-600 mt-1 leading-5`}>
+                    Teach today: post a tip, check your inbox, or greet someone who endorsed you.
+                  </Text>
+                  <TouchableOpacity onPress={() => setJustClaimed(false)} style={tw`mt-3`}>
+                    <Text style={tw`text-sm font-semibold text-[#E11D48]`}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              <Text
+                style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+              >
+                Do next
+              </Text>
+              {[
+                {
+                  icon: 'create-outline' as const,
+                  label: 'Teach today',
+                  subtitle: 'Post a tip on your paths',
+                  onPress: () => {
+                    feedback.open();
+                    navigateFromRoot(navigation, 'Post');
+                  },
+                  highlight: true,
+                },
+                {
+                  icon: 'chatbubbles-outline' as const,
+                  label: 'Coach inbox',
+                  subtitle:
+                    (stats.unread_messages || 0) > 0
+                      ? `${stats.unread_messages} unread`
+                      : 'Message learners & friends',
+                  onPress: () => {
+                    feedback.tab();
+                    openMessages();
+                  },
+                  highlight: !!hub?.actions?.open_inbox,
+                },
+                {
+                  icon: 'people-outline' as const,
+                  label: 'Check in',
+                  subtitle: `${stats.endorsers} endorsers · ${stats.learners || 0} on your paths`,
+                  onPress: () => setActiveTab('community'),
+                  highlight: !!hub?.actions?.check_in_learners,
+                },
+                {
+                  icon: 'briefcase-outline' as const,
+                  label: 'Partnerships',
+                  subtitle:
+                    stats.pending_requests > 0
+                      ? `${stats.pending_requests} request${stats.pending_requests === 1 ? '' : 's'} waiting`
+                      : `${stats.active_partnerships} active · promote products`,
+                  onPress: () => setActiveTab('partnerships'),
+                  highlight: !!hub?.actions?.review_partners,
+                },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  onPress={item.onPress}
+                  style={tw`flex-row items-center py-3.5 border-b border-stone-200/80 ${
+                    item.highlight ? 'bg-emerald-50/50 mx-[-8px] px-2 rounded-xl' : ''
+                  }`}
+                >
+                  <View
+                    style={tw`w-9 h-9 rounded-full items-center justify-center mr-3 ${
+                      item.highlight ? 'bg-emerald-600' : 'bg-[#EAE4D6]'
+                    }`}
+                  >
+                    <Ionicons
+                      name={item.icon}
+                      size={18}
+                      color={item.highlight ? '#fff' : '#57534E'}
+                    />
+                  </View>
+                  <View style={tw`flex-1 pr-2`}>
+                    <Text style={tw`font-semibold text-stone-900`}>{item.label}</Text>
+                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.subtitle}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                </TouchableOpacity>
+              ))}
+
+              <View style={tw`flex-row border-b border-stone-200/80 mt-4`}>
                 <StatCell label="Points" value={stats.points} />
                 <StatCell label="Endorsements" value={stats.endorsements} />
                 <StatCell label="Posts" value={stats.posts} />
@@ -480,41 +659,14 @@ export default function InstructorScreen({ navigation }: any) {
               <Text
                 style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-5 mb-2`}
               >
-                Shortcuts
+                More
               </Text>
               {[
                 {
                   icon: 'person-outline' as const,
                   label: 'View public profile',
-                  subtitle: 'Where peers endorse you',
+                  subtitle: 'Teaching presence & endorsements',
                   onPress: () => user?.id && openProfile(user.id),
-                },
-                {
-                  icon: 'create-outline' as const,
-                  label: 'Share progress',
-                  subtitle: 'Post to your growth areas',
-                  onPress: () => navigateFromRoot(navigation, 'Post'),
-                },
-                {
-                  icon: 'chatbubbles-outline' as const,
-                  label: 'Messages',
-                  subtitle: 'Coach friends in your network',
-                  onPress: () => openMessages(),
-                },
-                {
-                  icon: 'people-outline' as const,
-                  label: 'Community',
-                  subtitle: `${stats.endorsers} people endorsed you`,
-                  onPress: () => setActiveTab('community'),
-                },
-                {
-                  icon: 'briefcase-outline' as const,
-                  label: 'Partnerships',
-                  subtitle:
-                    stats.pending_requests > 0
-                      ? `${stats.pending_requests} request${stats.pending_requests === 1 ? '' : 's'} waiting`
-                      : `${stats.active_partnerships} active`,
-                  onPress: () => setActiveTab('partnerships'),
                 },
               ].map((item, i, arr) => (
                 <TouchableOpacity
@@ -540,8 +692,51 @@ export default function InstructorScreen({ navigation }: any) {
           {activeTab === 'community' ? (
             <View style={tw`px-5 pt-2`}>
               <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
-                People who endorsed you in shared growth areas. Connect as friends to message them.
+                Endorsers and friends on your paths — check in or coach them.
               </Text>
+              {(hub?.learners?.length ?? 0) > 0 ? (
+                <>
+                  <Text
+                    style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                  >
+                    On your paths
+                  </Text>
+                  {hub!.learners!.map((person) => (
+                    <View
+                      key={`learner-${person.id}`}
+                      style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
+                    >
+                      <TouchableOpacity onPress={() => openProfile(person.id)}>
+                        <AvatarBubble avatar={person.avatar} name={person.username} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => openProfile(person.id)}
+                        style={tw`flex-1 ml-3 pr-2`}
+                      >
+                        <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+                          {(person.shared_categories || person.categories || [])
+                            .slice(0, 2)
+                            .map(getCategoryLabel)
+                            .join(' · ')}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => void messageEndorser({ ...person, is_friend: true, endorsed_at: '' })}
+                        disabled={busyId === person.id}
+                        style={tw`px-3 py-1.5 rounded-full bg-emerald-600`}
+                      >
+                        <Text style={tw`text-xs font-bold text-white`}>Check in</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <Text
+                    style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-5`}
+                  >
+                    Endorsers
+                  </Text>
+                </>
+              ) : null}
               {!hub?.endorsers?.length ? (
                 <EmptyState
                   icon="people-outline"
@@ -677,19 +872,26 @@ export default function InstructorScreen({ navigation }: any) {
                         {p.attributed_orders === 1 ? '' : 's'} · {formatMoney(p.attributed_revenue)}
                       </Text>
                     )}
-                    <View style={tw`flex-row mt-3`}>
+                    <View style={tw`flex-row mt-3 flex-wrap items-center`}>
                       {p.status === 'active' ? (
                         <>
                           <TouchableOpacity
+                            onPress={() => promotePartnership(p)}
+                            style={tw`mr-4 mb-1`}
+                          >
+                            <Text style={tw`text-sm font-bold text-emerald-700`}>Promote</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
                             onPress={() => void onUpdatePartnership(p, 'paused')}
                             disabled={busyId === p.id}
-                            style={tw`mr-4`}
+                            style={tw`mr-4 mb-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-stone-600`}>Pause</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => void onUpdatePartnership(p, 'ended')}
                             disabled={busyId === p.id}
+                            style={tw`mb-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-red-600`}>End</Text>
                           </TouchableOpacity>

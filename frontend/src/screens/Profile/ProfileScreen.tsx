@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getStoryImageUrl, resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { isVideoMedia } from '../../services/api/media';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
 import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
@@ -36,6 +36,7 @@ import ConnectionsListSheet, {
   type ConnectionsSheetMode,
 } from '../../components/profile/ConnectionsListSheet';
 import EmptyState from '../../components/ui/EmptyState';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import GrowthAreasPicker, {
   clampGrowthPaths,
   growthParentCount,
@@ -46,6 +47,9 @@ import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { groupGrowthPaths } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import PressableScale from '../../components/ui/PressableScale';
+import FadeInUp from '../../components/ui/FadeInUp';
 import {
   claimInstructor,
   getInstructorEligibility,
@@ -138,10 +142,9 @@ function ProfileStoryThumb({
   const [failed, setFailed] = useState(false);
   const ownerId = story.userId || userId || 'me';
   const uri = resolveStoryDisplayUri(story.image, ownerId, story.id);
-  const fallback = getStoryImageUrl(ownerId, story.id);
   const isVideo = isVideoMedia({ uri });
 
-  if (isVideo) {
+  if (isVideo && uri) {
     return (
       <View style={tw`w-full h-full bg-stone-900`}>
         <ReelVideoPlayer
@@ -160,9 +163,17 @@ function ProfileStoryThumb({
     );
   }
 
+  if (!uri || failed) {
+    return (
+      <View style={tw`w-full h-full bg-stone-200 items-center justify-center`}>
+        <Ionicons name="image-outline" size={22} color="#A8A29E" />
+      </View>
+    );
+  }
+
   return (
     <Image
-      source={{ uri: failed ? fallback : uri }}
+      source={{ uri }}
       style={tw`w-full h-full`}
       contentFit="contain"
       placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
@@ -217,14 +228,15 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const isInstructor = user?.isInstructor || false;
   const isBusinessAccount = shouldShowBusinessShell(user);
 
-  const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'shared'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'stories'>('posts');
+  const [journeyOpen, setJourneyOpen] = useState(false);
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [pathSyncVisible, setPathSyncVisible] = useState(false);
   const [pathSyncPhase, setPathSyncPhase] = useState<'leaving' | 'joining' | 'done'>('leaving');
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showClaimWelcome, setShowClaimWelcome] = useState(false);
-  const [showFadedPosts, setShowFadedPosts] = useState(false);
+  const [showDecayedPosts, setShowDecayedPosts] = useState(false);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
   const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
@@ -437,10 +449,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   };
   const achievements = evaluateAchievements(achievementStats);
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
-  const visiblePosts = showFadedPosts
+  const visiblePosts = showDecayedPosts
     ? posts
     : posts.filter((p) => p.daysUntilDecay > 0);
-  const fadedCount = posts.filter((p) => p.daysUntilDecay <= 0).length;
+  const decayedCount = posts.filter((p) => p.daysUntilDecay <= 0).length;
 
   /** Persists category updates, then re-syncs cohort-based friend graph. */
   const handleUpdateCategories = async (selectedCategories: string[]) => {
@@ -548,108 +560,140 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     });
   };
 
+  const displayName =
+    profileMeta.username || user?.username || user?.email?.split('@')[0] || 'User';
+
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <GrowChromeHeader
+        right={
+          <View style={tw`flex-row items-center gap-2`}>
+            <PressableScale
+              onPress={() => navigateFromRoot(navigation, 'Messages')}
+              feedback="open"
+              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              accessibilityLabel="Inbox"
+            >
+              <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
+            </PressableScale>
+            <PressableScale
+              onPress={() => navigateFromRoot(navigation, 'Settings')}
+              feedback="open"
+              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              accessibilityLabel="Settings"
+            >
+              <Ionicons name="settings-outline" size={17} color="#059669" />
+            </PressableScale>
+          </View>
+        }
+      />
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={{
           paddingBottom: Platform.OS === 'web' ? 160 : TAB_SCREEN_BOTTOM_PADDING,
         }}
       >
-        {/* Header */}
-        <View style={tw`px-5 pt-3 pb-5`}>
-          <View style={tw`flex-row items-center justify-between mb-4`}>
-            <View>
-              <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-                Grow!
-              </Text>
-              <Text style={tw`text-3xl text-stone-900 mt-1`}>You</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => navigateFromRoot(navigation, 'Settings')}
-              style={tw`w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
-              accessibilityLabel="Settings"
-            >
-              <Ionicons name="settings-outline" size={20} color="#059669" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={tw`flex-row items-center mb-4`}>
-            <Image
-              source={{
-                uri: resolveAvatarUri(
-                  user?.id || 'default',
-                  profileMeta.username || user?.username || user?.email?.split('@')[0],
-                  profileMeta.avatar || user?.avatar
-                ),
-              }}
-              style={tw`w-20 h-20 rounded-full mr-4 border-2 border-white`}
-              contentFit="cover"
-            />
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-2xl font-bold text-stone-900`}>
-                {profileMeta.username || user?.username || user?.email?.split('@')[0] || 'User'}
-              </Text>
-              {isInstructor && (
-                <View style={tw`flex-row items-center mt-1`}>
-                  <Ionicons name="school" size={16} color="#059669" />
-                  <Text style={tw`text-sm text-emerald-700 ml-1 font-semibold`}>Instructor</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {profileMeta.status ? (
-            <Text style={tw`text-sm text-stone-800 mb-1 leading-5`}>{profileMeta.status}</Text>
-          ) : null}
-          {profileMeta.bio ? (
-            <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileMeta.bio}</Text>
-          ) : null}
-
-          <ProfileStatsRow
-            postsCount={posts.length}
-            followingCount={following.length}
-            followersCount={followers.length}
-            onPressFollowing={() => setConnectionsSheet('following')}
-            onPressFollowers={() => setConnectionsSheet('followers')}
-          />
-
-          <Text style={tw`text-xs text-stone-500 mt-3 mb-4 text-center`}>
-            Shared growth categories connect you automatically — tap Following or Followers to see everyone.
-          </Text>
-
-          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4 mb-1`}>
-            <View style={tw`flex-row items-center justify-between`}>
-              <View style={tw`flex-1 pr-3`}>
+        {/* Identity */}
+        <FadeInUp style={tw`px-5 pt-4 pb-4`}>
+          <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-3xl px-4 pt-5 pb-4`}>
+            <View style={tw`flex-row items-center mb-3`}>
+              <View style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-[#ECFDF5]`}>
+                <Image
+                  source={avatarSource(
+                    resolveAvatarUri(
+                      user?.id || 'default',
+                      displayName,
+                      profileMeta.avatar || user?.avatar
+                    )
+                  )}
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
+              </View>
+              <View style={tw`flex-1`}>
                 <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
-                  Growth points
+                  Profile
                 </Text>
-                <Text style={tw`text-3xl font-bold text-stone-900 mt-1`}>{points}</Text>
-                <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>
-                  +10 per post · +25 when endorsed · +5 when you endorse · milestones unlock badges
-                  (endorsements still gate instructor).
+                <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`} numberOfLines={1}>
+                  {displayName}
                 </Text>
-              </View>
-              <View style={tw`w-14 h-14 rounded-full bg-emerald-600/15 items-center justify-center`}>
-                <Ionicons name="ribbon" size={28} color="#059669" />
+                {isInstructor ? (
+                  <View style={tw`flex-row items-center mt-1.5 self-start px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200`}>
+                    <Ionicons name="school" size={13} color="#059669" />
+                    <Text style={tw`text-xs text-emerald-800 font-semibold ml-1`}>Instructor</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
+
+            {profileMeta.status ? (
+              <View style={tw`mb-2 px-3 py-2 rounded-2xl bg-[#EAE4D6] border border-stone-200/60`}>
+                <Text style={tw`text-[13px] text-stone-800 leading-5`}>{profileMeta.status}</Text>
+              </View>
+            ) : null}
+            {profileMeta.bio ? (
+              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileMeta.bio}</Text>
+            ) : (
+              <Text style={tw`text-sm text-stone-400 mb-3 leading-5`}>
+                Add a short bio so people know what you’re growing toward.
+              </Text>
+            )}
+
+            <ProfileStatsRow
+              postsCount={posts.length}
+              followingCount={following.length}
+              followersCount={followers.length}
+              onPressFollowing={() => setConnectionsSheet('following')}
+              onPressFollowers={() => setConnectionsSheet('followers')}
+            />
+
+            <View style={tw`flex-row gap-2 mt-3.5`}>
+              <PressableScale
+                onPress={() => navigateFromRoot(navigation, 'EditProfile')}
+                feedback="open"
+                style={tw`flex-1 py-3 rounded-2xl bg-emerald-600 items-center`}
+              >
+                <Text style={tw`text-white font-bold text-sm`}>Edit profile</Text>
+              </PressableScale>
+              <PressableScale
+                onPress={() => setShowCategorySettings(true)}
+                feedback="open"
+                style={tw`flex-1 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center`}
+              >
+                <Text style={tw`text-stone-800 font-bold text-sm`}>Paths</Text>
+              </PressableScale>
+            </View>
+          </View>
+
+          <View style={tw`mt-3 bg-[#EAE4D6] border border-stone-200/80 rounded-2xl px-4 py-3.5 flex-row items-center`}>
+            <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center mr-3`}>
+              <Ionicons name="ribbon" size={22} color="#059669" />
+            </View>
+            <View style={tw`flex-1`}>
+              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                Growth points
+              </Text>
+              <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>{points}</Text>
+            </View>
+            <Text style={tw`text-[11px] text-stone-500 text-right w-28 leading-4`}>
+              Posts & endorsements earn points
+            </Text>
           </View>
 
           {!isInstructor && eligibility ? (
-            <View style={tw`mt-4 bg-white border border-brand-200 rounded-2xl p-4`}>
+            <View style={tw`mt-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4`}>
               <Text style={tw`text-base font-bold text-stone-900 mb-1`}>Become an instructor</Text>
               <Text style={tw`text-sm text-stone-600 mb-3`}>
-                Earn endorsements from people in your growth areas, then claim your instructor account.
+                Earn endorsements from people on your paths, then claim instructor.
               </Text>
               <View style={tw`mb-2`}>
                 <Text style={tw`text-xs text-stone-500 mb-1`}>
                   Endorsements {eligibility.endorsementsReceived}/{eligibility.endorsementsNeeded}
                 </Text>
-                <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
+                <View style={tw`h-2 bg-[#EAE4D6] rounded-full overflow-hidden`}>
                   <View
                     style={[
-                      tw`h-full bg-brand-600 rounded-full`,
+                      tw`h-full bg-emerald-600 rounded-full`,
                       {
                         width: `${Math.min(
                           (eligibility.endorsementsReceived / eligibility.endorsementsNeeded) * 100,
@@ -664,10 +708,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 <Text style={tw`text-xs text-stone-500 mb-1`}>
                   Posts {eligibility.postCount}/{eligibility.postsNeeded}
                 </Text>
-                <View style={tw`h-2 bg-stone-100 rounded-full overflow-hidden`}>
+                <View style={tw`h-2 bg-[#EAE4D6] rounded-full overflow-hidden`}>
                   <View
                     style={[
-                      tw`h-full bg-emerald-600 rounded-full`,
+                      tw`h-full bg-energy-600 rounded-full`,
                       {
                         width: `${Math.min(
                           (eligibility.postCount / Math.max(eligibility.postsNeeded, 1)) * 100,
@@ -679,68 +723,58 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 </View>
               </View>
               {eligibility.canClaim ? (
-                <TouchableOpacity
+                <PressableScale
                   onPress={() => void onClaimInstructor()}
                   disabled={claimBusy}
-                  style={tw`bg-brand-600 rounded-xl py-3 items-center ${claimBusy ? 'opacity-60' : ''}`}
+                  feedback="success"
+                  style={tw`bg-emerald-600 rounded-2xl py-3 items-center ${claimBusy ? 'opacity-60' : ''}`}
                 >
                   <Text style={tw`text-white font-bold`}>
-                    {claimBusy ? 'Claiming…' : 'Switch to Instructor Account'}
+                    {claimBusy ? 'Claiming…' : 'Claim instructor'}
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
               ) : (
                 <Text style={tw`text-xs text-stone-500`}>
-                  Keep posting and ask peers in your categories to endorse you.
+                  Keep posting and ask peers on your paths to endorse you.
                 </Text>
               )}
             </View>
           ) : null}
 
-          {isInstructor && (
-            <TouchableOpacity
+          {isInstructor ? (
+            <PressableScale
               onPress={navigateToInstructor}
-              style={tw`mt-4 flex-row items-center py-3 border-t border-stone-200/80`}
+              feedback="open"
+              style={tw`mt-3 flex-row items-center px-4 py-3.5 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl`}
             >
-              <View style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
-                <Ionicons name="school-outline" size={18} color="#57534E" />
+              <View style={tw`w-9 h-9 rounded-full bg-emerald-600 items-center justify-center mr-3`}>
+                <Ionicons name="school-outline" size={18} color="#fff" />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`font-semibold text-stone-900`}>Open Instructor Hub</Text>
+                <Text style={tw`font-semibold text-stone-900`}>Instructor Hub</Text>
                 <Text style={tw`text-xs text-stone-500 mt-0.5`}>
                   Community · partnerships · teaching
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-            </TouchableOpacity>
-          )}
-        </View>
+            </PressableScale>
+          ) : null}
+        </FadeInUp>
 
-        {/* Growth areas */}
+        {/* Growth areas — edit via Paths in the identity card */}
         <View style={tw`px-4 py-4`}>
           <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
-            <View style={tw`flex-row items-center justify-between mb-3`}>
-              <View>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
-                  Grow!
-                </Text>
-                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Your growth paths</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowCategorySettings(true)}
-                style={tw`flex-row items-center px-3 py-2 rounded-full bg-white border border-stone-200`}
-                accessibilityLabel="Edit growth paths"
-              >
-                <Ionicons name="create-outline" size={16} color="#059669" />
-                <Text style={tw`text-xs font-semibold text-emerald-700 ml-1.5`}>Edit</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              Grow!
+            </Text>
+            <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>Your growth paths</Text>
 
             {user?.categories && user.categories.length > 0 ? (
               <View>
                 {groupGrowthPaths(user.categories).map((group) => (
                   <View
                     key={group.parentKey}
-                    style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2`}
+                    style={tw`flex-row items-center bg-[#FFFcf7] border border-stone-200/70 rounded-2xl px-3 py-3 mb-2`}
                   >
                     <View style={tw`w-10 h-10 rounded-xl bg-emerald-600/12 items-center justify-center mr-3`}>
                       <Ionicons name={group.icon} size={20} color="#059669" />
@@ -753,14 +787,16 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                           : 'All focuses in this path'}
                       </Text>
                     </View>
-                    <Ionicons name="sparkles" size={14} color="#059669" />
                   </View>
                 ))}
+                <Text style={tw`text-xs text-stone-500 mt-1`}>
+                  Change them anytime with Paths above.
+                </Text>
               </View>
             ) : (
               <TouchableOpacity
                 onPress={() => setShowCategorySettings(true)}
-                style={tw`bg-white/80 border border-dashed border-stone-300 rounded-2xl px-4 py-5 items-center`}
+                style={tw`bg-[#FFFcf7] border border-dashed border-stone-300 rounded-2xl px-4 py-5 items-center`}
               >
                 <Ionicons name="add-circle-outline" size={28} color="#059669" />
                 <Text style={tw`text-sm font-semibold text-stone-800 mt-2`}>Add growth paths</Text>
@@ -797,76 +833,58 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         </View>
 
-        {/* Settings shortcut */}
-        <View style={tw`px-5 py-3`}>
-          <TouchableOpacity
-            onPress={() => navigateFromRoot(navigation, 'Settings')}
-            style={tw`flex-row items-center justify-between py-3.5 px-4 bg-white/80 border border-stone-200/80 rounded-2xl`}
-          >
-            <View style={tw`flex-row items-center`}>
-              <Ionicons name="settings-outline" size={20} color="#059669" />
-              <View style={tw`ml-3`}>
-                <Text style={tw`text-stone-900 font-semibold`}>Settings</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                  Account, preferences, orders, legal
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
-          </TouchableOpacity>
-        </View>
-
         {/* Tabs */}
-        <View style={tw`flex-row border-b border-stone-200`}>
-          {[
-            { key: 'posts', label: 'Posts', icon: 'grid' },
-            { key: 'stories', label: 'Stories', icon: 'images' },
-            { key: 'shared', label: 'Shared', icon: 'share' },
-          ].map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key as any)}
-              style={tw`flex-1 py-3 items-center border-b-2 ${
-                activeTab === tab.key ? 'border-brand-600' : 'border-transparent'
-              }`}
-            >
-              <Ionicons
-                name={tab.icon as any}
-                size={20}
-                color={activeTab === tab.key ? '#10B981' : '#9CA3AF'}
-              />
-              <Text
-                style={tw`text-xs mt-1 ${
-                  activeTab === tab.key ? 'text-brand-600 font-semibold' : 'text-stone-500'
-                }`}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={tw`px-5 pt-1`}>
+          <View style={tw`flex-row gap-5 border-b border-stone-200/80`}>
+            {(
+              [
+                { key: 'posts' as const, label: 'Posts' },
+                { key: 'stories' as const, label: 'Stories' },
+              ] as const
+            ).map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={tw`pb-2.5 border-b-2 ${
+                    active ? 'border-emerald-600' : 'border-transparent'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-[15px] ${
+                      active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                    }`}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         {/* Content */}
         {activeTab === 'posts' && (
           <View style={tw`p-4`}>
-            {fadedCount > 0 ? (
+            {decayedCount > 0 ? (
               <TouchableOpacity
-                onPress={() => setShowFadedPosts((v) => !v)}
+                onPress={() => setShowDecayedPosts((v) => !v)}
                 style={tw`mb-3 flex-row items-center justify-between px-3 py-2 rounded-xl bg-[#EAE4D6] border border-stone-200/80`}
               >
                 <Text style={tw`text-xs text-stone-600`}>
-                  {showFadedPosts
-                    ? 'Showing faded posts'
-                    : `${fadedCount} faded post${fadedCount === 1 ? '' : 's'} hidden`}
+                  {showDecayedPosts
+                    ? 'Showing decayed posts'
+                    : `${decayedCount} decayed post${decayedCount === 1 ? '' : 's'} hidden`}
                 </Text>
                 <Text style={tw`text-xs font-semibold text-emerald-700`}>
-                  {showFadedPosts ? 'Hide faded' : 'Show faded'}
+                  {showDecayedPosts ? 'Hide decayed' : 'Show decayed'}
                 </Text>
               </TouchableOpacity>
             ) : null}
             {visiblePosts.length === 0 && posts.length > 0 ? (
               <Text style={tw`text-sm text-stone-500 text-center py-6`}>
-                All posts have faded. Tap “Show faded” or extend post lifespan.
+                All posts have decayed. Tap “Show decayed” or extend post lifespan.
               </Text>
             ) : (
               <View style={tw`-mx-4`}>
@@ -964,32 +982,38 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         )}
 
-        {activeTab === 'shared' && (
-          <EmptyState
-            icon="share-outline"
-            title="Nothing shared yet"
-            description="Content you share with the community will appear here."
-          />
-        )}
-
-        {/* Growth journey — achievements */}
+        {/* Growth journey — collapsed by default for cleaner hierarchy */}
         <View style={tw`px-4 py-4`}>
-          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
-            <View style={tw`flex-row items-end justify-between mb-4`}>
+          <TouchableOpacity
+            onPress={() => setJourneyOpen((v) => !v)}
+            activeOpacity={0.85}
+            style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}
+          >
+            <View style={tw`flex-row items-center justify-between`}>
               <View style={tw`flex-1 pr-3`}>
                 <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
                   Grow!
                 </Text>
                 <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Growth journey</Text>
                 <Text style={tw`text-xs text-stone-500 mt-1`}>
-                  {unlockedCount} of {achievements.length} unlocked · points and endorsements are separate tracks
+                  {unlockedCount} of {achievements.length} unlocked
                 </Text>
               </View>
-              <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center`}>
-                <Ionicons name="ribbon-outline" size={22} color="#059669" />
+              <View style={tw`flex-row items-center`}>
+                <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center mr-2`}>
+                  <Ionicons name="ribbon-outline" size={22} color="#059669" />
+                </View>
+                <Ionicons
+                  name={journeyOpen ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#78716C"
+                />
               </View>
             </View>
+          </TouchableOpacity>
 
+          {journeyOpen ? (
+          <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4 mt-2`}>
             {(Object.keys(TIER_LABELS) as AchievementTier[]).map((tier) => {
               const tierItems = achievements.filter((a) => a.tier === tier);
               if (tierItems.length === 0) return null;
@@ -1056,6 +1080,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               );
             })}
           </View>
+          ) : null}
         </View>
 
         {isInstructor && (

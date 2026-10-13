@@ -30,10 +30,10 @@ function Row({
     >
       <View
         style={tw`w-9 h-9 rounded-full items-center justify-center mr-3 ${
-          danger ? 'bg-red-50' : 'bg-stone-100'
+          danger ? 'bg-red-50' : 'bg-[#EAE4D6]'
         }`}
       >
-        <Ionicons name={icon} size={18} color={danger ? '#DC2626' : '#57534E'} />
+        <Ionicons name={icon} size={18} color={danger ? '#DC2626' : '#059669'} />
       </View>
       <View style={tw`flex-1 pr-2`}>
         <Text style={tw`font-semibold ${danger ? 'text-red-700' : 'text-stone-900'}`}>{label}</Text>
@@ -69,12 +69,15 @@ export default function SettingsScreen() {
       <ScrollView
         contentContainerStyle={[tw`px-5 pt-4`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
       >
-        <Text style={tw`text-lg font-bold text-stone-900 mb-4`}>Settings</Text>
-
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
           Account
         </Text>
-        <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5 mb-4`}>Settings</Text>
+
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+          Profile
+        </Text>
+        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <Row
             icon="person-outline"
             label="Edit profile"
@@ -89,14 +92,16 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
           Preferences
         </Text>
-        <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <View style={tw`flex-row items-center justify-between py-3.5 border-b border-stone-200/80`}>
             <View style={tw`flex-1 pr-3`}>
               <Text style={tw`font-semibold text-stone-900`}>Haptics</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Vibration on presses (off by default)</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Distinct vibration for likes, tabs, and menus
+              </Text>
             </View>
             <Switch
               value={hapticsEnabled}
@@ -107,8 +112,10 @@ export default function SettingsScreen() {
           </View>
           <View style={tw`flex-row items-center justify-between py-3.5`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`font-semibold text-stone-900`}>Click sound</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Soft click on taps (iOS, Android, web)</Text>
+              <Text style={tw`font-semibold text-stone-900`}>UI sounds</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Soft tones for taps, likes, send, and transitions
+              </Text>
             </View>
             <Switch
               value={soundEnabled}
@@ -119,10 +126,10 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
           Teaching
         </Text>
-        <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <Row
             icon="school-outline"
             label="Instructor Hub"
@@ -144,10 +151,10 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
           Commerce
         </Text>
-        <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <Row
             icon="storefront-outline"
             label="Shop"
@@ -169,10 +176,10 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
           Support
         </Text>
-        <View style={tw`bg-white/80 border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <Row
             icon="document-text-outline"
             label="Legal & support"

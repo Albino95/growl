@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedListPerformanceProps } from '../../constants/scroll';
 import { createProduct, updateProduct, deleteProduct } from '../../services/api/marketplace';
@@ -182,6 +183,7 @@ export default function InventoryScreen() {
         <View style={tw`relative mb-3`}>
           <Ionicons name="search" size={18} color="#A8A29E" style={tw`absolute left-3.5 top-3.5 z-10`} />
           <TextInput
+            {...formInputAccessoryProps()}
             placeholder="Search name or SKU…"
             value={searchQuery}
             onChangeText={setSearchQuery}

@@ -29,7 +29,7 @@ import FeedLikeButton, {
   ReactionPickerBar,
   type FeedReaction,
 } from '../../components/feed/FeedLikeButton';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
 import tw from '../../lib/tw';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 
@@ -307,6 +307,7 @@ export default function ReelsScreen() {
     const wasLiked = !!current?.liked;
 
     if (opts?.fromDoubleTap && wasLiked) {
+      feedback.like(true);
       playHeartBurst(postId);
       return;
     }
@@ -315,6 +316,8 @@ export default function ReelsScreen() {
     const nextLikes = nextLiked
       ? (current?.metadata?.likes ?? 0) + 1
       : Math.max(0, (current?.metadata?.likes ?? 0) - 1);
+
+    feedback.like(nextLiked);
 
     setItems((prev) =>
       prev.map((row) => {
@@ -434,7 +437,6 @@ export default function ReelsScreen() {
         singleTapTimerRef.current = null;
       }
       lastTapRef.current = null;
-      triggerPressFeedback();
       void onToggleLike(postId, { fromDoubleTap: true });
       return;
     }

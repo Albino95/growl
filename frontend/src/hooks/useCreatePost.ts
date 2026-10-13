@@ -10,11 +10,11 @@ import {
   resetCurrentPost,
 } from '../store/slices/postSlice';
 import { createFeedPost } from '../services/api/feed';
-import { uploadMediaApi } from '../services/api/media';
+import { uploadMediaApi, uploadMediaFile } from '../services/api/media';
 import { triggerPressFeedback } from '../utils/interactionFeedback';
 import { alertMessage } from '../utils/confirmDialog';
 import { prependFeedPost } from '../store/slices/feedSlice';
-import { isRemoteMediaUrl, uriToDataUrl } from '../utils/mediaUri';
+import { isRemoteMediaUrl } from '../utils/mediaUri';
 import type { PostMusicTrack } from '../constants/postMusic';
 
 async function blobToOptimizedDataUrl(uri: string): Promise<string> {
@@ -47,7 +47,14 @@ async function blobToOptimizedDataUrl(uri: string): Promise<string> {
   }
 }
 
-export function useCreatePost(onSuccess?: () => void) {
+export type CreatePostExtras = {
+  productId?: string;
+  referralInstructorId?: string;
+  promoteBusinessId?: string;
+  promoteBusinessName?: string;
+};
+
+export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras) {
   const dispatch = useAppDispatch();
   const { image, caption, selectedCategory, audioTrack } = useAppSelector(
     (state) => state.posts.currentPost
@@ -94,25 +101,53 @@ export function useCreatePost(onSuccess?: () => void) {
       let imageUrl = persistableImage;
       if (!isRemoteMediaUrl(persistableImage)) {
         try {
-          const dataUrl = persistableImage.toLowerCase().startsWith('data:')
-            ? persistableImage
-            : await uriToDataUrl(persistableImage);
-          imageUrl = await uploadMediaApi(dataUrl, 'post');
+          // Multipart is much faster than base64 JSON through the Worker (esp. on production).
+          if (persistableImage.toLowerCase().startsWith('data:')) {
+            imageUrl = await uploadMediaApi(persistableImage, 'post');
+          } else {
+            const uploaded = await uploadMediaFile(persistableImage, 'post');
+            imageUrl = uploaded.url;
+          }
         } catch (uploadErr: unknown) {
           const msg =
             uploadErr instanceof Error ? uploadErr.message : 'Image upload failed';
+          // Keep draft — never publish without the user's real photo.
           alertMessage(
-            'Image upload failed',
-            `${msg}\n\nYour post was not published. Check media storage and try again.`
+            'Post not published',
+            `${msg}\n\nYour draft is still here. We never replace your photo with a stock image.`
           );
           return false;
         }
+      }
+
+      if (!isRemoteMediaUrl(imageUrl) || !/^https:\/\//i.test(imageUrl)) {
+        alertMessage(
+          'Post not published',
+          'Your photo did not finish uploading. Your draft is still here — try again.'
+        );
+        return false;
+      }
+      if (!/\/api\/[^/]+\/media\//i.test(imageUrl)) {
+        alertMessage(
+          'Post not published',
+          'Media must be uploaded to Grow! before publishing. Your draft is still here.'
+        );
+        return false;
       }
 
       const metadata: Record<string, unknown> = {};
       if (audioTrack) {
         metadata.audio_url = audioTrack.url;
         metadata.audio_title = audioTrack.title;
+      }
+      if (extras?.productId) metadata.product_id = extras.productId;
+      if (extras?.referralInstructorId) {
+        metadata.referral_instructor_id = extras.referralInstructorId;
+      }
+      if (extras?.promoteBusinessId) {
+        metadata.promote_business_id = extras.promoteBusinessId;
+        metadata.promote_business_name = extras.promoteBusinessName;
+        metadata.source = 'partnership';
       }
 
       const created = await createFeedPost({
@@ -123,31 +158,38 @@ export function useCreatePost(onSuccess?: () => void) {
         metadata: Object.keys(metadata).length ? metadata : undefined,
       });
 
-      if (created?.data) {
-        const serverMeta = created.data.metadata || {};
-        dispatch(
-          prependFeedPost({
-            ...created.data,
-            image_url: created.data.image_url || imageUrl,
-            feed_section: 'following',
-            metadata: {
-              ...metadata,
-              ...serverMeta,
-              username:
-                serverMeta.username ||
-                user?.username ||
-                user?.email?.split('@')[0] ||
-                'You',
-              avatar: serverMeta.avatar || user?.avatar,
-              likes: Number(serverMeta.likes ?? 0),
-              comments: Number(serverMeta.comments ?? 0),
-              has_liked: !!serverMeta.has_liked,
-            },
-          })
+      const publishedUrl = created?.data?.image_url?.trim() || '';
+      if (!created?.data || !/^https:\/\//i.test(publishedUrl)) {
+        alertMessage(
+          'Post not published',
+          'The server did not save your photo. Your draft is still here — try again.'
         );
-        if (typeof created.data.points_total === 'number') {
-          updateUser({ points: created.data.points_total });
-        }
+        return false;
+      }
+
+      const serverMeta = created.data.metadata || {};
+      dispatch(
+        prependFeedPost({
+          ...created.data,
+          image_url: publishedUrl,
+          feed_section: 'following',
+          metadata: {
+            ...metadata,
+            ...serverMeta,
+            username:
+              serverMeta.username ||
+              user?.username ||
+              user?.email?.split('@')[0] ||
+              'You',
+            avatar: serverMeta.avatar || user?.avatar,
+            likes: Number(serverMeta.likes ?? 0),
+            comments: Number(serverMeta.comments ?? 0),
+            has_liked: !!serverMeta.has_liked,
+          },
+        })
+      );
+      if (typeof created.data.points_total === 'number') {
+        updateUser({ points: created.data.points_total });
       }
 
       clearDraft();
@@ -157,7 +199,8 @@ export function useCreatePost(onSuccess?: () => void) {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to post. Please try again.';
-      alertMessage('Error', errorMessage);
+      // Keep draft on any failure — never leave a broken post on the wall.
+      alertMessage('Post not published', `${errorMessage}\n\nYour draft is still here.`);
       return false;
     } finally {
       dispatch(setPosting(false));
@@ -174,6 +217,10 @@ export function useCreatePost(onSuccess?: () => void) {
     updateUser,
     clearDraft,
     onSuccess,
+    extras?.productId,
+    extras?.referralInstructorId,
+    extras?.promoteBusinessId,
+    extras?.promoteBusinessName,
   ]);
 
   return {

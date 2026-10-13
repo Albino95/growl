@@ -8,6 +8,8 @@ export interface MessagePeer {
   id: string;
   username: string;
   avatar?: string | null;
+  is_instructor?: boolean;
+  is_business?: boolean;
 }
 
 export interface ConversationSummary {

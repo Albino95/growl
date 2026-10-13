@@ -1,13 +1,18 @@
 import { useCallback, useRef } from 'react';
 import { Animated } from 'react-native';
-import { triggerPressFeedback } from '../utils/interactionFeedback';
+import { triggerFeedback, type FeedbackKind } from '../utils/interactionFeedback';
 
 type UsePressFeedbackOptions = {
   onPress?: () => void;
   disabled?: boolean;
+  kind?: FeedbackKind;
 };
 
-export function usePressFeedback({ onPress, disabled }: UsePressFeedbackOptions) {
+export function usePressFeedback({
+  onPress,
+  disabled,
+  kind = 'tap',
+}: UsePressFeedbackOptions) {
   const scale = useRef(new Animated.Value(1)).current;
 
   const animateTo = useCallback(
@@ -23,9 +28,9 @@ export function usePressFeedback({ onPress, disabled }: UsePressFeedbackOptions)
 
   const onPressIn = useCallback(() => {
     if (disabled) return;
-    triggerPressFeedback();
+    triggerFeedback(kind);
     animateTo(0.98, 90);
-  }, [animateTo, disabled]);
+  }, [animateTo, disabled, kind]);
 
   const onPressOut = useCallback(() => {
     animateTo(1, 110);

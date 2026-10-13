@@ -14,6 +14,8 @@ type Props = {
   showWordmark?: boolean;
   /** When false, leave StatusBar alone (nested in screens with their own bar) */
   manageStatusBar?: boolean;
+  /** Fired when the loader layout is ready (hide native splash after paint). */
+  onLayout?: () => void;
 };
 
 const PALETTE = {
@@ -61,6 +63,7 @@ export default function BrandLoadingScreen({
   variant = 'page',
   showWordmark = true,
   manageStatusBar = true,
+  onLayout,
 }: Props) {
   const palette = PALETTE[variant];
   const pulse = useRef(new Animated.Value(0)).current;
@@ -207,7 +210,11 @@ export default function BrandLoadingScreen({
   const ringSize = markSize + 36;
 
   return (
-    <View style={[styles.root, { backgroundColor: palette.bg }]} accessibilityRole="progressbar">
+    <View
+      style={[styles.root, { backgroundColor: palette.bg }]}
+      accessibilityRole="progressbar"
+      onLayout={onLayout}
+    >
       {manageStatusBar ? <StatusBar style={palette.status} /> : null}
 
       {/* Ambient field */}

@@ -12,7 +12,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from '../../lib/tw';
-import { resolveAvatarUri } from '../../utils/images';
+import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import type { FriendSummary } from '../../services/api/friends';
 import SearchField from '../ui/SearchField';
 
@@ -206,7 +206,7 @@ export default function ConnectionsListSheet({
                   style={tw`w-12 h-12 rounded-full overflow-hidden bg-[#ECFDF5] mr-3 border border-stone-200/70`}
                 >
                   <Image
-                    source={{ uri: resolveAvatarUri(item.id, item.username, item.avatar) }}
+                    source={avatarSource(resolveAvatarUri(item.id, item.username, item.avatar))}
                     style={tw`w-full h-full`}
                     contentFit="cover"
                   />

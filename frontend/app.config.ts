@@ -14,9 +14,10 @@ const defineConfig = (): ExpoConfig => ({
   icon: './assets/icon.png',
   scheme: 'growl',
   userInterfaceStyle: 'light',
+  // Native cold-start: solid emerald only — animated BrandLoadingScreen takes over in JS.
   splash: {
     image: './assets/splash.png',
-    resizeMode: 'contain',
+    resizeMode: 'cover',
     backgroundColor: '#049669',
   },
   updates: {
@@ -85,6 +86,14 @@ const defineConfig = (): ExpoConfig => ({
     description: 'Grow! — unlock skills and share your growth.',
   },
   plugins: [
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#049669',
+        image: './assets/splash.png',
+        resizeMode: 'cover',
+      },
+    ],
     [
       'expo-image-picker',
       {

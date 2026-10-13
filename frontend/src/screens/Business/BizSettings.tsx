@@ -279,7 +279,7 @@ export default function BizSettings() {
           />
           <Text style={tw`text-sm text-stone-600 mb-1`}>Default shipping note</Text>
           <TextInput
-                        {...formInputAccessoryProps()}
+            {...formInputAccessoryProps({ multiline: true })}
             value={defaultShippingNote}
             onChangeText={setDefaultShippingNote}
             multiline

@@ -59,6 +59,9 @@ export type PublicProfileApiData = {
   categories: string[];
   posts_count: number;
   stories_count: number;
+  endorsements_received?: number;
+  teaching_headline?: string | null;
+  pinned_post_ids?: string[];
 };
 
 export type PublicProfileSummary = {
@@ -72,6 +75,9 @@ export type PublicProfileSummary = {
   categories: string[];
   postsCount: number;
   storiesCount: number;
+  endorsementsReceived?: number;
+  teachingHeadline?: string;
+  pinnedPostIds?: string[];
 };
 
 /** GET /profile — source of truth for categories after login (not stored in AsyncStorage). */
@@ -114,6 +120,9 @@ export async function getPublicProfile(userId: string): Promise<PublicProfileSum
     categories: Array.isArray(d.categories) ? d.categories : [],
     postsCount: d.posts_count,
     storiesCount: d.stories_count,
+    endorsementsReceived: d.endorsements_received,
+    teachingHeadline: d.teaching_headline?.trim() || undefined,
+    pinnedPostIds: Array.isArray(d.pinned_post_ids) ? d.pinned_post_ids : [],
   };
 }
 

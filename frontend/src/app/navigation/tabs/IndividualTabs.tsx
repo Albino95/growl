@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform, Animated, Pressable, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,8 @@ import CreateActionSheet, {
 import tw, { theme } from '../../../lib/tw';
 import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
-import { triggerPressFeedback } from '../../../utils/interactionFeedback';
+import { feedback } from '../../../utils/interactionFeedback';
+import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
@@ -62,10 +63,53 @@ function DockTabButton({
   isActive: boolean;
   onPress: () => void;
 }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const iconScale = useRef(new Animated.Value(isActive ? 1 : 0.92)).current;
+  const dotScale = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+  const labelOpacity = useRef(new Animated.Value(isActive ? 1 : 0.72)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(iconScale, {
+        toValue: isActive ? 1.08 : 0.92,
+        useNativeDriver: true,
+        speed: 22,
+        bounciness: 10,
+      }),
+      Animated.spring(dotScale, {
+        toValue: isActive ? 1 : 0,
+        useNativeDriver: true,
+        speed: 26,
+        bounciness: 8,
+      }),
+      Animated.timing(labelOpacity, {
+        toValue: isActive ? 1 : 0.72,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isActive, iconScale, dotScale, labelOpacity]);
+
   return (
     <Pressable
+      onPressIn={() => {
+        Animated.spring(scale, {
+          toValue: 0.92,
+          useNativeDriver: true,
+          speed: 40,
+          bounciness: 0,
+        }).start();
+      }}
+      onPressOut={() => {
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          speed: 28,
+          bounciness: 6,
+        }).start();
+      }}
       onPress={() => {
-        triggerPressFeedback();
+        feedback.tab();
         onPress();
       }}
       style={[tw`flex-1 items-center justify-center min-w-0`, { height: TAB_HEIGHT }]}
@@ -74,36 +118,49 @@ function DockTabButton({
       accessibilityState={{ selected: isActive }}
       accessibilityLabel={tab.label}
     >
-      <View style={[tw`w-full items-center justify-center`, { height: ICON_SLOT }]}>
-        <Ionicons
-          name={isActive ? tab.activeIcon : tab.inactiveIcon}
-          size={22}
-          color={isActive ? theme.colors.brand : theme.colors.textSubtle}
-        />
-      </View>
-      <View style={[tw`w-full items-center justify-center`, { height: LABEL_SLOT }]}>
-        <Text
-          style={{
-            fontSize: 10,
-            lineHeight: 12,
-            fontWeight: isActive ? '600' : '400',
-            color: isActive ? theme.colors.brand : theme.colors.textSubtle,
-          }}
-          numberOfLines={1}
+      <Animated.View
+        style={[tw`w-full items-center justify-center`, { height: TAB_HEIGHT, transform: [{ scale }] }]}
+      >
+        <Animated.View
+          style={[
+            tw`w-full items-center justify-center`,
+            { height: ICON_SLOT, transform: [{ scale: iconScale }] },
+          ]}
         >
-          {tab.label}
-        </Text>
-      </View>
-      <View style={[tw`w-full items-center justify-center`, { height: DOT_SLOT }]}>
-        <View
-          style={{
-            width: 4,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: isActive ? theme.colors.brand : 'transparent',
-          }}
-        />
-      </View>
+          <Ionicons
+            name={isActive ? tab.activeIcon : tab.inactiveIcon}
+            size={22}
+            color={isActive ? theme.colors.brand : theme.colors.textSubtle}
+          />
+        </Animated.View>
+        <Animated.View
+          style={[tw`w-full items-center justify-center`, { height: LABEL_SLOT, opacity: labelOpacity }]}
+        >
+          <Text
+            style={{
+              fontSize: 10,
+              lineHeight: 12,
+              fontWeight: isActive ? '600' : '400',
+              color: isActive ? theme.colors.brand : theme.colors.textSubtle,
+            }}
+            numberOfLines={1}
+          >
+            {tab.label}
+          </Text>
+        </Animated.View>
+        <View style={[tw`w-full items-center justify-center`, { height: DOT_SLOT }]}>
+          <Animated.View
+            style={{
+              width: 4,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: theme.colors.brand,
+              transform: [{ scale: dotScale }],
+              opacity: dotScale,
+            }}
+          />
+        </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -116,6 +173,7 @@ export default function IndividualTabs() {
 
   const fabFeedback = usePressFeedback({
     onPress: () => setCreateOpen(true),
+    kind: 'open',
   });
 
   const handleCreate = (action: CreateAction) => {
@@ -144,7 +202,15 @@ export default function IndividualTabs() {
   return (
     <>
       <Tab.Navigator
-        screenOptions={{ headerShown: false }}
+        // Avoid blank tabs after shift animation (RN screens + native-driver activityState race).
+        detachInactiveScreens={false}
+        screenOptions={{
+          headerShown: false,
+          animation: 'shift',
+          transitionSpec: GrowTabTransitionSpec,
+          sceneStyleInterpolator: forGrowTabScene,
+          freezeOnBlur: false,
+        }}
         tabBar={(props) => {
           tabNavRef.current = props.navigation;
           const currentRoute = props.state.routes[props.state.index]?.name as string;

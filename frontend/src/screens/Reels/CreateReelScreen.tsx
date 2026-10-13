@@ -274,6 +274,14 @@ export default function CreateReelScreen({ navigation }: Props) {
         ? selectedCategory.split(':')[1]
         : undefined;
 
+      if (!isRemoteMediaUrl(mediaUrl) || !/\/api\/[^/]+\/media\//i.test(mediaUrl)) {
+        await alertMessage(
+          'Reel not published',
+          'Your media did not finish uploading. Nothing was posted — try again.'
+        );
+        return;
+      }
+
       const soundtrack = reelSoundtrackFromEdit(videoEdit);
 
       const created = await createFeedPost({
@@ -292,46 +300,53 @@ export default function CreateReelScreen({ navigation }: Props) {
         },
       });
 
-      if (created?.data) {
-        const serverMeta = created.data.metadata || {};
-        dispatch(
-          prependFeedPost({
-            ...created.data,
-            image_url: created.data.image_url || mediaUrl,
-            feed_section: 'following',
-            metadata: {
-              format: 'reel',
-              media_type: uploadedKind,
-              content_type: contentType,
-              ...serverMeta,
-              ...(uploadedKind === 'video' ? { video_edit: videoEdit } : {}),
-              ...(soundtrack.audioUrl
-                ? { audio_url: soundtrack.audioUrl, audio_title: soundtrack.audioTitle }
-                : {}),
-              username:
-                serverMeta.username ||
-                user?.username ||
-                user?.email?.split('@')[0] ||
-                'You',
-              avatar: serverMeta.avatar || user?.avatar,
-              likes: Number(serverMeta.likes ?? 0),
-              comments: Number(serverMeta.comments ?? 0),
-              has_liked: !!serverMeta.has_liked,
-            },
-          })
+      const publishedUrl = created?.data?.image_url?.trim() || '';
+      if (!created?.data || !/^https:\/\//i.test(publishedUrl)) {
+        await alertMessage(
+          'Reel not published',
+          'The server did not save your media. Nothing was posted — try again.'
         );
-        if (typeof created.data.points_total === 'number') {
-          updateUser({ points: created.data.points_total });
-        }
+        return;
       }
 
-      const newPostId = created?.data?.id || null;
-      setPublishedPost(created?.data || null);
+      const serverMeta = created.data.metadata || {};
+      dispatch(
+        prependFeedPost({
+          ...created.data,
+          image_url: publishedUrl,
+          feed_section: 'following',
+          metadata: {
+            format: 'reel',
+            media_type: uploadedKind,
+            content_type: contentType,
+            ...serverMeta,
+            ...(uploadedKind === 'video' ? { video_edit: videoEdit } : {}),
+            ...(soundtrack.audioUrl
+              ? { audio_url: soundtrack.audioUrl, audio_title: soundtrack.audioTitle }
+              : {}),
+            username:
+              serverMeta.username ||
+              user?.username ||
+              user?.email?.split('@')[0] ||
+              'You',
+            avatar: serverMeta.avatar || user?.avatar,
+            likes: Number(serverMeta.likes ?? 0),
+            comments: Number(serverMeta.comments ?? 0),
+            has_liked: !!serverMeta.has_liked,
+          },
+        })
+      );
+      if (typeof created.data.points_total === 'number') {
+        updateUser({ points: created.data.points_total });
+      }
+
+      const newPostId = created.data.id || null;
+      setPublishedPost(created.data);
       setPublishedPostId(newPostId);
       setShowSuccess(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to publish reel';
-      await alertMessage('Error', msg);
+      await alertMessage('Reel not published', `${msg}\n\nNothing was posted to your feed.`);
     } finally {
       setPosting(false);
     }

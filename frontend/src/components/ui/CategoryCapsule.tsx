@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { horizontalScrollProps } from '../../constants/scroll';
+import PressableScale from './PressableScale';
 
 export type CapsuleItem = {
   key: string;
@@ -30,8 +31,10 @@ export function CategoryCapsule({
   compact,
 }: CapsuleProps) {
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={onPress}
+      feedback="select"
+      pressedScale={0.96}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       style={tw`mr-2 ${compact ? 'min-h-[36px] px-3.5' : 'min-h-[44px] px-3.5'} rounded-2xl flex-row items-center border ${
@@ -64,7 +67,7 @@ export function CategoryCapsule({
           </Text>
         </View>
       ) : null}
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 

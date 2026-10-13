@@ -15,7 +15,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import tw from '../../lib/tw';
-import { resolveStoryDisplayUri, resolveAvatarUri } from '../../utils/images';
+import { resolveStoryDisplayUri, resolveAvatarUri, avatarSource } from '../../utils/images';
 import { useAuth } from '../../store/hooks';
 import { createConversation } from '../../services/api/messages';
 import { alertMessage } from '../../utils/confirmDialog';
@@ -277,7 +277,7 @@ export default function StoryViewerScreen() {
             style={tw`flex-row items-center flex-1`}
           >
             <Image
-              source={{ uri: avatarUri }}
+              source={avatarSource(avatarUri)}
               style={tw`w-10 h-10 rounded-full border-2 border-white mr-3`}
             />
             <View>

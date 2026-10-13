@@ -17,8 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { createStory } from '../../services/api/stories';
-import { uploadMediaApi } from '../../services/api/media';
-import { isRemoteMediaUrl, uriToDataUrl } from '../../utils/mediaUri';
+import { uploadMediaApi, uploadMediaFile } from '../../services/api/media';
+import { isRemoteMediaUrl } from '../../utils/mediaUri';
+import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import { alertMessage } from '../../utils/confirmDialog';
 import PhotoEditor from '../../components/ui/PhotoEditor';
 import tw from '../../lib/tw';
@@ -144,16 +145,29 @@ export default function CreateStoryScreen({ navigation }: Props) {
       let imageUrl = persistable;
       if (!isRemoteMediaUrl(persistable)) {
         try {
-          const dataUrl = persistable.toLowerCase().startsWith('data:')
-            ? persistable
-            : await uriToDataUrl(persistable);
-          imageUrl = await uploadMediaApi(dataUrl, 'story');
+          if (persistable.toLowerCase().startsWith('data:')) {
+            imageUrl = await uploadMediaApi(persistable, 'story');
+          } else {
+            const uploaded = await uploadMediaFile(persistable, 'story');
+            imageUrl = uploaded.url;
+          }
         } catch (uploadErr: unknown) {
           const msg =
             uploadErr instanceof Error ? uploadErr.message : 'Image upload failed';
-          alertMessage('Image upload failed', msg);
+          alertMessage(
+            'Story not published',
+            `${msg}\n\nYour draft is still here. We never replace your photo.`
+          );
           return;
         }
+      }
+
+      if (!isRemoteMediaUrl(imageUrl) || !/\/api\/[^/]+\/media\//i.test(imageUrl)) {
+        alertMessage(
+          'Story not published',
+          'Your photo did not finish uploading. Your draft is still here — try again.'
+        );
+        return;
       }
 
       await createStory({
@@ -165,7 +179,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
       navigation.goBack();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to publish story';
-      alertMessage('Error', msg);
+      alertMessage('Story not published', `${msg}\n\nYour draft is still here.`);
     } finally {
       setPosting(false);
     }
@@ -329,6 +343,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
           Caption
         </Text>
         <TextInput
+          {...formInputAccessoryProps({ multiline: true })}
           value={caption}
           onChangeText={setCaption}
           placeholder="Add a caption…"
