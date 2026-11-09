@@ -9,6 +9,14 @@ import type { Env } from '../../src/types';
 // Import the worker handler
 import workerHandler from '../../src/index';
 
+/** Minimal ExecutionContext for invoking the worker fetch handler directly. */
+function createMockExecutionContext(): ExecutionContext {
+  return {
+    waitUntil: () => {},
+    passThroughOnException: () => {},
+  } as unknown as ExecutionContext;
+}
+
 describe('Health Check Endpoint', () => {
   it('should return healthy status', async () => {
     const env = createMockEnv();
@@ -53,7 +61,7 @@ describe('Health Check Endpoint', () => {
       method: 'GET',
     });
 
-    const response = await workerHandler.fetch(request, env);
+    const response = await workerHandler.fetch(request, env, createMockExecutionContext());
     const data = await parseJsonResponse(response);
 
     expect(response.status).toBe(200);
@@ -80,7 +88,7 @@ describe('Health Check Endpoint', () => {
       method: 'GET',
     });
 
-    const response = await workerHandler.fetch(request, env);
+    const response = await workerHandler.fetch(request, env, createMockExecutionContext());
     const data = await parseJsonResponse(response);
 
     expect(response.status).toBe(200);

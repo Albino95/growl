@@ -519,6 +519,7 @@ export async function toggleLike(
         body: null,
         refType: 'post',
         refId: postId,
+        oncePerActorAndRef: true,
       });
     }
 

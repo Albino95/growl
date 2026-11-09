@@ -107,7 +107,8 @@ describe('Stories Routes', () => {
           Authorization: 'Bearer test-token',
         },
         body: {
-          image_url: 'https://example.com/story.jpg',
+          // createStorySchema only accepts URLs of media uploaded through our API.
+          image_url: 'https://example.com/api/v1/media/stories/story.jpg',
           caption: 'My story',
         },
       });
@@ -311,10 +312,18 @@ describe('Stories Routes', () => {
       const response = await feedRoutes.getFeed(request, env);
       const data = await parseJsonResponse(response);
 
+      // Home mode now returns a sectioned payload: friends (and own posts) under
+      // `following`, path-matching non-friends under `suggested`.
       expect(response.status).toBe(200);
-      expect(Array.isArray(data)).toBe(true);
-      expect(data).toHaveLength(1);
-      expect(data[0].id).toBe('friend-post');
+      expect(data.success).toBe(true);
+      const { following, suggested } = data.data;
+      expect(Array.isArray(following)).toBe(true);
+      expect(following).toHaveLength(1);
+      expect(following[0].id).toBe('friend-post');
+      expect(following[0].feed_section).toBe('following');
+      expect(following[0].metadata.is_friend).toBe(true);
+      expect(suggested.map((p: any) => p.id)).toEqual(['stranger-post']);
+      expect(suggested[0].feed_section).toBe('suggested');
     });
 
     it('createComment creates a comment and returns user payload', async () => {
@@ -389,9 +398,10 @@ describe('Stories Routes', () => {
 
       expect(response.status).toBe(201);
       expect(insertCalled).toBe(true);
-      expect(data.post_id).toBe('post-1');
-      expect(data.content).toBe('Great post!');
-      expect(data.user.username).toBe('Test User');
+      expect(data.success).toBe(true);
+      expect(data.data.post_id).toBe('post-1');
+      expect(data.data.content).toBe('Great post!');
+      expect(data.data.user.username).toBe('Test User');
     });
   });
 });

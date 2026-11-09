@@ -51,12 +51,28 @@ export async function createUserNotification(
     body?: string | null;
     refType?: string | null;
     refId?: string | null;
+    /**
+     * Skip if this actor already sent this type of notification about the same
+     * item (e.g. unlike + like again must not notify the author twice).
+     */
+    oncePerActorAndRef?: boolean;
   }
 ): Promise<void> {
   if (!input.userId) return;
   if (input.actorId && input.actorId === input.userId) return;
 
   try {
+    if (input.oncePerActorAndRef && input.actorId && input.refId) {
+      const existing = await env.DB.prepare(
+        `SELECT 1 FROM user_notifications
+         WHERE user_id = ? AND actor_id = ? AND type = ? AND ref_id = ?
+         LIMIT 1`
+      )
+        .bind(input.userId, input.actorId, input.type, input.refId)
+        .first();
+      if (existing) return;
+    }
+
     await env.DB.prepare(
       `INSERT INTO user_notifications
         (id, user_id, actor_id, type, title, body, ref_type, ref_id, created_at)
