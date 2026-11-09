@@ -3,18 +3,19 @@ import {
   View,
   Text,
   Pressable,
-  ActivityIndicator,
   useWindowDimensions,
   ScrollView,
   Platform,
 } from 'react-native';
+import GrowLoader from '../../components/ui/GrowLoader';
+import { feedback, hushNativeAudio } from '../../utils/interactionFeedback';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { createFeedPost, type FeedPost } from '../../services/api/feed';
-import { uploadMediaApi, uploadMediaFile, isVideoMedia } from '../../services/api/media';
+import { uploadMediaApi, uploadMediaFile } from '../../services/api/media';
 import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { useAuth, useAppDispatch } from '../../store/hooks';
 import { prependFeedPost } from '../../store/slices/feedSlice';
@@ -35,12 +36,26 @@ import { openReelsAtPost } from '../../utils/reelNavigation';
 import { reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { fitReelStage } from '../../utils/fitMediaBox';
 import tw from '../../lib/tw';
+import { FAST_REEL_PICKER } from '../../utils/prepareImageUpload';
+import { persistPickerAsset, pickedFromAsset } from '../../utils/pickedMedia';
+import {
+  buildPlaceholders,
+  frameCountForDuration,
+  sampleClipFramesQuiet,
+  stillSourceFromFrames,
+  type FrameThumb,
+} from '../../components/ui/videoEditor/extractFrames';
+import {
+  nativeEditorOpenMs,
+  nativePublishUnloadMs,
+  waitMs,
+} from '../../components/ui/videoEditor/videoEditorPolicy';
+import { useDeferredNativePlayer } from '../../components/ui/videoEditor/useDeferredNativePlayer';
+import EditorErrorBoundary from '../../components/ui/EditorErrorBoundary';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
 type Props = { navigation: Nav };
 type MediaKind = 'image' | 'video';
-
-const HEADER_OFFSET = 56;
 
 function StepPill({ label, active, done }: { label: string; active?: boolean; done?: boolean }) {
   return (
@@ -73,7 +88,7 @@ function ToolChip({
   return (
     <Pressable
       onPress={onPress}
-      style={tw`flex-row items-center rounded-full px-3 py-2 mr-2 ${
+      style={tw`flex-row items-center rounded-full px-3.5 py-2.5 mr-2 flex-shrink-0 ${
         danger ? 'bg-red-500/80 border border-red-400/40' : 'bg-white/15 border border-white/20'
       }`}
       hitSlop={6}
@@ -82,16 +97,6 @@ function ToolChip({
       <Text style={tw`text-white text-xs font-semibold ml-1.5`}>{label}</Text>
     </Pressable>
   );
-}
-
-function assetKind(asset: ImagePicker.ImagePickerAsset): MediaKind {
-  const type = (asset.type || '').toLowerCase();
-  if (type === 'video') return 'video';
-  if (type === 'image') return 'image';
-  const mime = (asset.mimeType || '').toLowerCase();
-  if (mime.startsWith('video/')) return 'video';
-  if (isVideoMedia({ uri: asset.uri, contentType: mime })) return 'video';
-  return 'image';
 }
 
 export default function CreateReelScreen({ navigation }: Props) {
@@ -117,40 +122,119 @@ export default function CreateReelScreen({ navigation }: Props) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [publishedPostId, setPublishedPostId] = useState<string | null>(null);
   const [publishedPost, setPublishedPost] = useState<FeedPost | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState(false);
+  const [clipDurationMs, setClipDurationMs] = useState(0);
+  const [clipFrames, setClipFrames] = useState<FrameThumb[]>([]);
+  const [wantPlay, setWantPlay] = useState(false);
+  const [stillsBusy, setStillsBusy] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
+  const clipStill = stillSourceFromFrames(clipFrames);
+  const previewActive = Boolean(
+    wantPlay &&
+      !stillsBusy &&
+      mediaUri &&
+      mediaKind === 'video' &&
+      !openingEditor &&
+      !posting &&
+      !showVideoEditor &&
+      !showPhotoEditor
+  );
+  const previewArmed = useDeferredNativePlayer(previewActive);
 
   useEffect(() => {
-    if (mediaUri && !showPhotoEditor && !showVideoEditor) {
+    if (mediaUri && !showPhotoEditor && !showVideoEditor && !openingEditor) {
       const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
       return () => clearTimeout(timer);
     }
-  }, [mediaUri, showPhotoEditor, showVideoEditor]);
+  }, [mediaUri, showPhotoEditor, showVideoEditor, openingEditor]);
 
-  const applyAsset = (asset: ImagePicker.ImagePickerAsset) => {
-    const kind = assetKind(asset);
-    setMediaKind(kind);
-    setMimeType(asset.mimeType || undefined);
-    setMediaUri(asset.uri);
-    setVideoEdit(DEFAULT_VIDEO_EDIT);
+  useEffect(() => {
+    if (!openingEditor) return;
+    if (stillsBusy) return;
+    if (mediaKind !== 'video') {
+      setShowPhotoEditor(true);
+      setOpeningEditor(false);
+      return;
+    }
+    const delay = previewArmed ? nativeEditorOpenMs() : 0;
+    const t = setTimeout(() => {
+      setShowVideoEditor(true);
+      setOpeningEditor(false);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [openingEditor, mediaKind, stillsBusy, previewArmed]);
+
+  const applyAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    setShowVideoEditor(false);
+    setShowPhotoEditor(false);
+    setOpeningEditor(false);
+    setWantPlay(false);
+
+    const immediate = pickedFromAsset(asset);
+    setMediaKind(immediate.kind);
+    setMimeType(immediate.mimeType);
+    setClipDurationMs(immediate.durationMs);
+    const nextEdit = { ...DEFAULT_VIDEO_EDIT };
+    if (immediate.kind === 'video' && immediate.durationMs > 60000) {
+      nextEdit.trimEndMs = 60000;
+    }
+    setVideoEdit(nextEdit);
+
+    let uri = immediate.uri;
+    let kind = immediate.kind;
+    let durationMs = immediate.durationMs;
+    try {
+      const picked = await persistPickerAsset(asset);
+      if (picked.uri) uri = picked.uri;
+      kind = picked.kind;
+      if (picked.mimeType) setMimeType(picked.mimeType);
+      if (picked.durationMs > 0) durationMs = picked.durationMs;
+      setMediaKind(kind);
+      setClipDurationMs(durationMs);
+    } catch {
+      /* use the picker URI */
+    }
+
+    if (kind === 'video') {
+      setClipFrames(buildPlaceholders(durationMs, frameCountForDuration(durationMs)));
+      setWantPlay(false);
+      setStillsBusy(true);
+      setMediaUri(uri);
+      hushNativeAudio(1800);
+      try {
+        const frames = await sampleClipFramesQuiet(uri, durationMs, setClipFrames);
+        setClipFrames(frames);
+      } finally {
+        setStillsBusy(false);
+      }
+    } else {
+      setClipFrames([]);
+      setMediaUri(uri);
+    }
   };
 
   const pickFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      await alertMessage('Permission needed', 'Allow library access to create a reel.');
-      return;
-    }
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        await alertMessage('Permission needed', 'Allow library access to create a reel.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: false,
-      quality: 0.92,
-      videoMaxDuration: 60,
-      allowsMultipleSelection: false,
-    });
+      setImporting(true);
+      const result = await ImagePicker.launchImageLibraryAsync(FAST_REEL_PICKER);
+      hushNativeAudio(1800);
 
-    if (!result.canceled && result.assets[0]) {
-      applyAsset(result.assets[0]);
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+      await applyAsset(result.assets[0]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not add that clip.';
+      await alertMessage('Reel media', `${msg}\n\nTry another video, or record with Camera.`);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -162,12 +246,27 @@ export default function CreateReelScreen({ navigation }: Props) {
     uri: string;
     kind: 'image' | 'video';
     mimeType?: string;
+    durationMs?: number;
   }) => {
     setShowCamera(false);
+    setWantPlay(false);
     setMediaKind(result.kind);
     setMimeType(result.mimeType);
-    setMediaUri(result.uri);
     setVideoEdit(DEFAULT_VIDEO_EDIT);
+    setClipDurationMs(result.durationMs || 0);
+    if (result.kind !== 'video') {
+      setClipFrames([]);
+      setMediaUri(result.uri);
+      return;
+    }
+    const durationMs = result.durationMs || 0;
+    setClipFrames(buildPlaceholders(durationMs, frameCountForDuration(durationMs)));
+    setMediaUri(result.uri);
+    setStillsBusy(true);
+    hushNativeAudio(1800);
+    void sampleClipFramesQuiet(result.uri, durationMs, setClipFrames)
+      .then(setClipFrames)
+      .finally(() => setStillsBusy(false));
   };
 
   const clearMedia = () => {
@@ -176,6 +275,9 @@ export default function CreateReelScreen({ navigation }: Props) {
     setMimeType(undefined);
     setCaption('');
     setVideoEdit(DEFAULT_VIDEO_EDIT);
+    setClipDurationMs(0);
+    setClipFrames([]);
+    setWantPlay(false);
   };
 
   const handleRemove = async () => {
@@ -211,6 +313,9 @@ export default function CreateReelScreen({ navigation }: Props) {
 
     setPosting(true);
     try {
+      if (mediaKind === 'video' && previewArmed) {
+        await waitMs(nativePublishUnloadMs());
+      }
       let mediaUrl = mediaUri;
       let uploadedKind: MediaKind = mediaKind;
       let contentType = mimeType;
@@ -354,32 +459,38 @@ export default function CreateReelScreen({ navigation }: Props) {
 
   if (showPhotoEditor && mediaUri && mediaKind === 'image') {
     return (
-      <PhotoEditor
-        imageUri={mediaUri}
-        title="Edit Reel"
-        preferredAspect="9:16"
-        enableOverlays
-        onSave={(editedUri) => {
-          setMediaUri(editedUri);
-          setShowPhotoEditor(false);
-        }}
-        onCancel={() => setShowPhotoEditor(false)}
-      />
+      <EditorErrorBoundary onClose={() => setShowPhotoEditor(false)}>
+        <PhotoEditor
+          imageUri={mediaUri}
+          title="Edit Reel"
+          preferredAspect="9:16"
+          enableOverlays
+          onSave={(editedUri) => {
+            setMediaUri(editedUri);
+            setShowPhotoEditor(false);
+          }}
+          onCancel={() => setShowPhotoEditor(false)}
+        />
+      </EditorErrorBoundary>
     );
   }
 
   if (showVideoEditor && mediaUri && mediaKind === 'video') {
     return (
-      <VideoEditor
-        videoUri={mediaUri}
-        title="Edit Reel"
-        initialSettings={videoEdit}
-        onSave={(settings) => {
-          setVideoEdit(settings);
-          setShowVideoEditor(false);
-        }}
-        onCancel={() => setShowVideoEditor(false)}
-      />
+      <EditorErrorBoundary onClose={() => setShowVideoEditor(false)}>
+        <VideoEditor
+          videoUri={mediaUri}
+          title="Edit Reel"
+          initialSettings={videoEdit}
+          hintDurationMs={clipDurationMs}
+          initialFrames={clipFrames}
+          onSave={(settings) => {
+            setVideoEdit(settings);
+            setShowVideoEditor(false);
+          }}
+          onCancel={() => setShowVideoEditor(false)}
+        />
+      </EditorErrorBoundary>
     );
   }
 
@@ -395,7 +506,16 @@ export default function CreateReelScreen({ navigation }: Props) {
             isPosting={posting}
             canPost={canPublish}
             onOpenCategory={() => setShowCategorySheet(true)}
-            onSubmit={() => void publishReel()}
+            onSubmit={() => {
+              if (/^(grow!?|🌱|still growing\.?)$/i.test(caption.trim())) {
+                feedback.celebrate();
+              }
+              void publishReel();
+            }}
+            onLongSubmit={() => {
+              feedback.egg();
+              void publishReel();
+            }}
             submitLabel="Publish Reel"
           />
         ) : null
@@ -407,7 +527,7 @@ export default function CreateReelScreen({ navigation }: Props) {
         backIcon="close"
         transparent
         light
-        style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-20`}
+        style={tw`border-b-0 bg-transparent z-20`}
       />
 
       {showSuccess && (
@@ -450,15 +570,23 @@ export default function CreateReelScreen({ navigation }: Props) {
             { minHeight: stage.height },
           ]}
         >
+          {importing ? (
+            <GrowLoader label="Reading your clip…" />
+          ) : (
+          <>
           <View style={tw`items-center mb-10`}>
-            <View style={tw`bg-white/15 rounded-full p-5 mb-4 border border-white/20`}>
+            <Pressable
+              onLongPress={() => feedback.egg()}
+              delayLongPress={450}
+              style={tw`bg-white/15 rounded-full p-5 mb-4 border border-white/20`}
+            >
               <Ionicons name="film-outline" size={48} color="#FFFFFF" />
-            </View>
+            </Pressable>
             <Text style={tw`text-white text-2xl font-bold mb-2 text-center`}>
               Create a vertical clip
             </Text>
             <Text style={tw`text-white/70 text-base text-center px-4`}>
-              Tap for a photo, hold for video — then trim, style, and caption
+              Camera or library — photos or video up to 60s. Trim on the film, then publish.
             </Text>
           </View>
           <View style={tw`flex-row gap-3 w-full`}>
@@ -477,70 +605,81 @@ export default function CreateReelScreen({ navigation }: Props) {
               <Text style={tw`font-semibold text-base text-white`}>Library</Text>
             </Pressable>
           </View>
+          </>
+          )}
         </View>
       ) : (
         <View style={tw`flex-1`}>
-          <View style={tw`flex-row px-4 pt-2 pb-1`}>
+          <View style={tw`flex-row px-4 pt-2 pb-1 flex-shrink-0`}>
             <StepPill label="Capture" done />
             <StepPill label="Preview" active />
             <StepPill label="Publish" />
           </View>
-          <View
-            style={[
-              tw`w-full bg-black items-center justify-center`,
-              { height: stage.height },
-            ]}
-          >
+          <View style={tw`flex-1 min-h-0 bg-black items-center justify-center`}>
             <View
               style={[
                 tw`relative overflow-hidden bg-black`,
-                { width: stage.width, height: stage.height },
+                { width: stage.width, height: '100%', maxHeight: stage.height },
               ]}
             >
             {mediaKind === 'video' ? (
-              <ReelVideoPlayer
-                uri={mediaUri}
-                settings={videoEdit}
-                shouldPlay
-                contentFit="cover"
-                style={{ width: '100%', height: '100%' }}
-              />
+              previewArmed && mediaUri ? (
+                <ReelVideoPlayer
+                  key={mediaUri}
+                  uri={mediaUri}
+                  settings={videoEdit}
+                  shouldPlay={previewArmed && !posting && !showVideoEditor && !showPhotoEditor}
+                  contentFit="cover"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              ) : clipStill ? (
+                <Image
+                  source={clipStill as { uri: string }}
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={tw`w-full h-full bg-black`} />
+              )
             ) : (
               <Image
                 source={{ uri: mediaUri }}
                 style={tw`w-full h-full`}
                 contentFit="cover"
-                transition={200}
+                transition={160}
               />
             )}
-            <View style={tw`absolute bottom-0 left-0 right-0 h-32 bg-black/40`} pointerEvents="none" />
-            {posting && (
-              <View style={tw`absolute inset-0 bg-black/50 items-center justify-center z-30`}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
-                <Text style={tw`text-white mt-3 font-medium`}>
-                  {mediaKind === 'video' ? 'Uploading video…' : 'Publishing…'}
-                </Text>
+            <View style={tw`absolute bottom-0 left-0 right-0 h-24 bg-black/35`} pointerEvents="none" />
+            {mediaKind === 'video' && !wantPlay && !stillsBusy && !openingEditor && !posting && clipStill ? (
+              <View
+                pointerEvents="box-none"
+                style={tw`absolute bottom-4 left-0 right-0 items-center z-20`}
+              >
+                <Pressable
+                  onPress={() => setWantPlay(true)}
+                  style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
+                  hitSlop={8}
+                  accessibilityLabel="Play clip"
+                >
+                  <Ionicons name="play" size={22} color="#fff" />
+                </Pressable>
+              </View>
+            ) : null}
+            {(posting || openingEditor || importing) && (
+              <View style={tw`absolute inset-0 bg-black/55 items-center justify-center z-30`}>
+                <GrowLoader
+                  label={
+                    openingEditor
+                      ? 'Opening editor…'
+                      : posting
+                        ? mediaKind === 'video'
+                          ? 'Growing your reel…'
+                          : 'Planting your reel…'
+                        : 'Opening clip…'
+                  }
+                />
               </View>
             )}
-            <View
-              style={[tw`absolute right-3`, { top: HEADER_OFFSET, zIndex: 30 }]}
-              pointerEvents="box-none"
-            >
-              <Pressable
-                onPress={() =>
-                  mediaKind === 'video' ? setShowVideoEditor(true) : setShowPhotoEditor(true)
-                }
-                style={tw`rounded-full p-2.5 bg-black/55`}
-                hitSlop={8}
-                accessibilityLabel="Edit reel"
-              >
-                <Ionicons
-                  name={mediaKind === 'video' ? 'cut-outline' : 'color-wand-outline'}
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </Pressable>
-            </View>
             {mediaKind === 'video' && (
               <View style={tw`absolute left-3 bottom-3 bg-black/55 px-2.5 py-1 rounded-full`}>
                 <Text style={tw`text-white text-xs font-semibold`}>Video</Text>
@@ -552,15 +691,18 @@ export default function CreateReelScreen({ navigation }: Props) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`px-4 py-3`}
-            style={tw`flex-grow-0`}
+            contentContainerStyle={tw`px-4 py-3 items-center`}
+            style={tw`flex-grow-0 flex-shrink-0`}
           >
             <ToolChip
               icon={mediaKind === 'video' ? 'cut-outline' : 'color-wand-outline'}
               label="Edit"
-              onPress={() =>
-                mediaKind === 'video' ? setShowVideoEditor(true) : setShowPhotoEditor(true)
-              }
+              onPress={() => {
+                if (openingEditor || showVideoEditor || showPhotoEditor) return;
+                hushNativeAudio(900);
+                setWantPlay(false);
+                setOpeningEditor(true);
+              }}
             />
             <ToolChip
               icon="images-outline"

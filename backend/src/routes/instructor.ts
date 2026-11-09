@@ -12,6 +12,13 @@ import {
 import { POINTS, awardPoints } from '../utils/points';
 import { validateRequest, updatePartnershipRequestSchema, updatePartnershipSchema } from '../utils/validation';
 import { areFriends } from './friends';
+import { createUserNotification, resolveUsername } from '../utils/notifications';
+import {
+  ensureOffering,
+  loadCompletedPlansMap,
+  loadInstructorRatings,
+  loadOfferingsMap,
+} from '../utils/coachingAccess';
 
 type AuthInstructor = { userId: string; user: NonNullable<Awaited<ReturnType<typeof getRequestContext>>['user']> };
 
@@ -90,6 +97,15 @@ export async function getInstructors(request: Request, env: Env): Promise<Respon
       teaching_headline: string | null;
       created_at: string;
       score: number;
+      weekly_fee_eur: number | null;
+      sessions_per_week: number | null;
+      typical_weeks: number | null;
+      trial_days: number | null;
+      currency: string;
+      accepting: boolean;
+      completed_plans: number;
+      rating_avg: number | null;
+      rating_count: number;
     };
 
     const ranked: Ranked[] = [];
@@ -121,7 +137,36 @@ export async function getInstructors(request: Request, env: Env): Promise<Respon
           typeof meta.teaching_headline === 'string' ? meta.teaching_headline : null,
         created_at: row.created_at,
         score,
+        weekly_fee_eur: null,
+        sessions_per_week: null,
+        typical_weeks: null,
+        trial_days: null,
+        currency: 'EUR',
+        accepting: true,
+        completed_plans: 0,
+        rating_avg: null,
+        rating_count: 0,
       });
+    }
+
+    const ids = ranked.map((r) => r.id);
+    const [offeringMap, completedMap, ratingMap] = await Promise.all([
+      loadOfferingsMap(env, ids),
+      loadCompletedPlansMap(env, ids),
+      loadInstructorRatings(env, ids),
+    ]);
+    for (const person of ranked) {
+      const offer = offeringMap.get(person.id);
+      const rating = ratingMap.get(person.id);
+      person.weekly_fee_eur = offer?.weekly_fee_eur ?? null;
+      person.sessions_per_week = offer?.sessions_per_week ?? null;
+      person.typical_weeks = offer?.typical_weeks ?? null;
+      person.trial_days = offer?.trial_days ?? null;
+      person.currency = offer?.currency ?? 'EUR';
+      person.accepting = offer ? offer.accepting : true;
+      person.completed_plans = completedMap.get(person.id) ?? 0;
+      person.rating_avg = rating && rating.count > 0 ? rating.avg : null;
+      person.rating_count = rating?.count ?? 0;
     }
 
     ranked.sort((a, b) => b.score - a.score);
@@ -322,6 +367,26 @@ export async function voteInstructor(
 
     const endorsementCount = await countEndorsements(env, candidateId);
 
+    // Close any pending request from candidate → voter.
+    await env.DB.prepare(
+      `UPDATE endorsement_requests
+       SET status = 'accepted', responded_at = datetime('now')
+       WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending'`
+    )
+      .bind(candidateId, ctx.userId)
+      .run();
+
+    const voterName = await resolveUsername(env, ctx.userId);
+    await createUserNotification(env, {
+      userId: candidateId,
+      actorId: ctx.userId,
+      type: 'endorsement_received',
+      title: `${voterName} endorsed you`,
+      body: 'You’re closer to unlocking the Instructor Hub.',
+      refType: 'user',
+      refId: ctx.userId,
+    });
+
     return json(
       {
         message: 'Endorsement recorded',
@@ -401,6 +466,18 @@ export async function claimInstructor(request: Request, env: Env): Promise<Respo
 
     const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CLAIM_INSTRUCTOR);
 
+    await createUserNotification(env, {
+      userId: ctx.userId,
+      actorId: null,
+      type: 'instructor_claim',
+      title: 'Instructor unlocked',
+      body: 'Teach today, check in with learners, and open partnerships.',
+      refType: 'instructor',
+      refId: ctx.userId,
+    });
+
+    await ensureOffering(env, ctx.userId);
+
     const updated = await computeEligibility(env, ctx.userId, 1);
     return json({
       ...updated,
@@ -452,6 +529,46 @@ export async function getEndorsementStatus(
     const endorsementCount = await countEndorsements(env, candidateId);
     const canEndorse = !isSelf && !alreadyEndorsed && sharedCategories.length > 0;
 
+    // Have they already endorsed me?
+    const theyEndorsedMe = await env.DB.prepare(
+      'SELECT id FROM instructor_votes WHERE user_id = ? AND candidate_id = ?'
+    )
+      .bind(candidateId, ctx.userId)
+      .first();
+
+    // Outgoing: I asked them to endorse me. Incoming: they asked me to endorse them.
+    let pendingOutgoing = false;
+    let pendingIncoming = false;
+    let pendingIncomingRequestId: string | null = null;
+    try {
+      const out = await env.DB.prepare(
+        `SELECT id FROM endorsement_requests
+         WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending' LIMIT 1`
+      )
+        .bind(ctx.userId, candidateId)
+        .first<{ id: string }>();
+      pendingOutgoing = !!out;
+
+      const incoming = await env.DB.prepare(
+        `SELECT id FROM endorsement_requests
+         WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending' LIMIT 1`
+      )
+        .bind(candidateId, ctx.userId)
+        .first<{ id: string }>();
+      pendingIncoming = !!incoming;
+      pendingIncomingRequestId = incoming?.id || null;
+    } catch {
+      /* table may not exist yet on older envs */
+    }
+
+    const viewerIsInstructor = !!ctx.user?.is_instructor;
+    const canRequestEndorsement =
+      !isSelf &&
+      !viewerIsInstructor &&
+      !theyEndorsedMe &&
+      sharedCategories.length > 0 &&
+      !pendingOutgoing;
+
     return json({
       canEndorse,
       alreadyEndorsed,
@@ -459,6 +576,11 @@ export async function getEndorsementStatus(
       endorsementCount,
       isSelf,
       isInstructor: !!candidate.is_instructor,
+      theyEndorsedMe: !!theyEndorsedMe,
+      canRequestEndorsement,
+      pendingOutgoing,
+      pendingIncoming,
+      pendingIncomingRequestId,
     });
   } catch (err) {
     console.error('[getEndorsementStatus]', err);
@@ -881,5 +1003,268 @@ export async function updateInstructorPartnership(
   } catch (err) {
     console.error('[updateInstructorPartnership] Error:', err);
     return error('DATABASE_ERROR', 'Failed to update partnership', 500);
+  }
+}
+
+/**
+ * POST /api/v1/instructor/candidates/:userId/request-endorsement
+ * Ask another person (shared path) to endorse you.
+ */
+export async function requestEndorsement(
+  request: Request,
+  env: Env,
+  targetUserId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId || !ctx.user) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  if (ctx.userId === targetUserId) {
+    return error('INVALID_REQUEST', 'You cannot request an endorsement from yourself', 400);
+  }
+
+  let body: { message?: string } = {};
+  try {
+    body = (await request.json()) as { message?: string };
+  } catch {
+    body = {};
+  }
+  const message =
+    typeof body.message === 'string' ? body.message.trim().slice(0, 280) : '';
+
+  const target = await env.DB.prepare(
+    'SELECT id, metadata, is_instructor FROM users WHERE id = ?'
+  )
+    .bind(targetUserId)
+    .first<{ id: string; metadata: string; is_instructor: number }>();
+
+  if (!target) {
+    return error('USER_NOT_FOUND', 'User not found', 404);
+  }
+
+  if (ctx.user.is_instructor) {
+    return error('ALREADY_INSTRUCTOR', 'You are already an instructor', 400);
+  }
+
+  const myCats = await resolveUserCategories(env, ctx.userId, ctx.user.metadata);
+  const theirCats = await resolveUserCategories(env, targetUserId, target.metadata);
+  const shared = categoriesOverlap(myCats, theirCats);
+  if (shared.length === 0) {
+    return error(
+      'NO_CATEGORY_OVERLAP',
+      'You can only request endorsements from people who share a growth path',
+      400
+    );
+  }
+
+  const already = await env.DB.prepare(
+    'SELECT id FROM instructor_votes WHERE user_id = ? AND candidate_id = ?'
+  )
+    .bind(targetUserId, ctx.userId)
+    .first();
+  if (already) {
+    return error('ALREADY_VOTED', 'They already endorsed you', 400);
+  }
+
+  try {
+    const pending = await env.DB.prepare(
+      `SELECT id FROM endorsement_requests
+       WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending' LIMIT 1`
+    )
+      .bind(ctx.userId, targetUserId)
+      .first<{ id: string }>();
+
+    if (pending) {
+      return json({
+        requested: true,
+        requestId: pending.id,
+        message: 'Endorsement request already pending',
+      });
+    }
+
+    const id = generateId('ereq');
+    await env.DB.prepare(
+      `INSERT INTO endorsement_requests
+        (id, from_user_id, to_user_id, message, status, created_at)
+       VALUES (?, ?, ?, ?, 'pending', datetime('now'))`
+    )
+      .bind(id, ctx.userId, targetUserId, message || null)
+      .run();
+
+    const fromName = await resolveUsername(env, ctx.userId);
+    await createUserNotification(env, {
+      userId: targetUserId,
+      actorId: ctx.userId,
+      type: 'endorsement_request',
+      title: `${fromName} asked for your endorsement`,
+      body: message || 'They share a growth path with you.',
+      refType: 'endorsement_request',
+      refId: id,
+    });
+
+    return json({ requested: true, requestId: id }, 201);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('no such table')) {
+      return error('DATABASE_ERROR', 'Endorsement requests not migrated yet', 500);
+    }
+    console.error('[requestEndorsement]', err);
+    return error('DATABASE_ERROR', 'Failed to request endorsement', 500);
+  }
+}
+
+/**
+ * PATCH /api/v1/instructor/endorsement-requests/:id
+ * Accept (endorse) or decline a pending request.
+ */
+export async function respondToEndorsementRequest(
+  request: Request,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  let body: { status?: string };
+  try {
+    body = (await request.json()) as { status?: string };
+  } catch {
+    return error('VALIDATION_ERROR', 'Invalid JSON body', 400);
+  }
+
+  const status = body.status === 'accepted' || body.status === 'declined' ? body.status : null;
+  if (!status) {
+    return error('VALIDATION_ERROR', 'status must be accepted or declined', 400);
+  }
+
+  try {
+    const row = await env.DB.prepare(
+      `SELECT id, from_user_id, to_user_id, status FROM endorsement_requests WHERE id = ?`
+    )
+      .bind(requestId)
+      .first<{
+        id: string;
+        from_user_id: string;
+        to_user_id: string;
+        status: string;
+      }>();
+
+    if (!row) return error('NOT_FOUND', 'Request not found', 404);
+    if (row.to_user_id !== ctx.userId) {
+      return error('FORBIDDEN', 'Not your endorsement request', 403);
+    }
+    if (row.status !== 'pending') {
+      return error('ALREADY_RESOLVED', 'Request already resolved', 400);
+    }
+
+    if (status === 'declined') {
+      await env.DB.prepare(
+        `UPDATE endorsement_requests
+         SET status = 'declined', responded_at = datetime('now') WHERE id = ?`
+      )
+        .bind(requestId)
+        .run();
+      return json({ ok: true, status: 'declined' });
+    }
+
+    // Accept = cast endorsement vote as the recipient.
+    const voteRes = await voteInstructor(
+      new Request(request.url, {
+        method: 'POST',
+        headers: request.headers,
+        body: JSON.stringify({}),
+      }),
+      env,
+      row.from_user_id
+    );
+
+    if (!voteRes.ok) {
+      // Still mark declined? Keep pending if vote failed for overlap reasons.
+      const payload = (await voteRes.clone().json().catch(() => null)) as {
+        error?: { code?: string; message?: string };
+      } | null;
+      return error(
+        payload?.error?.code || 'ENDORSE_FAILED',
+        payload?.error?.message || 'Could not endorse',
+        voteRes.status
+      );
+    }
+
+    await env.DB.prepare(
+      `UPDATE endorsement_requests
+       SET status = 'accepted', responded_at = datetime('now') WHERE id = ?`
+    )
+      .bind(requestId)
+      .run();
+
+    const voteJson = (await voteRes.json()) as { data?: unknown };
+    return json({ ok: true, status: 'accepted', vote: voteJson?.data ?? voteJson });
+  } catch (err) {
+    console.error('[respondToEndorsementRequest]', err);
+    return error('DATABASE_ERROR', 'Failed to respond to request', 500);
+  }
+}
+
+/**
+ * GET /api/v1/instructor/endorsement-requests
+ * Pending requests addressed to me.
+ */
+export async function listIncomingEndorsementRequests(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT er.id, er.from_user_id, er.message, er.created_at, u.metadata, u.points
+       FROM endorsement_requests er
+       JOIN users u ON u.id = er.from_user_id
+       WHERE er.to_user_id = ? AND er.status = 'pending'
+       ORDER BY er.created_at DESC
+       LIMIT 40`
+    )
+      .bind(ctx.userId)
+      .all<{
+        id: string;
+        from_user_id: string;
+        message: string | null;
+        created_at: string;
+        metadata: string;
+        points: number;
+      }>();
+
+    const requests = [];
+    for (const row of rows.results || []) {
+      const meta = parseMeta(row.metadata);
+      const cats = await resolveUserCategories(env, row.from_user_id, row.metadata);
+      const myCats = await resolveUserCategories(env, ctx.userId, ctx.user?.metadata);
+      requests.push({
+        id: row.id,
+        message: row.message,
+        created_at: row.created_at,
+        from: {
+          id: row.from_user_id,
+          username: (meta.username as string) || 'Member',
+          avatar: (meta.avatar as string) || null,
+          points: Number(row.points) || 0,
+          categories: cats,
+          shared_categories: categoriesOverlap(myCats, cats),
+        },
+      });
+    }
+
+    return json({ requests });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('no such table')) return json({ requests: [] });
+    console.error('[listIncomingEndorsementRequests]', err);
+    return error('DATABASE_ERROR', 'Failed to load requests', 500);
   }
 }

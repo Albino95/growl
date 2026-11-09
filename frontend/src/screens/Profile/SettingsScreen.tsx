@@ -9,6 +9,7 @@ import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { useAuth } from '../../store/hooks';
+import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 
 function Row({
   icon,
@@ -47,6 +48,7 @@ function Row({
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
+  const replayTutorial = useDemoTutorialStore((s) => s.replay);
   const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
   const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
@@ -131,11 +133,17 @@ export default function SettingsScreen() {
         </Text>
         <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <Row
+            icon="search-outline"
+            label="Find instructors"
+            subtitle="Browse coaches and reach out"
+            onPress={() => navigateFromRoot(navigation, 'Instructors')}
+          />
+          <Row
             icon="school-outline"
             label="Instructor Hub"
             subtitle={
               user?.isInstructor
-                ? 'Community, partnerships, and teaching tools'
+                ? 'Students, offer, homework, partnerships'
                 : 'Earn peer endorsements, then claim instructor status'
             }
             onPress={() => {
@@ -180,6 +188,21 @@ export default function SettingsScreen() {
           Support
         </Text>
         <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+          <Row
+            icon="chatbubble-ellipses-outline"
+            label="Review Grow!"
+            subtitle="Tell us what’s broken — we reply here"
+            onPress={() => navigateFromRoot(navigation, 'AppReviews')}
+          />
+          <Row
+            icon="sparkles-outline"
+            label="Replay the tour"
+            subtitle="The first-launch walkthrough"
+            onPress={() => {
+              replayTutorial();
+              navigation.goBack();
+            }}
+          />
           <Row
             icon="document-text-outline"
             label="Legal & support"

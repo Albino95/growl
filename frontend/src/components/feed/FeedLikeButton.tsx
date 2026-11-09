@@ -6,6 +6,10 @@ import { feedback } from '../../utils/interactionFeedback';
 
 export type FeedReaction = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
+const HEART_ACTIVE = '#F97066';
+const HEART_IDLE_LIGHT = '#57534E';
+const HEART_IDLE_DARK = '#FFFFFF';
+
 type Props = {
   hasLiked: boolean;
   reaction: FeedReaction;
@@ -27,27 +31,27 @@ function ReactionGlyph({
   tone?: 'light' | 'dark';
 }) {
   const active = hasLiked || reaction != null;
-  const outlineColor = tone === 'dark' ? '#FFFFFF' : '#374151';
+  const outlineColor = tone === 'dark' ? HEART_IDLE_DARK : HEART_IDLE_LIGHT;
   if (!active) {
-    return <Ionicons name="heart-outline" size={28} color={outlineColor} />;
+    return <Ionicons name="heart-outline" size={26} color={outlineColor} />;
   }
   const r = reaction || 'love';
   switch (r) {
     case 'like':
-      return <Text style={tw`text-[26px] leading-none`}>👍</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>👍</Text>;
     case 'laugh':
-      return <Text style={tw`text-[26px] leading-none`}>😂</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>😂</Text>;
     case 'wow':
-      return <Text style={tw`text-[26px] leading-none`}>😮</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>😮</Text>;
     case 'support':
-      return <Text style={tw`text-[26px] leading-none`}>💪</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>💪</Text>;
     case 'love':
     default:
-      return <Ionicons name="heart" size={28} color="#EF4444" />;
+      return <Ionicons name="heart" size={26} color={HEART_ACTIVE} />;
   }
 }
 
-/** Like / reaction control with a punchy heart pop when filled. */
+/** Like / reaction control — pop on like, no leftover ring at rest. */
 export default function FeedLikeButton({
   hasLiked,
   reaction,
@@ -66,26 +70,37 @@ export default function FeedLikeButton({
       Animated.parallel([
         Animated.sequence([
           Animated.spring(scale, {
-            toValue: 1.45,
-            friction: 3,
-            tension: 260,
+            toValue: 1.28,
+            friction: 3.5,
+            tension: 240,
             useNativeDriver: true,
           }),
           Animated.spring(scale, {
             toValue: 1,
             friction: 5,
-            tension: 170,
+            tension: 180,
             useNativeDriver: true,
           }),
         ]),
-        Animated.timing(ring, {
-          toValue: 1,
-          duration: 420,
-          useNativeDriver: true,
-        }),
+        Animated.sequence([
+          Animated.timing(ring, {
+            toValue: 1,
+            duration: 380,
+            useNativeDriver: true,
+          }),
+          // Ensure ring is fully gone after the burst (no faded leftover).
+          Animated.timing(ring, {
+            toValue: 0,
+            duration: 1,
+            useNativeDriver: true,
+          }),
+        ]),
       ]).start();
     } else if (!hasLiked && prevLiked.current) {
       Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }).start();
+      ring.setValue(0);
+    } else {
+      // Already liked on mount / hydrate — never show a stuck ring.
       ring.setValue(0);
     }
     prevLiked.current = hasLiked;
@@ -95,26 +110,21 @@ export default function FeedLikeButton({
     <Pressable
       onPressIn={() => {
         Animated.spring(scale, {
-          toValue: 0.88,
+          toValue: 0.9,
           useNativeDriver: true,
           speed: 40,
           bounciness: 0,
         }).start();
       }}
       onPressOut={() => {
-        if (!hasLiked) {
-          Animated.spring(scale, {
-            toValue: 1,
-            useNativeDriver: true,
-            speed: 28,
-            bounciness: 6,
-          }).start();
-        }
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          speed: 28,
+          bounciness: 6,
+        }).start();
       }}
-      onPress={() => {
-        // Parent toggles like + fires feedback.like; keep a light tap if already synced.
-        onPress();
-      }}
+      onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
       hitSlop={10}
@@ -122,25 +132,26 @@ export default function FeedLikeButton({
       accessibilityRole="button"
       accessibilityLabel={hasLiked ? 'Unlike' : 'Like'}
     >
-      <View style={tw`items-center justify-center w-9 h-9`}>
+      <View style={tw`items-center justify-center w-8 h-8`}>
         <Animated.View
           pointerEvents="none"
           style={{
             position: 'absolute',
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            borderWidth: 2,
-            borderColor: '#F97066',
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: HEART_ACTIVE,
+            // Idle ring value is 0 → opacity 0 (was incorrectly 0.55 before).
             opacity: ring.interpolate({
-              inputRange: [0, 0.35, 1],
-              outputRange: [0.55, 0.35, 0],
+              inputRange: [0, 0.2, 0.7, 1],
+              outputRange: [0, 0.5, 0.2, 0],
             }),
             transform: [
               {
                 scale: ring.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.6, 1.65],
+                  outputRange: [0.85, 1.55],
                 }),
               },
             ],
@@ -192,8 +203,13 @@ export function ReactionPickerBar({
   return (
     <Animated.View
       style={[
-        tw`flex-row items-center rounded-full border border-stone-200 bg-white px-2 py-2 shadow-lg`,
+        tw`flex-row items-center rounded-2xl border border-stone-200/90 bg-[#FFFcf7] px-2.5 py-2`,
         {
+          shadowColor: '#1C1917',
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 3,
           opacity: enter,
           transform: [
             {
@@ -205,7 +221,7 @@ export function ReactionPickerBar({
             {
               scale: enter.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.92, 1],
+                outputRange: [0.94, 1],
               }),
             },
           ],
@@ -220,11 +236,11 @@ export function ReactionPickerBar({
             onPick(item.key);
           }}
           style={({ pressed }) => [
-            tw`mx-1 h-10 w-10 items-center justify-center rounded-full`,
-            pressed ? tw`bg-rose-50` : null,
+            tw`mx-0.5 h-10 w-10 items-center justify-center rounded-xl`,
+            pressed ? tw`bg-energy-50` : null,
           ]}
         >
-          <Animated.Text style={[tw`text-2xl`, { transform: [{ scale: scales[index] }] }]}>
+          <Animated.Text style={[tw`text-[22px]`, { transform: [{ scale: scales[index] }] }]}>
             {item.glyph}
           </Animated.Text>
         </Pressable>

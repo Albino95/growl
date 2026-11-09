@@ -1,17 +1,14 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
+import { Audio } from 'expo-av';
 import type { TextOverlay } from '../photoEditor/types';
 import type { VideoEditSettings } from './types';
-import { getVideoLook, normalizeVideoEdit } from './types';
+import { normalizeVideoEdit } from './types';
 import { getMusicPlaybackUrl } from '../../../constants/postMusic';
 import tw from '../../../lib/tw';
-import {
-  buildVideoCssFilter,
-  videoVignetteStrength,
-  videoCinematicStrength,
-  videoFadeOpacity,
-} from './videoFilters';
+import { buildVideoCssFilter } from './videoFilters';
+import { VideoGradeStack } from './GradeOverlays';
+import NativeClipPlayer from './NativeClipPlayer';
 
 type ContentFit = 'cover' | 'contain';
 
@@ -23,6 +20,10 @@ type Props = {
   useNativeControls?: boolean;
   /** cover = fill (Reels). contain = whole frame (preview / thumbs). */
   contentFit?: ContentFit;
+  /** Rewind at trim end (reels). Stories pass false and listen to onEnded. */
+  loop?: boolean;
+  onEnded?: () => void;
+  onProgress?: (positionMs: number, durationMs: number) => void;
 };
 
 type HtmlVideoEl = {
@@ -59,38 +60,14 @@ export function ReelSoundtrack({
         }
         soundRef.current = null;
       }
-      if (!soundtrackUrl) return;
-      if (Platform.OS === 'web') {
-        if (typeof window === 'undefined') return;
-        if (!webAudioRef.current) webAudioRef.current = new window.Audio();
-        const el = webAudioRef.current;
-        el.loop = true;
-        el.volume = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
-        if (el.src !== soundtrackUrl) {
-          el.src = soundtrackUrl;
-          el.load?.();
-        }
-        return;
-      }
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: false,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        });
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: soundtrackUrl },
-          { shouldPlay: false, isLooping: true, volume: edit.audioVolume ?? 0.85 }
-        );
-        if (cancelled) {
-          await sound.unloadAsync();
-          return;
-        }
-        soundRef.current = sound;
-      } catch {
-        soundRef.current = null;
+      if (!soundtrackUrl || Platform.OS !== 'web' || typeof window === 'undefined') return;
+      if (!webAudioRef.current) webAudioRef.current = new window.Audio();
+      const el = webAudioRef.current;
+      el.loop = true;
+      el.volume = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
+      if (el.src !== soundtrackUrl) {
+        el.src = soundtrackUrl;
+        el.load?.();
       }
     };
     void load();
@@ -141,68 +118,59 @@ export default function ReelVideoPlayer({
   style,
   useNativeControls = false,
   contentFit = 'cover',
+  loop = true,
+  onEnded,
+  onProgress,
 }: Props) {
-  const videoRef = useRef<Video>(null);
   const htmlVideoRef = useRef<HtmlVideoEl | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const webAudioRef = useRef<HTMLAudioElement | null>(null);
+  const endedRef = useRef(false);
+  const onEndedRef = useRef(onEnded);
+  const onProgressRef = useRef(onProgress);
+  onEndedRef.current = onEnded;
+  onProgressRef.current = onProgress;
   const edit = normalizeVideoEdit(settings);
-  const look = getVideoLook(edit.lookId);
   const soundtrackUrl = getMusicPlaybackUrl(edit.audioTrackId, edit.audioUrl);
   const webFilter = Platform.OS === 'web' ? buildVideoCssFilter(edit) : undefined;
-  const vignetteStrength = videoVignetteStrength(edit);
-  const cinematicStrength = videoCinematicStrength(edit);
-  const fadeOverlay = videoFadeOpacity(edit);
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
   const originalVol = edit.originalVolume;
   const isMuted = originalVol <= 0.001;
 
-  const onStatus = useCallback(
-    (status: AVPlaybackStatus) => {
-      if (!status.isLoaded) return;
-      const end = trimEnd > 0 ? trimEnd : status.durationMillis || 0;
-      if (end > 0 && (status.positionMillis || 0) >= end - 80) {
-        void videoRef.current?.setPositionAsync(trimStart);
-        if (soundRef.current) {
-          void soundRef.current.setPositionAsync(0);
-        }
-      }
-    },
-    [trimEnd, trimStart]
-  );
-
   const onWebTimeUpdate = useCallback(() => {
     const el = htmlVideoRef.current;
     if (!el) return;
-    const endSec = trimEnd > 0 ? trimEnd / 1000 : 0;
+    const durationMs = (el.duration || 0) * 1000;
+    const positionMs = (el.currentTime || 0) * 1000;
+    onProgressRef.current?.(positionMs, durationMs);
+    const endSec = trimEnd > 0 ? trimEnd / 1000 : el.duration || 0;
     if (endSec > 0 && el.currentTime >= endSec - 0.08) {
-      el.currentTime = trimStart / 1000;
-      if (webAudioRef.current) webAudioRef.current.currentTime = 0;
+      if (loop) {
+        el.currentTime = trimStart / 1000;
+        if (webAudioRef.current) webAudioRef.current.currentTime = 0;
+        return;
+      }
+      if (!endedRef.current) {
+        endedRef.current = true;
+        el.pause();
+        onEndedRef.current?.();
+      }
     }
-  }, [trimEnd, trimStart]);
+  }, [loop, trimEnd, trimStart]);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      const el = htmlVideoRef.current;
-      if (el) {
-        el.muted = isMuted;
-        el.volume = isMuted ? 0 : Math.max(0, Math.min(1, originalVol));
-      }
-      return;
-    }
-    void videoRef.current?.setIsMutedAsync(isMuted);
-    if (!isMuted) {
-      void videoRef.current?.setVolumeAsync(Math.max(0, Math.min(1, originalVol)));
+    if (Platform.OS !== 'web') return;
+    const el = htmlVideoRef.current;
+    if (el) {
+      el.muted = isMuted;
+      el.volume = isMuted ? 0 : Math.max(0, Math.min(1, originalVol));
     }
   }, [isMuted, originalVol]);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      if (htmlVideoRef.current) htmlVideoRef.current.playbackRate = edit.speed || 1;
-      return;
-    }
-    void videoRef.current?.setRateAsync(edit.speed || 1, true);
+    if (Platform.OS !== 'web') return;
+    if (htmlVideoRef.current) htmlVideoRef.current.playbackRate = edit.speed || 1;
   }, [edit.speed]);
 
   useEffect(() => {
@@ -217,7 +185,7 @@ export default function ReelVideoPlayer({
         }
         soundRef.current = null;
       }
-      if (!soundtrackUrl || Platform.OS === 'web') return;
+      if (!soundtrackUrl || Platform.OS !== 'web') return;
       try {
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
@@ -277,8 +245,6 @@ export default function ReelVideoPlayer({
 
     if (Platform.OS === 'web') {
       loadWebSound();
-    } else {
-      void loadNativeSound();
     }
 
     return () => {
@@ -293,54 +259,28 @@ export default function ReelVideoPlayer({
         webAudioRef.current = null;
       }
     };
-  }, [soundtrackUrl, edit.audioVolume, edit.audioUrl]);
+  }, [soundtrackUrl, edit.audioVolume, edit.audioUrl, shouldPlay]);
 
   useEffect(() => {
+    endedRef.current = false;
+  }, [uri]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
     if (!shouldPlay) {
-      void videoRef.current?.pauseAsync();
       htmlVideoRef.current?.pause();
-      void soundRef.current?.pauseAsync();
       webAudioRef.current?.pause();
       return;
     }
+    endedRef.current = false;
     void (async () => {
-      if (Platform.OS !== 'web') {
+      const el = htmlVideoRef.current;
+      if (el) {
+        el.currentTime = trimStart / 1000;
         try {
-          await Audio.setAudioModeAsync({
-            playsInSilentModeIOS: true,
-            allowsRecordingIOS: false,
-            staysActiveInBackground: false,
-            shouldDuckAndroid: true,
-            playThroughEarpieceAndroid: false,
-          });
+          await el.play();
         } catch {
-          /* ignore */
-        }
-      }
-      if (Platform.OS === 'web') {
-        const el = htmlVideoRef.current;
-        if (el) {
-          el.currentTime = trimStart / 1000;
-          try {
-            await el.play();
-          } catch {
-            /* autoplay blocked */
-          }
-        }
-      } else {
-        try {
-          await videoRef.current?.setPositionAsync(trimStart);
-          await videoRef.current?.playAsync();
-        } catch {
-          /* decode / network */
-        }
-      }
-      if (soundRef.current) {
-        try {
-          await soundRef.current.setPositionAsync(0);
-          await soundRef.current.playAsync();
-        } catch {
-          /* ignore */
+          /* autoplay blocked */
         }
       }
       if (webAudioRef.current && soundtrackUrl) {
@@ -372,8 +312,6 @@ export default function ReelVideoPlayer({
   const webFlip =
     [edit.flipH ? 'scaleX(-1)' : '', edit.flipV ? 'scaleY(-1)' : ''].filter(Boolean).join(' ') ||
     undefined;
-  const resizeMode = contentFit === 'contain' ? ResizeMode.CONTAIN : ResizeMode.COVER;
-
   return (
     <View style={[tw`overflow-hidden bg-black`, { width: '100%', height: '100%' }, style]}>
       {Platform.OS === 'web'
@@ -382,7 +320,7 @@ export default function ReelVideoPlayer({
             key: uri,
             src: uri,
             muted: isMuted,
-            loop: !(trimEnd > 0),
+            loop: loop && !(trimEnd > 0),
             playsInline: true,
             autoPlay: shouldPlay,
             controls: useNativeControls,
@@ -403,69 +341,27 @@ export default function ReelVideoPlayer({
             },
           })
         : (
-          <Video
-            ref={videoRef}
-            source={{ uri }}
+          <View
             style={[
               StyleSheet.absoluteFillObject,
               { width: '100%', height: '100%', transform: flipTransform },
             ]}
-            resizeMode={resizeMode}
-            shouldPlay={shouldPlay}
-            isLooping={false}
-            isMuted={isMuted}
-            volume={isMuted ? 0 : originalVol}
-            onPlaybackStatusUpdate={onStatus}
-            useNativeControls={useNativeControls}
-          />
+          >
+            <NativeClipPlayer
+              uri={uri}
+              shouldPlay={shouldPlay}
+              loop={loop}
+              muted={isMuted}
+              volume={isMuted ? 0 : originalVol}
+              playbackRate={edit.speed || 1}
+              contentFit={contentFit}
+              useNativeControls={useNativeControls}
+              onEnded={onEnded}
+              onProgress={onProgress}
+            />
+          </View>
         )}
-      {look.layers.map((layer, i) => (
-        <View
-          key={`${look.id}-${i}`}
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFillObject,
-            { backgroundColor: layer.color, opacity: layer.opacity ?? 1 },
-          ]}
-        />
-      ))}
-      {(vignetteStrength > 0) ? (
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFillObject,
-            { backgroundColor: `rgba(0,0,0,${vignetteStrength * 0.35})` },
-          ]}
-        />
-      ) : null}
-      {fadeOverlay > 0 ? (
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(255,255,255,${fadeOverlay})` }]}
-        />
-      ) : null}
-      {(cinematicStrength > 0) ? (
-        <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-          <View
-            style={[
-              tw`absolute top-0 left-0 right-0`,
-              {
-                height: `${12 + cinematicStrength * 18}%`,
-                backgroundColor: 'rgba(0,0,0,0.55)',
-              },
-            ]}
-          />
-          <View
-            style={[
-              tw`absolute bottom-0 left-0 right-0`,
-              {
-                height: `${14 + cinematicStrength * 20}%`,
-                backgroundColor: 'rgba(0,0,0,0.6)',
-              },
-            ]}
-          />
-        </View>
-      ) : null}
+      <VideoGradeStack edit={edit} />
       {(edit.overlays as TextOverlay[]).map((o) =>
         o.text.trim() ? (
           <View

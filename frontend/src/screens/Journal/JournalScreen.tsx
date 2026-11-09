@@ -46,6 +46,7 @@ import {
   type JournalReflection,
 } from '../../services/api/journal';
 import { createConversation } from '../../services/api/messages';
+import { useActivationStore } from '../../state/useActivationStore';
 import {
   verticalScrollProps,
   feedListPerformanceProps,
@@ -62,6 +63,9 @@ import {
 } from '../../store/slices/journalSlice';
 import { feedback } from '../../utils/interactionFeedback';
 import type { IndividualTabsParamList } from '../../app/navigation/tabs/IndividualTabs';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { SHOW_CIRCLES } from '../../constants/featureFlags';
 
 type ViewTab = 'today' | 'timeline';
 type VisibilityFilter = 'all' | 'private' | 'shared';
@@ -80,9 +84,11 @@ function pathLabel(key: string | null): string | null {
 function EntryCard({
   entry,
   onDelete,
+  onShare,
 }: {
   entry: JournalEntry;
   onDelete: (id: string) => void;
+  onShare?: (entry: JournalEntry) => void;
 }) {
   const mood = (entry.mood as JournalMood | null) || null;
   const meta = mood ? MOOD_META[mood] : null;
@@ -117,6 +123,16 @@ function EntryCard({
             size={14}
             color="#78716C"
           />
+          {isPublic && onShare ? (
+            <PressableScale
+              feedback="open"
+              onPress={() => onShare(entry)}
+              hitSlop={10}
+              accessibilityLabel="Share voice card"
+            >
+              <Ionicons name="share-outline" size={16} color="#059669" />
+            </PressableScale>
+          ) : null}
           <PressableScale
             feedback="delete"
             onPress={() => onDelete(entry.id)}
@@ -159,6 +175,7 @@ export default function JournalScreen() {
   const [reflections, setReflections] = useState<JournalReflection[]>([]);
   const [reflectionsLoading, setReflectionsLoading] = useState(false);
   const [reflectionsOpen, setReflectionsOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
 
   const contentOpacity = useRef(new Animated.Value(1)).current;
   const contentSlide = useRef(new Animated.Value(0)).current;
@@ -381,6 +398,7 @@ export default function JournalScreen() {
   }) => {
     try {
       await dispatch(addJournalEntry(payload)).unwrap();
+      useActivationStore.getState().markJournaled();
       feedback.success();
       setComposeOpen(false);
       setViewTab('today');
@@ -414,14 +432,26 @@ export default function JournalScreen() {
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <GrowChromeHeader
         right={
-          <PressableScale
-            feedback="open"
-            onPress={openCompose}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
-            accessibilityLabel="New journal entry"
-          >
-            <Ionicons name="pencil" size={17} color="#059669" />
-          </PressableScale>
+          <View style={tw`flex-row items-center gap-2`}>
+            {SHOW_CIRCLES ? (
+              <PressableScale
+                feedback="open"
+                onPress={() => navigateFromRoot(navigation, 'Circles')}
+                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityLabel="Circles"
+              >
+                <Ionicons name="people-outline" size={17} color="#059669" />
+              </PressableScale>
+            ) : null}
+            <PressableScale
+              feedback="open"
+              onPress={openCompose}
+              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              accessibilityLabel="New journal entry"
+            >
+              <Ionicons name="pencil" size={17} color="#059669" />
+            </PressableScale>
+          </View>
         }
       />
 
@@ -556,6 +586,20 @@ export default function JournalScreen() {
                 onReplyToLine={(e) => {
                   feedback.open();
                   setReplyEntry(e);
+                }}
+                onShare={(e) => {
+                  const mood = e.mood as keyof typeof MOOD_META | null;
+                  const path = growthPathFromTags(e.tags || []);
+                  setSharePayload({
+                    kind: 'voice',
+                    entryId: e.id,
+                    userId: e.user_id,
+                    username: e.username,
+                    avatar: e.avatar,
+                    content: e.content,
+                    moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
+                    pathLabel: pathLabel(path),
+                  });
                 }}
                 onMuted={(userId) =>
                   setCircleEntries((prev) => prev.filter((e) => e.user_id !== userId))
@@ -722,7 +766,25 @@ export default function JournalScreen() {
                 </View>
               ) : (
                 todayEntries.map((entry) => (
-                  <EntryCard key={entry.id} entry={entry} onDelete={handleDelete} />
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    onDelete={handleDelete}
+                    onShare={(e) => {
+                      const mood = e.mood as JournalMood | null;
+                      const path = growthPathFromTags(e.tags || []);
+                      setSharePayload({
+                        kind: 'voice',
+                        entryId: e.id,
+                        userId: user?.id || '',
+                        username: user?.username || 'You',
+                        avatar: user?.avatar,
+                        content: e.content,
+                        moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
+                        pathLabel: pathLabel(path),
+                      });
+                    }}
+                  />
                 ))
               )}
             </View>
@@ -826,7 +888,26 @@ export default function JournalScreen() {
                 <Text style={tw`text-sm font-semibold text-stone-600`}>{section.title}</Text>
               </View>
             )}
-            renderItem={({ item }) => <EntryCard entry={item} onDelete={handleDelete} />}
+            renderItem={({ item }) => (
+              <EntryCard
+                entry={item}
+                onDelete={handleDelete}
+                onShare={(e) => {
+                  const mood = e.mood as JournalMood | null;
+                  const path = growthPathFromTags(e.tags || []);
+                  setSharePayload({
+                    kind: 'voice',
+                    entryId: e.id,
+                    userId: user?.id || '',
+                    username: user?.username || 'You',
+                    avatar: user?.avatar,
+                    content: e.content,
+                    moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
+                    pathLabel: pathLabel(path),
+                  });
+                }}
+              />
+            )}
             ListEmptyComponent={
               isLoading ? (
                 <View style={tw`py-12 items-center`}>
@@ -888,6 +969,12 @@ export default function JournalScreen() {
           setReflectionsOpen(false);
           animateModeChange('voices');
         }}
+      />
+
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
       />
     </SafeAreaView>
   );

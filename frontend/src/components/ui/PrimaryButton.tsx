@@ -6,6 +6,7 @@ import { usePressFeedback } from '../../hooks/usePressFeedback';
 type Props = {
   label: string;
   onPress?: () => void;
+  onLongPress?: () => void;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
   loading?: boolean;
@@ -15,6 +16,7 @@ type Props = {
 function PrimaryButton({
   label,
   onPress,
+  onLongPress,
   style,
   disabled,
   loading,
@@ -36,6 +38,8 @@ function PrimaryButton({
       onPress={feedback.onPress}
       onPressIn={feedback.onPressIn}
       onPressOut={feedback.onPressOut}
+      onLongPress={isDisabled ? undefined : onLongPress}
+      delayLongPress={420}
       disabled={isDisabled}
       style={[
         tw`px-4 py-3.5 rounded-2xl items-center justify-center min-h-[50px]`,

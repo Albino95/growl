@@ -50,6 +50,7 @@ export default function EditProfileScreen() {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [bio, setBio] = useState(user?.bio || '');
   const [status, setStatus] = useState(user?.status || '');
+  const [teachingHeadline, setTeachingHeadline] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [refreshing, setRefreshing] = useState(true);
@@ -68,6 +69,8 @@ export default function EditProfileScreen() {
         setLocalPreview(null);
         setBio(typeof profile.bio === 'string' ? profile.bio : '');
         setStatus(typeof profile.status === 'string' ? profile.status : '');
+        const th = (profile as { teaching_headline?: string | null }).teaching_headline;
+        setTeachingHeadline(typeof th === 'string' ? th : '');
       } catch (e: unknown) {
         console.warn('[EditProfile] profile refresh failed', e);
       } finally {
@@ -125,7 +128,9 @@ export default function EditProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 0.72,
+      exif: false,
+      base64: false,
     });
     if (!result.canceled && result.assets[0]?.uri) {
       await applyPickedUri(result.assets[0].uri);
@@ -143,7 +148,9 @@ export default function EditProfileScreen() {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 0.72,
+      exif: false,
+      base64: false,
     });
     if (!result.canceled && result.assets[0]?.uri) {
       await applyPickedUri(result.assets[0].uri);
@@ -173,6 +180,7 @@ export default function EditProfileScreen() {
       setSaving(true);
       const trimmedBio = bio.trim();
       const trimmedStatus = status.trim();
+      const trimmedTeaching = teachingHeadline.trim();
       const nextAvatar = avatar.trim();
 
       await updateProfileOnServer({
@@ -181,6 +189,9 @@ export default function EditProfileScreen() {
         metadata: {
           bio: trimmedBio,
           status: trimmedStatus,
+          ...(user?.isInstructor
+            ? { teaching_headline: trimmedTeaching || null }
+            : {}),
         },
       });
       updateUser({
@@ -307,6 +318,22 @@ export default function EditProfileScreen() {
             style={tw`bg-[#F3EEE4] border-stone-200 rounded-xl min-h-[96px]`}
             textAlignVertical="top"
           />
+
+          {user?.isInstructor ? (
+            <View style={tw`mt-4`}>
+              <Text style={tw`text-sm font-semibold text-stone-800 mb-1.5`}>Teaching headline</Text>
+              <FormTextInput
+                value={teachingHeadline}
+                onChangeText={setTeachingHeadline}
+                placeholder="e.g. Coaching first 10Ks with weekly form tips"
+                maxLength={120}
+                style={tw`bg-[#ECFDF5] border-emerald-200 rounded-xl`}
+              />
+              <Text style={tw`text-xs text-stone-500 mt-1.5`}>
+                Shows on your public profile and instructor discovery cards.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <TouchableOpacity

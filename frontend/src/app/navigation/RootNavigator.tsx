@@ -16,12 +16,21 @@ import OrderConfirmationScreen from '../../screens/Marketplace/OrderConfirmation
 import EditProfileScreen from '../../screens/Profile/EditProfileScreen';
 import SettingsScreen from '../../screens/Profile/SettingsScreen';
 import NotificationPrefsScreen from '../../screens/Profile/NotificationPrefsScreen';
+import NotificationsScreen from '../../screens/Activity/NotificationsScreen';
 import LegalHubScreen from '../../screens/Legal/LegalHubScreen';
 import LegalDocumentScreen from '../../screens/Legal/LegalDocumentScreen';
 import DeleteAccountScreen from '../../screens/Profile/DeleteAccountScreen';
 import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
 import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
 import CreateReelScreen from '../../screens/Reels/CreateReelScreen';
+import GardenScreen from '../../screens/Garden/GardenScreen';
+import PlantSeedScreen from '../../screens/Garden/PlantSeedScreen';
+import SeedDetailScreen from '../../screens/Garden/SeedDetailScreen';
+import CirclesScreen from '../../screens/Circles/CirclesScreen';
+import CircleDetailScreen from '../../screens/Circles/CircleDetailScreen';
+import CoachingContractScreen from '../../screens/Instructor/CoachingContractScreen';
+import InstructorsScreen from '../../screens/Instructor/InstructorsScreen';
+import AppReviewsScreen from '../../screens/Feedback/AppReviewsScreen';
 import { useAppSelector } from '../../store/store';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 
@@ -79,6 +88,15 @@ export type RootStackParamList = {
   EditProfile: undefined;
   Settings: undefined;
   NotificationPrefs: undefined;
+  Notifications: undefined;
+  Garden: undefined;
+  PlantSeed: undefined;
+  SeedDetail: { seedId: string };
+  Circles: undefined;
+  CircleDetail: { groupId: string };
+  CoachingContract: { contractId: string };
+  Instructors: undefined;
+  AppReviews: undefined;
   Legal: undefined;
   LegalDocument: { documentId: 'terms' | 'privacy' | 'community' | 'support' };
   DeleteAccount: undefined;
@@ -147,8 +165,10 @@ export default function RootNavigator() {
             component={PostScreen}
             options={{
               headerShown: false,
-              presentation: 'modal',
+              // card + slide, not UIKit modal — ImagePicker must not dismiss this screen
+              presentation: 'card',
               animation: 'slide_from_bottom',
+              gestureEnabled: false,
             }}
           />
           <Stack.Screen name="PostDetail" component={PostDetailScreen} />
@@ -197,6 +217,42 @@ export default function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="Garden" component={GardenScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="PlantSeed"
+            component={PlantSeedScreen}
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="SeedDetail"
+            component={SeedDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="Circles" component={CirclesScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="CircleDetail"
+            component={CircleDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CoachingContract"
+            component={CoachingContractScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Instructors"
+            component={InstructorsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="StoryViewer"
             component={StoryViewerScreen}
             options={{ headerShown: false, presentation: 'fullScreenModal' }}
@@ -206,8 +262,9 @@ export default function RootNavigator() {
             component={CreateStoryScreen}
             options={{
               headerShown: false,
-              presentation: 'modal',
+              presentation: 'card',
               animation: 'slide_from_bottom',
+              gestureEnabled: false,
             }}
           />
           <Stack.Screen
@@ -215,13 +272,19 @@ export default function RootNavigator() {
             component={CreateReelScreen}
             options={{
               headerShown: false,
-              presentation: 'modal',
+              presentation: 'card',
               animation: 'slide_from_bottom',
+              gestureEnabled: false,
             }}
           />
         </>
       )}
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+      <Stack.Screen
+        name="AppReviews"
+        component={AppReviewsScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen name="Legal" component={LegalHubScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="LegalDocument"

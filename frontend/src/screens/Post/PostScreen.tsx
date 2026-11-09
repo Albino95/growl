@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useRoute } from '@react-navigation/native';
@@ -17,6 +16,10 @@ import PostMusicSheet from './components/PostMusicSheet';
 import PostStickyBar from './components/PostStickyBar';
 import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
+import { FAST_CAMERA, FAST_IMAGE_PICKER } from '../../utils/prepareImageUpload';
+import { persistPickerAsset } from '../../utils/pickedMedia';
+import EditorErrorBoundary from '../../components/ui/EditorErrorBoundary';
+import { feedback } from '../../utils/interactionFeedback';
 
 type PostScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Post'>;
 
@@ -32,7 +35,6 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const [showMusicSheet, setShowMusicSheet] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
-  const openEditorAfterPick = useRef(false);
   const seeded = useRef(false);
 
   const promoteExtras = {
@@ -48,6 +50,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     selectedCategory,
     audioTrack,
     isPosting,
+    postingPhase,
     userCategories,
     hasDraft,
     setImage,
@@ -71,11 +74,6 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   }, [route.params?.caption, route.params?.category, setCaption, setCategory]);
 
   useEffect(() => {
-    if (image && openEditorAfterPick.current) {
-      openEditorAfterPick.current = false;
-      setShowEditor(true);
-      return;
-    }
     if (image && !showEditor) {
       const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
       return () => clearTimeout(timer);
@@ -89,16 +87,11 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.9,
-      allowsMultipleSelection: false,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync(FAST_IMAGE_PICKER);
 
     if (!result.canceled && result.assets[0]) {
-      openEditorAfterPick.current = true;
-      setImage(result.assets[0].uri);
+      const picked = await persistPickerAsset(result.assets[0]);
+      setImage(picked.uri);
     }
   };
 
@@ -109,14 +102,11 @@ export default function PostScreen({ navigation }: PostScreenProps) {
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      quality: 0.9,
-    });
+    const result = await ImagePicker.launchCameraAsync(FAST_CAMERA);
 
     if (!result.canceled && result.assets[0]) {
-      openEditorAfterPick.current = true;
-      setImage(result.assets[0].uri);
+      const picked = await persistPickerAsset(result.assets[0]);
+      setImage(picked.uri);
     }
   };
 
@@ -149,17 +139,19 @@ export default function PostScreen({ navigation }: PostScreenProps) {
 
   if (showEditor && image) {
     return (
-      <PhotoEditor
-        imageUri={image}
-        title="Edit Post"
-        preferredAspect="4:5"
-        enableOverlays
-        onSave={(editedUri) => {
-          setImage(editedUri);
-          setShowEditor(false);
-        }}
-        onCancel={() => setShowEditor(false)}
-      />
+      <EditorErrorBoundary onClose={() => setShowEditor(false)}>
+        <PhotoEditor
+          imageUri={image}
+          title="Edit Post"
+          preferredAspect="4:5"
+          enableOverlays
+          onSave={(editedUri) => {
+            setImage(editedUri);
+            setShowEditor(false);
+          }}
+          onCancel={() => setShowEditor(false)}
+        />
+      </EditorErrorBoundary>
     );
   }
 
@@ -176,9 +168,27 @@ export default function PostScreen({ navigation }: PostScreenProps) {
             hasImage
             isPosting={isPosting}
             canPost={canPost}
+            submitLabel={
+              postingPhase === 'uploading'
+                ? 'Uploading photo…'
+                : postingPhase === 'publishing'
+                  ? 'Sharing…'
+                  : postingPhase === 'preparing'
+                    ? 'Preparing…'
+                    : undefined
+            }
             onOpenCategory={() => setShowCategorySheet(true)}
             onOpenMusic={() => setShowMusicSheet(true)}
-            onSubmit={submitPost}
+            onSubmit={() => {
+              if (/^(grow!?|🌱|still growing\.?)$/i.test(caption.trim())) {
+                feedback.celebrate();
+              }
+              void submitPost();
+            }}
+            onLongSubmit={() => {
+              feedback.egg();
+              void submitPost();
+            }}
           />
         ) : null
       }
@@ -189,19 +199,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         backIcon="close"
         transparent
         light
-        style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-20`}
-        rightAction={
-          image ? (
-            <Pressable
-              onPress={() => void handleRemovePhoto()}
-              hitSlop={8}
-              style={tw`w-10 h-10 items-center justify-center`}
-              accessibilityLabel="Remove photo"
-            >
-              <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
-            </Pressable>
-          ) : undefined
-        }
+        style={tw`border-b-0 bg-transparent z-20`}
       />
 
       {promoteName ? (

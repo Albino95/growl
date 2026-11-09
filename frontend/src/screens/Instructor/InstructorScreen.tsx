@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,13 +18,21 @@ import {
   claimInstructor,
   getInstructorEligibility,
   getInstructorHub,
+  getMyOffering,
+  listCoachingContracts,
+  listCoachingInquiries,
+  requestEndorsement,
   respondToPartnershipRequest,
   suggestEndorsers,
   updateInstructorPartnership,
+  updateMyOffering,
+  type CoachingContract,
+  type CoachingInquiry,
   type EndorsementSuggestion,
   type InstructorEligibility,
   type InstructorEndorser,
   type InstructorHub,
+  type InstructorOffering,
   type InstructorPartnership,
   type InstructorPartnershipRequest,
 } from '../../services/api/instructor';
@@ -34,9 +43,10 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { feedback } from '../../utils/interactionFeedback';
+import PressableScale from '../../components/ui/PressableScale';
 import tw from '../../lib/tw';
 
-type HubTab = 'overview' | 'community' | 'partnerships';
+type HubTab = 'overview' | 'students' | 'community' | 'partnerships';
 
 function formatMoney(n: number) {
   return `$${Number(n || 0).toLocaleString(undefined, {
@@ -108,6 +118,30 @@ function EmptyState({
   );
 }
 
+function OfferField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <View style={tw`flex-1`}>
+      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1`}>
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        style={tw`bg-[#F3EEE4] border border-stone-200/80 rounded-xl px-3 py-2 text-[15px] text-stone-900`}
+      />
+    </View>
+  );
+}
+
 function partnershipTerms(p: {
   partnership_type: string;
   commission_rate: number | null;
@@ -133,6 +167,18 @@ export default function InstructorScreen({ navigation }: any) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<EndorsementSuggestion[]>([]);
   const [justClaimed, setJustClaimed] = useState(false);
+  const [offering, setOffering] = useState<InstructorOffering | null>(null);
+  const [completedPlans, setCompletedPlans] = useState(0);
+  const [inquiries, setInquiries] = useState<CoachingInquiry[]>([]);
+  const [contracts, setContracts] = useState<CoachingContract[]>([]);
+  const [offerDraft, setOfferDraft] = useState({
+    weekly: '10',
+    sessions: '3',
+    weeks: '2',
+    trial: '0',
+    accepting: true,
+  });
+  const [offerBusy, setOfferBusy] = useState(false);
 
   const loadEligibility = useCallback(async () => {
     try {
@@ -150,8 +196,26 @@ export default function InstructorScreen({ navigation }: any) {
 
   const loadHub = useCallback(async () => {
     try {
-      const data = await getInstructorHub();
+      const [data, mine, inquiryRows, contractRows] = await Promise.all([
+        getInstructorHub(),
+        getMyOffering().catch(() => null),
+        listCoachingInquiries().catch(() => [] as CoachingInquiry[]),
+        listCoachingContracts().catch(() => [] as CoachingContract[]),
+      ]);
       setHub(data);
+      if (mine) {
+        setOffering(mine.offering);
+        setCompletedPlans(mine.completed_plans);
+        setOfferDraft({
+          weekly: String(mine.offering.weekly_fee_eur),
+          sessions: String(mine.offering.sessions_per_week),
+          weeks: String(mine.offering.typical_weeks),
+          trial: String(mine.offering.trial_days),
+          accepting: mine.offering.accepting,
+        });
+      }
+      setInquiries(inquiryRows.filter((i) => i.role === 'instructor' && i.status !== 'closed'));
+      setContracts(contractRows.filter((c) => c.role === 'instructor'));
     } catch {
       setHub(null);
     }
@@ -211,19 +275,32 @@ export default function InstructorScreen({ navigation }: any) {
   const askEndorsement = async (person: EndorsementSuggestion) => {
     setBusyId(person.id);
     try {
-      const res = await createConversation(person.id);
+      await requestEndorsement(
+        person.id,
+        `Would you endorse me on Grow!? We share a path and it unlocks coaching for peers.`
+      );
       feedback.send();
-      const path =
-        person.shared_categories[0] != null
-          ? getCategoryLabel(person.shared_categories[0])
-          : 'our shared growth path';
-      navigateFromRoot(navigation, 'Messages', {
-        conversationId: res.data.conversation.id,
-        targetUserId: person.id,
-        draftText: `Hey ${person.username} — would you endorse me on Grow! for ${path}? It unlocks the Instructor Hub so I can coach peers on that path.`,
-      });
+      alertMessage(
+        'Request sent',
+        `${person.username} will see it under Notifications and can endorse you with one tap.`
+      );
+      setSuggestions((prev) => prev.filter((p) => p.id !== person.id));
     } catch (e) {
-      alertMessage('Could not message', e instanceof Error ? e.message : 'Try again');
+      // Fall back to a friendly DM if the structured request fails (e.g. not friends-only path).
+      try {
+        const res = await createConversation(person.id);
+        const path =
+          person.shared_categories[0] != null
+            ? getCategoryLabel(person.shared_categories[0])
+            : 'our shared growth path';
+        navigateFromRoot(navigation, 'Messages', {
+          conversationId: res.data.conversation.id,
+          targetUserId: person.id,
+          draftText: `Hey ${person.username} — would you endorse me on Grow! for ${path}? It unlocks the Instructor Hub so I can coach peers on that path.`,
+        });
+      } catch {
+        alertMessage('Could not ask', e instanceof Error ? e.message : 'Try again');
+      }
     } finally {
       setBusyId(null);
     }
@@ -246,6 +323,26 @@ export default function InstructorScreen({ navigation }: any) {
 
   const openMessages = (targetUserId?: string) => {
     navigateFromRoot(navigation, 'Messages', targetUserId ? { targetUserId } : undefined);
+  };
+
+  const saveOffering = async () => {
+    if (offerBusy) return;
+    setOfferBusy(true);
+    try {
+      const next = await updateMyOffering({
+        weekly_fee_eur: Number(offerDraft.weekly) || 10,
+        sessions_per_week: Number(offerDraft.sessions) || 3,
+        typical_weeks: Number(offerDraft.weeks) || 2,
+        trial_days: Number(offerDraft.trial) || 0,
+        accepting: offerDraft.accepting,
+      });
+      setOffering(next);
+      feedback.success();
+    } catch (e) {
+      alertMessage('Offer', e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setOfferBusy(false);
+    }
   };
 
   const messageEndorser = async (person: InstructorEndorser) => {
@@ -406,41 +503,62 @@ export default function InstructorScreen({ navigation }: any) {
                   </TouchableOpacity>
 
                   {suggestions.length > 0 ? (
-                    <>
-                      <Text
-                        style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
-                      >
-                        Ask for endorsement
-                      </Text>
-                      {suggestions.map((person) => (
-                        <View
-                          key={person.id}
-                          style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
-                        >
-                          <TouchableOpacity onPress={() => openProfile(person.id)}>
-                            <AvatarBubble avatar={person.avatar} name={person.username} />
-                          </TouchableOpacity>
-                          <View style={tw`flex-1 ml-3 pr-2`}>
-                            <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>
-                            <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
-                              {(person.shared_categories || [])
-                                .slice(0, 2)
-                                .map(getCategoryLabel)
-                                .join(' · ')}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => void askEndorsement(person)}
-                            disabled={busyId === person.id}
-                            style={tw`px-3 py-1.5 rounded-full bg-emerald-600`}
+                    <View style={tw`rounded-[22px] overflow-hidden border border-emerald-600/40 bg-[#FFFcf7]`}>
+                      <View style={tw`h-1.5 bg-emerald-600`} />
+                      <View style={tw`px-4 pt-3.5 pb-2`}>
+                        <View style={tw`flex-row items-center mb-1`}>
+                          <Ionicons name="ribbon-outline" size={14} color="#059669" />
+                          <Text
+                            style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
                           >
-                            <Text style={tw`text-xs font-bold text-white`}>
-                              {busyId === person.id ? '…' : 'Ask'}
-                            </Text>
-                          </TouchableOpacity>
+                            Ask for endorsement
+                          </Text>
                         </View>
-                      ))}
-                    </>
+                        <Text style={tw`text-sm text-stone-600 leading-5 mb-3`}>
+                          Structured ask → they get a notification, not a cold DM.
+                        </Text>
+                        {suggestions.map((person, idx) => (
+                          <View
+                            key={person.id}
+                            style={tw`flex-row items-center py-3 ${
+                              idx < suggestions.length - 1 ? 'border-b border-stone-200/80' : ''
+                            }`}
+                          >
+                            <TouchableOpacity onPress={() => openProfile(person.id)}>
+                              <AvatarBubble avatar={person.avatar} name={person.username} />
+                            </TouchableOpacity>
+                            <View style={tw`flex-1 ml-3 pr-2`}>
+                              <Text style={tw`font-semibold text-stone-900`}>
+                                {person.username}
+                              </Text>
+                              <View style={tw`flex-row flex-wrap gap-1 mt-1.5`}>
+                                {(person.shared_categories || []).slice(0, 2).map((key) => (
+                                  <View
+                                    key={`${person.id}-${key}`}
+                                    style={tw`px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100`}
+                                  >
+                                    <Text style={tw`text-[10px] font-semibold text-emerald-800`}>
+                                      {getCategoryLabel(key)}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
+                            <TouchableOpacity
+                              onPress={() => void askEndorsement(person)}
+                              disabled={busyId === person.id}
+                              style={tw`px-3.5 py-2 rounded-xl bg-emerald-600 ${
+                                busyId === person.id ? 'opacity-60' : ''
+                              }`}
+                            >
+                              <Text style={tw`text-xs font-bold text-white`}>
+                                {busyId === person.id ? '…' : 'Send ask'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
                   ) : null}
                 </View>
               )}
@@ -458,6 +576,10 @@ export default function InstructorScreen({ navigation }: any) {
   const stats = hub?.stats;
   const tabs: { key: HubTab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
+    {
+      key: 'students',
+      label: `Students${inquiries.length || contracts.length ? ` · ${inquiries.length + contracts.filter((c) => c.status === 'active').length}` : ''}`,
+    },
     { key: 'community', label: `Community${stats?.endorsers ? ` · ${stats.endorsers}` : ''}` },
     {
       key: 'partnerships',
@@ -506,15 +628,16 @@ export default function InstructorScreen({ navigation }: any) {
       <View style={tw`px-5 pt-3 pb-1`}>
         <Text style={tw`text-lg font-bold text-stone-900`}>Instructor Hub</Text>
         <Text style={tw`text-sm text-stone-500 mt-0.5 leading-5`}>
-          Community, partnerships, and your teaching presence.
+          Talk, send a written plan, then homework on Garden seeds.
         </Text>
       </View>
 
       <View style={tw`flex-row px-5 mt-3 border-b border-stone-200/80`}>
         {tabs.map((tab) => (
-          <TouchableOpacity
+          <PressableScale
             key={tab.key}
             onPress={() => setActiveTab(tab.key)}
+            feedback="select"
             style={tw`mr-5 pb-2.5 border-b-2 ${
               activeTab === tab.key ? 'border-emerald-600' : 'border-transparent'
             }`}
@@ -526,7 +649,7 @@ export default function InstructorScreen({ navigation }: any) {
             >
               {tab.label}
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
         ))}
       </View>
 
@@ -558,6 +681,65 @@ export default function InstructorScreen({ navigation }: any) {
                 </View>
               ) : null}
 
+              <View style={tw`mb-4 px-3.5 py-3.5 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Your offer
+                </Text>
+                <Text style={tw`text-sm text-stone-500 mt-1 mb-3`}>
+                  Trial days stay static on each proposal. €{offering?.weekly_fee_eur ?? 10}/week ·{' '}
+                  {completedPlans} completed plans.
+                </Text>
+                <View style={tw`flex-row gap-2 mb-2`}>
+                  <OfferField
+                    label="€ / week"
+                    value={offerDraft.weekly}
+                    onChange={(weekly) => setOfferDraft((d) => ({ ...d, weekly }))}
+                  />
+                  <OfferField
+                    label="Times / week"
+                    value={offerDraft.sessions}
+                    onChange={(sessions) => setOfferDraft((d) => ({ ...d, sessions }))}
+                  />
+                </View>
+                <View style={tw`flex-row gap-2 mb-3`}>
+                  <OfferField
+                    label="Weeks"
+                    value={offerDraft.weeks}
+                    onChange={(weeks) => setOfferDraft((d) => ({ ...d, weeks }))}
+                  />
+                  <OfferField
+                    label="Trial days"
+                    value={offerDraft.trial}
+                    onChange={(trial) => setOfferDraft((d) => ({ ...d, trial }))}
+                  />
+                </View>
+                <View style={tw`flex-row items-center justify-between`}>
+                  <PressableScale
+                    onPress={() => setOfferDraft((d) => ({ ...d, accepting: !d.accepting }))}
+                    style={tw`px-3 py-2 rounded-xl ${
+                      offerDraft.accepting ? 'bg-emerald-50' : 'bg-[#EAE4D6]'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-xs font-semibold ${
+                        offerDraft.accepting ? 'text-emerald-800' : 'text-stone-600'
+                      }`}
+                    >
+                      {offerDraft.accepting ? 'Accepting plans' : 'Paused'}
+                    </Text>
+                  </PressableScale>
+                  <PressableScale
+                    onPress={() => void saveOffering()}
+                    disabled={offerBusy}
+                    style={tw`px-4 py-2 rounded-xl bg-emerald-600 ${offerBusy ? 'opacity-60' : ''}`}
+                  >
+                    <Text style={tw`text-white text-xs font-bold`}>
+                      {offerBusy ? 'Saving…' : 'Save offer'}
+                    </Text>
+                  </PressableScale>
+                </View>
+              </View>
+
               <Text
                 style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
               >
@@ -588,6 +770,16 @@ export default function InstructorScreen({ navigation }: any) {
                   highlight: !!hub?.actions?.open_inbox,
                 },
                 {
+                  icon: 'school-outline' as const,
+                  label: 'Students',
+                  subtitle:
+                    inquiries.length > 0
+                      ? `${inquiries.length} talking · ${contracts.filter((c) => c.status === 'active').length} active plans`
+                      : 'Reach-outs, proposals, and homework',
+                  onPress: () => setActiveTab('students'),
+                  highlight: inquiries.length > 0,
+                },
+                {
                   icon: 'people-outline' as const,
                   label: 'Check in',
                   subtitle: `${stats.endorsers} endorsers · ${stats.learners || 0} on your paths`,
@@ -605,7 +797,7 @@ export default function InstructorScreen({ navigation }: any) {
                   highlight: !!hub?.actions?.review_partners,
                 },
               ].map((item) => (
-                <TouchableOpacity
+                <PressableScale
                   key={item.label}
                   onPress={item.onPress}
                   style={tw`flex-row items-center py-3.5 border-b border-stone-200/80 ${
@@ -628,7 +820,7 @@ export default function InstructorScreen({ navigation }: any) {
                     <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.subtitle}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-                </TouchableOpacity>
+                </PressableScale>
               ))}
 
               <View style={tw`flex-row border-b border-stone-200/80 mt-4`}>
@@ -669,7 +861,7 @@ export default function InstructorScreen({ navigation }: any) {
                   onPress: () => user?.id && openProfile(user.id),
                 },
               ].map((item, i, arr) => (
-                <TouchableOpacity
+                <PressableScale
                   key={item.label}
                   onPress={item.onPress}
                   style={tw`flex-row items-center py-3.5 ${
@@ -684,8 +876,101 @@ export default function InstructorScreen({ navigation }: any) {
                     <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.subtitle}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-                </TouchableOpacity>
+                </PressableScale>
               ))}
+            </View>
+          ) : null}
+
+          {activeTab === 'students' ? (
+            <View style={tw`px-5 pt-2`}>
+              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
+                People who reached out. Send a proposal after you talk. Homework lives on their Garden seed.
+              </Text>
+              {contracts.filter((c) => c.status === 'active').length > 0 ? (
+                <>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                    Active plans
+                  </Text>
+                  {contracts
+                    .filter((c) => c.status === 'active')
+                    .map((c) => (
+                      <PressableScale
+                        key={c.id}
+                        onPress={() =>
+                          navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
+                        }
+                        style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                      >
+                        <Text style={tw`font-bold text-stone-900`}>
+                          {c.client?.username || 'Client'}
+                        </Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                          {c.weeks} wk · {c.sessions_per_week}× · €{c.weekly_fee_eur}/week · Plan
+                          active · billing coming
+                        </Text>
+                      </PressableScale>
+                    ))}
+                </>
+              ) : null}
+
+              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-3`}>
+                Talking
+              </Text>
+              {inquiries.length === 0 ? (
+                <EmptyState
+                  icon="chatbubbles-outline"
+                  title="No reach-outs yet"
+                  description="When someone taps Reach out on your page, the thread lands here."
+                />
+              ) : (
+                inquiries.map((row) => (
+                  <PressableScale
+                    key={row.id}
+                    onPress={() =>
+                      openMessages(row.client_id)
+                    }
+                    style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
+                  >
+                    <AvatarBubble
+                      avatar={row.client?.avatar}
+                      name={row.client?.username || 'Client'}
+                    />
+                    <View style={tw`flex-1 ml-3`}>
+                      <Text style={tw`font-semibold text-stone-900`}>
+                        {row.client?.username || 'Client'}
+                      </Text>
+                      <Text style={tw`text-xs text-stone-500 mt-0.5`}>Open coaching thread</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                  </PressableScale>
+                ))
+              )}
+
+              {contracts.filter((c) => c.status === 'completed').length > 0 ? (
+                <>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-5`}>
+                    Completed
+                  </Text>
+                  {contracts
+                    .filter((c) => c.status === 'completed')
+                    .map((c) => (
+                      <PressableScale
+                        key={c.id}
+                        onPress={() =>
+                          navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
+                        }
+                        style={tw`py-3 border-b border-stone-200/80`}
+                      >
+                        <Text style={tw`font-semibold text-stone-900`}>
+                          {c.client?.username || 'Client'}
+                        </Text>
+                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                          €{c.total_eur} · {c.weeks} weeks
+                        </Text>
+                      </PressableScale>
+                    ))}
+                </>
+              ) : null}
             </View>
           ) : null}
 

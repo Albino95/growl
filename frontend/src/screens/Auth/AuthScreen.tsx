@@ -770,6 +770,50 @@ export default function AuthScreen() {
           loading={busy}
         />
 
+        {!isSignUp ? (
+          <View style={tw`mt-5 px-3.5 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/60`}>
+            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+              Demo
+            </Text>
+            <Text style={tw`text-xs text-stone-500 mb-2.5`}>
+              Password for all: GrowlDemo123!
+            </Text>
+            <View style={tw`flex-row gap-2`}>
+              {[
+                { email: 'demo@growl.app', label: 'Learner' },
+                { email: 'instructor@growl.app', label: 'Instructor' },
+                { email: 'business@growl.app', label: 'Business' },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.email}
+                  disabled={busy}
+                  onPress={() => {
+                    setEmail(item.email);
+                    setPassword('GrowlDemo123!');
+                    setIsSignUp(false);
+                    setLocalLoading(true);
+                    void signIn(item.email, 'GrowlDemo123!')
+                      .unwrap()
+                      .then(() => {
+                        void clearPendingVerification();
+                        void refreshProfile();
+                      })
+                      .catch((e: unknown) => {
+                        notify('Demo sign-in', authErrorMessage(e, 'Could not sign in. Seed the demo accounts first.'));
+                      })
+                      .finally(() => setLocalLoading(false));
+                  }}
+                  style={tw`flex-1 py-2 rounded-xl bg-[#FFFcf7] border border-stone-200/80 items-center ${
+                    busy ? 'opacity-50' : ''
+                  }`}
+                >
+                  <Text style={tw`text-xs font-bold text-emerald-800`}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         {showSocialAuth ? (
           <>
             <View style={tw`flex-row items-center my-7`}>

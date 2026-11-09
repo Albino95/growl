@@ -19,9 +19,32 @@ import { resolveStoryDisplayUri, resolveAvatarUri, avatarSource } from '../../ut
 import { useAuth } from '../../store/hooks';
 import { createConversation } from '../../services/api/messages';
 import { alertMessage } from '../../utils/confirmDialog';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import {
+  lockNativeUiAudio,
+  triggerPressFeedback,
+  unlockNativeUiAudio,
+} from '../../utils/interactionFeedback';
+import { isVideoMedia } from '../../services/api/media';
+import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+function storyVideoTrim(url: string): { trimStartMs: number; trimEndMs: number } | undefined {
+  try {
+    const u = new URL(url);
+    const ts = Number(u.searchParams.get('ts') || 0);
+    const te = Number(u.searchParams.get('te') || 0);
+    if (ts > 0 || te > 0) {
+      return {
+        trimStartMs: Number.isFinite(ts) ? ts : 0,
+        trimEndMs: Number.isFinite(te) ? te : 0,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
 
 type Story = {
   id: string;
@@ -60,6 +83,11 @@ export default function StoryViewerScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [previousUserId, setPreviousUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    lockNativeUiAudio();
+    return () => unlockNativeUiAudio();
+  }, []);
 
   const syncStories = (next: Story[]) => {
     storiesRef.current = next;
@@ -125,6 +153,10 @@ export default function StoryViewerScreen() {
   ).current;
 
   const currentStory = stories[currentIndex];
+  const storyImageUrl = currentStory
+    ? resolveStoryDisplayUri(currentStory.image, currentStory.userId, currentStory.id)
+    : '';
+  const isVideoStory = isVideoMedia({ uri: storyImageUrl });
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -168,7 +200,13 @@ export default function StoryViewerScreen() {
       onStoriesUpdate?.(next);
     }
 
-    // Auto-advance story after 5 seconds
+    progressAnim.setValue(0);
+    if (isVideoStory) {
+      return () => {
+        progressAnim.setValue(0);
+      };
+    }
+
     const timer = setTimeout(() => {
       if (currentIndexRef.current < storiesRef.current.length - 1) {
         goToNextStory();
@@ -177,7 +215,6 @@ export default function StoryViewerScreen() {
       }
     }, 5000);
 
-    // Progress animation
     Animated.timing(progressAnim, {
       toValue: 1,
       duration: 5000,
@@ -188,7 +225,7 @@ export default function StoryViewerScreen() {
       clearTimeout(timer);
       progressAnim.setValue(0);
     };
-  }, [currentIndex]);
+  }, [currentIndex, isVideoStory]);
 
   // Removed duplicate goToNextStory / goToPreviousStory — see refs above
 
@@ -211,7 +248,6 @@ export default function StoryViewerScreen() {
     );
   }
 
-  const storyImageUrl = resolveStoryDisplayUri(currentStory.image, currentStory.userId, currentStory.id);
   const avatarUri = resolveAvatarUri(currentStory.userId, currentStory.username, currentStory.avatar);
 
   return (
@@ -235,12 +271,29 @@ export default function StoryViewerScreen() {
             },
           ]}
         >
-          <ExpoImage
-            source={{ uri: storyImageUrl }}
-            style={tw`w-full h-full`}
-            contentFit="cover"
-            transition={200}
-          />
+          {isVideoStory ? (
+            <ReelVideoPlayer
+              uri={storyImageUrl}
+              settings={storyVideoTrim(storyImageUrl)}
+              shouldPlay
+              loop={false}
+              contentFit="cover"
+              style={tw`w-full h-full`}
+              onEnded={goToNextStory}
+              onProgress={(positionMs, durationMs) => {
+                if (durationMs > 0) {
+                  progressAnim.setValue(Math.max(0, Math.min(1, positionMs / durationMs)));
+                }
+              }}
+            />
+          ) : (
+            <ExpoImage
+              source={{ uri: storyImageUrl }}
+              style={tw`w-full h-full`}
+              contentFit="cover"
+              transition={200}
+            />
+          )}
         </Animated.View>
 
         {/* Progress Bar */}

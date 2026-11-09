@@ -16,11 +16,12 @@ export function usePressFeedback({
   const scale = useRef(new Animated.Value(1)).current;
 
   const animateTo = useCallback(
-    (toValue: number, duration: number) => {
-      Animated.timing(scale, {
+    (toValue: number, speed: number, bounciness: number) => {
+      Animated.spring(scale, {
         toValue,
-        duration,
         useNativeDriver: true,
+        speed,
+        bounciness,
       }).start();
     },
     [scale]
@@ -29,11 +30,11 @@ export function usePressFeedback({
   const onPressIn = useCallback(() => {
     if (disabled) return;
     triggerFeedback(kind);
-    animateTo(0.98, 90);
+    animateTo(0.94, 42, 0);
   }, [animateTo, disabled, kind]);
 
   const onPressOut = useCallback(() => {
-    animateTo(1, 110);
+    animateTo(1, 28, 7);
   }, [animateTo]);
 
   const onPressWithFeedback = useCallback(() => {

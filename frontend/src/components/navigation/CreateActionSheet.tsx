@@ -3,8 +3,9 @@ import { Modal, Pressable, Text, View, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { feedback } from '../../utils/interactionFeedback';
+import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
 
-export type CreateAction = 'post' | 'reel' | 'story' | 'journal';
+export type CreateAction = 'post' | 'reel' | 'story' | 'journal' | 'seed' | 'circle';
 
 type Props = {
   visible: boolean;
@@ -18,6 +19,18 @@ const ACTIONS: Array<{
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
+  {
+    key: 'seed',
+    title: 'Plant a seed',
+    subtitle: 'Start a goal from your paths — grow it into a tree',
+    icon: 'leaf-outline',
+  },
+  {
+    key: 'circle',
+    title: 'Start a circle',
+    subtitle: 'A room of up to 10 on your path — voice & video later',
+    icon: 'people-outline',
+  },
   {
     key: 'journal',
     title: 'Journal entry',
@@ -156,10 +169,14 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
           <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
           <Text style={tw`text-lg font-semibold text-stone-900 mb-1`}>Create</Text>
           <Text style={tw`text-sm text-stone-500 mb-4`}>
-            Journal, share progress, or find your next skill — Shop is always in the tab bar.
+            Journal, post, or share a reel — Shop stays in the tab bar.
           </Text>
 
-          {ACTIONS.map((action, index) => (
+          {ACTIONS.filter((action) => {
+            if (action.key === 'seed') return SHOW_SEEDS;
+            if (action.key === 'circle') return SHOW_CIRCLES;
+            return true;
+          }).map((action, index) => (
             <ActionRow
               key={action.key}
               action={action}

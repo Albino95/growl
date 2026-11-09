@@ -1,7 +1,7 @@
 import { Image, Platform } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
 import jpeg from 'jpeg-js';
-import type { CropAspect, EditAdjustments, TextOverlay } from './types';
+import type { CropAspect, EditAdjustments, ImageToneStats, TextOverlay } from './types';
 import { isAdjustmentsNeutral, sanitizeAdjustments } from './filterEngine';
 import {
   applyCinematicEdges,
@@ -226,6 +226,27 @@ function applyPixelAdjustments(buffer: PixelBuffer, adj: EditAdjustments) {
     g = ((g / 255 - 0.5) * contrast + 0.5) * 255 * exposure;
     b = ((b / 255 - 0.5) * contrast + 0.5) * 255 * exposure;
 
+    if (a.hue !== 0) {
+      const rad = (a.hue * 0.9 * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const nr =
+        r * (0.213 + 0.787 * cos - 0.213 * sin) +
+        g * (0.715 - 0.715 * cos - 0.715 * sin) +
+        b * (0.072 - 0.072 * cos + 0.928 * sin);
+      const ng =
+        r * (0.213 - 0.213 * cos + 0.143 * sin) +
+        g * (0.715 + 0.285 * cos + 0.14 * sin) +
+        b * (0.072 - 0.072 * cos - 0.283 * sin);
+      const nb =
+        r * (0.213 - 0.213 * cos - 0.787 * sin) +
+        g * (0.715 - 0.715 * cos + 0.715 * sin) +
+        b * (0.072 + 0.928 * cos + 0.072 * sin);
+      r = nr;
+      g = ng;
+      b = nb;
+    }
+
     r += warmth * 28;
     b -= warmth * 22;
     g += tint * 16;
@@ -409,16 +430,22 @@ async function exportViaCanvas(
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
-const EXPORT_MAX_EDGE = 1600;
+const EXPORT_MAX_EDGE = 1400;
 
-/** Shrink phone photos before the pixel pass. Full-res decode is what makes Done feel stuck. */
-async function prepareExportSource(uri: string): Promise<string> {
+/**
+ * Always re-encode as JPEG. iPhone library photos are often HEIC — jpeg-js
+ * cannot decode those, so looks used to silently no-op.
+ */
+export async function prepareExportSource(
+  uri: string,
+  maxEdge = EXPORT_MAX_EDGE
+): Promise<string> {
   try {
     const { width, height } = await getImageDimensions(uri);
     const longEdge = Math.max(width, height);
     const actions: Parameters<typeof ImageManipulator.manipulateAsync>[1] = [];
-    if (longEdge > EXPORT_MAX_EDGE) {
-      const scale = EXPORT_MAX_EDGE / longEdge;
+    if (longEdge > maxEdge) {
+      const scale = maxEdge / longEdge;
       actions.push({
         resize: {
           width: Math.max(1, Math.round(width * scale)),
@@ -427,7 +454,7 @@ async function prepareExportSource(uri: string): Promise<string> {
       });
     }
     const normalized = await ImageManipulator.manipulateAsync(uri, actions, {
-      compress: 0.82,
+      compress: maxEdge <= 720 ? 0.72 : 0.82,
       format: ImageManipulator.SaveFormat.JPEG,
     });
     return normalized.uri;
@@ -464,9 +491,24 @@ async function exportViaJpegJs(
 
     const encoded = jpeg.encode(
       { data: pixelBuffer.data, width: pixelBuffer.width, height: pixelBuffer.height },
-      90
+      88
     );
     const base64 = uint8ToBase64(encoded.data);
+    if (Platform.OS !== 'web') {
+      try {
+        const FileSystem = await import('expo-file-system');
+        const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+        if (dir) {
+          const path = `${dir}grow-edit-${Date.now()}.jpg`;
+          await FileSystem.writeAsStringAsync(path, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          return path;
+        }
+      } catch {
+        /* fall through to data URL */
+      }
+    }
     return `data:image/jpeg;base64,${base64}`;
   } catch {
     return uri;
@@ -485,3 +527,65 @@ function processPixelBuffer(buffer: PixelBuffer, adjustments: EditAdjustments) {
 }
 
 export { rotateImage as rotateImageFile, flipImage as flipImageFile, cropToAspect as cropToAspectFile };
+
+/** Tiny sample for Auto — not the export path. */
+export async function sampleImageStats(uri: string): Promise<ImageToneStats> {
+  const jpegUri = await prepareExportSource(uri, 64);
+  const response = await fetch(jpegUri);
+  const buffer = await response.arrayBuffer();
+  const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
+  const px = decoded.data;
+  let lumaSum = 0;
+  let lumaSq = 0;
+  let warmSum = 0;
+  let satSum = 0;
+  let n = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i];
+    const g = px[i + 1];
+    const b = px[i + 2];
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    lumaSum += luma;
+    lumaSq += luma * luma;
+    warmSum += r - b;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    satSum += max === 0 ? 0 : (max - min) / max;
+    n += 1;
+  }
+  if (n === 0) {
+    return { luma: 0.5, contrast: 0.2, warmth: 0, sat: 0.25 };
+  }
+  const mean = lumaSum / n;
+  const variance = Math.max(0, lumaSq / n - mean * mean);
+  return {
+    luma: mean / 255,
+    contrast: Math.sqrt(variance) / 255,
+    warmth: warmSum / n / 255,
+    sat: satSum / n,
+  };
+}
+
+/** Fast look preview for the editor canvas (native). */
+export async function renderLookPreview(
+  uri: string,
+  adjustments: EditAdjustments,
+  maxEdge = 720
+): Promise<string> {
+  if (isAdjustmentsNeutral(adjustments)) return uri;
+  const jpegUri = await prepareExportSource(uri, maxEdge);
+  const response = await fetch(jpegUri);
+  const buffer = await response.arrayBuffer();
+  const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
+  const pixelBuffer: PixelBuffer = {
+    data: new Uint8ClampedArray(decoded.data),
+    width: decoded.width,
+    height: decoded.height,
+  };
+  processPixelBuffer(pixelBuffer, adjustments);
+  const encoded = jpeg.encode(
+    { data: pixelBuffer.data, width: pixelBuffer.width, height: pixelBuffer.height },
+    78
+  );
+  return `data:image/jpeg;base64,${uint8ToBase64(encoded.data)}`;
+}

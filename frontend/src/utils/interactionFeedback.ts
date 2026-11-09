@@ -17,7 +17,12 @@ export type FeedbackKind =
   | 'error'
   | 'delete'
   | 'refresh'
-  | 'transition';
+  | 'transition'
+  | 'egg'
+  | 'celebrate'
+  | 'filter'
+  | 'autoLook'
+  | 'commit';
 
 type HapticStyle =
   | 'light'
@@ -143,6 +148,39 @@ const KIND: Record<FeedbackKind, KindConfig> = {
     sound: 'open',
     web: { f0: 480, f1: 560, ms: 55, type: 'triangle', vol: 0.022 },
   },
+  egg: {
+    haptic: 'rigid',
+    vibrate: [0, 8, 36, 12, 40, 18],
+    sound: 'success',
+    web: { f0: 520, f1: 880, ms: 140, type: 'sine', vol: 0.03 },
+  },
+  celebrate: {
+    haptic: 'success',
+    vibrate: [0, 12, 28, 16, 36, 22],
+    sound: 'success',
+    web: { f0: 660, f1: 990, ms: 170, type: 'sine', vol: 0.036 },
+  },
+  /** Look chip — camera dial click, short. */
+  filter: {
+    haptic: 'selection',
+    vibrate: 9,
+    sound: 'select',
+    web: { f0: 920, f1: 740, ms: 36, type: 'triangle', vol: 0.026 },
+  },
+  /** Auto look — two-note lift, like a grade landing. */
+  autoLook: {
+    haptic: 'success',
+    vibrate: [0, 10, 24, 14],
+    sound: 'success',
+    web: { f0: 494, f1: 784, ms: 150, type: 'sine', vol: 0.03 },
+  },
+  /** Done / apply crop — soft shutter. */
+  commit: {
+    haptic: 'medium',
+    vibrate: [0, 12, 20, 10],
+    sound: 'send',
+    web: { f0: 380, f1: 220, ms: 70, type: 'triangle', vol: 0.026 },
+  },
 };
 
 const SOUND_MODULES: Record<NonNullable<KindConfig['sound']>, number> = {
@@ -176,6 +214,39 @@ let webAudioCtx: AudioContext | null = null;
 let audioModeReady = false;
 const nativeSounds = new Map<string, Audio.Sound>();
 const nativeLoading = new Map<string, Promise<Audio.Sound | null>>();
+/** Camera / ImagePicker leaves expo-av in a bad state on iOS — skip sounds briefly. */
+let hushNativeUntil = 0;
+
+/** Mute UI sounds for a moment (e.g. right after camera). Haptics still fire. */
+export function hushNativeAudio(ms = 2500) {
+  hushNativeUntil = Date.now() + ms;
+}
+
+/** Unload cached UI Sound objects so they cannot sit next to a reel AVPlayer. */
+export function releaseNativeAudio(hushMs = 4000): void {
+  hushNativeAudio(hushMs);
+  for (const sound of nativeSounds.values()) {
+    void sound.stopAsync().catch(() => undefined);
+    void sound.unloadAsync().catch(() => undefined);
+  }
+  nativeSounds.clear();
+  nativeLoading.clear();
+}
+
+/** Reels / stories: never create expo-av UI sounds while a clip may load. */
+export function lockNativeUiAudio(): void {
+  for (const sound of nativeSounds.values()) {
+    void sound.stopAsync().catch(() => undefined);
+    void sound.unloadAsync().catch(() => undefined);
+  }
+  nativeSounds.clear();
+  nativeLoading.clear();
+  hushNativeUntil = Number.MAX_SAFE_INTEGER;
+}
+
+export function unlockNativeUiAudio(): void {
+  hushNativeUntil = 0;
+}
 
 let Haptics: typeof import('expo-haptics') | null = null;
 try {
@@ -254,14 +325,30 @@ async function getNativeSound(key: NonNullable<KindConfig['sound']>): Promise<Au
   return load;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    promise
+      .then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      })
+      .catch(() => {
+        clearTimeout(t);
+        resolve(null);
+      });
+  });
+}
+
 async function playNativeSound(key: NonNullable<KindConfig['sound']>) {
+  if (Date.now() < hushNativeUntil) return;
   try {
-    const sound = await getNativeSound(key);
+    const sound = await withTimeout(getNativeSound(key), 400);
     if (!sound) return;
-    await sound.setPositionAsync(0);
-    await sound.playAsync();
+    await withTimeout(sound.setPositionAsync(0), 250);
+    await withTimeout(sound.playAsync(), 250);
   } catch {
-    /* ignore */
+    /* ignore — never block the UI after camera / check-in */
   }
 }
 
@@ -361,4 +448,9 @@ export const feedback = {
   delete: () => triggerFeedback('delete'),
   refresh: () => triggerFeedback('refresh'),
   transition: () => triggerFeedback('transition'),
+  egg: () => triggerFeedback('egg'),
+  celebrate: () => triggerFeedback('celebrate'),
+  filter: () => triggerFeedback('filter'),
+  autoLook: () => triggerFeedback('autoLook'),
+  commit: () => triggerFeedback('commit'),
 };

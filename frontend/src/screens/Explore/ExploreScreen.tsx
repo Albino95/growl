@@ -11,13 +11,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   ScrollView,
-  Alert,
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
@@ -28,7 +28,12 @@ import {
   type PeopleSearchHit,
   type PostSearchHit,
 } from '../../services/api/friends';
-import { resolveAvatarUri, resolvePostMediaUri, resolveStoryDisplayUri } from '../../utils/images';
+import {
+  avatarSource,
+  resolveAvatarUri,
+  resolvePostMediaUri,
+  resolveStoryDisplayUri,
+} from '../../utils/images';
 import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/ranking';
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import { getProducts } from '../../services/api/marketplace';
@@ -51,10 +56,13 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import { featureFlags } from '../../constants/featureFlags';
 import { getApiBaseUrl } from '../../services/api/http';
 import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
-import { createConversation } from '../../services/api/messages';
+import { openCoachingReachOut } from '../../utils/coachingReachOut';
 import type { DiscoverInstructor } from '../../services/api/instructor';
 import { feedback } from '../../utils/interactionFeedback';
 import PressableScale from '../../components/ui/PressableScale';
+import GrowAvatar from '../../components/ui/GrowAvatar';
+import MessagesInboxButton from '../../components/navigation/MessagesInboxButton';
+import { alertMessage } from '../../utils/confirmDialog';
 
 function SectionTitle({
   title,
@@ -107,7 +115,7 @@ export default function ExploreScreen() {
   );
   const [searchCommitted, setSearchCommitted] = useState(false);
 
-  const userPaths = user?.categories || [];
+  const userPaths = useMemo(() => user?.categories || [], [user?.categories]);
   const isSearching = query.trim().length > 0;
   const isQaEnv =
     featureFlags.appEnv === 'qa' || getApiBaseUrl().includes('growl-backend-qa');
@@ -133,32 +141,38 @@ export default function ExploreScreen() {
         storiesRes.success && storiesRes.data?.grouped ? storiesRes.data.grouped : [];
       setStoryGroups(grouped);
 
-      setPeople(
-        rankDiscoverPeople(grouped, posts, userPaths, {
-          selfId: user?.id,
+      try {
+        setPeople(
+          rankDiscoverPeople(grouped, posts, userPaths, {
+            selfId: user?.id,
+            friendIds: fIds,
+          })
+        );
+        setReels(
+          rankDiscoverReelPosts(posts, userPaths, {
+            selfId: user?.id,
+            friendIds: fIds,
+          })
+        );
+        setShopPicks(
+          rankMarketplaceProducts(products, userPaths, {
+            userPoints: user?.points,
+          }).slice(0, 8)
+        );
+        const rankedGrid = rankExploreRows(posts, [], userPaths, {
           friendIds: fIds,
+          applyDiversity: true,
         })
-      );
-      setReels(
-        rankDiscoverReelPosts(posts, userPaths, {
-          selfId: user?.id,
-          friendIds: fIds,
-        })
-      );
-
-      setShopPicks(
-        rankMarketplaceProducts(products, userPaths, {
-          userPoints: user?.points,
-        }).slice(0, 8)
-      );
-
-      const rankedGrid = rankExploreRows(posts, [], userPaths, {
-        friendIds: fIds,
-        applyDiversity: true,
-      })
-        .filter((r): r is { kind: 'post'; post: FeedPost; score: number } => r.kind === 'post')
-        .map((r) => r.post);
-      setGridPosts(rankedGrid.slice(0, 24));
+          .filter((r): r is { kind: 'post'; post: FeedPost; score: number } => r.kind === 'post')
+          .map((r) => r.post);
+        setGridPosts(rankedGrid.slice(0, 24));
+      } catch (rankErr) {
+        console.warn('[Explore] rank failed', rankErr);
+        setPeople([]);
+        setReels([]);
+        setShopPicks([]);
+        setGridPosts(posts.slice(0, 24));
+      }
     } catch (e) {
       console.warn('[Explore] load failed', e);
       setLoadError('Could not refresh explore content. Pull to retry.');
@@ -170,9 +184,12 @@ export default function ExploreScreen() {
     }
   }, [user?.id, userPaths]);
 
+  const lastExploreLoad = React.useRef(0);
   useFocusEffect(
     useCallback(() => {
-      // Soft refresh — avoid full-screen spinner flash when returning to the tab
+      const age = Date.now() - lastExploreLoad.current;
+      if (age < 45_000 && lastExploreLoad.current > 0) return;
+      lastExploreLoad.current = Date.now();
       void load();
     }, [load])
   );
@@ -242,11 +259,17 @@ export default function ExploreScreen() {
   const onSubmitSearch = () => {
     const q = query.trim();
     if (!q) return;
+    const secret = q.toLowerCase();
+    if (secret === 'growl' || secret === 'still growing' || secret === 'seed smile') {
+      feedback.celebrate();
+      alertMessage('Still growing.', 'You found a quiet corner.');
+    }
     setSearchTab('all');
     void runSearch(q);
   };
 
   const onRefresh = () => {
+    feedback.refresh();
     setRefreshing(true);
     void load();
   };
@@ -398,7 +421,7 @@ export default function ExploreScreen() {
         );
       }
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
-      Alert.alert(
+      void alertMessage(
         result.connected ? 'Friends' : 'Request sent',
         result.connected
           ? 'You are now friends.'
@@ -406,7 +429,7 @@ export default function ExploreScreen() {
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not add friend';
-      Alert.alert('Error', msg);
+      void alertMessage('Could not add', msg);
     } finally {
       setAddingId(null);
     }
@@ -422,22 +445,20 @@ export default function ExploreScreen() {
 
   const messageInstructor = async (person: DiscoverInstructor) => {
     try {
-      const res = await createConversation(person.id);
-      feedback.send();
-      const root = navigation.getParent?.() || navigation;
-      (root as { navigate: (a: string, b: object) => void }).navigate('Messages', {
-        conversationId: res.data.conversation.id,
-        targetUserId: person.id,
-        draftText: `Hi ${person.username} — I’d love guidance on ${
+      await openCoachingReachOut(
+        navigation,
+        person.id,
+        `Hi ${person.username} — I’d love guidance on ${
           person.shared_categories[0]
             ? getCategoryLabel(person.shared_categories[0])
             : 'my growth path'
-        }.`,
-      });
+        }.`
+      );
+      feedback.send();
     } catch (e) {
-      Alert.alert(
-        'Cannot message',
-        e instanceof Error ? e.message : 'Become friends to message this instructor.'
+      void alertMessage(
+        'Cannot reach out',
+        e instanceof Error ? e.message : 'Try again in a moment.'
       );
     }
   };
@@ -491,7 +512,6 @@ export default function ExploreScreen() {
   };
 
   const renderAccountRow = (hit: PeopleSearchHit) => {
-    const avatar = resolveAvatarUri(hit.id, hit.username, hit.avatar);
     const busy = addingId === hit.id;
     const isFriend = !!(hit.isFriend || friendIds.has(hit.id));
     const isRequested = !isFriend && !!(hit.requestSent || pendingRequestIds.has(hit.id));
@@ -512,7 +532,7 @@ export default function ExploreScreen() {
           onPress={() => openProfile(hit.id)}
           style={tw`flex-row items-center flex-1`}
         >
-          <Image source={{ uri: avatar }} style={tw`w-12 h-12 rounded-full mr-3`} contentFit="cover" />
+          <GrowAvatar userId={hit.id} username={hit.username} uri={hit.avatar} size={48} style={tw`mr-3`} />
           <View style={tw`flex-1`}>
             <Text style={tw`font-bold text-stone-900`} numberOfLines={1}>
               {hit.username}
@@ -651,7 +671,12 @@ export default function ExploreScreen() {
                         onPress={() => openSearchPost(p)}
                         style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
                       >
-                        <Image source={{ uri: image }} style={tw`w-full h-36`} contentFit="cover" />
+                        <Image
+                          source={{ uri: image }}
+                          style={tw`w-full h-36`}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                        />
                         <Text style={tw`p-2.5 text-xs font-semibold text-stone-800`} numberOfLines={2}>
                           {p.caption || p.username}
                         </Text>
@@ -721,9 +746,7 @@ export default function ExploreScreen() {
               icon="search-outline"
               title="No results"
               description={
-                isQaEnv
-                  ? `Nothing found for “${query.trim()}” on the QA server. Friends who signed up in the App Store / production app won’t appear here.`
-                  : `Nothing found for “${query.trim()}”. Try another name or caption.`
+                `Nothing found for “${query.trim()}”. Try another name or caption.`
               }
               actionLabel="Clear search"
               onAction={() => setQuery('')}
@@ -753,6 +776,10 @@ export default function ExploreScreen() {
         }
         onOpenProfile={openProfile}
         onMessage={(p) => void messageInstructor(p)}
+        onSeeAll={() => {
+          feedback.open();
+          navigateFromRoot(navigation, 'Instructors');
+        }}
       />
 
       {/* Stories */}
@@ -777,9 +804,10 @@ export default function ExploreScreen() {
               >
                 <View style={tw`w-16 h-16 rounded-full border-2 border-emerald-500 p-0.5`}>
                   <Image
-                    source={{ uri: thumb || avatar }}
+                    source={thumb ? { uri: thumb } : avatarSource(avatar)}
                     style={tw`w-full h-full rounded-full`}
                     contentFit="cover"
+                    cachePolicy="memory-disk"
                   />
                 </View>
                 <Text style={tw`text-xs text-stone-600 mt-1.5 text-center`} numberOfLines={1}>
@@ -809,7 +837,7 @@ export default function ExploreScreen() {
               key={product.id}
               feedback="open"
               pressedScale={0.97}
-              style={tw`w-36 mr-3 bg-white border border-stone-200/80 rounded-2xl overflow-hidden`}
+              style={tw`w-36 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
               onPress={() => {
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
@@ -859,9 +887,14 @@ export default function ExploreScreen() {
               <TouchableOpacity
                 key={p.id}
                 onPress={() => openPostDetail(p)}
-                style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-white`}
+                style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
               >
-                <Image source={{ uri: image }} style={tw`w-full h-36`} contentFit="cover" />
+                <Image
+                  source={{ uri: image }}
+                  style={tw`w-full h-36`}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
                 <Text style={tw`p-2.5 text-xs font-semibold text-stone-800`} numberOfLines={2}>
                   {p.caption || p.metadata?.username || 'Post'}
                 </Text>
@@ -883,12 +916,11 @@ export default function ExploreScreen() {
           {...horizontalScrollProps}
         >
           {filteredPeople.slice(0, 8).map((person) => {
-            const avatar = resolveAvatarUri(person.userId, person.username, person.avatar);
             const busy = addingId === person.userId;
             return (
               <View
                 key={person.userId}
-                style={tw`w-44 mr-3 bg-white border border-stone-200/80 rounded-2xl p-3`}
+                style={tw`w-44 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-3`}
               >
                 <TouchableOpacity
                   onPress={() =>
@@ -903,10 +935,11 @@ export default function ExploreScreen() {
                         : 'border border-stone-200'
                     }`}
                   >
-                    <Image
-                      source={{ uri: avatar }}
-                      style={tw`w-full h-full rounded-full`}
-                      contentFit="cover"
+                    <GrowAvatar
+                      userId={person.userId}
+                      username={person.username}
+                      uri={person.avatar}
+                      size={60}
                     />
                   </View>
                   <Text style={tw`font-bold text-stone-900 mt-2 text-center`} numberOfLines={1}>
@@ -965,13 +998,16 @@ export default function ExploreScreen() {
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <GrowChromeHeader
         right={
-          <Pressable
-            onPress={openMarketplace}
-            style={tw`flex-row items-center bg-[#EAE4D6] border border-stone-200/80 rounded-full px-3 py-2`}
-          >
-            <Ionicons name="storefront-outline" size={16} color="#059669" />
-            <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Shop</Text>
-          </Pressable>
+          <>
+            <MessagesInboxButton />
+            <Pressable
+              onPress={openMarketplace}
+              style={tw`flex-row items-center bg-[#EAE4D6] border border-stone-200/80 rounded-full px-3 py-2`}
+            >
+              <Ionicons name="storefront-outline" size={16} color="#059669" />
+              <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Shop</Text>
+            </Pressable>
+          </>
         }
       />
 
@@ -1036,23 +1072,29 @@ export default function ExploreScreen() {
           ListHeaderComponent={ListHeader}
           renderItem={({ item: p }) => {
             const username = p.metadata?.username || 'Member';
-            const avatar = resolveAvatarUri(p.user_id, username, p.metadata?.avatar);
             const image = resolvePostMediaUri(p.image_url, p.category, p.id);
             const isFriend = friendIds.has(p.user_id);
             const isRequested = !isFriend && pendingRequestIds.has(p.user_id);
             return (
               <TouchableOpacity
-                style={tw`bg-white border border-stone-200/80 rounded-2xl overflow-hidden mb-3`}
+                style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden mb-3`}
                 activeOpacity={0.9}
                 onPress={() => openPostDetail(p)}
               >
                 <Image
                   source={{ uri: image }}
                   style={tw`w-full h-52 bg-stone-200`}
+                  cachePolicy="memory-disk"
                   contentFit="cover"
                 />
                 <View style={tw`p-3 flex-row items-center`}>
-                  <Image source={{ uri: avatar }} style={tw`w-9 h-9 rounded-full mr-2`} />
+                    <GrowAvatar
+                      userId={p.user_id}
+                      username={username}
+                      uri={p.metadata?.avatar}
+                      size={36}
+                      style={tw`mr-2`}
+                    />
                   <View style={tw`flex-1`}>
                     <Text style={tw`font-semibold text-stone-900`}>{username}</Text>
                     <Text style={tw`text-xs text-stone-500 capitalize`}>{p.category}</Text>

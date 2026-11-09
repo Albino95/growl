@@ -8,8 +8,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import tw from '../../lib/tw';
+import GrowAvatar from '../ui/GrowAvatar';
 import {
   createJournalReply,
   listJournalReplies,
@@ -17,7 +17,6 @@ import {
   type JournalReply,
 } from '../../services/api/journal';
 import { formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
-import { resolveAvatarUri } from '../../utils/images';
 import { feedback } from '../../utils/interactionFeedback';
 import { alertMessage } from '../../utils/confirmDialog';
 import AnimatedBottomSheet from '../ui/AnimatedBottomSheet';
@@ -248,14 +247,19 @@ export default function JournalQuoteReplySheet({
               </Text>
             ) : (
               replies.map((r) => {
-                const av = resolveAvatarUri(r.user_id, r.username || 'Member', r.avatar);
                 return (
                   <View
                     key={r.id}
                     style={tw`mb-3 bg-white border border-stone-200 rounded-2xl px-3.5 py-3`}
                   >
                     <View style={tw`flex-row items-center mb-2`}>
-                      <Image source={{ uri: av }} style={tw`w-8 h-8 rounded-full mr-2`} />
+                      <GrowAvatar
+                        userId={r.user_id}
+                        username={r.username || 'Member'}
+                        uri={r.avatar}
+                        size={32}
+                        style={tw`mr-2`}
+                      />
                       <Text style={tw`font-semibold text-stone-900 flex-1`} numberOfLines={1}>
                         {r.username || 'Member'}
                       </Text>

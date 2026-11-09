@@ -22,6 +22,7 @@ const APP_ERROR_MESSAGES: Record<string, string> = {
   INVALID_JSON: 'Upload failed — please try again.',
   DATABASE_ERROR: 'Something went wrong saving. Please try again.',
   CONFLICT: 'That item already exists. Try a different code or name.',
+  CIRCLE_FULL: 'This circle is full (10 growers). We’ll seat you in another, or start one.',
 };
 
 type ApiErrorShape = {

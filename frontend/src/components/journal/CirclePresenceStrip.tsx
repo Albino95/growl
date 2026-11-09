@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { Image } from 'expo-image';
 import tw from '../../lib/tw';
 import { horizontalScrollProps } from '../../constants/scroll';
-import { resolveAvatarUri } from '../../utils/images';
+import GrowAvatar from '../ui/GrowAvatar';
 import { feedback } from '../../utils/interactionFeedback';
 import type { CircleJournalEntry } from '../../services/api/journal';
 
@@ -94,7 +93,6 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
 
         {people.map((p) => {
           const selected = selectedUserId === p.userId;
-          const uri = resolveAvatarUri(p.userId, p.username, p.avatar);
           return (
             <Pressable
               key={p.userId}
@@ -117,7 +115,12 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
                   },
                 ]}
               >
-                <Image source={{ uri }} style={tw`w-full h-full rounded-full`} />
+                <GrowAvatar
+                  userId={p.userId}
+                  username={p.username}
+                  uri={p.avatar}
+                  size={52}
+                />
               </View>
               <Text
                 style={tw`text-[11px] mt-1.5 ${

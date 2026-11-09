@@ -15,6 +15,7 @@ export interface MessagePeer {
 export interface ConversationSummary {
   id: string;
   peer: MessagePeer;
+  coaching?: boolean;
   last_message?: string | null;
   last_sender_id?: string | null;
   last_message_at?: string | null;
@@ -23,6 +24,13 @@ export interface ConversationSummary {
   updated_at: string;
 }
 
+export type MessageReactionEmoji = 'love' | 'fire' | 'laugh' | 'wow' | 'seed' | 'clap';
+
+export type MessageReactions = {
+  counts: Partial<Record<MessageReactionEmoji, number>>;
+  mine: MessageReactionEmoji | null;
+};
+
 export interface ChatMessage {
   id: string;
   conversation_id: string;
@@ -30,6 +38,7 @@ export interface ChatMessage {
   body: string;
   created_at: string;
   is_own: boolean;
+  reactions?: MessageReactions;
 }
 
 export async function getConversations(): Promise<{
@@ -37,6 +46,17 @@ export async function getConversations(): Promise<{
   data: { conversations: ConversationSummary[] };
 }> {
   return request('/messages/conversations');
+}
+
+export async function getUnreadMessageCount(): Promise<number> {
+  try {
+    const res = await request<{ success: boolean; data: { unread_count: number } }>(
+      '/messages/unread-count'
+    );
+    return res.data?.unread_count ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function createConversation(targetUserId: string): Promise<{
@@ -79,4 +99,19 @@ export async function sendMessage(
     method: 'POST',
     body: JSON.stringify({ body }),
   });
+}
+
+export async function reactToMessage(
+  conversationId: string,
+  messageId: string,
+  emoji: MessageReactionEmoji
+): Promise<MessageReactions> {
+  const res = await request<{ success: boolean; data: { reactions: MessageReactions } }>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/reaction`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ emoji }),
+    }
+  );
+  return res.data?.reactions || { counts: {}, mine: null };
 }

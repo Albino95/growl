@@ -26,3 +26,10 @@ export const featureFlags = {
   enablePushPrefs: flagEnabled('ENABLE_PUSH_PREFS', false),
   appEnv: String(extra.APP_ENV || extra.ENV || 'development'),
 } as const;
+
+/**
+ * Consumer-facing product switches.
+ * Circles + Seeds stay in the codebase and APIs; hide chrome until they ship again.
+ */
+export const SHOW_CIRCLES = false;
+export const SHOW_SEEDS = false;

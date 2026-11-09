@@ -295,14 +295,23 @@ export const refreshProfile = createAsyncThunk(
   }
 );
 
-export const signOut = createAsyncThunk('auth/signOut', async (_, { rejectWithValue }) => {
+export const signOut = createAsyncThunk('auth/signOut', async (_, { dispatch, rejectWithValue }) => {
   try {
     const refreshToken = await getSecureItem(REFRESH_KEY);
     await signOutApi(refreshToken);
     await clearSessionStorage();
+    // Drop cached feed so next login hydrates fresh has_liked from the API.
+    const { clearFeed } = await import('./feedSlice');
+    dispatch(clearFeed());
     return { success: true };
   } catch (error: unknown) {
     await clearSessionStorage();
+    try {
+      const { clearFeed } = await import('./feedSlice');
+      dispatch(clearFeed());
+    } catch {
+      /* ignore */
+    }
     return rejectWithValue(error instanceof Error ? error.message : 'Sign out failed');
   }
 });

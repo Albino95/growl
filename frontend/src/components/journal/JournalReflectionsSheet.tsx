@@ -1,9 +1,8 @@
 import React from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import tw from '../../lib/tw';
-import { resolveAvatarUri } from '../../utils/images';
+import GrowAvatar from '../ui/GrowAvatar';
 import type { JournalReflection } from '../../services/api/journal';
 import AnimatedBottomSheet from '../ui/AnimatedBottomSheet';
 import { SkeletonList } from '../ui/SkeletonCard';
@@ -66,14 +65,19 @@ export default function JournalReflectionsSheet({
               </View>
             ) : (
               reflections.map((r) => {
-                const av = resolveAvatarUri(r.user_id, r.username || 'Friend', r.avatar);
                 return (
                   <View
                     key={r.id}
                     style={tw`mb-3 bg-white border border-stone-200 rounded-2xl px-3.5 py-3.5`}
                   >
                     <View style={tw`flex-row items-center mb-2.5`}>
-                      <Image source={{ uri: av }} style={tw`w-9 h-9 rounded-full mr-2.5`} />
+                      <GrowAvatar
+                        userId={r.user_id}
+                        username={r.username || 'Friend'}
+                        uri={r.avatar}
+                        size={36}
+                        style={tw`mr-2.5`}
+                      />
                       <View style={tw`flex-1`}>
                         <Text style={tw`font-semibold text-stone-900`} numberOfLines={1}>
                           {r.username || 'Friend'}

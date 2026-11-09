@@ -28,7 +28,7 @@ import {
   exportOrdersCsv,
   exportProductsCsv,
 } from '../../services/api/business';
-import { uploadMediaApi } from '../../services/api/media';
+import { uploadMediaFile } from '../../services/api/media';
 import { fetchBusinessSettings } from '../../store/slices/businessSlice';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { downloadCsv } from '../../utils/csvDownload';
@@ -36,32 +36,6 @@ import { verticalScrollProps } from '../../constants/scroll';
 import { featureFlags } from '../../constants/featureFlags';
 
 const EMERALD = '#059669';
-
-async function uriToDataUrl(uri: string): Promise<string> {
-  const lower = uri.toLowerCase();
-  if (lower.startsWith('data:')) return uri;
-
-  const res = await fetch(uri);
-  const blob = await res.blob();
-
-  if (typeof FileReader !== 'undefined') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Could not read image'));
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  const base64 =
-    typeof btoa === 'function' ? btoa(binary) : Buffer.from(bytes).toString('base64');
-  const mime = blob.type || (lower.includes('.png') ? 'image/png' : 'image/jpeg');
-  return `data:${mime};base64,${base64}`;
-}
 
 export default function BizSettings() {
   const { user, signOut } = useAuth();
@@ -142,8 +116,8 @@ export default function BizSettings() {
         const lower = localUri.toLowerCase();
         const needsUpload = !lower.startsWith('http://') && !lower.startsWith('https://');
         if (needsUpload) {
-          const dataUrl = await uriToDataUrl(localUri);
-          persistableLogo = await uploadMediaApi(dataUrl, 'product');
+          const uploaded = await uploadMediaFile(localUri, 'product');
+          persistableLogo = uploaded.url;
         } else {
           persistableLogo = localUri;
         }

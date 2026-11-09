@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAuth, useAppDispatch, useAppSelector } from '../store/hooks';
 import {
@@ -60,6 +60,9 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
     (state) => state.posts.currentPost
   );
   const isPosting = useAppSelector((state) => state.posts.isPosting);
+  const [postingPhase, setPostingPhase] = useState<'idle' | 'preparing' | 'uploading' | 'publishing'>(
+    'idle'
+  );
   const { user, updateUser } = useAuth();
 
   const userCategories = user?.categories || [];
@@ -83,6 +86,7 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
     if (isPosting) return false;
 
     dispatch(setPosting(true));
+    setPostingPhase('preparing');
     try {
       const category = selectedCategory.split(':')[0];
       const subcategory = selectedCategory.includes(':')
@@ -101,7 +105,8 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
       let imageUrl = persistableImage;
       if (!isRemoteMediaUrl(persistableImage)) {
         try {
-          // Multipart is much faster than base64 JSON through the Worker (esp. on production).
+          setPostingPhase('uploading');
+          // Always multipart after local JPEG shrink — skip huge base64 JSON.
           if (persistableImage.toLowerCase().startsWith('data:')) {
             imageUrl = await uploadMediaApi(persistableImage, 'post');
           } else {
@@ -150,6 +155,7 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
         metadata.source = 'partnership';
       }
 
+      setPostingPhase('publishing');
       const created = await createFeedPost({
         image_url: imageUrl,
         caption: caption || '',
@@ -204,6 +210,7 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
       return false;
     } finally {
       dispatch(setPosting(false));
+      setPostingPhase('idle');
     }
   }, [
     image,
@@ -229,6 +236,7 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
     selectedCategory,
     audioTrack,
     isPosting,
+    postingPhase,
     userCategories,
     hasDraft,
     setImage: (uri: string | null) => dispatch(setCurrentImage(uri)),

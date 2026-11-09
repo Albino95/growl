@@ -4,6 +4,7 @@ import { getSecureItem } from '../storage/secureStore';
 import { getToken, setToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
 import { uriToDataUrl as uriToDataUrlUtil } from '../../utils/mediaUri';
+import { prepareImageForUpload } from '../../utils/prepareImageUpload';
 
 export type UploadPurpose = 'post' | 'product' | 'story' | 'avatar' | 'reel';
 export type MediaKind = 'image' | 'video';
@@ -50,9 +51,19 @@ async function readAccessToken(): Promise<string | null> {
 }
 
 export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): Promise<string> {
+  const prepared = dataUrl.toLowerCase().startsWith('data:video')
+    ? dataUrl
+    : await prepareImageForUpload(dataUrl, purpose);
+  if (!prepared.toLowerCase().startsWith('data:')) {
+    const uploaded = await uploadMediaFile(prepared, purpose, {
+      mimeType: 'image/jpeg',
+      fileName: 'upload.jpg',
+    });
+    return uploaded.url;
+  }
   const res = await request<UploadMediaResponse>('/media/upload', {
     method: 'POST',
-    body: JSON.stringify({ dataUrl, purpose }),
+    body: JSON.stringify({ dataUrl: prepared, purpose }),
   });
   const url = res.data?.url;
   if (!url) throw new Error('Upload succeeded but no media URL was returned');
@@ -68,8 +79,15 @@ export async function uploadMediaFile(
   purpose: UploadPurpose,
   opts?: { mimeType?: string; fileName?: string }
 ): Promise<{ url: string; mediaType: MediaKind; contentType: string }> {
-  const mimeType = opts?.mimeType || guessMimeFromUri(uri);
+  let sourceUri = uri;
+  let mimeType = opts?.mimeType || guessMimeFromUri(uri);
   const isVideo = mimeType.startsWith('video/');
+
+  if (!isVideo) {
+    sourceUri = await prepareImageForUpload(uri, purpose);
+    mimeType = 'image/jpeg';
+  }
+
   const fileName =
     opts?.fileName ||
     `upload.${
@@ -77,7 +95,7 @@ export async function uploadMediaFile(
         ? 'png'
         : mimeType.includes('webm')
           ? 'webm'
-          : mimeType.includes('quicktime') || uri.toLowerCase().includes('.mov')
+          : mimeType.includes('quicktime') || sourceUri.toLowerCase().includes('.mov')
             ? 'mov'
             : mimeType.startsWith('video/')
               ? 'mp4'
@@ -119,7 +137,7 @@ export async function uploadMediaFile(
     form.append('purpose', purpose);
 
     if (Platform.OS === 'web') {
-      const res = await fetch(uri);
+      const res = await fetch(sourceUri);
       const blob = await res.blob();
       const typed =
         blob.type && blob.type !== 'application/octet-stream' && blob.type === mimeType
@@ -133,7 +151,7 @@ export async function uploadMediaFile(
       form.append('file', file, fileName);
     } else {
       form.append('file', {
-        uri,
+        uri: sourceUri,
         name: fileName,
         type: mimeType,
       } as unknown as Blob);
@@ -170,7 +188,7 @@ export async function uploadMediaFile(
   }
 
   // 2) JSON dataUrl fallback — images only
-  const dataUrl = await uriToDataUrlUtil(uri, mimeType);
+  const dataUrl = await uriToDataUrlUtil(sourceUri, mimeType);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };

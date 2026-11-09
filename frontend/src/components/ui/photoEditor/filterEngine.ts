@@ -1,4 +1,4 @@
-import type { EditAdjustments } from './types';
+import type { EditAdjustments, ImageToneStats } from './types';
 import { DEFAULT_ADJUSTMENTS } from './types';
 import { getPresetById } from './presets';
 
@@ -121,23 +121,58 @@ export function hasActiveEdits(adj: EditAdjustments, presetId: string | null): b
   return !Object.values(sanitizeAdjustments(adj)).every((v) => v === 0);
 }
 
-/** One-tap “Auto” look — gentle pro polish, not a heavy filter. */
+/** Fallback Auto if sampling fails — restrained print polish. */
 export const AUTO_ENHANCE_ADJUSTMENTS: EditAdjustments = {
   ...DEFAULT_ADJUSTMENTS,
-  exposure: 4,
-  contrast: 10,
-  saturation: 8,
-  warmth: 4,
-  shadows: 8,
-  highlights: -6,
-  clarity: 10,
-  sharpen: 8,
+  exposure: 3,
+  contrast: 9,
+  saturation: 5,
+  warmth: 5,
+  shadows: 10,
+  highlights: -8,
+  clarity: 11,
+  sharpen: 7,
 };
 
-/** Vertical-clip auto look — slight cinematic edges. */
+/** Vertical-clip fallback. */
 export const AUTO_REEL_ADJUSTMENTS: EditAdjustments = {
   ...AUTO_ENHANCE_ADJUSTMENTS,
-  cinematic: 18,
-  vignette: 10,
-  contrast: 12,
+  cinematic: 16,
+  vignette: 8,
+  contrast: 11,
 };
+
+function clampAuto(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+/**
+ * Lightroom-style Auto from a tiny luminance sample.
+ * Lifts underexposed frames, tames highlights, adds midtone snap — never a heavy grade.
+ */
+export function autoAdjustmentsFromStats(
+  stats: ImageToneStats,
+  cinematic = false
+): EditAdjustments {
+  const lumaErr = 0.5 - stats.luma;
+  const exposure = clampAuto(lumaErr * 42, -16, 16);
+  const shadows = clampAuto(stats.luma < 0.42 ? 8 + (0.42 - stats.luma) * 40 : 4, 0, 22);
+  const highlights = clampAuto(stats.luma > 0.58 ? -6 - (stats.luma - 0.58) * 50 : -5, -22, 4);
+  const contrast = clampAuto(stats.contrast < 0.16 ? 16 : stats.contrast > 0.32 ? 6 : 10, 4, 20);
+  const warmth = clampAuto(-stats.warmth * 28 + 3, -12, 14);
+  const saturation = clampAuto(stats.sat < 0.18 ? 12 : stats.sat > 0.45 ? -4 : 6, -10, 16);
+  const clarity = clampAuto(stats.contrast < 0.18 ? 14 : 9, 6, 16);
+  return {
+    ...DEFAULT_ADJUSTMENTS,
+    exposure,
+    contrast,
+    saturation,
+    warmth,
+    shadows,
+    highlights,
+    clarity,
+    sharpen: 7,
+    cinematic: cinematic ? 16 : 0,
+    vignette: cinematic ? 8 : 0,
+  };
+}

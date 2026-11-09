@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { feedback } from '../../../utils/interactionFeedback';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
 import { AdjustSlider } from '../photoEditor/AdjustSlider';
@@ -14,6 +16,7 @@ import {
 import { getPresetsForCategory } from '../photoEditor/presets';
 import type { VideoLookId } from './types';
 import { VIDEO_LOOKS } from './types';
+import { AdjustmentOverlays, LookLayerOverlays } from './GradeOverlays';
 
 const ADJUST_SLIDERS: {
   key: keyof EditAdjustments;
@@ -42,6 +45,8 @@ type Props = {
   lookId: VideoLookId;
   filterPresetId: string | null;
   manualAdjust: EditAdjustments;
+  stillUri?: string | null;
+  stillSource?: unknown;
   onLookIdChange: (id: VideoLookId) => void;
   onPresetChange: (id: string | null) => void;
   onAdjustChange: (patch: Partial<EditAdjustments>) => void;
@@ -52,11 +57,15 @@ export default function VideoLookPanel({
   lookId,
   filterPresetId,
   manualAdjust,
+  stillUri,
+  stillSource,
   onLookIdChange,
   onPresetChange,
   onAdjustChange,
   onResetLooks,
 }: Props) {
+  const lookSource =
+    stillSource ?? (stillUri ? { uri: stillUri } : null);
   const [section, setSection] = useState<LookSection>('presets');
   const [category, setCategory] = useState<FilterCategory>('natural');
   const presets = getPresetsForCategory(category);
@@ -99,7 +108,10 @@ export default function VideoLookPanel({
       {section === 'presets' && (
         <>
           <Pressable
-            onPress={() => onAdjustChange({ ...DEFAULT_ADJUSTMENTS, ...AUTO_ENHANCE_ADJUSTMENTS })}
+            onPress={() => {
+              feedback.autoLook();
+              onAdjustChange({ ...DEFAULT_ADJUSTMENTS, ...AUTO_ENHANCE_ADJUSTMENTS });
+            }}
             style={tw`flex-row items-center self-start mb-3 px-3 py-2 rounded-full bg-brand-600/25 border border-brand-500/50`}
           >
             <Ionicons name="wand-outline" size={14} color="#34D399" />
@@ -109,32 +121,50 @@ export default function VideoLookPanel({
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-2`}>
             {presets.map((preset) => {
               const selected = (filterPresetId || 'original') === preset.id;
-              const thumbFilter = buildCssFilter(
-                mergeAdjustments(preset.id, { ...DEFAULT_ADJUSTMENTS })
+              const presetAdj = mergeAdjustments(
+                preset.id === 'original' ? null : preset.id,
+                { ...DEFAULT_ADJUSTMENTS }
               );
+              const thumbFilter = buildCssFilter(presetAdj);
               return (
                 <Pressable
                   key={preset.id}
-                  onPress={() => onPresetChange(preset.id === 'original' ? null : preset.id)}
+                  onPress={() => {
+                    feedback.filter();
+                    onPresetChange(preset.id === 'original' ? null : preset.id);
+                  }}
                   style={tw`mr-3 items-center`}
                 >
                   <View
                     style={[
-                      tw`w-[68px] h-[88px] rounded-2xl overflow-hidden border-2 items-center justify-center bg-stone-800`,
+                      tw`w-[68px] h-[88px] rounded-2xl overflow-hidden border-2 bg-stone-800`,
                       { borderColor: selected ? '#34D399' : '#44403C' },
                     ]}
                   >
-                    <View
-                      style={[
-                        StyleSheet.absoluteFillObject,
-                        { backgroundColor: '#57534E' },
-                        thumbFilter !== 'none'
-                          ? ({ filter: thumbFilter } as object)
-                          : null,
-                      ]}
-                    />
+                    {lookSource ? (
+                      <Image
+                        source={lookSource as { uri: string }}
+                        style={[
+                          StyleSheet.absoluteFillObject,
+                          Platform.OS === 'web' && thumbFilter !== 'none'
+                            ? ({ filter: thumbFilter } as object)
+                            : null,
+                        ]}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#57534E' }]} />
+                    )}
+                    {Platform.OS !== 'web' ? <AdjustmentOverlays adj={presetAdj} /> : null}
                     {preset.id === 'original' ? (
-                      <Ionicons name="refresh-outline" size={18} color="#E7E5E4" />
+                      <View style={tw`absolute inset-0 items-center justify-center`}>
+                        <Ionicons name="refresh-outline" size={18} color="#E7E5E4" />
+                      </View>
+                    ) : null}
+                    {selected ? (
+                      <View style={tw`absolute bottom-1.5 right-1.5 w-5 h-5 rounded-full bg-brand-500 items-center justify-center`}>
+                        <Ionicons name="checkmark" size={11} color="#fff" />
+                      </View>
                     ) : null}
                   </View>
                   <Text
@@ -179,16 +209,18 @@ export default function VideoLookPanel({
                 <Pressable key={l.id} onPress={() => onLookIdChange(l.id)} style={tw`mr-3 items-center`}>
                   <View
                     style={[
-                      tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2 items-center justify-center`,
+                      tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2`,
                       { backgroundColor: l.swatch, borderColor: selected ? '#34D399' : '#44403C' },
                     ]}
                   >
-                    {l.layers.slice(0, 2).map((layer, idx) => (
-                      <View
-                        key={idx}
-                        style={[StyleSheet.absoluteFillObject, { backgroundColor: layer.color }]}
+                    {lookSource ? (
+                      <Image
+                        source={lookSource as { uri: string }}
+                        style={StyleSheet.absoluteFillObject}
+                        contentFit="cover"
                       />
-                    ))}
+                    ) : null}
+                    <LookLayerOverlays lookId={l.id} />
                     {(l.cinematic || 0) > 0 ? (
                       <>
                         <View style={tw`absolute top-0 left-0 right-0 h-3 bg-black/50`} />
@@ -196,7 +228,14 @@ export default function VideoLookPanel({
                       </>
                     ) : null}
                     {l.id === 'none' ? (
-                      <Ionicons name="sparkles-outline" size={22} color="#E7E5E4" />
+                      <View style={tw`absolute inset-0 items-center justify-center`}>
+                        <Ionicons name="sparkles-outline" size={22} color="#E7E5E4" />
+                      </View>
+                    ) : null}
+                    {selected ? (
+                      <View style={tw`absolute bottom-1.5 right-1.5 w-5 h-5 rounded-full bg-brand-500 items-center justify-center`}>
+                        <Ionicons name="checkmark" size={11} color="#fff" />
+                      </View>
                     ) : null}
                   </View>
                   <Text

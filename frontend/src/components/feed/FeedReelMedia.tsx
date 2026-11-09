@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, useWindowDimensions, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { isVideoMedia } from '../../services/api/media';
@@ -41,7 +41,7 @@ function shouldUseVideoPlayer(opts: {
 }
 
 /** Feed/profile media — portrait reels with muted autoplay when visible. */
-export default function FeedReelMedia({
+function FeedReelMedia({
   uri,
   postId,
   isReel,
@@ -115,15 +115,21 @@ export default function FeedReelMedia({
     return (
       <View style={[tw`w-full bg-black items-center`, { height }]}>
         <View style={[tw`h-full bg-black overflow-hidden`, { width: mediaW, maxWidth: '100%' }]}>
-          <ReelVideoPlayer
-            key={`${postId}-${retryToken}`}
-            uri={displayUri}
-            settings={playbackSettings}
-            shouldPlay={isActive}
-            useNativeControls={false}
-            contentFit="cover"
-            style={tw`w-full h-full`}
-          />
+          {isActive && Platform.OS === 'web' ? (
+            <ReelVideoPlayer
+              key={`${postId}-${retryToken}`}
+              uri={displayUri}
+              settings={playbackSettings}
+              shouldPlay
+              useNativeControls={false}
+              contentFit="cover"
+              style={tw`w-full h-full`}
+            />
+          ) : (
+            <View style={tw`w-full h-full bg-black items-center justify-center`}>
+              <Ionicons name="play" size={36} color="#FFFFFF" />
+            </View>
+          )}
           <View
             style={tw`absolute bottom-3 right-3 flex-row items-center bg-black/50 px-2.5 py-1 rounded-full`}
             pointerEvents="none"
@@ -147,7 +153,9 @@ export default function FeedReelMedia({
             contentFit="cover"
             onError={handleImageError}
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-            transition={200}
+            cachePolicy="memory-disk"
+            recyclingKey={postId}
+            transition={80}
           />
           {isReel ? (
             <View
@@ -174,3 +182,5 @@ export default function FeedReelMedia({
     </Pressable>
   );
 }
+
+export default React.memo(FeedReelMedia);

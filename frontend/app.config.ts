@@ -113,6 +113,13 @@ const defineConfig = (): ExpoConfig => ({
       },
     ],
     'expo-apple-authentication',
+    [
+      'expo-video',
+      {
+        supportsBackgroundPlayback: false,
+        supportsPictureInPicture: false,
+      },
+    ],
   ],
   extra: {
     API_BASE_URL:

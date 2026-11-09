@@ -23,6 +23,8 @@ export interface Env {
   ADMIN_MFA_REQUIRED?: string;
   /** Optional AES key material for encrypting admin MFA secrets; falls back to JWT_SECRET */
   ADMIN_MFA_KEY?: string;
+  /** Extra emails that can reply to in-app beta reviews (comma-separated) */
+  APP_REVIEW_REPLY_EMAILS?: string;
 }
 
 // User types

@@ -21,7 +21,6 @@ import { useAuth } from '../../store/hooks';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { isVideoMedia } from '../../services/api/media';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
-import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
@@ -50,9 +49,15 @@ import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
+import NotificationBellButton from '../../components/navigation/NotificationBellButton';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import GrowingNowStrip from '../../components/garden/GrowingNowStrip';
+import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
 import {
   claimInstructor,
   getInstructorEligibility,
+  listCoachingContracts,
+  type CoachingContract,
   type InstructorEligibility,
 } from '../../services/api/instructor';
 import {
@@ -75,6 +80,7 @@ type Post = {
   mediaType?: string;
   contentType?: string;
   videoEdit?: ReturnType<typeof reelPlaybackSettingsFromMetadata>;
+  hasLiked?: boolean;
 };
 
 type Story = {
@@ -101,6 +107,7 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
   const img = resolvePostMediaUri(p.image_url, p.category, p.id);
   const likes = p.metadata?.likes ?? 0;
   const comments = p.metadata?.comments ?? 0;
+  const hasLiked = !!p.metadata?.has_liked;
   return {
     id: p.id,
     image: img,
@@ -115,6 +122,7 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     mediaType: typeof p.metadata?.media_type === 'string' ? p.metadata.media_type : undefined,
     contentType: typeof p.metadata?.content_type === 'string' ? p.metadata.content_type : undefined,
     videoEdit: reelPlaybackSettingsFromMetadata(p.metadata ?? undefined),
+    hasLiked,
   };
 }
 
@@ -146,13 +154,8 @@ function ProfileStoryThumb({
 
   if (isVideo && uri) {
     return (
-      <View style={tw`w-full h-full bg-stone-900`}>
-        <ReelVideoPlayer
-          uri={uri}
-          shouldPlay={false}
-          contentFit="contain"
-          style={StyleSheet.absoluteFillObject}
-        />
+      <View style={tw`w-full h-full bg-stone-900 items-center justify-center`}>
+        <Ionicons name="play" size={18} color="#fff" />
         <View
           style={tw`absolute bottom-1 right-1 bg-black/55 px-1.5 py-0.5 rounded flex-row items-center`}
           pointerEvents="none"
@@ -194,13 +197,8 @@ function ProfilePostThumb({ post }: { post: Post }) {
 
   if (isVideo) {
     return (
-      <View style={tw`w-16 h-16 rounded-xl mr-3 overflow-hidden bg-stone-900`}>
-        <ReelVideoPlayer
-          uri={post.image}
-          settings={post.videoEdit}
-          shouldPlay={false}
-          style={StyleSheet.absoluteFillObject}
-        />
+      <View style={tw`w-16 h-16 rounded-xl mr-3 overflow-hidden bg-stone-900 items-center justify-center`}>
+        <Ionicons name="film-outline" size={18} color="#fff" />
         <View
           style={tw`absolute bottom-0.5 right-0.5 bg-black/60 px-1 py-0.5 rounded`}
           pointerEvents="none"
@@ -237,6 +235,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [showClaimWelcome, setShowClaimWelcome] = useState(false);
   const [showDecayedPosts, setShowDecayedPosts] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [decayDays, setDecayDays] = useState(user?.decayTimer || 7);
   const [posts, setPosts] = useState<Post[]>([]);
   const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
@@ -250,6 +249,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const cohortBootstrapRef = useRef(false);
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
+  const [myPlans, setMyPlans] = useState<CoachingContract[]>([]);
   const [profileMeta, setProfileMeta] = useState<{
     username?: string;
     avatar?: string;
@@ -263,7 +263,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     setProfileLoading(true);
     try {
       // Lightweight GET connections — avoid POST sync-cohort on every focus (that walks all users).
-      const [postList, storyList, connections, elig, me] = await Promise.all([
+      const [postList, storyList, connections, elig, me, plans] = await Promise.all([
         getUserPosts(user.id),
         getUserStories(user.id),
         getConnections().catch(() => ({
@@ -274,7 +274,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         })),
         getInstructorEligibility().catch(() => null),
         fetchCurrentProfile({ stats: true }).catch(() => null),
+        listCoachingContracts().catch(() => [] as CoachingContract[]),
       ]);
+      setMyPlans(plans.filter((p) => p.role === 'client' && p.status === 'active'));
       if (elig) setEligibility(elig);
       const decay =
         typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
@@ -568,6 +570,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       <GrowChromeHeader
         right={
           <View style={tw`flex-row items-center gap-2`}>
+            <NotificationBellButton />
             <PressableScale
               onPress={() => navigateFromRoot(navigation, 'Messages')}
               feedback="open"
@@ -662,6 +665,26 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               >
                 <Text style={tw`text-stone-800 font-bold text-sm`}>Paths</Text>
               </PressableScale>
+              <PressableScale
+                onPress={() =>
+                  setSharePayload({
+                    kind: 'profile',
+                    userId: user?.id || 'me',
+                    username: displayName,
+                    avatar: profileMeta.avatar || user?.avatar,
+                    isInstructor,
+                    teachingHeadline: undefined,
+                    categories: user?.categories || [],
+                    points,
+                    endorsements: user?.endorsementsReceived,
+                  })
+                }
+                feedback="open"
+                style={tw`w-12 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center justify-center`}
+                accessibilityLabel="Share profile card"
+              >
+                <Ionicons name="share-outline" size={18} color="#57534E" />
+              </PressableScale>
             </View>
           </View>
 
@@ -741,6 +764,61 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </View>
           ) : null}
 
+          <PressableScale
+            onPress={() => navigateFromRoot(navigation, 'AppReviews')}
+            feedback="open"
+            style={tw`mt-3 flex-row items-center px-4 py-3.5 bg-[#FFF1F0] border border-[#FECACA] rounded-2xl`}
+          >
+            <View style={tw`w-9 h-9 rounded-full bg-[#F97066] items-center justify-center mr-3`}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
+            </View>
+            <View style={tw`flex-1`}>
+              <Text style={tw`font-semibold text-stone-900`}>Review Grow!</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                We read every note and reply here first
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+          </PressableScale>
+
+          <PressableScale
+            onPress={() => navigateFromRoot(navigation, 'Instructors')}
+            feedback="open"
+            style={tw`mt-3 flex-row items-center px-4 py-3.5 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl`}
+          >
+            <View style={tw`w-9 h-9 rounded-full bg-emerald-50 items-center justify-center mr-3`}>
+              <Ionicons name="school-outline" size={18} color="#059669" />
+            </View>
+            <View style={tw`flex-1`}>
+              <Text style={tw`font-semibold text-stone-900`}>Instructors</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                Find a coach · talk · written plan
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+          </PressableScale>
+
+          {myPlans.length > 0 ? (
+            <PressableScale
+              onPress={() =>
+                navigateFromRoot(navigation, 'CoachingContract', { contractId: myPlans[0].id })
+              }
+              feedback="open"
+              style={tw`mt-3 flex-row items-center px-4 py-3.5 bg-emerald-50 border border-emerald-100 rounded-2xl`}
+            >
+              <View style={tw`w-9 h-9 rounded-full bg-emerald-600 items-center justify-center mr-3`}>
+                <Ionicons name="school-outline" size={18} color="#fff" />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`font-semibold text-stone-900`}>My coaching plan</Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  {myPlans[0].instructor?.username || 'Coach'} · Plan active · billing coming
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+            </PressableScale>
+          ) : null}
+
           {isInstructor ? (
             <PressableScale
               onPress={navigateToInstructor}
@@ -760,6 +838,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             </PressableScale>
           ) : null}
         </FadeInUp>
+
+        {SHOW_SEEDS || SHOW_CIRCLES ? (
+          <View style={tw`px-4 pt-2`}>
+            <GrowingNowStrip />
+          </View>
+        ) : null}
 
         {/* Growth areas — edit via Paths in the identity card */}
         <View style={tw`px-4 py-4`}>
@@ -928,8 +1012,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                         comments: post.comments,
                         createdAt: post.createdAt,
                         daysUntilDecay: post.daysUntilDecay,
-                        hasLiked: false,
-                        reaction: null,
+                        hasLiked: !!post.hasLiked,
+                        reaction: post.hasLiked ? 'love' : null,
                       },
                     } as never);
                   }}
@@ -1211,6 +1295,12 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         </View>
       </Modal>
+
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
+      />
     </SafeAreaView>
   );
 }

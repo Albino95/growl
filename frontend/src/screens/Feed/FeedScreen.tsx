@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchFeedPosts, patchFeedPostEngagement } from '../../store/slices/feedSlice';
+import { useHomeTabStore } from '../../state/useHomeTabStore';
 import {
   horizontalScrollProps,
   verticalScrollProps,
@@ -27,7 +28,6 @@ import {
 } from '../../constants/scroll';
 import CATEGORIES from '../../data/categories';
 import CommentsScreen from '../Comments/CommentsScreen';
-import EmptyState from '../../components/ui/EmptyState';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
 import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -51,7 +51,20 @@ import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback'
 import type { VideoEditSettings } from '../../components/ui/VideoEditor';
 import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
 import { getCategoryLabel } from '../../utils/categoryLabels';
-import { createConversation } from '../../services/api/messages';
+import { openCoachingReachOut } from '../../utils/coachingReachOut';
+import NotificationBellButton from '../../components/navigation/NotificationBellButton';
+import MessagesInboxButton from '../../components/navigation/MessagesInboxButton';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { copyToClipboard } from '../../utils/csvDownload';
+import PressableScale from '../../components/ui/PressableScale';
+import LiveHalo from '../../components/circles/LiveHalo';
+import GrowAvatar from '../../components/ui/GrowAvatar';
+import { isAppActive } from '../../utils/appActive';
+import HomeEmptyCanvas from '../../components/feed/HomeEmptyCanvas';
+import HomeSitCue from '../../components/feed/HomeSitCue';
+import { useActivationStore } from '../../state/useActivationStore';
+import { getJournalEntries } from '../../services/api/journal';
+import { localDateKey } from '../../components/journal/journalMeta';
 
 type Story = {
   id: string;
@@ -107,7 +120,57 @@ function formatTimeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
+function toLocalPost(post: FeedPost, viewerId?: string): Post {
+  const username = post.metadata?.username || 'User';
+  const likes = Number(post.metadata?.likes || 0);
+  const comments = Number(post.metadata?.comments || 0);
+  const friendLikesCount = Number(post.metadata?.friend_likes_count || 0);
+  const hasLiked = !!post.metadata?.has_liked;
+
+  const imageUri = resolvePostMediaUri(post.image_url, post.category || 'general', post.id);
+  const videoEdit = reelPlaybackSettingsFromMetadata(post.metadata ?? undefined);
+  const soundtrack = reelSoundtrackFromEdit(videoEdit);
+  const audioUrl =
+    typeof post.metadata?.audio_url === 'string'
+      ? post.metadata.audio_url
+      : soundtrack.audioUrl;
+  const audioTitle =
+    typeof post.metadata?.audio_title === 'string'
+      ? post.metadata.audio_title
+      : soundtrack.audioTitle || videoEdit?.audioTitle || undefined;
+
+  return {
+    id: post.id,
+    userId: post.user_id,
+    username,
+    avatar: resolveAvatarUri(post.user_id, username, post.metadata?.avatar),
+    image: imageUri,
+    caption: post.caption || '',
+    category: post.category || 'general',
+    subcategory: post.subcategory || undefined,
+    likes,
+    comments,
+    timestamp: formatTimeAgo(post.created_at),
+    hasLiked,
+    reaction: hasLiked ? 'love' : null,
+    friendLikesCount,
+    friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
+    isFriend: !!post.metadata?.is_friend,
+    isOwn: String(post.user_id) === String(viewerId || ''),
+    audioUrl,
+    audioTitle,
+    isReel: isReelPost(post),
+    isInstructor: !!(post.metadata as { isInstructor?: boolean } | undefined)?.isInstructor,
+    mediaType:
+      typeof post.metadata?.media_type === 'string' ? post.metadata.media_type : undefined,
+    contentType:
+      typeof post.metadata?.content_type === 'string' ? post.metadata.content_type : undefined,
+    videoEdit,
+  };
+}
+
 export default function FeedScreen({ navigation, route }: any) {
+  const feedFocused = useIsFocused();
   const { user } = useAuth();
   const dispatch = useAppDispatch();
   const feedItems = useAppSelector((s) => s.feed.items);
@@ -117,8 +180,13 @@ export default function FeedScreen({ navigation, route }: any) {
   const feedError = useAppSelector((s) => s.feed.error);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const feedListRef = React.useRef<SectionList<Post>>(null);
+  const homePulse = useHomeTabStore((s) => s.pulse);
+  const lastJournalDateKey = useActivationStore((s) => s.lastJournalDateKey);
+  const journaledToday = lastJournalDateKey === localDateKey();
+  const sundaySit = useActivationStore((s) => s.showSundaySit());
   const [retryingFeed, setRetryingFeed] = useState(false);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(() => new Set());
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   /** Client-only reaction emoji (API stores like boolean only). */
@@ -134,68 +202,17 @@ export default function FeedScreen({ navigation, route }: any) {
   } | null>(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [postMenuPost, setPostMenuPost] = useState<Post | null>(null);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
-  const [visiblePostIds, setVisiblePostIds] = useState<Set<string>>(new Set());
+  const [primaryVisiblePostId, setPrimaryVisiblePostId] = useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 55 }).current;
   const onViewableItemsChanged = React.useRef(
     ({ viewableItems }: { viewableItems: Array<{ item: Post; isViewable: boolean }> }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        if (v.isViewable && v.item?.id) ids.add(v.item.id);
-      }
-      setVisiblePostIds(ids);
+      const first = viewableItems.find((v) => v.isViewable && v.item?.id)?.item?.id ?? null;
+      setPrimaryVisiblePostId(first);
     }
   ).current;
-
-  const toLocalPost = (post: FeedPost): Post => {
-    const username = post.metadata?.username || 'User';
-    const likes = Number(post.metadata?.likes || 0);
-    const comments = Number(post.metadata?.comments || 0);
-    const friendLikesCount = Number(post.metadata?.friend_likes_count || 0);
-    const hasLiked = !!post.metadata?.has_liked;
-
-    const imageUri = resolvePostMediaUri(post.image_url, post.category || 'general', post.id);
-    const videoEdit = reelPlaybackSettingsFromMetadata(post.metadata ?? undefined);
-    const soundtrack = reelSoundtrackFromEdit(videoEdit);
-    const audioUrl =
-      typeof post.metadata?.audio_url === 'string'
-        ? post.metadata.audio_url
-        : soundtrack.audioUrl;
-    const audioTitle =
-      typeof post.metadata?.audio_title === 'string'
-        ? post.metadata.audio_title
-        : soundtrack.audioTitle || videoEdit?.audioTitle || undefined;
-
-    return {
-      id: post.id,
-      userId: post.user_id,
-      username,
-      avatar: resolveAvatarUri(post.user_id, username, post.metadata?.avatar),
-      image: imageUri,
-      caption: post.caption || '',
-      category: post.category || 'general',
-      subcategory: post.subcategory || undefined,
-      likes,
-      comments,
-      timestamp: formatTimeAgo(post.created_at),
-      hasLiked,
-      reaction: hasLiked ? 'love' : null,
-      friendLikesCount,
-      friendLikers: Array.isArray(post.metadata?.friend_likers) ? post.metadata?.friend_likers : [],
-      isFriend: !!post.metadata?.is_friend,
-      isOwn: post.user_id === user?.id,
-      audioUrl,
-      audioTitle,
-      isReel: isReelPost(post),
-      isInstructor: !!(post.metadata as { isInstructor?: boolean } | undefined)?.isInstructor,
-      mediaType:
-        typeof post.metadata?.media_type === 'string' ? post.metadata.media_type : undefined,
-      contentType:
-        typeof post.metadata?.content_type === 'string' ? post.metadata.content_type : undefined,
-      videoEdit,
-    };
-  };
 
   const findFeedPost = (postId: string): FeedPost | undefined =>
     feedFollowing.find((p) => p.id === postId) ||
@@ -213,6 +230,11 @@ export default function FeedScreen({ navigation, route }: any) {
   const openComments = (post: Post) => {
     setSelectedPost(post);
   };
+
+  const openTodayJournal = useCallback(() => {
+    feedback.open();
+    navigation.navigate('Journal', { openCompose: true });
+  }, [navigation]);
 
   const togglePostAudio = (post: Post) => {
     if (!post.audioUrl) return;
@@ -267,46 +289,52 @@ export default function FeedScreen({ navigation, route }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      void dispatch(fetchFeedPosts());
+      void dispatch(fetchFeedPosts({ silent: true }));
       void loadStoriesOnly();
+      void useActivationStore.getState().hydrate();
 
       const pollId = setInterval(() => {
-        void dispatch(fetchFeedPosts({ force: true, silent: true }));
-      }, 60_000);
+        if (!isAppActive()) return;
+        void dispatch(fetchFeedPosts({ silent: true }));
+      }, 90_000);
 
       return () => clearInterval(pollId);
     }, [dispatch])
   );
 
   useEffect(() => {
-    if (feedStatus !== 'succeeded') return;
-    const all = [...feedFollowing, ...feedSuggested];
-    const source = all.length > 0 ? all : feedItems;
-    // Never show posts without a real hosted media URL (no stock substitutes).
-    setPosts(
-      source
-        .filter((p) => typeof p.image_url === 'string' && /^https:\/\//i.test(p.image_url.trim()))
-        .map(toLocalPost)
-        .filter((p) => Boolean(p.image?.trim()))
-    );
-  }, [feedFollowing, feedSuggested, feedItems, feedStatus, user?.id]);
+    let cancelled = false;
+    void getJournalEntries({ scope: 'mine', limit: 8 })
+      .then((res) => {
+        if (cancelled) return;
+        const today = localDateKey();
+        const hit = res.data?.entries?.find(
+          (e) => localDateKey(new Date(e.created_at)) === today
+        );
+        if (hit) useActivationStore.getState().markJournaled(hit.created_at);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const feedSections = useMemo(() => {
     const mapSection = (items: typeof feedFollowing, title: string) => {
       const mapped = items
         .filter((raw) => typeof raw.image_url === 'string' && /^https:\/\//i.test(raw.image_url.trim()))
         .map((raw) => {
-        const post = toLocalPost(raw);
+        const post = toLocalPost(raw, user?.id);
         const reaction = reactionsById[post.id];
+        // Overlay only when user acted this session. Never let a stale null wipe API has_liked.
         if (reaction === undefined) return post;
-        // Explicit null = unliked; any emoji = liked (client reaction overlay).
-        return {
-          ...post,
-          reaction,
-          hasLiked: reaction != null,
-        };
+        if (reaction == null) {
+          return { ...post, reaction: null, hasLiked: false };
+        }
+        return { ...post, reaction, hasLiked: true };
       })
-        .filter((post) => Boolean(post.image?.trim()));
+        .filter((post) => Boolean(post.image?.trim()))
+        .filter((post) => !hiddenUserIds.has(post.userId));
       const filtered = selectedCategory
         ? mapped.filter((post) =>
             postMatchesCategoryFilter(
@@ -320,7 +348,19 @@ export default function FeedScreen({ navigation, route }: any) {
     const following = mapSection(feedFollowing, 'From your circle');
     const suggested = mapSection(feedSuggested, 'Suggested for you');
     return [following, suggested].filter(Boolean) as { title: string; data: Post[] }[];
-  }, [feedFollowing, feedSuggested, selectedCategory, user?.id, reactionsById]);
+  }, [feedFollowing, feedSuggested, selectedCategory, user?.id, reactionsById, hiddenUserIds]);
+
+  const posts = useMemo(() => feedSections.flatMap((s) => s.data), [feedSections]);
+
+  useEffect(() => {
+    const uris = posts
+      .slice(0, 6)
+      .map((p) => p.image)
+      .filter((uri) => typeof uri === 'string' && uri.startsWith('https://'));
+    uris.forEach((uri) => {
+      void Image.prefetch(uri);
+    });
+  }, [posts]);
 
   const playHeartBurst = useCallback((postId: string) => {
     setHeartBurst((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
@@ -389,6 +429,7 @@ export default function FeedScreen({ navigation, route }: any) {
   }, [userCategories]);
 
   const onRefresh = async () => {
+    feedback.refresh();
     setRefreshing(true);
     try {
       await dispatch(fetchFeedPosts({ force: true })).unwrap();
@@ -398,6 +439,16 @@ export default function FeedScreen({ navigation, route }: any) {
     await loadStoriesOnly();
     setRefreshing(false);
   };
+
+  useEffect(() => {
+    if (homePulse < 1) return;
+    const list = feedListRef.current as unknown as {
+      scrollToOffset?: (opts: { offset: number; animated: boolean }) => void;
+    };
+    list?.scrollToOffset?.({ offset: 0, animated: true });
+    void onRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse is the trigger
+  }, [homePulse]);
 
   const retryFeed = async () => {
     if (retryingFeed) return;
@@ -542,7 +593,7 @@ export default function FeedScreen({ navigation, route }: any) {
   const blockPostUser = async (post: Post) => {
     try {
       await blockUser(post.userId);
-      setPosts((prev) => prev.filter((p) => p.userId !== post.userId));
+      setHiddenUserIds((prev) => new Set(prev).add(post.userId));
       setPostMenuPost(null);
       if (Platform.OS === 'web') {
         alert(`${post.username} has been blocked.`);
@@ -648,8 +699,9 @@ export default function FeedScreen({ navigation, route }: any) {
         contentContainerStyle={tw`px-4 pr-4`}
         {...horizontalScrollProps}
       >
-        <TouchableOpacity
+        <PressableScale
           style={tw`items-center mr-4`}
+          feedback="open"
           onPress={() => {
             const rootNavigation = navigation.getParent() || navigation;
             if (myStories.length > 0) {
@@ -705,16 +757,17 @@ export default function FeedScreen({ navigation, route }: any) {
             ) : null}
           </View>
           <Text style={tw`text-[11px] text-stone-600 mt-1`}>Your story</Text>
-        </TouchableOpacity>
+        </PressableScale>
         {groupedStories.map((group) => {
           const { user: storyUser, stories: userStories } = group;
           const allViewed = userStories.every((s) => s.hasViewed);
           const storyCount = userStories.length;
 
           return (
-            <TouchableOpacity
+            <PressableScale
               key={storyUser.userId}
               style={tw`items-center mr-4`}
+              feedback="open"
               onPress={() => {
                 const rootNavigation = navigation.getParent() || navigation;
                 const fullStories = userStories.map((s) => ({
@@ -746,6 +799,7 @@ export default function FeedScreen({ navigation, route }: any) {
                 } as never);
               }}
             >
+              <LiveHalo active={!allViewed}>
               <View style={tw`relative`}>
                 <View
                   style={tw`w-14 h-14 rounded-full border-2 ${
@@ -790,7 +844,8 @@ export default function FeedScreen({ navigation, route }: any) {
               <Text style={tw`text-[11px] text-stone-600 mt-1 max-w-14`} numberOfLines={1}>
                 {storyUser.username}
               </Text>
-            </TouchableOpacity>
+              </LiveHalo>
+            </PressableScale>
           );
         })}
       </ScrollView>
@@ -847,6 +902,11 @@ export default function FeedScreen({ navigation, route }: any) {
               ? `Instructors · ${getCategoryLabel(selectedCategory)}`
               : 'Instructors on your paths'
           }
+          onSeeAll={() => {
+            feedback.open();
+            const root = navigation.getParent() || navigation;
+            root.navigate('Instructors' as never);
+          }}
           onOpenProfile={(userId) => {
             const root = navigation.getParent() || navigation;
             root.navigate('PublicProfile' as never, { userId } as never);
@@ -854,22 +914,20 @@ export default function FeedScreen({ navigation, route }: any) {
           onMessage={(person) => {
             void (async () => {
               try {
-                const res = await createConversation(person.id);
-                feedback.send();
-                const root = navigation.getParent() || navigation;
-                root.navigate('Messages' as never, {
-                  conversationId: res.data.conversation.id,
-                  targetUserId: person.id,
-                  draftText: `Hi ${person.username} — I’d love guidance on ${
+                await openCoachingReachOut(
+                  navigation,
+                  person.id,
+                  `Hi ${person.username} — I’d love guidance on ${
                     person.shared_categories[0]
                       ? getCategoryLabel(person.shared_categories[0])
                       : 'my growth path'
-                  }.`,
-                } as never);
+                  }.`
+                );
+                feedback.send();
               } catch (e) {
                 Alert.alert(
-                  'Cannot message',
-                  e instanceof Error ? e.message : 'Become friends to message this instructor.'
+                  'Cannot reach out',
+                  e instanceof Error ? e.message : 'Try again in a moment.'
                 );
               }
             })();
@@ -884,7 +942,7 @@ export default function FeedScreen({ navigation, route }: any) {
           </Text>
           <Text style={tw`text-[15px] font-bold text-stone-900 mt-1`}>Pick your growth paths</Text>
           <Text style={tw`text-sm text-stone-500 mt-1 leading-5`}>
-            Paths personalize Home, connect you with peers, and unlock endorsements.
+            One or two paths is enough. Home fills with people growing the same thing.
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -906,12 +964,18 @@ export default function FeedScreen({ navigation, route }: any) {
         </View>
       ) : null}
 
-      {!hasPostedToday && posts.length > 0 && (
+      {!journaledToday && posts.length > 0 ? (
+        <HomeSitCue
+          sunday={sundaySit}
+          onWrite={openTodayJournal}
+          onDismiss={sundaySit ? () => useActivationStore.getState().dismissSunday() : undefined}
+        />
+      ) : !hasPostedToday && posts.length > 0 && journaledToday ? (
         <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
           <View style={tw`flex-row items-center gap-2`}>
-            <Ionicons name="sparkles" size={18} color="#059669" />
+            <Ionicons name="book-outline" size={18} color="#059669" />
             <Text style={tw`text-xs text-emerald-900 flex-1`}>
-              Share today’s progress with your circle.
+              Share today’s progress with people on your path.
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -925,7 +989,7 @@ export default function FeedScreen({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      ) : null}
 
       {feedStatus === 'failed' && (
         <View style={tw`mx-4 mt-2 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50`}>
@@ -955,17 +1019,8 @@ export default function FeedScreen({ navigation, route }: any) {
         <GrowChromeHeader
           right={
             <>
-              <Pressable
-                onPress={() => {
-                  triggerPressFeedback();
-                  const rootNavigation = navigation.getParent() || navigation;
-                  rootNavigation.navigate('Messages');
-                }}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
-                accessibilityLabel="Inbox"
-              >
-                <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
-              </Pressable>
+              <NotificationBellButton />
+              <MessagesInboxButton />
               <Pressable
                 onPress={() => {
                   triggerPressFeedback();
@@ -980,14 +1035,8 @@ export default function FeedScreen({ navigation, route }: any) {
           }
         />
 
-        {feedStatus === 'loading' && posts.length === 0 ? (
-          <View style={tw`px-5 pt-2`}>
-            <SkeletonList variant="post" count={3} />
-          </View>
-        ) : null}
-
-        {/* Posts Feed */}
         <SectionList
+          ref={feedListRef}
           sections={feedSections}
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
@@ -1027,10 +1076,12 @@ export default function FeedScreen({ navigation, route }: any) {
                     rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
                   }}
                 >
-                  <Image
-                    source={avatarSource(item.avatar)}
-                    style={tw`w-11 h-11 rounded-full mr-3 shadow-sm`}
-                    contentFit="cover"
+                  <GrowAvatar
+                    userId={item.userId}
+                    username={item.username}
+                    uri={item.avatar}
+                    size={44}
+                    style={tw`mr-3`}
                   />
                     <View style={tw`flex-1`}>
                     <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
@@ -1054,8 +1105,16 @@ export default function FeedScreen({ navigation, route }: any) {
                     </View>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={tw`p-1`} onPress={() => setPostMenuPost(item)}>
-                  <Ionicons name="ellipsis-horizontal" size={22} color="#6B7280" />
+                <TouchableOpacity
+                  style={tw`p-2 -mr-1 z-10`}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  onPress={() => {
+                    feedback.open();
+                    setPostMenuPost(item);
+                  }}
+                  accessibilityLabel="Post options"
+                >
+                  <Ionicons name="ellipsis-horizontal" size={22} color="#57534E" />
                 </TouchableOpacity>
               </View>
               {(item.isFriend || item.isOwn) && (
@@ -1086,7 +1145,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   contentType={item.contentType}
                   videoEdit={item.videoEdit}
                   failed={!!failedPostImages[item.id]}
-                  isActive={visiblePostIds.has(item.id)}
+                  isActive={feedFocused && item.id === primaryVisiblePostId}
                   muted
                   onError={() => {
                     setFailedPostImages((prev) =>
@@ -1123,32 +1182,61 @@ export default function FeedScreen({ navigation, route }: any) {
                         setShowReactionPicker(showReactionPicker === item.id ? null : item.id)
                       }
                     />
-                    <View style={tw`relative mr-3`}>
-                      <TouchableOpacity onPress={() => openComments(item)}>
-                        <Ionicons name="chatbubble-outline" size={24} color="#374151" />
-                      </TouchableOpacity>
-                      <View
-                        style={tw`absolute -top-2 -right-2 min-w-[18px] px-1 py-0.5 rounded-full items-center justify-center ${
-                          item.comments > 0 ? 'bg-stone-700' : 'bg-stone-300'
-                        }`}
-                      >
-                        <Text style={tw`text-[10px] font-bold ${item.comments > 0 ? 'text-white' : 'text-stone-600'}`}>
-                          {item.comments > 99 ? '99+' : item.comments}
-                        </Text>
-                      </View>
-                    </View>
+                    <PressableScale
+                      onPress={() => openComments(item)}
+                      hitSlop={8}
+                      style={tw`mr-3.5`}
+                      feedback="open"
+                      accessibilityLabel="Comments"
+                    >
+                      <Ionicons name="chatbubble-outline" size={24} color="#57534E" />
+                    </PressableScale>
+                    <PressableScale
+                      onPress={() => {
+                        setSharePayload({
+                          kind: 'post',
+                          postId: item.id,
+                          userId: item.userId,
+                          username: item.username,
+                          avatar: item.isOwn ? user?.avatar || item.avatar : item.avatar,
+                          caption: item.caption,
+                          imageUrl: item.image,
+                          category: item.category,
+                          subcategory: item.subcategory,
+                          isInstructor: item.isInstructor,
+                          mediaType: item.mediaType,
+                          isReel: item.isReel,
+                        });
+                      }}
+                      hitSlop={8}
+                      feedback="open"
+                      accessibilityLabel="Share post card"
+                    >
+                      <Ionicons name="paper-plane-outline" size={24} color="#57534E" />
+                    </PressableScale>
                   </View>
                 </View>
 
-                {/* Likes Count */}
-                <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
-                  <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
-                    {item.likes} {item.likes === 1 ? 'like' : 'likes'}
-                  </Text>
-                </TouchableOpacity>
+                <View style={tw`flex-row items-center flex-wrap mb-2`}>
+                  <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
+                    <Text style={tw`font-bold text-stone-900 text-[15px]`}>
+                      {item.likes} {item.likes === 1 ? 'like' : 'likes'}
+                    </Text>
+                  </TouchableOpacity>
+                  {item.comments > 0 ? (
+                    <>
+                      <Text style={tw`text-stone-300 mx-2`}>·</Text>
+                      <TouchableOpacity onPress={() => openComments(item)}>
+                        <Text style={tw`font-semibold text-stone-600 text-[15px]`}>
+                          {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
+                </View>
                 {(item.friendLikesCount ?? 0) > 0 ? (
                   <TouchableOpacity onPress={() => void openLikesModal(item, 'friends')}>
-                    <Text style={tw`text-emerald-700 font-semibold mb-2`}>
+                    <Text style={tw`text-emerald-700 font-semibold mb-2 text-sm`}>
                       {item.friendLikesCount} from friends
                     </Text>
                   </TouchableOpacity>
@@ -1228,21 +1316,30 @@ export default function FeedScreen({ navigation, route }: any) {
             </View>
           )}
           ListEmptyComponent={
-            <View style={tw`px-5`}>
-              <EmptyState
-                icon="images-outline"
-                title={selectedCategory ? 'No posts in this category yet' : 'Your feed is quiet'}
-                description={
-                  selectedCategory
-                    ? 'Posts from friends in other growth paths only show under All. Clear the filter or pick a matching path.'
-                    : feedStatus === 'failed'
-                      ? 'Could not load posts. Pull down to retry.'
-                      : 'Explore people in your growth areas or share your first post.'
-                }
-                actionLabel="Explore"
-                onAction={() => navigation.navigate('Explore')}
+            feedStatus === 'loading' ? (
+              <View style={tw`px-5 pt-4`}>
+                <SkeletonList variant="post" count={3} />
+              </View>
+            ) : (
+              <HomeEmptyCanvas
+                filtered={!!selectedCategory}
+                categoryLabel={selectedCategory ? getCategoryLabel(selectedCategory) : undefined}
+                failed={feedStatus === 'failed'}
+                hasPaths={userCategories.length > 0}
+                onExplore={() => navigation.navigate('Explore')}
+                onJournal={openTodayJournal}
+                onClearFilter={() => setSelectedCategory(null)}
+                onChoosePaths={() => navigation.navigate('Profile')}
+                onOpenProfile={(userId) => {
+                  const root = navigation.getParent() || navigation;
+                  root.navigate('PublicProfile' as never, { userId } as never);
+                }}
+                onInstructors={() => {
+                  const root = navigation.getParent() || navigation;
+                  root.navigate('Instructors' as never);
+                }}
               />
-            </View>
+            )
           }
         />
 
@@ -1287,11 +1384,6 @@ export default function FeedScreen({ navigation, route }: any) {
                     id: selectedPost.id,
                     comments: count,
                   })
-                );
-                setPosts((prev) =>
-                  prev.map((post) =>
-                    post.id === selectedPost.id ? { ...post, comments: count } : post
-                  )
                 );
               }}
             />
@@ -1351,58 +1443,138 @@ export default function FeedScreen({ navigation, route }: any) {
           )}
         </AnimatedBottomSheet>
 
-        {postMenuPost && (
-          <Modal
-            visible={!!postMenuPost}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setPostMenuPost(null)}
-          >
-            <View style={tw`flex-1 justify-end`}>
-              <Pressable style={tw`absolute inset-0 bg-black/40`} onPress={() => setPostMenuPost(null)} />
-              <View style={tw`bg-white rounded-t-3xl p-4`}>
-                <TouchableOpacity
-                  style={tw`flex-row items-center py-4 border-b border-stone-200`}
-                  onPress={() => {
-                    const target = postMenuPost;
-                    if (!target || target.isOwn) return;
-                    reportPost(target);
-                  }}
-                >
-                  <Ionicons name="flag-outline" size={22} color="#D97706" />
-                  <Text style={tw`ml-3 text-base text-stone-900`}>Report post</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={tw`flex-row items-center py-4 border-b border-stone-200`}
-                  onPress={() => {
-                    const target = postMenuPost;
-                    if (!target) return;
-                    setPostMenuPost(null);
-                    if (target.isOwn) return;
-                    Alert.alert('Block User', `Block ${target.username}?`, [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Block',
-                        style: 'destructive',
-                        onPress: () => {
-                          void blockPostUser(target);
-                        },
-                      },
-                    ]);
-                  }}
-                >
-                  <Ionicons name="ban-outline" size={22} color="#DC2626" />
-                  <Text style={tw`ml-3 text-base text-stone-900`}>Block user</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={tw`flex-row items-center py-4`} onPress={() => setPostMenuPost(null)}>
-                  <Ionicons name="close-outline" size={22} color="#6B7280" />
-                  <Text style={tw`ml-3 text-base text-stone-900`}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        )}
+        <AnimatedBottomSheet
+          visible={!!postMenuPost}
+          onClose={() => setPostMenuPost(null)}
+          maxHeightRatio={0.55}
+        >
+          {({ close }) => {
+            const target = postMenuPost;
+            if (!target) return null;
+            const openShare = () => {
+              close();
+              setTimeout(() => {
+                setSharePayload({
+                  kind: 'post',
+                  postId: target.id,
+                  userId: target.userId,
+                  username: target.username,
+                  avatar: target.isOwn ? user?.avatar || target.avatar : target.avatar,
+                  caption: target.caption,
+                  imageUrl: target.image,
+                  category: target.category,
+                  subcategory: target.subcategory,
+                  isInstructor: target.isInstructor,
+                  mediaType: target.mediaType,
+                  isReel: target.isReel,
+                });
+              }, 220);
+            };
+            const postLink = `https://letsgrow.lu/p/${encodeURIComponent(target.id)}`;
 
+            return (
+              <View style={tw`px-5 pb-2`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                  Post
+                </Text>
+                <Text style={tw`text-xl font-bold text-stone-900 mt-0.5 mb-1`} numberOfLines={1}>
+                  {target.isOwn ? 'Your post' : `@${target.username}`}
+                </Text>
+                <Text style={tw`text-sm text-stone-500 mb-4`} numberOfLines={2}>
+                  {(target.caption || '').trim() || 'Growth moment on Grow!'}
+                </Text>
+
+                <PressableScale
+                  onPress={openShare}
+                  feedback={false}
+                  style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-emerald-50 border border-emerald-100`}
+                >
+                  <View style={tw`w-10 h-10 rounded-xl bg-emerald-600 items-center justify-center mr-3`}>
+                    <Ionicons name="share-outline" size={20} color="#fff" />
+                  </View>
+                  <View style={tw`flex-1`}>
+                    <Text style={tw`text-base font-bold text-stone-900`}>Share post card</Text>
+                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                      Instagram-ready image or link
+                    </Text>
+                  </View>
+                </PressableScale>
+
+                <PressableScale
+                  onPress={() => {
+                    void copyToClipboard(postLink, 'Link copied');
+                    close();
+                  }}
+                  feedback={false}
+                  style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                >
+                  <View style={tw`w-10 h-10 rounded-xl bg-[#EAE4D6] items-center justify-center mr-3`}>
+                    <Ionicons name="link-outline" size={20} color="#1C1917" />
+                  </View>
+                  <Text style={tw`text-base font-semibold text-stone-900`}>Copy link</Text>
+                </PressableScale>
+
+                {!target.isOwn ? (
+                  <>
+                    <PressableScale
+                      onPress={() => {
+                        close();
+                        setTimeout(() => reportPost(target), 220);
+                      }}
+                      feedback={false}
+                      style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                    >
+                      <View style={tw`w-10 h-10 rounded-xl bg-amber-50 items-center justify-center mr-3`}>
+                        <Ionicons name="flag-outline" size={20} color="#D97706" />
+                      </View>
+                      <Text style={tw`text-base font-semibold text-stone-900`}>Report post</Text>
+                    </PressableScale>
+                    <PressableScale
+                      onPress={() => {
+                        close();
+                        setTimeout(() => {
+                          Alert.alert('Block User', `Block ${target.username}?`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Block',
+                              style: 'destructive',
+                              onPress: () => {
+                                void blockPostUser(target);
+                              },
+                            },
+                          ]);
+                        }, 220);
+                      }}
+                      feedback={false}
+                      style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                    >
+                      <View style={tw`w-10 h-10 rounded-xl bg-red-50 items-center justify-center mr-3`}>
+                        <Ionicons name="ban-outline" size={20} color="#DC2626" />
+                      </View>
+                      <Text style={tw`text-base font-semibold text-stone-900`}>Block user</Text>
+                    </PressableScale>
+                  </>
+                ) : (
+                  <View style={tw`mt-1 px-3.5 py-3 rounded-2xl bg-[#EAE4D6]`}>
+                    <Text style={tw`text-sm text-stone-600 leading-5`}>
+                      Tip: tap the share icon under any post — yours or a friend’s — for an Instagram-ready card.
+                    </Text>
+                  </View>
+                )}
+
+                <PressableScale onPress={close} feedback={false} style={tw`mt-2 py-3 items-center`}>
+                  <Text style={tw`text-stone-500 font-semibold`}>Cancel</Text>
+                </PressableScale>
+              </View>
+            );
+          }}
+        </AnimatedBottomSheet>
+
+        <ShareCardSheet
+          visible={!!sharePayload}
+          payload={sharePayload}
+          onClose={() => setSharePayload(null)}
+        />
       </View>
     </SafeAreaView>
   );

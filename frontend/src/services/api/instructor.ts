@@ -20,6 +20,25 @@ export type EndorsementStatus = {
   endorsementCount: number;
   isSelf: boolean;
   isInstructor: boolean;
+  theyEndorsedMe?: boolean;
+  canRequestEndorsement?: boolean;
+  pendingOutgoing?: boolean;
+  pendingIncoming?: boolean;
+  pendingIncomingRequestId?: string | null;
+};
+
+export type EndorsementIncomingRequest = {
+  id: string;
+  message: string | null;
+  created_at: string;
+  from: {
+    id: string;
+    username: string;
+    avatar?: string | null;
+    points: number;
+    categories: string[];
+    shared_categories: string[];
+  };
 };
 
 export type InstructorEndorser = {
@@ -60,6 +79,17 @@ export type InstructorPartnership = {
   attributed_orders: number;
 };
 
+export type InstructorOffering = {
+  instructor_id?: string;
+  weekly_fee_eur: number;
+  sessions_per_week: number;
+  typical_weeks: number;
+  trial_days: number;
+  currency: string;
+  accepting: boolean;
+  updated_at?: string;
+};
+
 export type DiscoverInstructor = {
   id: string;
   username: string;
@@ -70,6 +100,132 @@ export type DiscoverInstructor = {
   shared_categories: string[];
   teaching_headline?: string | null;
   created_at: string;
+  weekly_fee_eur?: number | null;
+  sessions_per_week?: number | null;
+  typical_weeks?: number | null;
+  trial_days?: number | null;
+  currency?: string;
+  accepting?: boolean;
+  completed_plans?: number;
+  rating_avg?: number | null;
+  rating_count?: number;
+};
+
+export type CoachingReview = {
+  id: string;
+  stars: number;
+  follow_through?: number | null;
+  body: string | null;
+  created_at: string;
+  direction?: string;
+  reviewer?: CoachingPerson;
+};
+
+export type ReviewEligibility = {
+  weeks_completed: number;
+  weeks_needed: number;
+  eligible: boolean;
+  direction: 'client_to_instructor' | 'instructor_to_client' | null;
+  mine: CoachingReview | null;
+};
+
+export type CoachingPerson = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+};
+
+export type CoachingInquiry = {
+  id: string;
+  instructor_id: string;
+  client_id: string;
+  conversation_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  role?: 'instructor' | 'client';
+  instructor?: CoachingPerson;
+  client?: CoachingPerson;
+};
+
+export type CoachingProposal = {
+  id: string;
+  inquiry_id: string;
+  instructor_id: string;
+  client_id: string;
+  conversation_id: string | null;
+  weeks: number;
+  sessions_per_week: number;
+  weekly_fee_eur: number;
+  total_eur: number;
+  trial_days: number;
+  currency: string;
+  draw: string;
+  note: string | null;
+  status: string;
+  created_at: string;
+  responded_at: string | null;
+};
+
+export type CoachingContract = {
+  id: string;
+  proposal_id: string;
+  inquiry_id: string;
+  instructor_id: string;
+  client_id: string;
+  weeks: number;
+  sessions_per_week: number;
+  weekly_fee_eur: number;
+  total_eur: number;
+  trial_days: number;
+  currency: string;
+  draw: string;
+  status: string;
+  started_at: string;
+  ends_at: string;
+  completed_at: string | null;
+  created_at: string;
+  billing?: 'coming';
+  role?: 'instructor' | 'client';
+  instructor?: CoachingPerson;
+  client?: CoachingPerson;
+};
+
+export type CoachingAssignment = {
+  id: string;
+  contract_id: string;
+  seed_id: string;
+  title: string;
+  due_at: string | null;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  seed: {
+    id: string;
+    title: string | null;
+    stage: string | null;
+    growth_score: number;
+    status: string | null;
+    category_key: string | null;
+    subcategory_key: string | null;
+  };
+  last_photo: string | null;
+  last_action: string | null;
+  last_activity_at: string | null;
+};
+
+export type CoachingThread = {
+  inquiry: {
+    id: string;
+    instructor_id: string;
+    client_id: string;
+    conversation_id: string | null;
+    status: string;
+  } | null;
+  proposal: CoachingProposal | null;
+  contract: CoachingContract | null;
+  offering: InstructorOffering | null;
+  role: 'instructor' | 'client';
 };
 
 export type EndorsementSuggestion = {
@@ -204,6 +360,41 @@ export async function suggestEndorsers(): Promise<EndorsementSuggestion[]> {
   return res.data?.suggestions ?? [];
 }
 
+export async function requestEndorsement(
+  userId: string,
+  message?: string
+): Promise<{ requested: boolean; requestId: string }> {
+  const res = await request<{
+    success: boolean;
+    data: { requested: boolean; requestId: string };
+  }>(`/instructor/candidates/${encodeURIComponent(userId)}/request-endorsement`, {
+    method: 'POST',
+    body: JSON.stringify({ message: message || undefined }),
+  });
+  if (!res.success || !res.data) throw new Error('Failed to request endorsement');
+  return res.data;
+}
+
+export async function listIncomingEndorsementRequests(): Promise<EndorsementIncomingRequest[]> {
+  const res = await request<{
+    success: boolean;
+    data: { requests: EndorsementIncomingRequest[] };
+  }>('/instructor/endorsement-requests');
+  if (!res.success) throw new Error('Failed to load endorsement requests');
+  return res.data?.requests ?? [];
+}
+
+export async function respondToEndorsementRequest(
+  requestId: string,
+  status: 'accepted' | 'declined'
+): Promise<void> {
+  const res = await request<{ success: boolean }>(
+    `/instructor/endorsement-requests/${encodeURIComponent(requestId)}`,
+    { method: 'PATCH', body: JSON.stringify({ status }) }
+  );
+  if (!res.success) throw new Error('Failed to update endorsement request');
+}
+
 export async function respondToPartnershipRequest(
   requestId: string,
   status: 'approved' | 'declined'
@@ -224,4 +415,210 @@ export async function updateInstructorPartnership(
     { method: 'PATCH', body: JSON.stringify({ status }) }
   );
   if (!res.success) throw new Error('Failed to update partnership');
+}
+
+export async function getMyOffering(): Promise<{
+  offering: InstructorOffering;
+  completed_plans: number;
+}> {
+  const res = await request<{
+    success: boolean;
+    data: { offering: InstructorOffering; completed_plans: number };
+  }>('/instructor/offering');
+  if (!res.success || !res.data) throw new Error('Failed to load offering');
+  return res.data;
+}
+
+export async function updateMyOffering(input: {
+  weekly_fee_eur: number;
+  sessions_per_week: number;
+  typical_weeks: number;
+  trial_days: number;
+  accepting: boolean;
+}): Promise<InstructorOffering> {
+  const res = await request<{ success: boolean; data: { offering: InstructorOffering } }>(
+    '/instructor/offering',
+    { method: 'PUT', body: JSON.stringify(input) }
+  );
+  if (!res.success || !res.data?.offering) throw new Error('Failed to save offering');
+  return res.data.offering;
+}
+
+export async function startCoachingInquiry(
+  instructorId: string,
+  message?: string
+): Promise<{ inquiry: CoachingInquiry; conversation_id: string | null; thread: CoachingThread }> {
+  const res = await request<{
+    success: boolean;
+    data: { inquiry: CoachingInquiry; conversation_id: string | null; thread: CoachingThread };
+  }>('/instructor/inquiries', {
+    method: 'POST',
+    body: JSON.stringify({ instructor_id: instructorId, message: message || undefined }),
+  });
+  if (!res.success || !res.data) throw new Error('Failed to reach instructor');
+  return res.data;
+}
+
+export async function listCoachingInquiries(): Promise<CoachingInquiry[]> {
+  const res = await request<{ success: boolean; data: { inquiries: CoachingInquiry[] } }>(
+    '/instructor/inquiries'
+  );
+  if (!res.success) throw new Error('Failed to load inquiries');
+  return res.data?.inquiries ?? [];
+}
+
+export async function getCoachingThread(peerId: string): Promise<CoachingThread> {
+  const res = await request<{ success: boolean; data: CoachingThread }>(
+    `/instructor/thread?peer_id=${encodeURIComponent(peerId)}`
+  );
+  if (!res.success || !res.data) throw new Error('Failed to load coaching thread');
+  return res.data;
+}
+
+export async function sendCoachingProposal(input: {
+  client_id: string;
+  weeks: number;
+  sessions_per_week: number;
+  weekly_fee_eur: number;
+  note?: string;
+}): Promise<{ proposal: CoachingProposal; conversation_id: string }> {
+  const res = await request<{
+    success: boolean;
+    data: { proposal: CoachingProposal; conversation_id: string };
+  }>('/instructor/proposals', { method: 'POST', body: JSON.stringify(input) });
+  if (!res.success || !res.data) throw new Error('Failed to send proposal');
+  return res.data;
+}
+
+export async function acceptCoachingProposal(
+  proposalId: string
+): Promise<{ proposal: CoachingProposal; contract: CoachingContract | null }> {
+  const res = await request<{
+    success: boolean;
+    data: { proposal: CoachingProposal; contract: CoachingContract | null };
+  }>(`/instructor/proposals/${encodeURIComponent(proposalId)}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  if (!res.success || !res.data) throw new Error('Failed to accept proposal');
+  return res.data;
+}
+
+export async function declineCoachingProposal(
+  proposalId: string
+): Promise<{ proposal: CoachingProposal; contract: CoachingContract | null }> {
+  const res = await request<{
+    success: boolean;
+    data: { proposal: CoachingProposal; contract: CoachingContract | null };
+  }>(`/instructor/proposals/${encodeURIComponent(proposalId)}/decline`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  if (!res.success || !res.data) throw new Error('Failed to decline proposal');
+  return res.data;
+}
+
+export async function listCoachingContracts(): Promise<CoachingContract[]> {
+  const res = await request<{ success: boolean; data: { contracts: CoachingContract[] } }>(
+    '/instructor/contracts'
+  );
+  if (!res.success) throw new Error('Failed to load plans');
+  return res.data?.contracts ?? [];
+}
+
+export async function getCoachingContract(contractId: string): Promise<{
+  contract: CoachingContract;
+  assignments: CoachingAssignment[];
+  review?: ReviewEligibility;
+}> {
+  const res = await request<{
+    success: boolean;
+    data: {
+      contract: CoachingContract;
+      assignments: CoachingAssignment[];
+      review?: ReviewEligibility;
+    };
+  }>(`/instructor/contracts/${encodeURIComponent(contractId)}`);
+  if (!res.success || !res.data) throw new Error('Failed to load plan');
+  return res.data;
+}
+
+export async function completeCoachingContract(contractId: string): Promise<CoachingContract> {
+  const res = await request<{ success: boolean; data: { contract: CoachingContract } }>(
+    `/instructor/contracts/${encodeURIComponent(contractId)}/complete`,
+    { method: 'POST', body: JSON.stringify({}) }
+  );
+  if (!res.success || !res.data?.contract) throw new Error('Failed to complete plan');
+  return res.data.contract;
+}
+
+export async function assignCoachingHomework(
+  contractId: string,
+  input: {
+    title?: string;
+    category_key?: string;
+    subcategory_key?: string;
+    due_at?: string;
+    goal_detail?: string;
+    seed_id?: string;
+  }
+): Promise<{ assignment: CoachingAssignment; assignments: CoachingAssignment[] }> {
+  const res = await request<{
+    success: boolean;
+    data: { assignment: CoachingAssignment; assignments: CoachingAssignment[] };
+  }>(`/instructor/contracts/${encodeURIComponent(contractId)}/assignments`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!res.success || !res.data) throw new Error('Failed to assign homework');
+  return res.data;
+}
+
+export async function listInstructorReviews(instructorId: string): Promise<{
+  reviews: CoachingReview[];
+  rating: { avg: number; count: number };
+}> {
+  const res = await request<{
+    success: boolean;
+    data: { reviews: CoachingReview[]; rating: { avg: number; count: number } };
+  }>(`/instructor/instructors/${encodeURIComponent(instructorId)}/reviews`);
+  if (!res.success || !res.data) throw new Error('Failed to load reviews');
+  return res.data;
+}
+
+export async function getReviewEligibility(peerId: string): Promise<ReviewEligibility> {
+  const res = await request<{ success: boolean; data: ReviewEligibility }>(
+    `/instructor/reviews/eligibility?peer_id=${encodeURIComponent(peerId)}`
+  );
+  if (!res.success || !res.data) throw new Error('Failed to load review eligibility');
+  return res.data;
+}
+
+export async function submitCoachingReview(input: {
+  peer_id: string;
+  contract_id?: string;
+  stars: number;
+  follow_through?: number;
+  body?: string;
+}): Promise<CoachingReview> {
+  const res = await request<{ success: boolean; data: { review: CoachingReview } }>(
+    '/instructor/reviews',
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+  if (!res.success || !res.data?.review) throw new Error('Failed to save review');
+  return res.data.review;
+}
+
+export function formatOfferLine(offer: {
+  weekly_fee_eur?: number | null;
+  sessions_per_week?: number | null;
+  typical_weeks?: number | null;
+  trial_days?: number | null;
+}): string | null {
+  if (offer.weekly_fee_eur == null || offer.sessions_per_week == null) return null;
+  const weeks = offer.typical_weeks || 1;
+  const total = Math.round(weeks * offer.weekly_fee_eur * 100) / 100;
+  const trial =
+    offer.trial_days && offer.trial_days > 0 ? ` · ${offer.trial_days}-day trial` : '';
+  return `€${offer.weekly_fee_eur}/wk · ${offer.sessions_per_week}× · ${weeks} wk · €${total}${trial}`;
 }

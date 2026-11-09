@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { AccessibilityInfo, Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import tw, { theme } from '../../lib/tw';
+import { theme } from '../../lib/tw';
 
 export type BrandLoadingVariant = 'splash' | 'page' | 'dark';
 
@@ -16,47 +16,59 @@ type Props = {
   manageStatusBar?: boolean;
   /** Fired when the loader layout is ready (hide native splash after paint). */
   onLayout?: () => void;
+  /**
+   * Cold-start only: parent says the session is hydrated.
+   * Intro still plays to the end; then we fade out.
+   */
+  ready?: boolean;
+  /** After grow + smile (+ ready) and the exit fade. */
+  onFinished?: () => void;
 };
 
 const PALETTE = {
   splash: {
     bg: '#049669',
-    soft: 'rgba(255,255,255,0.12)',
-    ring: 'rgba(243,238,228,0.45)',
-    ringSoft: 'rgba(243,238,228,0.22)',
-    orb: 'rgba(249,112,102,0.35)',
-    wordmark: 'rgba(243,238,228,0.92)',
-    message: 'rgba(243,238,228,0.78)',
-    dot: '#F3EEE4',
+    seed: '#ECFDF5',
+    smile: '#065F46',
+    speck: '#F97066',
+    wordmark: 'rgba(243,238,228,0.96)',
+    message: 'rgba(243,238,228,0.82)',
+    stem: 'rgba(243,238,228,0.35)',
     status: 'light' as const,
   },
   page: {
     bg: theme.colors.page,
-    soft: theme.colors.brandSoft,
-    ring: 'rgba(5,150,105,0.28)',
-    ringSoft: 'rgba(5,150,105,0.14)',
-    orb: 'rgba(249,112,102,0.18)',
+    seed: '#059669',
+    smile: '#ECFDF5',
+    speck: '#F97066',
     wordmark: theme.colors.brand,
     message: theme.colors.textMuted,
-    dot: theme.colors.brand,
+    stem: 'rgba(5,150,105,0.22)',
     status: 'dark' as const,
   },
   dark: {
     bg: '#0A0A0A',
-    soft: 'rgba(5,150,105,0.18)',
-    ring: 'rgba(16,185,129,0.45)',
-    ringSoft: 'rgba(16,185,129,0.2)',
-    orb: 'rgba(249,112,102,0.28)',
+    seed: '#10B981',
+    smile: '#ECFDF5',
+    speck: '#F97066',
     wordmark: '#ECFDF5',
     message: 'rgba(255,255,255,0.55)',
-    dot: '#34D399',
+    stem: 'rgba(16,185,129,0.28)',
     status: 'light' as const,
   },
 };
 
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+
+/** Grow + smile + hold. Breath loops after that until `ready`. */
+const INTRO_MS = 680 + 360 + 420;
+const EXIT_MS = 340;
+const SAFETY_MS = 5200;
+
 /**
- * Modern full-screen Grow! loader — pulsing mark, orbit rings, soft orbs, staggered dots.
- * Uses RN Animated only (no reanimated / lottie).
+ * Cold-start / gate loader — a seed that swells and smiles.
+ * Not a spinner, not orbit rings, not a leaf.
+ * Pass `ready` + `onFinished` on app open so Home waits for the intro.
  */
 export default function BrandLoadingScreen({
   message,
@@ -64,284 +76,246 @@ export default function BrandLoadingScreen({
   showWordmark = true,
   manageStatusBar = true,
   onLayout,
+  ready = true,
+  onFinished,
 }: Props) {
   const palette = PALETTE[variant];
-  const pulse = useRef(new Animated.Value(0)).current;
-  const ring = useRef(new Animated.Value(0)).current;
-  const ringB = useRef(new Animated.Value(0)).current;
-  const floatA = useRef(new Animated.Value(0)).current;
-  const floatB = useRef(new Animated.Value(0)).current;
+  const grow = useRef(new Animated.Value(0)).current;
+  const smile = useRef(new Animated.Value(0)).current;
+  const speck = useRef(new Animated.Value(0)).current;
+  const breath = useRef(new Animated.Value(0)).current;
   const enter = useRef(new Animated.Value(0)).current;
-  const dot0 = useRef(new Animated.Value(0)).current;
-  const dot1 = useRef(new Animated.Value(0)).current;
-  const dot2 = useRef(new Animated.Value(0)).current;
+  const exit = useRef(new Animated.Value(1)).current;
+
+  const introDoneRef = useRef(false);
+  const finishedRef = useRef(false);
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
+
+  const loopsRef = useRef<{ speck?: Animated.CompositeAnimation; breath?: Animated.CompositeAnimation }>(
+    {}
+  );
+
+  const tryExit = useCallback(() => {
+    if (finishedRef.current) return;
+    if (!introDoneRef.current) return;
+    if (!readyRef.current) return;
+    if (!onFinishedRef.current) return;
+    finishedRef.current = true;
+    loopsRef.current.speck?.stop();
+    loopsRef.current.breath?.stop();
+    Animated.timing(exit, {
+      toValue: 0,
+      duration: EXIT_MS,
+      easing: EASE_OUT,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) onFinishedRef.current?.();
+    });
+  }, [exit]);
+
+  const startLoops = useCallback(() => {
+    const speckLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(speck, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(speck, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const breathLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breath, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breath, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loopsRef.current = { speck: speckLoop, breath: breathLoop };
+    speckLoop.start();
+    breathLoop.start();
+  }, [breath, speck]);
+
+  const markIntroDone = useCallback(() => {
+    introDoneRef.current = true;
+    tryExit();
+  }, [tryExit]);
 
   useEffect(() => {
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    let cancelled = false;
+    let safety: ReturnType<typeof setTimeout> | undefined;
 
-    const ringLoop = Animated.loop(
-      Animated.timing(ring, {
+    const play = (reduced: boolean) => {
+      if (cancelled) return;
+      if (reduced) {
+        grow.setValue(1);
+        smile.setValue(1);
+        enter.setValue(1);
+        markIntroDone();
+        return;
+      }
+
+      Animated.timing(enter, {
         toValue: 1,
-        duration: 4800,
-        easing: Easing.linear,
+        duration: 280,
+        easing: EASE_OUT,
         useNativeDriver: true,
-      })
-    );
+      }).start();
 
-    const ringBLoop = Animated.loop(
-      Animated.timing(ringB, {
-        toValue: 1,
-        duration: 7200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-
-    const floatALoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(floatA, {
+        Animated.timing(grow, {
           toValue: 1,
-          duration: 3200,
-          easing: Easing.inOut(Easing.quad),
+          duration: 680,
+          easing: EASE_OUT,
           useNativeDriver: true,
         }),
-        Animated.timing(floatA, {
-          toValue: 0,
-          duration: 3200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    const floatBLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatB, {
+        Animated.timing(smile, {
           toValue: 1,
-          duration: 2800,
-          easing: Easing.inOut(Easing.quad),
+          duration: 360,
+          easing: EASE_OUT,
           useNativeDriver: true,
         }),
-        Animated.timing(floatB, {
-          toValue: 0,
-          duration: 2800,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+        Animated.delay(420),
+      ]).start(({ finished }) => {
+        if (!finished || cancelled) return;
+        startLoops();
+        markIntroDone();
+      });
+    };
 
-    const bounceDot = (v: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(v, {
-            toValue: 1,
-            duration: 380,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(v, {
-            toValue: 0,
-            duration: 380,
-            easing: Easing.in(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.delay(420),
-        ])
-      );
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduced) => play(!!reduced))
+      .catch(() => play(false));
 
-    const d0 = bounceDot(dot0, 0);
-    const d1 = bounceDot(dot1, 140);
-    const d2 = bounceDot(dot2, 280);
-
-    Animated.timing(enter, {
-      toValue: 1,
-      duration: 520,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-
-    pulseLoop.start();
-    ringLoop.start();
-    ringBLoop.start();
-    floatALoop.start();
-    floatBLoop.start();
-    d0.start();
-    d1.start();
-    d2.start();
+    if (onFinishedRef.current) {
+      safety = setTimeout(() => {
+        grow.setValue(1);
+        smile.setValue(1);
+        enter.setValue(1);
+        markIntroDone();
+      }, SAFETY_MS);
+    }
 
     return () => {
-      pulseLoop.stop();
-      ringLoop.stop();
-      ringBLoop.stop();
-      floatALoop.stop();
-      floatBLoop.stop();
-      d0.stop();
-      d1.stop();
-      d2.stop();
+      cancelled = true;
+      if (safety) clearTimeout(safety);
+      loopsRef.current.speck?.stop();
+      loopsRef.current.breath?.stop();
     };
-  }, [pulse, ring, ringB, floatA, floatB, enter, dot0, dot1, dot2]);
+  }, [enter, grow, markIntroDone, smile, startLoops]);
 
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.05] });
-  const glow = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.7] });
-  const rotate = ring.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const rotateB = ringB.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
-  const orbAY = floatA.interpolate({ inputRange: [0, 1], outputRange: [0, -18] });
-  const orbBX = floatB.interpolate({ inputRange: [0, 1], outputRange: [0, 14] });
-  const contentY = enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
+  useEffect(() => {
+    tryExit();
+  }, [ready, tryExit]);
 
-  const markSize = variant === 'splash' ? 112 : 96;
-  const ringSize = markSize + 36;
+  const seedScale = Animated.multiply(
+    grow.interpolate({ inputRange: [0, 1], outputRange: [0.34, 1] }),
+    breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] })
+  );
+  const contentY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+  const seedSize = variant === 'splash' ? 96 : 84;
 
   return (
-    <View
-      style={[styles.root, { backgroundColor: palette.bg }]}
+    <Animated.View
+      style={[styles.root, { backgroundColor: palette.bg, opacity: exit }]}
       accessibilityRole="progressbar"
       onLayout={onLayout}
     >
       {manageStatusBar ? <StatusBar style={palette.status} /> : null}
 
-      {/* Ambient field */}
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <View style={[styles.wash, { backgroundColor: palette.soft }]} />
-        <Animated.View
-          style={[
-            styles.orb,
-            {
-              top: '12%',
-              right: '-8%',
-              width: 220,
-              height: 220,
-              borderRadius: 110,
-              backgroundColor: palette.orb,
-              transform: [{ translateY: orbAY }],
-            },
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.orb,
-            {
-              bottom: '16%',
-              left: '-10%',
-              width: 180,
-              height: 180,
-              borderRadius: 90,
-              backgroundColor: palette.soft,
-              opacity: 0.85,
-              transform: [{ translateX: orbBX }],
-            },
-          ]}
-        />
-      </View>
-
       <Animated.View
         style={[
           styles.content,
-          {
-            opacity: enter,
-            transform: [{ translateY: contentY }],
-          },
+          { opacity: enter, transform: [{ translateY: contentY }] },
         ]}
       >
         {showWordmark ? (
-          <Text style={[styles.wordmark, { color: palette.wordmark }]}>Grow!</Text>
+          <Animated.Text style={[styles.wordmark, { color: palette.wordmark, opacity: smile }]}>
+            Grow!
+          </Animated.Text>
         ) : null}
 
-        <View style={[styles.markStage, { width: ringSize + 24, height: ringSize + 24 }]}>
+        <View style={styles.stage}>
           <Animated.View
+            pointerEvents="none"
             style={[
-              styles.glow,
+              styles.speck,
               {
-                width: markSize + 28,
-                height: markSize + 28,
-                borderRadius: (markSize + 28) / 2,
-                backgroundColor: variant === 'splash' ? 'rgba(243,238,228,0.18)' : 'rgba(5,150,105,0.12)',
-                opacity: glow,
-                transform: [{ scale }],
-              },
-            ]}
-          />
-
-          <Animated.View
-            style={[
-              styles.ring,
-              {
-                width: ringSize,
-                height: ringSize,
-                borderRadius: ringSize / 2,
-                borderColor: palette.ring,
-                transform: [{ rotate }],
+                backgroundColor: palette.speck,
+                opacity: speck,
+                transform: [
+                  {
+                    translateY: speck.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [10, -seedSize * 0.62],
+                    }),
+                  },
+                ],
               },
             ]}
           />
           <Animated.View
             style={[
-              styles.ringInner,
+              styles.stem,
               {
-                width: ringSize - 18,
-                height: ringSize - 18,
-                borderRadius: (ringSize - 18) / 2,
-                borderColor: palette.ringSoft,
-                transform: [{ rotate: rotateB }],
+                backgroundColor: palette.stem,
+                opacity: grow,
+                transform: [{ scaleY: grow }],
               },
             ]}
           />
-
-          <Animated.View style={{ transform: [{ scale }] }}>
-            <Image
-              source={require('../../../assets/icon.png')}
-              style={{
-                width: markSize,
-                height: markSize,
-                borderRadius: variant === 'splash' ? markSize * 0.22 : 22,
-              }}
-              accessibilityLabel="Grow!"
-            />
+          <Animated.View
+            style={[
+              styles.seed,
+              {
+                width: seedSize,
+                height: seedSize,
+                borderRadius: seedSize / 2,
+                backgroundColor: palette.seed,
+                transform: [{ scale: seedScale }],
+              },
+            ]}
+          >
+            <Animated.Text
+              style={[
+                styles.face,
+                {
+                  fontSize: Math.round(seedSize * 0.34),
+                  color: palette.smile,
+                  opacity: smile,
+                },
+              ]}
+            >
+              ◡
+            </Animated.Text>
           </Animated.View>
         </View>
 
         {message ? (
-          <Text style={[styles.message, { color: palette.message }]}>{message}</Text>
+          <Animated.Text style={[styles.message, { color: palette.message, opacity: smile }]}>
+            {message}
+          </Animated.Text>
         ) : null}
-
-        <View style={styles.dots}>
-          {[dot0, dot1, dot2].map((v, i) => (
-            <Animated.View
-              key={i}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor: palette.dot,
-                  opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
-                  transform: [
-                    {
-                      translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }),
-                    },
-                  ],
-                },
-              ]}
-            />
-          ))}
-        </View>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -351,58 +325,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  wash: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.55,
-  },
-  orb: {
-    position: 'absolute',
-  },
   content: {
     alignItems: 'center',
     paddingHorizontal: 32,
   },
   wordmark: {
-    fontSize: 12,
+    fontSize: 28,
     fontWeight: '700',
-    letterSpacing: 4,
-    textTransform: 'uppercase',
+    letterSpacing: 1.2,
     marginBottom: 28,
   },
-  markStage: {
+  stage: {
+    width: 140,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: 28,
+  },
+  seed: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 28,
   },
-  glow: {
-    position: 'absolute',
+  face: {
+    fontWeight: '700',
+    marginTop: -2,
   },
-  ring: {
-    position: 'absolute',
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
+  stem: {
+    width: 3,
+    height: 36,
+    borderRadius: 2,
+    marginBottom: 6,
   },
-  ringInner: {
+  speck: {
     position: 'absolute',
-    borderWidth: 1,
+    top: 28,
+    width: 8,
+    height: 10,
+    borderRadius: 6,
   },
   message: {
     fontSize: 15,
     fontWeight: '500',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 20,
     maxWidth: 280,
-  },
-  dots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginHorizontal: 4,
   },
 });
 
@@ -410,3 +376,5 @@ const styles = StyleSheet.create({
 export function FullScreenBrandLoader(props: Props) {
   return <BrandLoadingScreen {...props} />;
 }
+
+export const SPLASH_INTRO_MS = INTRO_MS;

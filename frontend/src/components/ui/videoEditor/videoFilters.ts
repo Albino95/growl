@@ -14,18 +14,21 @@ export function buildVideoCssFilter(edit: VideoEditSettings): string | undefined
 
 export function videoVignetteStrength(edit: VideoEditSettings): number {
   const look = getVideoLook(edit.lookId);
-  const fromAdj = (edit.manualAdjust?.vignette || 0) / 100;
+  const adj = mergeAdjustments(edit.filterPresetId, edit.manualAdjust);
+  const fromAdj = (adj.vignette || 0) / 100;
   return Math.max(look.vignette || 0, fromAdj);
 }
 
 export function videoCinematicStrength(edit: VideoEditSettings): number {
   const look = getVideoLook(edit.lookId);
-  const fromAdj = (edit.manualAdjust?.cinematic || 0) / 50;
+  const adj = mergeAdjustments(edit.filterPresetId, edit.manualAdjust);
+  const fromAdj = (adj.cinematic || 0) / 50;
   return Math.max(look.cinematic || 0, fromAdj);
 }
 
 export function videoFadeOpacity(edit: VideoEditSettings): number {
-  const fade = edit.manualAdjust?.fade || 0;
+  const adj = mergeAdjustments(edit.filterPresetId, edit.manualAdjust);
+  const fade = adj.fade || 0;
   if (fade <= 0) return 0;
   return Math.min(0.35, fade / 120);
 }

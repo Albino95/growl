@@ -3,7 +3,14 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
 import { areFriends } from './friends';
-import { validateRequest, createConversationSchema, sendMessageSchema } from '../utils/validation';
+import {
+  validateRequest,
+  createConversationSchema,
+  sendMessageSchema,
+  reactToMessageSchema,
+  MESSAGE_REACTION_EMOJIS,
+} from '../utils/validation';
+import { coachingConversationIds, hasCoachingChannel } from '../utils/coachingAccess';
 
 type ConversationRow = {
   id: string;
@@ -79,6 +86,7 @@ async function canMessagePeer(
   user?: { is_business?: boolean | number } | null
 ): Promise<boolean> {
   if (await areFriends(env, userId, peerId)) return true;
+  if (await hasCoachingChannel(env, userId, peerId)) return true;
   if (!user?.is_business) return false;
 
   const orderLink = await env.DB.prepare(
@@ -93,6 +101,39 @@ async function canMessagePeer(
     .first<{ id: string }>();
 
   return !!orderLink;
+}
+
+/** Shared by hire reach-out so a coaching inquiry can open a thread without a friend edge. */
+export async function findOrCreateConversation(
+  env: Env,
+  userId: string,
+  peerId: string
+): Promise<ConversationRow> {
+  const [userA, userB] = orderedPair(userId, peerId);
+  const now = new Date().toISOString();
+  let conversation = await env.DB.prepare(
+    'SELECT * FROM conversations WHERE user_a = ? AND user_b = ?'
+  )
+    .bind(userA, userB)
+    .first<ConversationRow>();
+
+  if (!conversation) {
+    const id = generateId('conv');
+    await env.DB.prepare(
+      `INSERT INTO conversations (id, user_a, user_b, created_at, updated_at, last_message_at)
+       VALUES (?, ?, ?, ?, ?, NULL)`
+    )
+      .bind(id, userA, userB, now, now)
+      .run();
+    conversation = await env.DB.prepare('SELECT * FROM conversations WHERE id = ?')
+      .bind(id)
+      .first<ConversationRow>();
+  }
+
+  if (!conversation) {
+    throw new Error('Failed to create conversation');
+  }
+  return conversation;
 }
 
 /**
@@ -117,10 +158,12 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
       .bind(ctx.userId, ctx.userId)
       .all<ConversationRow & { last_message: string | null; last_sender_id: string | null }>();
 
+    const coachingIds = await coachingConversationIds(env, ctx.userId);
     const conversations = [];
     for (const row of rows.results || []) {
       const peerId = peerIdFor(row, ctx.userId);
-      if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) continue;
+      const coaching = coachingIds.has(row.id);
+      if (!coaching && !(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) continue;
 
       const peer = await env.DB.prepare(
         'SELECT id, metadata, is_instructor, is_business FROM users WHERE id = ?'
@@ -148,6 +191,7 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
           is_instructor: !!peer.is_instructor,
           is_business: !!peer.is_business,
         },
+        coaching,
         last_message: row.last_message,
         last_sender_id: row.last_sender_id,
         last_message_at: lastAt,
@@ -161,6 +205,47 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
   } catch (err) {
     console.error('[getConversations]', err);
     return error('DATABASE_ERROR', 'Failed to fetch conversations', 500);
+  }
+}
+
+/**
+ * GET /api/v1/messages/unread-count
+ * Count of conversations with unread messages for the badge.
+ */
+export async function unreadCount(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT c.*,
+        (SELECT sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_sender_id
+       FROM conversations c
+       WHERE c.user_a = ? OR c.user_b = ?`
+    )
+      .bind(ctx.userId, ctx.userId)
+      .all<ConversationRow & { last_sender_id: string | null }>();
+
+    let count = 0;
+    for (const row of rows.results || []) {
+      const peerId = peerIdFor(row, ctx.userId);
+      if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) continue;
+      const lastAt = row.last_message_at || row.updated_at;
+      const lastSender = row.last_sender_id;
+      const readAt = myLastReadAt(row, ctx.userId);
+      const unread =
+        !!lastAt &&
+        lastSender !== ctx.userId &&
+        (!readAt || new Date(lastAt).getTime() > new Date(readAt).getTime());
+      if (unread) count += 1;
+    }
+
+    return json({ unread_count: count });
+  } catch (err) {
+    console.error('[messages.unreadCount]', err);
+    return json({ unread_count: 0 });
   }
 }
 
@@ -197,34 +282,13 @@ export async function createConversation(request: Request, env: Env): Promise<Re
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
 
-  const [userA, userB] = orderedPair(ctx.userId, targetUserId);
-  const now = new Date().toISOString();
-
   try {
-    let conversation = await env.DB.prepare(
-      'SELECT * FROM conversations WHERE user_a = ? AND user_b = ?'
-    )
-      .bind(userA, userB)
-      .first<ConversationRow>();
-
-    if (!conversation) {
-      const id = generateId('conv');
-      await env.DB.prepare(
-        `INSERT INTO conversations (id, user_a, user_b, created_at, updated_at, last_message_at)
-         VALUES (?, ?, ?, ?, ?, NULL)`
-      )
-        .bind(id, userA, userB, now, now)
-        .run();
-
-      conversation = await env.DB.prepare('SELECT * FROM conversations WHERE id = ?')
-        .bind(id)
-        .first<ConversationRow>();
-    }
-
+    const conversation = await findOrCreateConversation(env, ctx.userId, targetUserId);
+    const coaching = (await coachingConversationIds(env, ctx.userId)).has(conversation.id);
     const meta = parseUserMeta(target.metadata);
     return json({
       conversation: {
-        id: conversation!.id,
+        id: conversation.id,
         peer: {
           id: target.id,
           username: meta.username || 'User',
@@ -232,11 +296,12 @@ export async function createConversation(request: Request, env: Env): Promise<Re
           is_instructor: !!target.is_instructor,
           is_business: !!target.is_business,
         },
-        created_at: conversation!.created_at,
-        updated_at: conversation!.updated_at,
-        last_message_at: conversation!.last_message_at,
+        coaching,
+        created_at: conversation.created_at,
+        updated_at: conversation.updated_at,
+        last_message_at: conversation.last_message_at,
       },
-      created: conversation!.created_at === conversation!.updated_at,
+      created: conversation.created_at === conversation.updated_at,
     });
   } catch (err) {
     console.error('[createConversation]', err);
@@ -289,6 +354,9 @@ export async function getMessages(
         ? (fresh || conversation).user_b_last_read_at || null
         : (fresh || conversation).user_a_last_read_at || null;
 
+    const ids = (rows.results || []).map((m) => m.id);
+    const reactionMap = await loadReactionsForMessages(env, ids, ctx.userId);
+
     const messages = (rows.results || []).map((m) => ({
       id: m.id,
       conversation_id: m.conversation_id,
@@ -296,6 +364,7 @@ export async function getMessages(
       body: m.body,
       created_at: m.created_at,
       is_own: m.sender_id === ctx.userId,
+      reactions: reactionMap[m.id] || { counts: {}, mine: null },
     }));
 
     return json({ messages, peer_last_read_at: peerReadAt, limit, offset });
@@ -360,11 +429,119 @@ export async function sendMessage(
         body: row!.body,
         created_at: row!.created_at,
         is_own: true,
+        reactions: { counts: {}, mine: null },
       },
       201
     );
   } catch (err) {
     console.error('[sendMessage]', err);
     return error('DATABASE_ERROR', 'Failed to send message', 500);
+  }
+}
+
+type ReactionBundle = {
+  counts: Record<string, number>;
+  mine: string | null;
+};
+
+async function loadReactionsForMessages(
+  env: Env,
+  messageIds: string[],
+  userId: string
+): Promise<Record<string, ReactionBundle>> {
+  const out: Record<string, ReactionBundle> = {};
+  if (messageIds.length === 0) return out;
+  try {
+    const placeholders = messageIds.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id IN (${placeholders})`
+    )
+      .bind(...messageIds)
+      .all<{ message_id: string; user_id: string; emoji: string }>();
+    for (const row of rows.results || []) {
+      const bucket = out[row.message_id] || { counts: {}, mine: null };
+      bucket.counts[row.emoji] = (bucket.counts[row.emoji] || 0) + 1;
+      if (row.user_id === userId) bucket.mine = row.emoji;
+      out[row.message_id] = bucket;
+    }
+  } catch {
+    /* table may not exist yet on a stale worker */
+  }
+  return out;
+}
+
+/**
+ * PUT /api/v1/messages/conversations/:id/messages/:messageId/reaction
+ * Toggle: same emoji clears, different emoji replaces.
+ */
+export async function reactToMessage(
+  request: Request,
+  env: Env,
+  conversationId: string,
+  messageId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const validation = await validateRequest(request, reactToMessageSchema);
+  if (!validation.success) return validation.response;
+
+  const conversation = await getConversationForUser(env, conversationId, ctx.userId);
+  if (!conversation) {
+    return error('NOT_FOUND', 'Conversation not found', 404);
+  }
+  const peerId = peerIdFor(conversation, ctx.userId);
+  if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) {
+    return error('FORBIDDEN', 'You can only message friends', 403);
+  }
+
+  const message = await env.DB.prepare(
+    'SELECT id FROM messages WHERE id = ? AND conversation_id = ?'
+  )
+    .bind(messageId, conversationId)
+    .first<{ id: string }>();
+  if (!message) {
+    return error('NOT_FOUND', 'Message not found', 404);
+  }
+
+  const emoji = validation.data.emoji;
+  if (!(MESSAGE_REACTION_EMOJIS as readonly string[]).includes(emoji)) {
+    return error('INVALID_REQUEST', 'Unknown reaction', 400);
+  }
+
+  const now = new Date().toISOString();
+  try {
+    const existing = await env.DB.prepare(
+      'SELECT emoji FROM message_reactions WHERE message_id = ? AND user_id = ?'
+    )
+      .bind(messageId, ctx.userId)
+      .first<{ emoji: string }>();
+
+    if (existing?.emoji === emoji) {
+      await env.DB.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ?')
+        .bind(messageId, ctx.userId)
+        .run();
+    } else if (existing) {
+      await env.DB.prepare(
+        'UPDATE message_reactions SET emoji = ?, created_at = ? WHERE message_id = ? AND user_id = ?'
+      )
+        .bind(emoji, now, messageId, ctx.userId)
+        .run();
+    } else {
+      await env.DB.prepare(
+        `INSERT INTO message_reactions (message_id, user_id, emoji, created_at)
+         VALUES (?, ?, ?, ?)`
+      )
+        .bind(messageId, ctx.userId, emoji, now)
+        .run();
+    }
+
+    const map = await loadReactionsForMessages(env, [messageId], ctx.userId);
+    return json({ reactions: map[messageId] || { counts: {}, mine: null } });
+  } catch (err) {
+    console.error('[reactToMessage]', err);
+    return error('DATABASE_ERROR', 'Failed to react', 500);
   }
 }

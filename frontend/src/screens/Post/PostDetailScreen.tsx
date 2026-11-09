@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,11 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import CommentsScreen from '../Comments/CommentsScreen';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
-import { toggleFeedPostLike } from '../../services/api/feed';
+import GrowAvatar from '../../components/ui/GrowAvatar';
+import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
 import tw from '../../lib/tw';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { feedback } from '../../utils/interactionFeedback';
 
 type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
@@ -55,6 +58,43 @@ export default function PostDetailScreen() {
   const [post, setPost] = useState<Post>({ ...initialPost, image: imageUri, avatar: avatarUri });
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+
+  // Hydrate like state from the server — route params are often stale after re-login.
+  useEffect(() => {
+    let cancelled = false;
+    void getFeedPost(initialPost.id).then((remote) => {
+      if (cancelled || !remote) return;
+      const liked = !!remote.metadata?.has_liked;
+      setPost((prev) => ({
+        ...prev,
+        likes: Number(remote.metadata?.likes ?? prev.likes),
+        comments: Number(remote.metadata?.comments ?? prev.comments),
+        hasLiked: liked,
+        reaction: liked ? prev.reaction || 'love' : null,
+        image: resolvePostMediaUri(remote.image_url, remote.category, remote.id) || prev.image,
+        caption: remote.caption || prev.caption,
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPost.id]);
+
+  const openShareCard = () => {
+    feedback.open();
+    setSharePayload({
+      kind: 'post',
+      postId: post.id,
+      userId: post.userId,
+      username: post.username,
+      avatar: post.avatar,
+      caption: post.caption,
+      imageUrl: post.image,
+      category: post.category,
+      subcategory: post.subcategory,
+    });
+  };
 
   const renderReactionIcon = () => {
     const active = post.hasLiked || post.reaction != null;
@@ -135,18 +175,20 @@ export default function PostDetailScreen() {
             <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
           <Text style={tw`text-lg font-semibold text-stone-900`}>Post</Text>
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
+          <TouchableOpacity onPress={openShareCard} hitSlop={10} accessibilityLabel="Share post">
+            <Ionicons name="ellipsis-horizontal" size={24} color="#57534E" />
           </TouchableOpacity>
         </View>
 
         <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
           <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100`}>
             <TouchableOpacity style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
-              <Image
-                source={{ uri: post.avatar }}
-                style={tw`w-12 h-12 rounded-full mr-3 bg-stone-100`}
-                contentFit="cover"
+              <GrowAvatar
+                userId={post.userId}
+                username={post.username}
+                uri={post.avatar}
+                size={48}
+                style={tw`mr-3`}
               />
               <View style={tw`flex-1`}>
                 <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
@@ -180,8 +222,8 @@ export default function PostDetailScreen() {
                 <TouchableOpacity onPress={() => setShowComments(true)} style={tw`mr-3`}>
                   <Ionicons name="chatbubble-outline" size={26} color="#374151" />
                 </TouchableOpacity>
-                <TouchableOpacity>
-                  <Ionicons name="paper-plane-outline" size={26} color="#374151" />
+                <TouchableOpacity onPress={openShareCard} accessibilityLabel="Share post card">
+                  <Ionicons name="paper-plane-outline" size={26} color="#059669" />
                 </TouchableOpacity>
               </View>
               <TouchableOpacity>
@@ -252,6 +294,12 @@ export default function PostDetailScreen() {
           />
         </Modal>
       )}
+
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
+      />
     </SafeAreaView>
   );
 }

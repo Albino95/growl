@@ -466,6 +466,12 @@ export const sendMessageSchema = z.object({
   body: z.string().min(1, 'Message cannot be empty').max(4000, 'Message too long'),
 });
 
+export const MESSAGE_REACTION_EMOJIS = ['love', 'fire', 'laugh', 'wow', 'seed', 'clap'] as const;
+
+export const reactToMessageSchema = z.object({
+  emoji: z.enum(MESSAGE_REACTION_EMOJIS),
+});
+
 /**
  * Validate request body against a schema
  */

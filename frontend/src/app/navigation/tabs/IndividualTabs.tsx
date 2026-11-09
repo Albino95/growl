@@ -18,6 +18,10 @@ import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
 import { feedback } from '../../../utils/interactionFeedback';
 import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
+import { SHOW_CIRCLES, SHOW_SEEDS } from '../../../constants/featureFlags';
+import DemoTutorial from '../../../screens/Onboarding/DemoTutorial';
+import { useDemoTutorialStore } from '../../../state/useDemoTutorialStore';
+import { useHomeTabStore } from '../../../state/useHomeTabStore';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
@@ -94,9 +98,9 @@ function DockTabButton({
     <Pressable
       onPressIn={() => {
         Animated.spring(scale, {
-          toValue: 0.92,
+          toValue: 0.88,
           useNativeDriver: true,
-          speed: 40,
+          speed: 42,
           bounciness: 0,
         }).start();
       }}
@@ -104,8 +108,8 @@ function DockTabButton({
         Animated.spring(scale, {
           toValue: 1,
           useNativeDriver: true,
-          speed: 28,
-          bounciness: 6,
+          speed: 26,
+          bounciness: 8,
         }).start();
       }}
       onPress={() => {
@@ -170,17 +174,46 @@ export default function IndividualTabs() {
   const insets = useSafeAreaInsets();
   const [createOpen, setCreateOpen] = useState(false);
   const tabNavRef = useRef<{ navigate: (name: string, params?: object) => void } | null>(null);
+  const tutorialHydrated = useDemoTutorialStore((s) => s.hydrated);
+  const tutorialSeen = useDemoTutorialStore((s) => s.seen);
+  const tutorialForce = useDemoTutorialStore((s) => s.forceShow);
+  const hydrateTutorial = useDemoTutorialStore((s) => s.hydrate);
+
+  useEffect(() => {
+    void hydrateTutorial();
+  }, [hydrateTutorial]);
+
+  const showTutorial = tutorialHydrated && (!tutorialSeen || tutorialForce);
+
+  const fabSpin = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(fabSpin, {
+      toValue: createOpen ? 1 : 0,
+      useNativeDriver: true,
+      speed: 18,
+      bounciness: 8,
+    }).start();
+  }, [createOpen, fabSpin]);
 
   const fabFeedback = usePressFeedback({
-    onPress: () => setCreateOpen(true),
+    onPress: () => setCreateOpen((open) => !open),
     kind: 'open',
   });
 
   const handleCreate = (action: CreateAction) => {
     setCreateOpen(false);
     // iOS drops a stack modal if it is presented while this sheet Modal is still dismissing.
-    const delay = action === 'journal' ? 80 : 320;
+    const delay = action === 'journal' ? 80 : action === 'story' ? 450 : 320;
     setTimeout(() => {
+      if (action === 'seed') {
+        if (SHOW_SEEDS) navigateFromRoot(navigation, 'PlantSeed');
+        return;
+      }
+      if (action === 'circle') {
+        if (SHOW_CIRCLES) navigateFromRoot(navigation, 'Circles');
+        return;
+      }
       if (action === 'post') {
         navigateFromRoot(navigation, 'Post');
         return;
@@ -214,6 +247,13 @@ export default function IndividualTabs() {
         tabBar={(props) => {
           tabNavRef.current = props.navigation;
           const currentRoute = props.state.routes[props.state.index]?.name as string;
+          const pressTab = (key: DockTabKey) => {
+            if (key === 'Feed' && currentRoute === 'Feed') {
+              useHomeTabStore.getState().requestTopAndRefresh();
+              return;
+            }
+            props.navigation.navigate(key);
+          };
 
           return (
             <View
@@ -227,7 +267,7 @@ export default function IndividualTabs() {
                       key={tab.key}
                       tab={tab}
                       isActive={currentRoute === tab.key}
-                      onPress={() => props.navigation.navigate(tab.key)}
+                      onPress={() => pressTab(tab.key)}
                     />
                   ))}
                 </View>
@@ -240,9 +280,13 @@ export default function IndividualTabs() {
                     onPress={fabFeedback.onPress}
                     onPressIn={fabFeedback.onPressIn}
                     onPressOut={fabFeedback.onPressOut}
+                    onLongPress={() => {
+                      feedback.egg();
+                      setCreateOpen(true);
+                    }}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Create"
+                    accessibilityLabel={createOpen ? 'Close create' : 'Create'}
                   >
                     <Animated.View
                       style={[
@@ -251,7 +295,20 @@ export default function IndividualTabs() {
                         fabFeedback.animatedStyle,
                       ]}
                     >
-                      <Ionicons name="add" size={24} color="#FFFFFF" />
+                      <Animated.View
+                        style={{
+                          transform: [
+                            {
+                              rotate: fabSpin.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0deg', '45deg'],
+                              }),
+                            },
+                          ],
+                        }}
+                      >
+                        <Ionicons name="add" size={24} color="#FFFFFF" />
+                      </Animated.View>
                     </Animated.View>
                   </Pressable>
                 </View>
@@ -262,7 +319,7 @@ export default function IndividualTabs() {
                       key={tab.key}
                       tab={tab}
                       isActive={currentRoute === tab.key}
-                      onPress={() => props.navigation.navigate(tab.key)}
+                      onPress={() => pressTab(tab.key)}
                     />
                   ))}
                 </View>
@@ -292,6 +349,15 @@ export default function IndividualTabs() {
         onClose={() => setCreateOpen(false)}
         onSelect={handleCreate}
       />
+
+      {showTutorial ? (
+        <View
+          style={[StyleSheet.absoluteFill, { zIndex: 40, backgroundColor: '#F3EEE4' }]}
+          pointerEvents="auto"
+        >
+          <DemoTutorial />
+        </View>
+      ) : null}
     </>
   );
 }

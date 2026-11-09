@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Alert, Animated } from 'react-native';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
-import { resolveAvatarUri } from '../../utils/images';
+import GrowAvatar from '../ui/GrowAvatar';
 import { MOOD_META, growthPathFromTags } from './journalMeta';
 import type { CircleJournalEntry, JournalMood } from '../../services/api/journal';
 import { feelJournalEntry, muteJournalAuthor } from '../../services/api/journal';
@@ -15,6 +14,7 @@ type Props = {
   onOpenProfile: (userId: string) => void;
   onMessage: (entry: CircleJournalEntry) => void;
   onReplyToLine?: (entry: CircleJournalEntry) => void;
+  onShare?: (entry: CircleJournalEntry) => void;
   onMuted?: (userId: string) => void;
 };
 
@@ -28,6 +28,7 @@ export default function CircleJournalCard({
   onOpenProfile,
   onMessage,
   onReplyToLine,
+  onShare,
   onMuted,
 }: Props) {
   const [felt, setFelt] = useState(!!entry.feltThis);
@@ -58,7 +59,6 @@ export default function CircleJournalCard({
   const mood = (entry.mood as JournalMood | null) || null;
   const meta = mood ? MOOD_META[mood] : null;
   const path = growthPathFromTags(entry.tags || []);
-  const avatar = resolveAvatarUri(entry.user_id, entry.username, entry.avatar);
   const excerpt =
     entry.content.length > 180 ? `${entry.content.slice(0, 177).trim()}…` : entry.content;
 
@@ -77,7 +77,22 @@ export default function CircleJournalCard({
   };
 
   const onMore = () => {
-    Alert.alert(entry.username, undefined, [
+    const options: {
+      text: string;
+      style?: 'cancel' | 'destructive';
+      onPress?: () => void;
+    }[] = [];
+    if (onShare) {
+      options.push({
+        text: 'Share voice card',
+        onPress: () => {
+          feedback.open();
+          onShare(entry);
+        },
+      });
+    }
+    options.push(
+      { text: 'View profile', onPress: () => onOpenProfile(entry.user_id) },
       {
         text: 'Mute journals',
         style: 'destructive',
@@ -92,9 +107,9 @@ export default function CircleJournalCard({
           })();
         },
       },
-      { text: 'View profile', onPress: () => onOpenProfile(entry.user_id) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+      { text: 'Cancel', style: 'cancel' }
+    );
+    Alert.alert(entry.username, undefined, options);
   };
 
   return (
@@ -113,7 +128,13 @@ export default function CircleJournalCard({
           onPress={() => onOpenProfile(entry.user_id)}
           style={tw`flex-row items-center flex-1`}
         >
-          <Image source={{ uri: avatar }} style={tw`w-10 h-10 rounded-full mr-3`} />
+          <GrowAvatar
+            userId={entry.user_id}
+            username={entry.username}
+            uri={entry.avatar}
+            size={40}
+            style={tw`mr-3`}
+          />
           <View style={tw`flex-1`}>
             <Text style={tw`font-bold text-stone-900`} numberOfLines={1}>
               {entry.username}
@@ -169,8 +190,20 @@ export default function CircleJournalCard({
           style={tw`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-white border border-stone-200`}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={14} color="#1C1917" />
-          <Text style={tw`text-xs font-bold text-stone-800`}>Reply to a line</Text>
+          <Text style={tw`text-xs font-bold text-stone-800`}>Reply</Text>
         </Pressable>
+        {onShare ? (
+          <Pressable
+            onPress={() => {
+              feedback.open();
+              onShare(entry);
+            }}
+            style={tw`w-11 py-2.5 rounded-xl items-center justify-center bg-white border border-stone-200`}
+            accessibilityLabel="Share voice"
+          >
+            <Ionicons name="share-outline" size={16} color="#059669" />
+          </Pressable>
+        ) : null}
       </View>
       {entry.allowMessages !== false ? (
         <Pressable

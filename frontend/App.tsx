@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback } from 'react';
-import { Linking } from 'react-native';
+import React, { useEffect, useCallback, useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { Provider } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
@@ -10,6 +10,7 @@ import RootNavigator from './src/app/navigation/RootNavigator';
 import { useAppDispatch, useAppSelector } from './src/store/store';
 import { hydrateAuth } from './src/store/slices/authSlice';
 import BrandLoadingScreen from './src/components/common/BrandLoadingScreen';
+import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
 import { KeyboardDoneAccessory } from './src/components/ui/KeyboardDoneAccessory';
 import { initMonitoring } from './src/services/monitoring';
@@ -26,11 +27,13 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 function AppContent() {
   const dispatch = useAppDispatch();
   const { token, hydrated } = useAppSelector((state) => state.auth);
+  const [bootDone, setBootDone] = useState(false);
 
   useEffect(() => {
     if (!hydrated) {
       dispatch(hydrateAuth());
     }
+    void useActivationStore.getState().hydrate();
   }, [dispatch, hydrated]);
 
   useEffect(() => {
@@ -58,28 +61,45 @@ function AppContent() {
     }
   }, [hydrated]);
 
-  if (!hydrated) {
-    return (
-      <BrandLoadingScreen
-        variant="splash"
-        showWordmark
-        message="Growing your session…"
-        onLayout={onLoaderLayout}
-      />
-    );
-  }
-
   return (
-    <NavigationContainer key={token || 'no-token'} ref={navigationRef}>
-      <StatusBar style="auto" />
-      <RootNavigator />
-    </NavigationContainer>
+    <View style={styles.root}>
+      {hydrated ? (
+        <NavigationContainer key={token || 'no-token'} ref={navigationRef}>
+          <StatusBar style="auto" />
+          <RootNavigator />
+        </NavigationContainer>
+      ) : (
+        <View style={styles.hold} />
+      )}
+      {!bootDone ? (
+        <View style={styles.splash} pointerEvents="auto">
+          <BrandLoadingScreen
+            variant="splash"
+            showWordmark
+            message="Still growing."
+            ready={hydrated}
+            onFinished={() => setBootDone(true)}
+            onLayout={onLoaderLayout}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#049669' },
+  hold: { flex: 1, backgroundColor: '#049669' },
+  splash: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    elevation: 50,
+  },
+});
+
 export default function App() {
   useEffect(() => {
-    // Safety: if auth hydrate is instant, still drop native splash once JS is up.
+    // Safety: if JS hangs, still drop the native emerald splash.
     const t = setTimeout(() => {
       SplashScreen.hideAsync().catch(() => undefined);
     }, 2500);

@@ -18,7 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import tw from '../../lib/tw';
 import CATEGORIES from '../../data/categories';
-import { uploadMediaApi } from '../../services/api/media';
+import { uploadMediaFile } from '../../services/api/media';
 import StickyFooter from '../ui/StickyFooter';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 
@@ -46,45 +46,6 @@ interface ProductFormProps {
     stock: number;
     image_url?: string;
   }) => Promise<void>;
-}
-
-/** Convert local/blob image URIs to a data URL for media upload. */
-async function uriToDataUrl(uri: string): Promise<string> {
-  const lower = uri.toLowerCase();
-  if (lower.startsWith('data:')) return uri;
-
-  const res = await fetch(uri);
-  const blob = await res.blob();
-
-  if (Platform.OS === 'web' && typeof FileReader !== 'undefined') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Could not read image'));
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  // React Native: prefer FileReader if present, else arrayBuffer → base64
-  if (typeof FileReader !== 'undefined') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Could not read image'));
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  const base64 =
-    typeof btoa === 'function'
-      ? btoa(binary)
-      : Buffer.from(bytes).toString('base64');
-  const mime = blob.type || (lower.includes('.png') ? 'image/png' : 'image/jpeg');
-  return `data:${mime};base64,${base64}`;
 }
 
 export default function ProductForm({ visible, product, onClose, onSubmit }: ProductFormProps) {
@@ -123,7 +84,9 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.72,
+      exif: false,
+      base64: false,
     });
     if (!result.canceled && result.assets[0]) {
       setImageUrl(result.assets[0].uri);
@@ -161,8 +124,8 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
 
       if (needsUpload && persistableImageUrl) {
         try {
-          const dataUrl = await uriToDataUrl(persistableImageUrl);
-          persistableImageUrl = await uploadMediaApi(dataUrl, 'product');
+          const uploaded = await uploadMediaFile(persistableImageUrl, 'product');
+          persistableImageUrl = uploaded.url;
         } catch (uploadErr: unknown) {
           const msg =
             uploadErr instanceof Error ? uploadErr.message : 'Image upload failed';

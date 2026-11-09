@@ -39,12 +39,20 @@ import { createConversation } from '../../services/api/messages';
 import {
   endorseCandidate,
   getEndorsementStatus,
+  requestEndorsement,
+  respondToEndorsementRequest,
   type EndorsementStatus,
 } from '../../services/api/instructor';
+import InstructorOfferCard from '../../components/instructor/InstructorOfferCard';
+import { StarRow } from '../../components/instructor/StarRating';
+import { openCoachingReachOut } from '../../utils/coachingReachOut';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import EmptyState from '../../components/ui/EmptyState';
 import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { alertMessage } from '../../utils/confirmDialog';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { feedback } from '../../utils/interactionFeedback';
+import PressableScale from '../../components/ui/PressableScale';
 
 type Post = {
   id: string;
@@ -56,6 +64,7 @@ type Post = {
   category: string;
   subcategory?: string;
   isReel?: boolean;
+  hasLiked?: boolean;
 };
 
 type Story = {
@@ -98,6 +107,7 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
     category: p.category,
     subcategory: p.subcategory || undefined,
     isReel: isReelPost(p),
+    hasLiked: !!p.metadata?.has_liked,
   };
 }
 
@@ -165,6 +175,8 @@ export default function PublicProfileScreen() {
   const [messageBusy, setMessageBusy] = useState(false);
   const [endorseStatus, setEndorseStatus] = useState<EndorsementStatus | null>(null);
   const [endorseBusy, setEndorseBusy] = useState(false);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
 
   const isOwnProfile = currentUser?.id === userId;
 
@@ -227,6 +239,7 @@ export default function PublicProfileScreen() {
     setEndorseBusy(true);
     try {
       const result = await endorseCandidate(userId);
+      feedback.success();
       if (typeof result.points_total_voter === 'number') {
         updateUser({ points: result.points_total_voter });
       }
@@ -237,12 +250,73 @@ export default function PublicProfileScreen() {
               canEndorse: false,
               alreadyEndorsed: true,
               endorsementCount: result.endorsementCount,
+              pendingIncoming: false,
+              canRequestEndorsement: false,
             }
           : prev
       );
       alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement. You earned growth points too.`);
     } catch (e) {
+      feedback.error();
       alertMessage('Could not endorse', e instanceof Error ? e.message : 'Try again later');
+    } finally {
+      setEndorseBusy(false);
+    }
+  };
+
+  const onRequestEndorsement = async () => {
+    if (requestBusy || !endorseStatus?.canRequestEndorsement) return;
+    setRequestBusy(true);
+    try {
+      await requestEndorsement(userId);
+      feedback.send();
+      setEndorseStatus((prev) =>
+        prev
+          ? { ...prev, canRequestEndorsement: false, pendingOutgoing: true }
+          : prev
+      );
+      alertMessage(
+        'Request sent',
+        `${profileUser?.username ?? 'They'} will see it in Notifications — and can endorse you with one tap.`
+      );
+    } catch (e) {
+      feedback.error();
+      alertMessage('Could not request', e instanceof Error ? e.message : 'Try again later');
+    } finally {
+      setRequestBusy(false);
+    }
+  };
+
+  const onRespondIncomingRequest = async (status: 'accepted' | 'declined') => {
+    if (!endorseStatus?.pendingIncomingRequestId || endorseBusy) return;
+    setEndorseBusy(true);
+    try {
+      await respondToEndorsementRequest(endorseStatus.pendingIncomingRequestId, status);
+      feedback.success();
+      setEndorseStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              canEndorse: status === 'accepted' ? false : prev.canEndorse,
+              alreadyEndorsed: status === 'accepted' ? true : prev.alreadyEndorsed,
+              pendingIncoming: false,
+              pendingIncomingRequestId: null,
+              endorsementCount:
+                status === 'accepted'
+                  ? (prev.endorsementCount || 0) + 1
+                  : prev.endorsementCount,
+            }
+          : prev
+      );
+      alertMessage(
+        status === 'accepted' ? 'Endorsed' : 'Request declined',
+        status === 'accepted'
+          ? `You endorsed ${profileUser?.username ?? 'them'}.`
+          : 'They won’t be notified of the decline.'
+      );
+    } catch (e) {
+      feedback.error();
+      alertMessage('Could not respond', e instanceof Error ? e.message : 'Try again');
     } finally {
       setEndorseBusy(false);
     }
@@ -575,6 +649,23 @@ export default function PublicProfileScreen() {
     }
   };
 
+  const onReachOut = async () => {
+    if (messageBusy || isOwnProfile || !profileUser) return;
+    setMessageBusy(true);
+    try {
+      await openCoachingReachOut(
+        navigation,
+        userId,
+        `Hi ${profileUser.username} — I’d like to talk about a coaching plan.`
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not reach this instructor';
+      notify('Error', msg);
+    } finally {
+      setMessageBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
@@ -673,6 +764,57 @@ export default function PublicProfileScreen() {
               </View>
             ) : null}
 
+            {profileUser.isInstructor ? (
+              <InstructorOfferCard
+                offer={profileUser.offering}
+                completedPlans={profileUser.completedPlans || 0}
+                endorsements={profileUser.endorsementsReceived || 0}
+                rating={profileUser.rating}
+              />
+            ) : profileUser.followThrough && profileUser.followThrough.count > 0 ? (
+              <View style={tw`mb-3 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                  Follow-through
+                </Text>
+                <View style={tw`flex-row items-center mt-1.5`}>
+                  <StarRow value={profileUser.followThrough.avg} />
+                  <Text style={tw`text-xs text-stone-500 ml-1.5`}>
+                    {profileUser.followThrough.avg} · {profileUser.followThrough.count} coach
+                    {profileUser.followThrough.count === 1 ? '' : 'es'}
+                  </Text>
+                </View>
+                <Text style={tw`text-xs text-stone-500 mt-1`}>
+                  Rated by instructors after 4 completed weeks.
+                </Text>
+              </View>
+            ) : null}
+
+            {profileUser.isInstructor && (profileUser.testimonials || []).length > 0 ? (
+              <View style={tw`mb-3`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                  From clients
+                </Text>
+                {profileUser.testimonials!.map((t) => (
+                  <View
+                    key={t.id}
+                    style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                  >
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <Text style={tw`font-semibold text-stone-900`}>{t.reviewer.username}</Text>
+                      <StarRow value={t.stars} size={12} />
+                    </View>
+                    {t.body ? (
+                      <Text style={tw`text-[13px] text-stone-600 mt-1.5 leading-5`}>{t.body}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : profileUser.isInstructor ? (
+              <Text style={tw`text-xs text-stone-400 mb-3`}>
+                Client reviews appear after 4 completed weeks together.
+              </Text>
+            ) : null}
+
             {profileUser.status ? (
               <View style={tw`mb-2 px-3 py-2 rounded-2xl bg-[#EAE4D6] border border-stone-200/60`}>
                 <Text style={tw`text-[13px] text-stone-800 leading-5`}>{profileUser.status}</Text>
@@ -694,8 +836,14 @@ export default function PublicProfileScreen() {
               </View>
               <View style={tw`w-px bg-stone-200/80 my-2`} />
               <View style={tw`flex-1 items-center py-2.5`}>
-                <Text style={tw`text-lg font-bold text-emerald-700`}>{profileUser.points}</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Points</Text>
+                <Text style={tw`text-lg font-bold text-emerald-700`}>
+                  {profileUser.isInstructor
+                    ? profileUser.completedPlans || 0
+                    : profileUser.points}
+                </Text>
+                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  {profileUser.isInstructor ? 'Plans' : 'Points'}
+                </Text>
               </View>
             </View>
 
@@ -749,7 +897,22 @@ export default function PublicProfileScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  {friendConnected ? (
+                  {profileUser.isInstructor ? (
+                    <PressableScale
+                      onPress={() => void onReachOut()}
+                      disabled={messageBusy}
+                      style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                        messageBusy ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {messageBusy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                      )}
+                      <Text style={tw`font-bold text-sm text-white`}>Reach out</Text>
+                    </PressableScale>
+                  ) : friendConnected ? (
                     <TouchableOpacity
                       onPress={() => void onMessageFriend()}
                       disabled={messageBusy}
@@ -762,69 +925,246 @@ export default function PublicProfileScreen() {
                       ) : (
                         <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
                       )}
-                      <Text style={tw`font-bold text-sm text-white`}>
-                        {profileUser.isInstructor ? 'Message coach' : 'Message'}
-                      </Text>
+                      <Text style={tw`font-bold text-sm text-white`}>Message</Text>
                     </TouchableOpacity>
-                  ) : profileUser.isInstructor ? (
-                    <View style={tw`flex-1 py-3 rounded-2xl items-center justify-center bg-[#ECFDF5] border border-emerald-100 px-2`}>
-                      <Text style={tw`text-xs font-semibold text-emerald-800 text-center`}>
-                        Add friend to message coach
-                      </Text>
-                    </View>
                   ) : null}
                 </View>
 
-                {endorseStatus &&
-                (endorseStatus.alreadyEndorsed ||
-                  endorseStatus.canEndorse ||
-                  (endorseStatus.sharedCategories?.length ?? 0) === 0) ? (
-                  <TouchableOpacity
-                    onPress={() => void onEndorse()}
-                    disabled={!endorseStatus.canEndorse || endorseBusy}
-                    style={tw`py-3 rounded-2xl flex-row items-center justify-center gap-1.5 ${
-                      endorseStatus.alreadyEndorsed
-                        ? 'bg-[#ECFDF5] border border-emerald-200'
-                        : endorseStatus.canEndorse
-                          ? 'bg-stone-900'
-                          : 'bg-[#EAE4D6] border border-stone-200'
-                    } ${endorseBusy ? 'opacity-60' : ''}`}
+                {endorseStatus?.pendingIncoming && endorseStatus.pendingIncomingRequestId ? (
+                  <View
+                    style={tw`rounded-[22px] overflow-hidden border border-[#FECACA] bg-[#FFFcf7]`}
                   >
-                    {endorseBusy ? (
-                      <ActivityIndicator
-                        color={endorseStatus.canEndorse ? '#fff' : '#57534E'}
-                      />
-                    ) : (
-                      <Ionicons
-                        name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
-                        size={18}
-                        color={
-                          endorseStatus.alreadyEndorsed
-                            ? '#059669'
-                            : endorseStatus.canEndorse
-                              ? '#fff'
-                              : '#78716C'
-                        }
-                      />
-                    )}
-                    <Text
-                      style={tw`font-bold text-sm ${
-                        endorseStatus.alreadyEndorsed
-                          ? 'text-emerald-700'
-                          : endorseStatus.canEndorse
-                            ? 'text-white'
-                            : 'text-stone-500'
-                      }`}
-                    >
-                      {endorseStatus.alreadyEndorsed
-                        ? 'Endorsed'
+                    <View style={tw`h-1.5 bg-energy-600`} />
+                    <View style={tw`px-4 py-3.5`}>
+                      <View style={tw`flex-row items-center mb-1`}>
+                        <Ionicons name="ribbon" size={14} color="#E11D48" />
+                        <Text
+                          style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase ml-1.5`}
+                        >
+                          Endorsement ask
+                        </Text>
+                      </View>
+                      <Text style={tw`text-[15px] font-semibold text-stone-900 mt-0.5`}>
+                        They asked for your endorsement
+                      </Text>
+                      <Text style={tw`text-sm text-stone-600 mt-1.5 leading-5`}>
+                        Peer trust unlocks their Instructor Hub — no purchase. Shared paths below.
+                      </Text>
+                      {(endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
+                        <View style={tw`flex-row flex-wrap gap-1.5 mt-3`}>
+                          {endorseStatus.sharedCategories.slice(0, 3).map((key) => (
+                            <View
+                              key={`ask-shared-${key}`}
+                              style={tw`px-2.5 py-1 rounded-full bg-[#FFF1F0] border border-[#FECACA]`}
+                            >
+                              <Text style={tw`text-[11px] font-semibold text-[#E11D48]`}>
+                                {getCategoryLabel(key)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                      <View style={tw`flex-row gap-2 mt-3.5`}>
+                        <PressableScale
+                          onPress={() => void onRespondIncomingRequest('accepted')}
+                          disabled={endorseBusy}
+                          feedback={false}
+                          style={tw`flex-1 py-3 rounded-xl flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                            endorseBusy ? 'opacity-60' : ''
+                          }`}
+                        >
+                          {endorseBusy ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <Ionicons name="ribbon" size={18} color="#fff" />
+                          )}
+                          <Text style={tw`font-bold text-sm text-white`}>Endorse</Text>
+                        </PressableScale>
+                        <PressableScale
+                          onPress={() => void onRespondIncomingRequest('declined')}
+                          disabled={endorseBusy}
+                          feedback={false}
+                          style={tw`px-4 py-3 rounded-xl bg-[#EAE4D6] border border-stone-200 items-center justify-center`}
+                        >
+                          <Text style={tw`font-semibold text-sm text-stone-700`}>Not now</Text>
+                        </PressableScale>
+                      </View>
+                    </View>
+                  </View>
+                ) : endorseStatus &&
+                  (endorseStatus.alreadyEndorsed ||
+                    endorseStatus.canEndorse ||
+                    (endorseStatus.sharedCategories?.length ?? 0) === 0) ? (
+                  <View
+                    style={tw`rounded-[22px] overflow-hidden border ${
+                      endorseStatus.alreadyEndorsed
+                        ? 'border-emerald-200 bg-[#ECFDF5]'
                         : endorseStatus.canEndorse
-                          ? 'Endorse as instructor'
-                          : !(currentUser?.categories && currentUser.categories.length > 0)
-                            ? 'Add your paths to endorse'
-                            : 'Paths don’t overlap yet'}
-                    </Text>
-                  </TouchableOpacity>
+                          ? 'border-stone-800 bg-[#FFFcf7]'
+                          : 'border-stone-200 bg-[#EAE4D6]'
+                    }`}
+                  >
+                    <View style={tw`px-4 py-3.5`}>
+                      <Text
+                        style={tw`text-[11px] font-semibold tracking-widest uppercase ${
+                          endorseStatus.alreadyEndorsed || endorseStatus.canEndorse
+                            ? 'text-emerald-700'
+                            : 'text-stone-500'
+                        }`}
+                      >
+                        {endorseStatus.alreadyEndorsed
+                          ? 'Peer trust'
+                          : endorseStatus.canEndorse
+                            ? 'You can endorse'
+                            : 'Endorsement'}
+                      </Text>
+                      <Text style={tw`text-sm text-stone-600 mt-1 leading-5 mb-3`}>
+                        {endorseStatus.alreadyEndorsed
+                          ? 'You’ve already backed them on a shared path.'
+                          : endorseStatus.canEndorse
+                            ? 'Your endorsement helps unlock their Instructor Hub.'
+                            : !(currentUser?.categories && currentUser.categories.length > 0)
+                              ? 'Add growth paths on your profile to endorse peers.'
+                              : 'You need an overlapping growth path to endorse.'}
+                      </Text>
+                      <PressableScale
+                        onPress={() => void onEndorse()}
+                        disabled={!endorseStatus.canEndorse || endorseBusy}
+                        feedback={false}
+                        style={tw`py-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                          endorseStatus.alreadyEndorsed
+                            ? 'bg-white border border-emerald-200'
+                            : endorseStatus.canEndorse
+                              ? 'bg-stone-900'
+                              : 'bg-white/70 border border-stone-200'
+                        } ${endorseBusy ? 'opacity-60' : ''}`}
+                      >
+                        {endorseBusy ? (
+                          <ActivityIndicator
+                            color={endorseStatus.canEndorse ? '#fff' : '#57534E'}
+                          />
+                        ) : (
+                          <Ionicons
+                            name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
+                            size={18}
+                            color={
+                              endorseStatus.alreadyEndorsed
+                                ? '#059669'
+                                : endorseStatus.canEndorse
+                                  ? '#fff'
+                                  : '#78716C'
+                            }
+                          />
+                        )}
+                        <Text
+                          style={tw`font-bold text-sm ${
+                            endorseStatus.alreadyEndorsed
+                              ? 'text-emerald-700'
+                              : endorseStatus.canEndorse
+                                ? 'text-white'
+                                : 'text-stone-500'
+                          }`}
+                        >
+                          {endorseStatus.alreadyEndorsed
+                            ? 'Endorsed'
+                            : endorseStatus.canEndorse
+                              ? 'Endorse as instructor'
+                              : !(currentUser?.categories && currentUser.categories.length > 0)
+                                ? 'Add your paths to endorse'
+                                : 'Paths don’t overlap yet'}
+                        </Text>
+                      </PressableScale>
+                    </View>
+                  </View>
+                ) : null}
+
+                {endorseStatus?.canRequestEndorsement || endorseStatus?.pendingOutgoing ? (
+                  <View
+                    style={tw`rounded-[22px] overflow-hidden border ${
+                      endorseStatus.pendingOutgoing
+                        ? 'border-emerald-200 bg-[#ECFDF5]'
+                        : 'border-emerald-600/50 bg-[#FFFcf7]'
+                    }`}
+                  >
+                    <View
+                      style={tw`h-1.5 ${
+                        endorseStatus.pendingOutgoing ? 'bg-emerald-500' : 'bg-emerald-600'
+                      }`}
+                    />
+                    <View style={tw`px-4 py-3.5`}>
+                      <View style={tw`flex-row items-center mb-1`}>
+                        <Ionicons
+                          name={endorseStatus.pendingOutgoing ? 'time-outline' : 'ribbon-outline'}
+                          size={14}
+                          color="#059669"
+                        />
+                        <Text
+                          style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
+                        >
+                          {endorseStatus.pendingOutgoing
+                            ? 'Request pending'
+                            : 'Ask for endorsement'}
+                        </Text>
+                      </View>
+                      <Text style={tw`text-[15px] font-semibold text-stone-900 mt-0.5`}>
+                        {endorseStatus.pendingOutgoing
+                          ? 'Waiting on their response'
+                          : `Ask ${profileUser?.username ?? 'them'} to endorse you`}
+                      </Text>
+                      <Text style={tw`text-sm text-stone-600 mt-1.5 leading-5`}>
+                        {endorseStatus.pendingOutgoing
+                          ? 'They’ll see a structured ask in Notifications and can endorse with one tap.'
+                          : 'Sends a notification — not a cold DM. Peer trust unlocks your Instructor Hub.'}
+                      </Text>
+                      {(endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
+                        <View style={tw`flex-row flex-wrap gap-1.5 mt-3`}>
+                          {endorseStatus.sharedCategories.slice(0, 3).map((key) => (
+                            <View
+                              key={`req-shared-${key}`}
+                              style={tw`px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100`}
+                            >
+                              <Text style={tw`text-[11px] font-semibold text-emerald-800`}>
+                                {getCategoryLabel(key)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                      <PressableScale
+                        onPress={() => void onRequestEndorsement()}
+                        disabled={!endorseStatus.canRequestEndorsement || requestBusy}
+                        feedback={false}
+                        style={tw`mt-3.5 py-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                          endorseStatus.pendingOutgoing
+                            ? 'bg-white border border-emerald-200'
+                            : 'bg-emerald-600'
+                        } ${requestBusy ? 'opacity-60' : ''}`}
+                      >
+                        {requestBusy ? (
+                          <ActivityIndicator
+                            color={endorseStatus.pendingOutgoing ? '#059669' : '#fff'}
+                          />
+                        ) : (
+                          <Ionicons
+                            name={
+                              endorseStatus.pendingOutgoing ? 'time-outline' : 'paper-plane-outline'
+                            }
+                            size={18}
+                            color={endorseStatus.pendingOutgoing ? '#059669' : '#fff'}
+                          />
+                        )}
+                        <Text
+                          style={tw`font-bold text-sm ${
+                            endorseStatus.pendingOutgoing ? 'text-emerald-700' : 'text-white'
+                          }`}
+                        >
+                          {endorseStatus.pendingOutgoing
+                            ? 'Waiting on them'
+                            : 'Send endorsement ask'}
+                        </Text>
+                      </PressableScale>
+                    </View>
+                  </View>
                 ) : null}
               </View>
             ) : null}
@@ -1014,8 +1354,8 @@ export default function PublicProfileScreen() {
                   likes: post.likes,
                   comments: post.comments,
                   createdAt: post.createdAt,
-                  hasLiked: false,
-                  reaction: null,
+                  hasLiked: !!post.hasLiked,
+                  reaction: post.hasLiked ? 'love' : null,
                 },
               });
             }}
@@ -1151,10 +1491,21 @@ export default function PublicProfileScreen() {
               style={tw`py-4 border-b border-[#EAE4D6]`}
               onPress={() => {
                 setShowOptionsMenu(false);
-                Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
+                if (!profileUser) return;
+                setSharePayload({
+                  kind: 'profile',
+                  userId: profileUser.id,
+                  username: profileUser.username,
+                  avatar: profileUser.avatar,
+                  isInstructor: profileUser.isInstructor,
+                  teachingHeadline: profileUser.teachingHeadline,
+                  categories: profileUser.categories,
+                  points: profileUser.points,
+                  endorsements: profileUser.endorsementsReceived,
+                });
               }}
             >
-              <Text style={tw`text-base font-semibold text-stone-900`}>Share Profile</Text>
+              <Text style={tw`text-base font-semibold text-stone-900`}>Share profile card</Text>
             </Pressable>
 
             <Pressable
@@ -1167,6 +1518,11 @@ export default function PublicProfileScreen() {
         </View>
       </Modal>
 
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
+      />
     </SafeAreaView>
   );
 }

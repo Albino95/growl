@@ -129,6 +129,22 @@ async function parseMultipart(
   };
 }
 
+function sniffContentType(key: string, stored?: string): string {
+  const s = (stored || '').toLowerCase().trim();
+  if (s && s !== 'application/octet-stream' && s !== 'binary/octet-stream') {
+    return stored as string;
+  }
+  const k = key.toLowerCase();
+  if (k.endsWith('.mp4')) return 'video/mp4';
+  if (k.endsWith('.mov')) return 'video/quicktime';
+  if (k.endsWith('.webm')) return 'video/webm';
+  if (k.endsWith('.jpg') || k.endsWith('.jpeg')) return 'image/jpeg';
+  if (k.endsWith('.png')) return 'image/png';
+  if (k.endsWith('.webp')) return 'image/webp';
+  if (k.startsWith('reel/')) return 'video/mp4';
+  return stored || 'application/octet-stream';
+}
+
 function mediaUrlFromRequest(request: Request, env: Env, key: string): string {
   const base = new URL(request.url).origin;
   const apiPrefix = `/api/${env.API_VERSION || 'v1'}`;
@@ -270,6 +286,7 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
     return error('VALIDATION_ERROR', 'Invalid media key', 400);
   }
 
+  const isHead = request.method === 'HEAD';
   const rangeHeader = request.headers.get('Range') || request.headers.get('range');
   const obj = rangeHeader
     ? await env.R2.get(safeKey, { range: request.headers })
@@ -280,7 +297,7 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
   }
 
   const headers = new Headers();
-  const ct = obj.httpMetadata?.contentType || 'application/octet-stream';
+  const ct = sniffContentType(safeKey, obj.httpMetadata?.contentType);
   const cacheControl = obj.httpMetadata?.cacheControl || 'public, max-age=86400';
   headers.set('Content-Type', ct);
   headers.set('Cache-Control', cacheControl);
@@ -291,6 +308,7 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
   headers.set('Accept-Ranges', 'bytes');
 
   const size = obj.size;
+  const body = isHead ? null : obj.body;
   // R2 ranged get → 206 Partial Content (required by iOS AVPlayer)
   if (obj.range && typeof obj.range === 'object' && 'offset' in obj.range) {
     const offset = Number((obj.range as { offset: number }).offset) || 0;
@@ -300,14 +318,14 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
     const end = offset + length - 1;
     headers.set('Content-Range', `bytes ${offset}-${end}/${size}`);
     headers.set('Content-Length', String(length));
-    return new Response(obj.body, { status: 206, headers });
+    return new Response(body, { status: 206, headers });
   }
 
   if (typeof size === 'number' && size >= 0) {
     headers.set('Content-Length', String(size));
   }
 
-  return new Response(obj.body, { status: 200, headers });
+  return new Response(body, { status: 200, headers });
 }
 
 /**

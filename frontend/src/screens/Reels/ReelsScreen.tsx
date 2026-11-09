@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   Pressable,
   useWindowDimensions,
-  ActivityIndicator,
   RefreshControl,
   StyleSheet,
   Modal,
+  Platform,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -19,7 +19,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { getForYouFeed, getFeedPosts, getFeedPost, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { isVideoMedia } from '../../services/api/media';
-import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
+import { resolvePostMediaUri } from '../../utils/images';
+import GrowAvatar from '../../components/ui/GrowAvatar';
 import { isReelPost } from '../../utils/reelNavigation';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
 import { ReelVideoPlayer, ReelSoundtrack } from '../../components/ui/VideoEditor';
@@ -29,9 +30,14 @@ import FeedLikeButton, {
   ReactionPickerBar,
   type FeedReaction,
 } from '../../components/feed/FeedLikeButton';
-import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
+import {
+  feedback,
+  lockNativeUiAudio,
+  triggerPressFeedback,
+  unlockNativeUiAudio,
+} from '../../utils/interactionFeedback';
+import GrowLoader from '../../components/ui/GrowLoader';
 import tw from '../../lib/tw';
-import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 
 type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
@@ -146,11 +152,22 @@ export default function ReelsScreen() {
   const modeLabel = reelsMode === 'explore' ? 'Explore Reels' : 'Reels';
   const scrollToId = useRef(startPostId);
 
-  const [items, setItems] = useState<ReelRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const seedRow: ReelRow | null =
+    seedPost && isReelPost(seedPost)
+      ? {
+          ...seedPost,
+          liked: !!seedPost.metadata?.has_liked,
+          reaction: (seedPost.metadata?.has_liked ? 'love' : null) as FeedReaction,
+        }
+      : null;
+  const [items, setItems] = useState<ReelRow[]>(() => (seedRow ? [seedRow] : []));
+  const [loading, setLoading] = useState(!seedRow);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(
+    () => startPostId || seedRow?.id || null
+  );
   const [commentsPost, setCommentsPost] = useState<ReelRow | null>(null);
+  const [sessionStarted, setSessionStarted] = useState(Platform.OS === 'web');
   const [reactionsById, setReactionsById] = useState<Record<string, FeedReaction>>({});
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [heartBurst, setHeartBurst] = useState<Record<string, number>>({});
@@ -258,9 +275,13 @@ export default function ReelsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      lockNativeUiAudio();
       if (startPostId) scrollToId.current = startPostId;
-      setLoading(true);
       void load();
+      return () => {
+        unlockNativeUiAudio();
+        if (Platform.OS !== 'web') setSessionStarted(false);
+      };
     }, [load, startPostId])
   );
 
@@ -446,6 +467,10 @@ export default function ReelsScreen() {
       singleTapTimerRef.current = null;
       lastTapRef.current = null;
       triggerPressFeedback();
+      if (Platform.OS !== 'web' && !sessionStarted) {
+        setSessionStarted(true);
+        return;
+      }
       toggleReelPlayback(postId);
     }, 320);
   };
@@ -459,7 +484,6 @@ export default function ReelsScreen() {
 
   const renderReel = ({ item }: { item: ReelRow }) => {
     const username = item.metadata?.username || 'Member';
-    const avatar = resolveAvatarUri(item.user_id, username, item.metadata?.avatar);
     const uri = resolvePostMediaUri(item.image_url ?? '', item.category, item.id);
     const likes = item.metadata?.likes ?? 0;
     const comments = item.metadata?.comments ?? 0;
@@ -477,9 +501,14 @@ export default function ReelsScreen() {
     })();
     const isActive = activeId === item.id;
     const isUserPaused = userPausedIds.has(item.id);
-    const shouldPlay = isActive && !isUserPaused && !commentsPost;
+    const shouldPlay = isActive && sessionStarted && !isUserPaused && !commentsPost;
     const videoEdit = reelPlaybackSettingsFromMetadata(item.metadata);
-    const reaction = reactionsById[item.id] ?? (item.liked ? 'love' : null);
+    const reaction =
+      reactionsById[item.id] !== undefined
+        ? reactionsById[item.id]
+        : item.liked
+          ? 'love'
+          : null;
 
     return (
       <View style={[tw`bg-black overflow-hidden`, { height: pageH, width: '100%' }]}>
@@ -487,13 +516,19 @@ export default function ReelsScreen() {
         <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => handleReelPress(item.id)}>
             {isVideo ? (
-              <ReelVideoPlayer
-                uri={uri}
-                settings={videoEdit}
-                shouldPlay={shouldPlay}
-                contentFit="cover"
-                style={StyleSheet.absoluteFillObject}
-              />
+              isActive && sessionStarted && !commentsPost ? (
+                <ReelVideoPlayer
+                  uri={uri}
+                  settings={videoEdit}
+                  shouldPlay={shouldPlay}
+                  contentFit="cover"
+                  style={StyleSheet.absoluteFillObject}
+                />
+              ) : (
+                <View style={[StyleSheet.absoluteFillObject, tw`bg-black items-center justify-center`]}>
+                  <Ionicons name="play" size={44} color="#FFFFFF" />
+                </View>
+              )
             ) : (
               <>
                 <Image
@@ -531,7 +566,13 @@ export default function ReelsScreen() {
                   });
                 }}
               >
-                <Image source={{ uri: avatar }} style={tw`w-10 h-10 rounded-full border-2 border-white mr-3`} />
+                <GrowAvatar
+                  userId={item.user_id}
+                  username={username}
+                  uri={item.metadata?.avatar}
+                  size={40}
+                  style={tw`border-2 border-white mr-3`}
+                />
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-white font-semibold`}>{username}</Text>
                   <View style={tw`self-start mt-0.5 px-2 py-0.5 rounded-full bg-brand-600/30 border border-brand-500/40`}>
@@ -587,12 +628,9 @@ export default function ReelsScreen() {
     return (
       <View style={tw`flex-1 bg-black`}>
         <ReelsHeader onBack={goBack} onCreate={openCreateReel} modeLabel={modeLabel} />
-        <BrandLoadingScreen
-          variant="dark"
-          message="Loading clips…"
-          showWordmark={false}
-          manageStatusBar={false}
-        />
+        <View style={tw`flex-1 items-center justify-center`}>
+          <GrowLoader label="Finding clips…" />
+        </View>
       </View>
     );
   }
@@ -622,8 +660,12 @@ export default function ReelsScreen() {
         style={{ flex: 1 }}
         data={items}
         renderItem={renderReel}
-        extraData={pageH}
+        extraData={`${pageH}:${activeId}:${sessionStarted ? '1' : '0'}`}
         keyExtractor={(item) => item.id}
+        initialNumToRender={1}
+        maxToRenderPerBatch={1}
+        windowSize={1}
+        removeClippedSubviews={false}
         pagingEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={pageH}

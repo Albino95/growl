@@ -10,6 +10,12 @@ import {
   resolveUserCategories,
 } from '../utils/instructorEligibility';
 import { countEndorsementsGiven, computePostStreak } from '../utils/points';
+import {
+  countCompletedPlans,
+  getOffering,
+  loadClientFollowThrough,
+  loadInstructorRatings,
+} from '../utils/coachingAccess';
 
 /**
  * GET /api/v1/profile/user/:userId
@@ -52,6 +58,60 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
     const pinned_post_ids = Array.isArray(meta.pinned_post_ids)
       ? meta.pinned_post_ids.filter((x: unknown) => typeof x === 'string').slice(0, 3)
       : [];
+    const offering = row.is_instructor ? await getOffering(env, targetUserId) : null;
+    const completed_plans = row.is_instructor ? await countCompletedPlans(env, targetUserId) : 0;
+    const instructorRating = row.is_instructor
+      ? (await loadInstructorRatings(env, [targetUserId])).get(targetUserId)
+      : null;
+    const followThrough = !row.is_instructor ? await loadClientFollowThrough(env, targetUserId) : null;
+    let testimonials: Array<{
+      id: string;
+      stars: number;
+      body: string | null;
+      created_at: string;
+      reviewer: { id: string; username: string; avatar: string | null };
+    }> = [];
+    if (row.is_instructor) {
+      try {
+        const reviewRows = await env.DB.prepare(
+          `SELECT r.id, r.stars, r.body, r.created_at, r.reviewer_id, u.metadata
+           FROM coaching_reviews r
+           JOIN users u ON u.id = r.reviewer_id
+           WHERE r.instructor_id = ? AND r.direction = 'client_to_instructor'
+           ORDER BY r.created_at DESC
+           LIMIT 4`
+        )
+          .bind(targetUserId)
+          .all<{
+            id: string;
+            stars: number;
+            body: string | null;
+            created_at: string;
+            reviewer_id: string;
+            metadata: string;
+          }>();
+        testimonials = (reviewRows.results || []).map((t) => {
+          let name = 'Client';
+          let avatar: string | null = null;
+          try {
+            const m = JSON.parse(t.metadata || '{}');
+            if (typeof m.username === 'string') name = m.username;
+            if (typeof m.avatar === 'string') avatar = m.avatar;
+          } catch {
+            /* ignore */
+          }
+          return {
+            id: t.id,
+            stars: Number(t.stars) || 0,
+            body: t.body,
+            created_at: t.created_at,
+            reviewer: { id: t.reviewer_id, username: name, avatar },
+          };
+        });
+      } catch {
+        testimonials = [];
+      }
+    }
 
     return json({
       id: row.id,
@@ -69,6 +129,14 @@ export async function getPublicProfile(request: Request, env: Env, targetUserId:
       teaching_headline:
         typeof meta.teaching_headline === 'string' ? meta.teaching_headline : null,
       pinned_post_ids,
+      offering,
+      completed_plans,
+      rating:
+        instructorRating && instructorRating.count > 0
+          ? instructorRating
+          : { avg: 0, count: 0 },
+      follow_through: followThrough && followThrough.count > 0 ? followThrough : null,
+      testimonials,
       created_at: row.created_at,
     });
   } catch (err) {
@@ -104,6 +172,8 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
     avatar: metadata.avatar,
     bio: typeof metadata.bio === 'string' ? metadata.bio : null,
     status: typeof metadata.status === 'string' ? metadata.status : null,
+    teaching_headline:
+      typeof metadata.teaching_headline === 'string' ? metadata.teaching_headline : null,
     points: Number(ctx.user.points) || 0,
     is_instructor: ctx.user.is_instructor,
     is_business: ctx.user.is_business,

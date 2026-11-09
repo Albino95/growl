@@ -5,6 +5,7 @@ import * as feedRoutes from './routes/feed';
 import * as commentRoutes from './routes/comments';
 import * as marketplaceRoutes from './routes/marketplace';
 import * as instructorRoutes from './routes/instructor';
+import * as coachingRoutes from './routes/coaching';
 import * as businessRoutes from './routes/business';
 import * as profileRoutes from './routes/profile';
 import * as storiesRoutes from './routes/stories';
@@ -13,6 +14,9 @@ import * as mediaRoutes from './routes/media';
 import * as privacyRoutes from './routes/privacy';
 import * as journalRoutes from './routes/journal';
 import * as messagesRoutes from './routes/messages';
+import * as notificationsRoutes from './routes/notifications';
+import * as seedsRoutes from './routes/seeds';
+import * as groupsRoutes from './routes/groups';
 import * as adminAuthRoutes from './routes/admin/auth';
 import * as adminModerationRoutes from './routes/admin/moderation';
 import * as adminUsersRoutes from './routes/admin/users';
@@ -20,6 +24,7 @@ import * as adminPrivacyRoutes from './routes/admin/privacy';
 import * as adminBusinessRoutes from './routes/admin/business';
 import * as adminAuditRoutes from './routes/admin/audit';
 import * as adminDashboardRoutes from './routes/admin/dashboard';
+import * as appReviewsRoutes from './routes/appReviews';
 import { purgeExpiredUnverifiedUsers } from './jobs/purgeUnverifiedUsers';
 
 /**
@@ -257,6 +262,64 @@ async function handleRequest(
       if (path === `${apiPrefix}/instructor/hub` && request.method === 'GET') {
         return instructorRoutes.getInstructorHub(request, env);
       }
+      if (path === `${apiPrefix}/instructor/offering` && request.method === 'GET') {
+        return coachingRoutes.getMyOffering(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/offering` && request.method === 'PUT') {
+        return coachingRoutes.updateMyOffering(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/inquiries` && request.method === 'POST') {
+        return coachingRoutes.startInquiry(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/inquiries` && request.method === 'GET') {
+        return coachingRoutes.listInquiries(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/thread` && request.method === 'GET') {
+        return coachingRoutes.getThread(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/proposals` && request.method === 'POST') {
+        return coachingRoutes.sendProposal(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/contracts` && request.method === 'GET') {
+        return coachingRoutes.listContracts(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/reviews` && request.method === 'POST') {
+        return coachingRoutes.upsertReview(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/reviews/eligibility` && request.method === 'GET') {
+        return coachingRoutes.getReviewEligibility(request, env);
+      }
+
+      const proposalRespondMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/proposals/([^/]+)/(accept|decline)$`)
+      );
+      if (proposalRespondMatch && request.method === 'POST') {
+        const proposalId = proposalRespondMatch[1];
+        return proposalRespondMatch[2] === 'accept'
+          ? coachingRoutes.acceptProposal(request, env, proposalId)
+          : coachingRoutes.declineProposal(request, env, proposalId);
+      }
+
+      const contractAssignMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/contracts/([^/]+)/assignments$`)
+      );
+      if (contractAssignMatch && request.method === 'POST') {
+        return coachingRoutes.assignHomework(request, env, contractAssignMatch[1]);
+      }
+
+      const contractCompleteMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/contracts/([^/]+)/complete$`)
+      );
+      if (contractCompleteMatch && request.method === 'POST') {
+        return coachingRoutes.completeContract(request, env, contractCompleteMatch[1]);
+      }
+
+      const contractMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/contracts/([^/]+)$`)
+      );
+      if (contractMatch && request.method === 'GET') {
+        return coachingRoutes.getContract(request, env, contractMatch[1]);
+      }
 
       const instructorPartnershipReqMatch = path.match(
         new RegExp(`^${apiPrefix}/instructor/partnerships/requests/([^/]+)$`)
@@ -314,6 +377,38 @@ async function handleRequest(
       }
       if (path === `${apiPrefix}/instructor/claim` && request.method === 'POST') {
         return instructorRoutes.claimInstructor(request, env);
+      }
+
+      if (
+        path === `${apiPrefix}/instructor/endorsement-requests` &&
+        request.method === 'GET'
+      ) {
+        return instructorRoutes.listIncomingEndorsementRequests(request, env);
+      }
+
+      const endorsementRequestRespondMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/endorsement-requests/([^/]+)$`)
+      );
+      if (endorsementRequestRespondMatch && request.method === 'PATCH') {
+        return instructorRoutes.respondToEndorsementRequest(
+          request,
+          env,
+          endorsementRequestRespondMatch[1]
+        );
+      }
+
+      const requestEndorsementMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/candidates/([^/]+)/request-endorsement$`)
+      );
+      if (requestEndorsementMatch && request.method === 'POST') {
+        return instructorRoutes.requestEndorsement(request, env, requestEndorsementMatch[1]);
+      }
+
+      const instructorReviewsMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)/reviews$`)
+      );
+      if (instructorReviewsMatch && request.method === 'GET') {
+        return coachingRoutes.listInstructorReviews(request, env, instructorReviewsMatch[1]);
       }
 
       const instructorMatch = path.match(new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)$`));
@@ -483,7 +578,7 @@ async function handleRequest(
         return mediaRoutes.getLibraryAudio(request, env, audioMatch[1]);
       }
       const mediaMatch = path.match(new RegExp(`^${apiPrefix}/media/(.+)$`));
-      if (mediaMatch && request.method === 'GET') {
+      if (mediaMatch && (request.method === 'GET' || request.method === 'HEAD')) {
         return mediaRoutes.getMedia(request, env, mediaMatch[1]);
       }
 
@@ -541,6 +636,18 @@ async function handleRequest(
       }
 
       // Messages routes
+      const messageReactionMatch = path.match(
+        new RegExp(`^${apiPrefix}/messages/conversations/([^/]+)/messages/([^/]+)/reaction$`)
+      );
+      if (messageReactionMatch && request.method === 'PUT') {
+        return messagesRoutes.reactToMessage(
+          request,
+          env,
+          messageReactionMatch[1],
+          messageReactionMatch[2]
+        );
+      }
+
       const conversationMessagesMatch = path.match(
         new RegExp(`^${apiPrefix}/messages/conversations/([^/]+)/messages$`)
       );
@@ -559,6 +666,102 @@ async function handleRequest(
       }
       if (path === `${apiPrefix}/messages/conversations` && request.method === 'POST') {
         return messagesRoutes.createConversation(request, env);
+      }
+      if (path === `${apiPrefix}/messages/unread-count` && request.method === 'GET') {
+        return messagesRoutes.unreadCount(request, env);
+      }
+
+      // Growth seeds (Garden)
+      if (path === `${apiPrefix}/seeds` && request.method === 'GET') {
+        return seedsRoutes.listSeeds(request, env);
+      }
+      if (path === `${apiPrefix}/seeds` && request.method === 'POST') {
+        return seedsRoutes.createSeed(request, env);
+      }
+      const seedMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)$`));
+      if (seedMatch && request.method === 'GET') {
+        return seedsRoutes.getSeed(request, env, seedMatch[1]);
+      }
+      const seedWaterMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/water$`));
+      if (seedWaterMatch && request.method === 'POST') {
+        return seedsRoutes.waterSeed(request, env, seedWaterMatch[1]);
+      }
+      const seedAcceptMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/accept$`));
+      if (seedAcceptMatch && request.method === 'POST') {
+        return seedsRoutes.acceptSeedInvite(request, env, seedAcceptMatch[1]);
+      }
+      const seedMatureMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/mature$`));
+      if (seedMatureMatch && request.method === 'POST') {
+        return seedsRoutes.matureSeed(request, env, seedMatureMatch[1]);
+      }
+      const seedInviteMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/invite$`));
+      if (seedInviteMatch && request.method === 'POST') {
+        return seedsRoutes.inviteToSeed(request, env, seedInviteMatch[1]);
+      }
+
+      // Growth circles (starting groups + user groups)
+      if (path === `${apiPrefix}/groups` && request.method === 'GET') {
+        return groupsRoutes.listGroups(request, env);
+      }
+      if (path === `${apiPrefix}/groups` && request.method === 'POST') {
+        return groupsRoutes.createGroup(request, env);
+      }
+      if (path === `${apiPrefix}/groups/prefs` && request.method === 'PATCH') {
+        return groupsRoutes.updateCirclePrefs(request, env);
+      }
+      if (path === `${apiPrefix}/groups/place` && request.method === 'POST') {
+        return groupsRoutes.placeGroup(request, env);
+      }
+      const groupJoinMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/join$`));
+      if (groupJoinMatch && request.method === 'POST') {
+        return groupsRoutes.joinGroup(request, env, groupJoinMatch[1]);
+      }
+      const groupLeaveMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/leave$`));
+      if (groupLeaveMatch && request.method === 'POST') {
+        return groupsRoutes.leaveGroup(request, env, groupLeaveMatch[1]);
+      }
+      const groupPulseMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/pulse$`));
+      if (groupPulseMatch && request.method === 'POST') {
+        return groupsRoutes.pulseGroup(request, env, groupPulseMatch[1]);
+      }
+      const groupCallMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/call-interest$`));
+      if (groupCallMatch && request.method === 'POST') {
+        return groupsRoutes.callInterest(request, env, groupCallMatch[1]);
+      }
+      const groupMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)$`));
+      if (groupMatch && request.method === 'GET') {
+        return groupsRoutes.getGroup(request, env, groupMatch[1]);
+      }
+
+      // In-app beta reviews (pre-store)
+      if (path === `${apiPrefix}/app-reviews` && request.method === 'GET') {
+        return appReviewsRoutes.listAppReviews(request, env);
+      }
+      if (path === `${apiPrefix}/app-reviews` && request.method === 'PUT') {
+        return appReviewsRoutes.upsertAppReview(request, env);
+      }
+      const appReviewReplyMatch = path.match(
+        new RegExp(`^${apiPrefix}/app-reviews/([^/]+)/reply$`)
+      );
+      if (appReviewReplyMatch && request.method === 'POST') {
+        return appReviewsRoutes.replyAppReview(request, env, appReviewReplyMatch[1]);
+      }
+
+      // Consumer activity notifications
+      if (path === `${apiPrefix}/notifications` && request.method === 'GET') {
+        return notificationsRoutes.listNotifications(request, env);
+      }
+      if (path === `${apiPrefix}/notifications/unread-count` && request.method === 'GET') {
+        return notificationsRoutes.unreadCount(request, env);
+      }
+      if (path === `${apiPrefix}/notifications/read-all` && request.method === 'POST') {
+        return notificationsRoutes.markAllRead(request, env);
+      }
+      const notificationReadMatch = path.match(
+        new RegExp(`^${apiPrefix}/notifications/([^/]+)/read$`)
+      );
+      if (notificationReadMatch && request.method === 'PATCH') {
+        return notificationsRoutes.markRead(request, env, notificationReadMatch[1]);
       }
 
       // Friends / cohort social graph

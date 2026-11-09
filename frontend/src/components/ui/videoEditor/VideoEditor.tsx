@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Pressable,
-  Modal,
   ScrollView,
   TextInput,
   ActivityIndicator,
@@ -12,10 +11,13 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Video, Audio, AVPlaybackStatus, ResizeMode } from 'expo-av';
+import { Audio } from 'expo-av';
+import NativeClipPlayer from './NativeClipPlayer';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
 import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
+import { feedback } from '../../../utils/interactionFeedback';
 import type { TextOverlay, TextOverlayStyle, EditAdjustments } from '../photoEditor/types';
 import { TEXT_COLORS, TEXT_QUICK_PHRASES, DEFAULT_ADJUSTMENTS } from '../photoEditor/types';
 import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
@@ -24,12 +26,24 @@ import type { VideoEditSettings, VideoLookId } from './types';
 import {
   DEFAULT_VIDEO_EDIT,
   SPEED_PRESETS,
-  getVideoLook,
   normalizeVideoEdit,
 } from './types';
 import FilmstripTrimmer from './FilmstripTrimmer';
 import VideoLookPanel from './VideoLookPanel';
-import { buildVideoCssFilter, videoVignetteStrength, videoCinematicStrength, videoFadeOpacity } from './videoFilters';
+import { buildVideoCssFilter } from './videoFilters';
+import { VideoGradeStack } from './GradeOverlays';
+import {
+  buildPlaceholders,
+  extractVideoFrames,
+  frameCountForDuration,
+  frameImageSource,
+  nearestFrame,
+  remapFrameTimes,
+  stillFromFrames,
+  type FrameThumb,
+} from './extractFrames';
+import { shouldMountNativePlayer } from './videoEditorPolicy';
+import { clipEndMs, playFromMs } from './editorPlayback';
 import {
   POST_MUSIC_TRACKS,
   MUSIC_GENRE_FILTERS,
@@ -80,6 +94,12 @@ type Props = {
   videoUri: string;
   initialSettings?: Partial<VideoEditSettings>;
   title?: string;
+  /** Stories cap at 30s — clamp the trim window once duration is known. */
+  maxClipMs?: number;
+  /** Picker/camera duration so we can sample frames before the player mounts. */
+  hintDurationMs?: number;
+  /** Stills sampled before any expo-av player opened the clip. */
+  initialFrames?: FrameThumb[];
   onSave: (settings: VideoEditSettings) => void;
   onCancel: () => void;
 };
@@ -88,6 +108,9 @@ export default function VideoEditor({
   videoUri,
   initialSettings,
   title = 'Edit Reel',
+  maxClipMs,
+  hintDurationMs = 0,
+  initialFrames,
   onSave,
   onCancel,
 }: Props) {
@@ -97,7 +120,6 @@ export default function VideoEditor({
   const maxPreviewH = Math.min(winH * 0.46, maxPreviewW * (16 / 9));
   const reelStage = fitReelStage(maxPreviewW, maxPreviewH);
   const initial = normalizeVideoEdit(initialSettings);
-  const videoRef = useRef<Video>(null);
   const htmlVideoRef = useRef<{
     play: () => Promise<void>;
     pause: () => void;
@@ -111,10 +133,28 @@ export default function VideoEditor({
   const soundRef = useRef<Audio.Sound | null>(null);
 
   const [tab, setTab] = useState<Tab>('edit');
-  const [durationMs, setDurationMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(Math.max(0, hintDurationMs));
   const [positionMs, setPositionMs] = useState(0);
-  const [playing, setPlaying] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [playing, setPlaying] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
+  const [playerArmed, setPlayerArmed] = useState(Platform.OS === 'web');
+  const [userPressedPlay, setUserPressedPlay] = useState(false);
+  const [stripFrames, setStripFrames] = useState<FrameThumb[]>(() =>
+    initialFrames && initialFrames.length > 0
+      ? initialFrames
+      : buildPlaceholders(
+          Math.max(hintDurationMs, 1000),
+          frameCountForDuration(Math.max(hintDurationMs, 1000))
+        )
+  );
+  const [stillUri, setStillUri] = useState<string | null>(
+    () => stillFromFrames(initialFrames || [])
+  );
+  const videoReady = useRef(false);
+  const playingRef = useRef(false);
+  const [seekGeneration, setSeekGeneration] = useState(0);
+  const [playHeadSeekMs, setPlayHeadSeekMs] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [previewSize, setPreviewSize] = useState({ w: reelStage.width, h: reelStage.height });
 
   const [originalVolume, setOriginalVolume] = useState(initial.originalVolume);
@@ -145,26 +185,41 @@ export default function VideoEditor({
   );
   const [musicGenre, setMusicGenre] = useState<(typeof MUSIC_GENRE_FILTERS)[number]>('All');
 
+  useEffect(() => {
+    if (!initialFrames?.some((f) => f.uri && !f.placeholder)) return;
+    setStripFrames(initialFrames);
+    const still = stillFromFrames(initialFrames);
+    if (still) setStillUri(still);
+  }, [initialFrames]);
+
+  useEffect(() => {
+    if (!playerArmed || !loading) return;
+    const t = setTimeout(() => setLoading(false), 5000);
+    return () => clearTimeout(t);
+  }, [playerArmed, loading]);
+
   const selectedTrack = getMusicTrackById(audioTrackId);
   const soundtrackUrl = getMusicPlaybackUrl(selectedTrack?.id, selectedTrack?.url);
   const hasSoundtrack = Boolean(soundtrackUrl);
   const libraryTracks = getPrimaryMusicTracks().filter(
     (t) => musicGenre === 'All' || t.genre === musicGenre
   );
-  const look = getVideoLook(lookId);
-  const editPreview: VideoEditSettings = {
-    ...normalizeVideoEdit({ lookId, filterPresetId, manualAdjust }),
+  const editPreview: VideoEditSettings = normalizeVideoEdit({
     lookId,
     filterPresetId,
     manualAdjust,
-  } as VideoEditSettings;
+  });
   const webFilter = Platform.OS === 'web' ? buildVideoCssFilter(editPreview) : undefined;
-  const vignetteStrength = videoVignetteStrength(editPreview);
-  const cinematicStrength = videoCinematicStrength(editPreview);
-  const fadeOverlay = videoFadeOpacity(editPreview);
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
-  const effectiveEnd = trimEndMs > 0 ? trimEndMs : durationMs;
+  const effectiveEnd = clipEndMs(trimEndMs, durationMs);
+  playingRef.current = playing;
   const isOriginalMuted = originalVolume <= 0.001;
+  const scrubFrame = nearestFrame(stripFrames, positionMs);
+  const scrubSource =
+    frameImageSource(scrubFrame) || (stillUri ? { uri: stillUri } : null);
+  const scrubStill = (typeof scrubSource === 'object' && scrubSource && 'uri' in scrubSource
+    ? (scrubSource as { uri?: string }).uri
+    : null) || stillUri;
 
   const buildSettings = useCallback((): VideoEditSettings => {
     const end = durationMs > 0 ? Math.min(effectiveEnd || durationMs, durationMs) : trimEndMs;
@@ -207,32 +262,74 @@ export default function VideoEditor({
     trimStartMs,
   ]);
 
-  const onStatus = useCallback(
-    (status: AVPlaybackStatus) => {
-      if (!status.isLoaded) return;
-      setLoading(false);
-      setPlaying(status.isPlaying);
-      setPositionMs(status.positionMillis || 0);
-      const dur = status.durationMillis || 0;
-      if (dur > 0) {
-        setDurationMs((prev) => (Math.abs(prev - dur) > 50 ? dur : prev));
-        setTrimEndMs((prev) => (prev <= 0 || prev > dur ? dur : prev));
-      }
-      const end = trimEndMs > 0 ? trimEndMs : dur;
-      if (end > 0 && (status.positionMillis || 0) >= end - 80) {
-        void videoRef.current?.setPositionAsync(trimStartMs);
-        if (soundRef.current) void soundRef.current.setPositionAsync(0);
-      }
+  const applyNativeDuration = useCallback(
+    (dur: number) => {
+      if (!(dur > 0)) return;
+      const cap = maxClipMs && maxClipMs > 0 ? Math.min(dur, maxClipMs) : dur;
+      setDurationMs((prev) => (Math.abs(prev - dur) > 50 ? dur : prev));
+      setStripFrames((frames) => remapFrameTimes(frames, dur));
+      setTrimEndMs((prev) => {
+        if (prev > cap) return cap;
+        if (maxClipMs && maxClipMs > 0 && dur > maxClipMs && (prev <= 0 || prev > maxClipMs)) {
+          return maxClipMs;
+        }
+        return prev;
+      });
     },
-    [trimEndMs, trimStartMs]
+    [maxClipMs]
   );
+
+  const onNativeProgress = useCallback(
+    (position: number, duration: number) => {
+      videoReady.current = true;
+      setLoading(false);
+      setPlayerReady(true);
+      applyNativeDuration(duration);
+      if (!playingRef.current) return;
+      const end = clipEndMs(trimEndMs, duration || durationMs);
+      if (end > 0 && position >= end - 40) {
+        const start = Math.max(0, trimStartMs);
+        setPositionMs(start);
+        setPlayHeadSeekMs(start);
+        setSeekGeneration((g) => g + 1);
+        return;
+      }
+      setPositionMs(position);
+    },
+    [applyNativeDuration, durationMs, trimEndMs, trimStartMs]
+  );
+
+  const onNativeReady = useCallback(() => {
+    videoReady.current = true;
+    setLoading(false);
+    setPlayerReady(true);
+  }, []);
+
+  const onNativeEnded = useCallback(() => {
+    const start = Math.max(0, trimStartMs);
+    setPositionMs(start);
+    setPlayHeadSeekMs(start);
+    setSeekGeneration((g) => g + 1);
+    if (playingRef.current) {
+      setPlaying(true);
+      return;
+    }
+    setPlaying(false);
+  }, [trimStartMs]);
 
   const applyWebDuration = useCallback((durationSec: number) => {
     if (!durationSec || !Number.isFinite(durationSec)) return;
     const dur = durationSec * 1000;
+    const cap = maxClipMs && maxClipMs > 0 ? Math.min(dur, maxClipMs) : dur;
     setDurationMs((prev) => (Math.abs(prev - dur) > 50 ? dur : prev));
-    setTrimEndMs((prev) => (prev <= 0 || prev > dur ? dur : prev));
-  }, []);
+    setTrimEndMs((prev) => {
+      if (prev > cap) return cap;
+      if (maxClipMs && maxClipMs > 0 && dur > maxClipMs && (prev <= 0 || prev > maxClipMs)) {
+        return maxClipMs;
+      }
+      return prev;
+    });
+  }, [maxClipMs]);
 
   const onWebTimeUpdate = useCallback(() => {
     const el = htmlVideoRef.current;
@@ -261,19 +358,14 @@ export default function VideoEditor({
       }
       return;
     }
-    void videoRef.current?.setIsMutedAsync(isOriginalMuted);
-    if (!isOriginalMuted) {
-      void videoRef.current?.setVolumeAsync(originalVolume);
-    }
-  }, [isOriginalMuted, originalVolume]);
+  }, [isOriginalMuted, originalVolume, playerReady]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
       if (htmlVideoRef.current) htmlVideoRef.current.playbackRate = speed;
       return;
     }
-    void videoRef.current?.setRateAsync(speed, true);
-  }, [speed]);
+  }, [speed, playerReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,6 +379,7 @@ export default function VideoEditor({
         soundRef.current = null;
       }
       if (!selectedTrack?.id && !selectedTrack?.url) return;
+      if (Platform.OS !== 'web') return;
       try {
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
         let playbackUrl = getMusicPlaybackUrl(selectedTrack.id, selectedTrack.url);
@@ -325,7 +418,7 @@ export default function VideoEditor({
         soundRef.current = null;
       }
     };
-  }, [selectedTrack?.id, selectedTrack?.url, audioVolume]);
+  }, [selectedTrack?.id, selectedTrack?.url, audioVolume, playerArmed]);
 
   useEffect(() => {
     if (!soundRef.current) return;
@@ -338,10 +431,14 @@ export default function VideoEditor({
   };
 
   const togglePlay = async () => {
+    const end = clipEndMs(trimEndMs, durationMs);
+    const from = playFromMs(positionMs, trimStartMs, end);
     if (Platform.OS === 'web') {
       const el = htmlVideoRef.current;
       if (!el) return;
       if (el.paused) {
+        el.currentTime = from / 1000;
+        setPositionMs(from);
         try {
           await el.play();
         } catch {
@@ -354,23 +451,67 @@ export default function VideoEditor({
       }
       return;
     }
-    const v = videoRef.current;
-    if (!v) return;
-    const status = await v.getStatusAsync();
-    if (!status.isLoaded) return;
-    if (status.isPlaying) await v.pauseAsync();
-    else await v.playAsync();
+    if (playingRef.current) {
+      setPlaying(false);
+      return;
+    }
+    setPositionMs(from);
+    setPlayHeadSeekMs(from);
+    setSeekGeneration((g) => g + 1);
+    if (!shouldMountNativePlayer(userPressedPlay)) {
+      setUserPressedPlay(true);
+      setPlayerArmed(true);
+      setLoading(true);
+    }
+    setPlaying(true);
   };
+
+  useEffect(() => {
+    videoReady.current = false;
+    setPlayerReady(false);
+    if (Platform.OS !== 'web') {
+      setPlayerArmed(false);
+      setUserPressedPlay(false);
+      setPlaying(false);
+      setLoading(false);
+    }
+  }, [videoUri]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || durationMs < 200 || !videoUri) return;
+    let cancelled = false;
+    void extractVideoFrames(
+      videoUri,
+      durationMs,
+      frameCountForDuration(durationMs),
+      (partial) => {
+        if (cancelled) return;
+        setStripFrames(partial);
+        const still = partial.find((f) => f.uri && !f.placeholder)?.uri;
+        if (still) setStillUri(still);
+      }
+    ).then((frames) => {
+      if (cancelled) return;
+      setStripFrames(frames);
+      const still = frames.find((f) => f.uri && !f.placeholder)?.uri;
+      if (still) setStillUri(still);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [videoUri, durationMs]);
 
   const seekTo = useCallback(
     async (ms: number) => {
       const clamped = Math.max(0, Math.min(durationMs || ms, ms));
+      setPlaying(false);
       setPositionMs(clamped);
-      if (Platform.OS === 'web') {
-        if (htmlVideoRef.current) htmlVideoRef.current.currentTime = clamped / 1000;
-        return;
+      setPlayHeadSeekMs(clamped);
+      setSeekGeneration((g) => g + 1);
+      if (Platform.OS === 'web' && htmlVideoRef.current) {
+        htmlVideoRef.current.pause();
+        htmlVideoRef.current.currentTime = clamped / 1000;
       }
-      await videoRef.current?.setPositionAsync(clamped);
     },
     [durationMs]
   );
@@ -394,6 +535,33 @@ export default function VideoEditor({
     setOverlays((prev) => prev.filter((o) => o.id !== activeOverlayId));
     setActiveOverlayId(null);
   };
+
+  const finishAndSave = useCallback(async () => {
+    try {
+      if (Platform.OS === 'web') {
+        htmlVideoRef.current?.pause();
+      } else {
+        setPlaying(false);
+        setPlayerArmed(false);
+        setUserPressedPlay(false);
+      }
+      if (soundRef.current) {
+        try {
+          await soundRef.current.stopAsync();
+        } catch {
+          /* ignore */
+        }
+        try {
+          await soundRef.current.unloadAsync();
+        } catch {
+          /* ignore */
+        }
+        soundRef.current = null;
+      }
+    } finally {
+      onSave(buildSettings());
+    }
+  }, [buildSettings, onSave]);
 
   const resetAll = () => {
     setOriginalVolume(1);
@@ -420,27 +588,38 @@ export default function VideoEditor({
     [flipH ? 'scaleX(-1)' : '', flipV ? 'scaleY(-1)' : ''].filter(Boolean).join(' ') || undefined;
 
   return (
-    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onCancel}>
+    <View style={tw`flex-1 bg-black`}>
       <SafeAreaView style={tw`flex-1 bg-black`} edges={['top', 'bottom']}>
         {/* Header */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3`}>
+        <View style={tw`flex-row items-center justify-between px-4 py-3 z-30`}>
           <Pressable
-            onPress={onCancel}
+            onPress={() => {
+              setPlaying(false);
+              setPlayerArmed(false);
+              onCancel();
+            }}
             hitSlop={10}
-            style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
+            accessibilityLabel="Close editor"
+            style={tw`w-11 h-11 rounded-full bg-black items-center justify-center border border-white/20`}
           >
             <Ionicons name="close" size={22} color="#fff" />
           </Pressable>
-          <View style={tw`items-center`}>
+          <Pressable
+            onLongPress={() => {
+              feedback.egg();
+            }}
+            delayLongPress={400}
+            style={tw`items-center`}
+          >
             <Text style={tw`text-white text-base font-bold`}>{title}</Text>
             <Text style={tw`text-stone-500 text-[10px] mt-0.5`}>
               {durationMs > 0
                 ? `${formatMs(Math.max(0, (effectiveEnd || durationMs) - trimStartMs))} · Pro editor`
                 : 'Pro editor'}
             </Text>
-          </View>
+          </Pressable>
           <Pressable
-            onPress={() => onSave(buildSettings())}
+            onPress={() => void finishAndSave()}
             style={tw`px-4 py-2 rounded-full bg-brand-600`}
             hitSlop={6}
           >
@@ -493,91 +672,83 @@ export default function VideoEditor({
                 },
               })
             : (
-          <Video
-            ref={videoRef}
-            source={{ uri: videoUri }}
-            style={[
-              StyleSheet.absoluteFillObject,
-              { transform: flipTransform },
-            ]}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={playing}
-            isLooping={false}
-            isMuted={isOriginalMuted}
-            volume={isOriginalMuted ? 0 : originalVolume}
-            onPlaybackStatusUpdate={onStatus}
-            useNativeControls={false}
-            onLoadStart={() => setLoading(true)}
-          />
+              <>
+                {scrubSource ? (
+                  <Image
+                    source={scrubSource as { uri: string }}
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      {
+                        transform: flipTransform,
+                        zIndex: playing ? 0 : 6,
+                        opacity: playing ? 0 : 1,
+                      },
+                    ]}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      tw`bg-black items-center justify-center`,
+                    ]}
+                  >
+                    <Ionicons name="play" size={36} color="#FFFFFF" />
+                  </View>
+                )}
+                {playerArmed ? (
+                  <View
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      { transform: flipTransform, zIndex: 1 },
+                    ]}
+                  >
+                    <NativeClipPlayer
+                      uri={videoUri}
+                      shouldPlay={playing}
+                      loop={false}
+                      seekMs={playHeadSeekMs}
+                      seekGeneration={seekGeneration}
+                      muted={isOriginalMuted}
+                      volume={isOriginalMuted ? 0 : originalVolume}
+                      playbackRate={speed || 1}
+                      contentFit="cover"
+                      onProgress={onNativeProgress}
+                      onReady={onNativeReady}
+                      onEnded={onNativeEnded}
+                    />
+                  </View>
+                ) : null}
+              </>
             )}
 
-          {look.layers.map((layer, i) => (
-            <View
-              key={`${look.id}-${i}`}
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFillObject,
-                { backgroundColor: layer.color, opacity: layer.opacity ?? 1 },
-              ]}
-            />
-          ))}
-          {vignetteStrength > 0 ? (
-            <View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFillObject,
-                { backgroundColor: `rgba(0,0,0,${vignetteStrength * 0.35})` },
-              ]}
-            />
-          ) : null}
-          {fadeOverlay > 0 ? (
-            <View
-              pointerEvents="none"
-              style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(255,255,255,${fadeOverlay})` }]}
-            />
-          ) : null}
-          {cinematicStrength > 0 ? (
-            <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-              <View
-                style={[
-                  tw`absolute top-0 left-0 right-0`,
-                  {
-                    height: `${12 + cinematicStrength * 18}%`,
-                    backgroundColor: 'rgba(0,0,0,0.55)',
-                  },
-                ]}
-              />
-              <View
-                style={[
-                  tw`absolute bottom-0 left-0 right-0`,
-                  {
-                    height: `${14 + cinematicStrength * 20}%`,
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                  },
-                ]}
-              />
-            </View>
-          ) : null}
+          <VideoGradeStack edit={editPreview} />
 
-          {loading && (
+          {playerArmed && loading && !scrubSource ? (
             <View
               pointerEvents="none"
               style={tw`absolute inset-0 items-center justify-center bg-black/40 z-30`}
             >
               <ActivityIndicator color="#fff" size="large" />
             </View>
-          )}
+          ) : null}
 
-          <Pressable
-            onPress={() => void togglePlay()}
-            hitSlop={8}
-            style={tw`absolute top-3 right-3 w-11 h-11 rounded-full bg-black/55 items-center justify-center z-20`}
+          <View
+            pointerEvents="box-none"
+            style={tw`absolute bottom-3 left-0 right-0 items-center z-20`}
           >
-            <Ionicons name={playing ? 'pause' : 'play'} size={20} color="#fff" />
-          </Pressable>
+            <Pressable
+              onPress={() => void togglePlay()}
+              hitSlop={8}
+              accessibilityLabel={playing ? 'Pause' : 'Play'}
+              style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
+            >
+              <Ionicons name={playing ? 'pause' : 'play'} size={22} color="#fff" />
+            </Pressable>
+          </View>
 
           {coverMs > 0 && Math.abs(positionMs - coverMs) < 120 ? (
-            <View style={tw`absolute top-3 left-3 bg-brand-600/90 px-2.5 py-1 rounded-full z-20`}>
+            <View style={tw`absolute top-3 left-3 bg-brand-600/90 px-2.5 py-1 rounded-full z-10`}>
               <Text style={tw`text-white text-[10px] font-bold`}>COVER</Text>
             </View>
           ) : null}
@@ -654,7 +825,7 @@ export default function VideoEditor({
             showsVerticalScrollIndicator={false}
           >
             <Text style={tw`text-stone-400 text-xs mb-3 pt-2`}>
-              Drag handles to trim — only this range loops in the feed
+              White IN / OUT trim what loops in the feed. Yellow playhead scrubs. Gray is outside the cut.
             </Text>
             <FilmstripTrimmer
               videoUri={videoUri}
@@ -662,6 +833,7 @@ export default function VideoEditor({
               trimStartMs={trimStartMs}
               trimEndMs={effectiveEnd || durationMs}
               positionMs={positionMs}
+              frames={stripFrames}
               onChangeTrim={(start, end) => {
                 setTrimStartMs(start);
                 setTrimEndMs(end);
@@ -836,6 +1008,8 @@ export default function VideoEditor({
                 lookId={lookId}
                 filterPresetId={filterPresetId}
                 manualAdjust={manualAdjust}
+                stillUri={scrubStill}
+                stillSource={scrubSource}
                 onLookIdChange={setLookId}
                 onPresetChange={setFilterPresetId}
                 onAdjustChange={(patch) =>
@@ -982,6 +1156,6 @@ export default function VideoEditor({
           </ScrollView>
         )}
       </SafeAreaView>
-    </Modal>
+    </View>
   );
 }

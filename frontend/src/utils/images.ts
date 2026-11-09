@@ -4,8 +4,8 @@
  * No Unsplash / Picsum / Pravatar catalogs live in the client.
  */
 
-/** Local brand mark when a remote avatar URL is missing (not a content catalog). */
-export const DEFAULT_AVATAR_ASSET = require('../../assets/brand-mark.png');
+/** Abstract Instagram-style glyph — only when the user has no uploaded avatar. */
+export const DEFAULT_AVATAR_ASSET = require('../../assets/default-avatar.jpg');
 
 /**
  * Post image URL from API may be https, device URI, or legacy bare paths — normalize for Image source.
@@ -106,7 +106,7 @@ export function resolveAvatarUri(
   return normalizeRemoteUri(raw);
 }
 
-/** Image source for avatars: remote URL or local brand mark. */
+/** Image source for avatars: remote URL or the local default profile photo. */
 export function avatarSource(uri: string | null | undefined): { uri: string } | number {
   const s = (uri || '').trim();
   if (s && (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:'))) {

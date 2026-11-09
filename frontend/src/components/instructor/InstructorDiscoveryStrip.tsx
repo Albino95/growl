@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
-import { Image } from 'expo-image';
+import PressableScale from '../ui/PressableScale';
+import { StarRow } from './StarRating';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import {
+  formatOfferLine,
   listInstructors,
   type DiscoverInstructor,
 } from '../../services/api/instructor';
-import { resolveAvatarUri } from '../../utils/images';
+import GrowAvatar from '../ui/GrowAvatar';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { horizontalScrollProps } from '../../constants/scroll';
 import { feedback } from '../../utils/interactionFeedback';
@@ -19,6 +21,7 @@ type Props = {
   title?: string;
   onOpenProfile: (userId: string) => void;
   onMessage?: (person: DiscoverInstructor) => void;
+  onSeeAll?: () => void;
 };
 
 /** Horizontal “Instructors on your paths” discovery row. */
@@ -28,6 +31,7 @@ export default function InstructorDiscoveryStrip({
   title = 'Instructors on your paths',
   onOpenProfile,
   onMessage,
+  onSeeAll,
 }: Props) {
   const [items, setItems] = useState<DiscoverInstructor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,9 +62,16 @@ export default function InstructorDiscoveryStrip({
 
   return (
     <View style={tw`mb-4`}>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
-        {title}
-      </Text>
+      <View style={tw`flex-row items-center justify-between mb-2`}>
+        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          {title}
+        </Text>
+        {onSeeAll ? (
+          <PressableScale onPress={onSeeAll} hitSlop={8}>
+            <Text style={tw`text-xs font-bold text-emerald-700`}>See all</Text>
+          </PressableScale>
+        ) : null}
+      </View>
       {loading ? (
         <SkeletonList variant="inbox" count={2} />
       ) : (
@@ -70,7 +81,6 @@ export default function InstructorDiscoveryStrip({
           contentContainerStyle={tw`gap-2.5 pr-2`}
         >
           {items.map((person) => {
-            const avatar = resolveAvatarUri(person.id, person.username, person.avatar);
             const pathLabel =
               (person.shared_categories[0] && getCategoryLabel(person.shared_categories[0])) ||
               (person.categories[0] && getCategoryLabel(person.categories[0])) ||
@@ -85,7 +95,13 @@ export default function InstructorDiscoveryStrip({
                 style={tw`w-[168px] bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3`}
               >
                 <View style={tw`flex-row items-center mb-2`}>
-                  <Image source={{ uri: avatar }} style={tw`w-11 h-11 rounded-full mr-2.5`} />
+                  <GrowAvatar
+                    userId={person.id}
+                    username={person.username}
+                    uri={person.avatar}
+                    size={44}
+                    style={tw`mr-2.5`}
+                  />
                   <View style={tw`flex-1`}>
                     <Text style={tw`font-bold text-stone-900 text-sm`} numberOfLines={1}>
                       {person.username}
@@ -98,9 +114,22 @@ export default function InstructorDiscoveryStrip({
                     </View>
                   </View>
                 </View>
-                <Text style={tw`text-xs text-stone-500 mb-2`} numberOfLines={2}>
+                <Text style={tw`text-xs text-stone-500 mb-1.5`} numberOfLines={2}>
                   {person.teaching_headline || `Teaching ${pathLabel}`}
                 </Text>
+                {person.rating_count && person.rating_avg ? (
+                  <View style={tw`flex-row items-center mb-1`}>
+                    <StarRow value={person.rating_avg} size={11} />
+                    <Text style={tw`text-[11px] text-stone-500 ml-1`}>{person.rating_avg}</Text>
+                  </View>
+                ) : null}
+                {formatOfferLine(person) ? (
+                  <Text style={tw`text-[11px] text-emerald-800 font-semibold mb-1.5`} numberOfLines={1}>
+                    {formatOfferLine(person)}
+                  </Text>
+                ) : (
+                  <Text style={tw`text-[11px] text-stone-400 mb-1.5`}>{pathLabel}</Text>
+                )}
                 <View style={tw`flex-row items-center justify-between`}>
                   <Text style={tw`text-[11px] text-stone-400`}>
                     {person.vote_count} endorse{person.vote_count === 1 ? '' : 's'}
@@ -113,7 +142,7 @@ export default function InstructorDiscoveryStrip({
                       }}
                       hitSlop={8}
                     >
-                      <Text style={tw`text-xs font-bold text-emerald-700`}>Message</Text>
+                      <Text style={tw`text-xs font-bold text-emerald-700`}>Reach out</Text>
                     </Pressable>
                   ) : (
                     <Text style={tw`text-xs font-bold text-emerald-700`}>View</Text>

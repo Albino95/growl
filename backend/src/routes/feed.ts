@@ -6,6 +6,7 @@ import { generateId } from '../utils/id';
 import { alignPostTaxonomy, categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 import { POINTS, awardPoints } from '../utils/points';
+import { createUserNotification, resolveUsername } from '../utils/notifications';
 
 type FeedLiker = {
   id: string;
@@ -504,6 +505,22 @@ export async function toggleLike(
 
     // Update engagement score
     await updateEngagementScore(env, postId);
+
+    const post = await env.DB.prepare('SELECT user_id FROM posts WHERE id = ?')
+      .bind(postId)
+      .first<{ user_id: string }>();
+    if (post?.user_id && post.user_id !== ctx.userId) {
+      const likerName = await resolveUsername(env, ctx.userId);
+      await createUserNotification(env, {
+        userId: post.user_id,
+        actorId: ctx.userId,
+        type: 'post_like',
+        title: `${likerName} liked your post`,
+        body: null,
+        refType: 'post',
+        refId: postId,
+      });
+    }
 
     return json({ liked: true });
   }

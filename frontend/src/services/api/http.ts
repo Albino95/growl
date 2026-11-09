@@ -163,12 +163,37 @@ export function getApiBaseUrl(): string {
   return BASE_URL;
 }
 
+const getInflight = new Map<string, Promise<unknown>>();
+
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path}`;
+  const method = String(options.method || 'GET').toUpperCase();
+  if (method === 'GET') {
+    const existing = getInflight.get(url);
+    if (existing) return existing as Promise<T>;
+  }
+
+  const run = requestOnce<T>(path, options, url);
+  if (method === 'GET') {
+    const wrapped = run.finally(() => {
+      if (getInflight.get(url) === wrapped) getInflight.delete(url);
+    });
+    getInflight.set(url, wrapped);
+    return wrapped;
+  }
+  return run;
+}
+
+async function requestOnce<T>(
+  path: string,
+  options: RequestInit,
+  url: string
+): Promise<T> {
   const bootstrap = isAuthBootstrapPath(path);
+  const method = String(options.method || 'GET').toUpperCase();
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(method !== 'GET' && method !== 'HEAD' ? { 'Content-Type': 'application/json' } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 

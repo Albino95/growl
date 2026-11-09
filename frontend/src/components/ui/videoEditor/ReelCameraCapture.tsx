@@ -18,6 +18,7 @@ export type ReelCaptureResult = {
   uri: string;
   kind: 'image' | 'video';
   mimeType?: string;
+  durationMs?: number;
 };
 
 type Props = {
@@ -67,6 +68,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
   const webRecorderRef = useRef<MediaRecorder | null>(null);
   const webChunksRef = useRef<Blob[]>([]);
 
+  const recordStartedAt = useRef(0);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordTick = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingRef = useRef(false);
@@ -210,6 +212,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
 
   const beginRecordingUi = () => {
     recordingRef.current = true;
+    recordStartedAt.current = Date.now();
     setRecording(true);
     setRecordSec(0);
     clearTick();
@@ -259,6 +262,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
               uri,
               kind: 'video',
               mimeType: blob.type || 'video/webm',
+              durationMs: Math.max(0, Date.now() - recordStartedAt.current),
             });
           }
           webRecorderRef.current = null;
@@ -279,7 +283,12 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
       const result = await cameraRef.current.recordAsync({ maxDuration: MAX_VIDEO_SEC });
       finishRecordingUi();
       if (result?.uri) {
-        onCaptured({ uri: result.uri, kind: 'video', mimeType: 'video/mp4' });
+        onCaptured({
+          uri: result.uri,
+          kind: 'video',
+          mimeType: 'video/mp4',
+          durationMs: Math.max(0, Date.now() - recordStartedAt.current),
+        });
       }
     } catch (e) {
       finishRecordingUi();

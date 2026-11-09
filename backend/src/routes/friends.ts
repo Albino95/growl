@@ -3,6 +3,7 @@ import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
 import { usernameSearchRank } from '../utils/usernameSearch';
+import { createUserNotification, resolveUsername } from '../utils/notifications';
 
 /** Normalize onboarding paths like art:violin → cohort keys include leaf + parent (art). */
 export function expandCohortKeys(paths: string[]): Set<string> {
@@ -722,6 +723,16 @@ export async function addFriend(request: Request, env: Env): Promise<Response> {
         .bind(targetUserId, ctx.userId)
         .run();
       await ensureBidirectionalFriend(env, ctx.userId, targetUserId, 'manual');
+      const accepterName = await resolveUsername(env, ctx.userId);
+      await createUserNotification(env, {
+        userId: targetUserId,
+        actorId: ctx.userId,
+        type: 'friend_accepted',
+        title: `${accepterName} accepted your friend request`,
+        body: 'You’re connected — say hi.',
+        refType: 'user',
+        refId: ctx.userId,
+      });
       return json({ ok: true, connected: true, requestSent: false, message: 'Friend request accepted' }, 201);
     }
 
@@ -735,6 +746,17 @@ export async function addFriend(request: Request, env: Env): Promise<Response> {
     )
       .bind(generateId('rel'), ctx.userId, targetUserId)
       .run();
+
+    const fromName = await resolveUsername(env, ctx.userId);
+    await createUserNotification(env, {
+      userId: targetUserId,
+      actorId: ctx.userId,
+      type: 'friend_request',
+      title: `${fromName} sent a friend request`,
+      body: 'Accept to grow together on shared paths.',
+      refType: 'user',
+      refId: ctx.userId,
+    });
 
     return json({ ok: true, connected: false, requestSent: true, message: 'Friend request sent' }, 201);
   } catch (err) {

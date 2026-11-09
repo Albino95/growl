@@ -4,18 +4,19 @@ import {
   Text,
   Pressable,
   ScrollView,
-  Modal,
-  ActivityIndicator,
   Dimensions,
   StyleSheet,
   PanResponder,
+  Platform,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import GrowLoader from '../GrowLoader';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
 import { alertMessage } from '../../../utils/confirmDialog';
+import { feedback } from '../../../utils/interactionFeedback';
 import type {
   CropAspect,
   EditAdjustments,
@@ -31,8 +32,10 @@ import { AdjustSlider } from './AdjustSlider';
 import {
   AUTO_ENHANCE_ADJUSTMENTS,
   AUTO_REEL_ADJUSTMENTS,
+  autoAdjustmentsFromStats,
   buildCssFilter,
   hasActiveEdits,
+  isAdjustmentsNeutral,
   mergeAdjustments,
   snapSliderValue,
 } from './filterEngine';
@@ -40,7 +43,9 @@ import {
   cropToAspect,
   exportEditedImage,
   flipImage,
+  prepareExportSource,
   rotateImage,
+  sampleImageStats,
   straightenImage,
 } from './imageProcessing';
 import type { FilterCategory } from './types';
@@ -101,6 +106,81 @@ type EditorSnapshot = {
 
 const HISTORY_LIMIT = 24;
 
+/** Cheap live grade — never jpeg-js while dragging. Pixel bake happens on Done. */
+function LiveGradeOverlays({
+  adj,
+  comparing,
+}: {
+  adj: EditAdjustments;
+  comparing: boolean;
+}) {
+  if (comparing) return null;
+  const n = (v: number | undefined) => (Number.isFinite(v) ? (v as number) : 0);
+  const lift = (n(adj.exposure) + n(adj.brightness)) / 90;
+  const warmth = n(adj.warmth) / 70;
+  const fade = Math.max(0, n(adj.fade)) / 140;
+  const gray = Math.max(0, n(adj.grayscale)) / 150;
+  const satLoss = Math.max(0, -n(adj.saturation)) / 140;
+  return (
+    <>
+      {lift > 0.02 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(255,255,255,${Math.min(0.4, lift * 0.36)})` },
+          ]}
+        />
+      ) : null}
+      {lift < -0.02 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(0,0,0,${Math.min(0.48, -lift * 0.42)})` },
+          ]}
+        />
+      ) : null}
+      {warmth > 0.04 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(212,140,50,${Math.min(0.26, warmth * 0.2)})` },
+          ]}
+        />
+      ) : null}
+      {warmth < -0.04 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(60,110,190,${Math.min(0.26, -warmth * 0.2)})` },
+          ]}
+        />
+      ) : null}
+      {fade > 0.02 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(243,238,228,${Math.min(0.26, fade)})` },
+          ]}
+        />
+      ) : null}
+      {gray > 0.05 || satLoss > 0.08 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: `rgba(120,120,120,${Math.min(0.42, gray + satLoss * 0.5)})` },
+          ]}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function newOverlay(text = 'GROW'): TextOverlay {
   return {
     id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -139,7 +219,10 @@ function FilterThumb({
       >
         <Image
           source={{ uri }}
-          style={[tw`w-full h-full`, filterCss !== 'none' ? ({ filter: filterCss } as object) : null]}
+          style={[
+            tw`w-full h-full bg-stone-900`,
+            Platform.OS === 'web' && filterCss !== 'none' ? ({ filter: filterCss } as object) : null,
+          ]}
           contentFit="cover"
         />
         {active && (
@@ -168,7 +251,6 @@ export default function PhotoEditor({
   preferredAspect,
   enableOverlays = true,
 }: PhotoEditorProps) {
-  const insets = useSafeAreaInsets();
   const originalUri = useRef(imageUri).current;
   const isVerticalClip = preferredAspect === '9:16';
 
@@ -182,9 +264,12 @@ export default function PhotoEditor({
   const [manualAdjust, setManualAdjust] = useState<EditAdjustments>({ ...DEFAULT_ADJUSTMENTS });
   const [activeTab, setActiveTab] = useState<EditorTab>('looks');
   const [activeCategory, setActiveCategory] = useState<FilterCategory>('natural');
-  const [selectedCrop, setSelectedCrop] = useState<CropAspect>(preferredAspect ?? 'free');
+  const [selectedCrop, setSelectedCrop] = useState<CropAspect>('free');
+  const [cropDirty, setCropDirty] = useState(false);
   const [cropOffsetX, setCropOffsetX] = useState(0);
   const [cropOffsetY, setCropOffsetY] = useState(0);
+  const titleTaps = useRef({ n: 0, at: 0 });
+  const [titleHint, setTitleHint] = useState('');
   const [straighten, setStraighten] = useState(0);
   const [overlays, setOverlays] = useState<TextOverlay[]>([]);
   const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null);
@@ -275,28 +360,49 @@ export default function PhotoEditor({
     setManualAdjust({ ...DEFAULT_ADJUSTMENTS });
   }, [pushHistory]);
 
-  const applyAuto = useCallback(() => {
+  const applyAuto = useCallback(async () => {
     pushHistory();
-    setPresetId('original');
-    setManualAdjust({
-      ...(isVerticalClip ? AUTO_REEL_ADJUSTMENTS : AUTO_ENHANCE_ADJUSTMENTS),
-    });
-  }, [pushHistory, isVerticalClip]);
-
-  const handleSave = useCallback(async () => {
+    feedback.autoLook();
     setIsProcessing(true);
     try {
-      let uri = workingUri;
+      const stats = await sampleImageStats(workingUri);
+      setPresetId('original');
+      setManualAdjust(autoAdjustmentsFromStats(stats, isVerticalClip));
+    } catch {
+      setPresetId('original');
+      setManualAdjust({
+        ...(isVerticalClip ? AUTO_REEL_ADJUSTMENTS : AUTO_ENHANCE_ADJUSTMENTS),
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [pushHistory, isVerticalClip, workingUri]);
+
+  const handleSave = useCallback(async () => {
+    const liveOverlays = overlays.filter((o) => o.text.trim());
+    const needsGeom = Math.abs(straighten) >= 0.4 || (selectedCrop !== 'free' && cropDirty);
+    const needsPixel = !isAdjustmentsNeutral(effective) || liveOverlays.length > 0;
+
+    if (!needsGeom && !needsPixel) {
+      feedback.commit();
+      onSave(workingUri);
+      return;
+    }
+
+    feedback.commit();
+    setIsProcessing(true);
+    try {
+      let uri = await prepareExportSource(workingUri);
       if (Math.abs(straighten) >= 0.4) {
         uri = await straightenImage(uri, straighten);
       }
-      if (selectedCrop !== 'free') {
+      if (selectedCrop !== 'free' && cropDirty) {
         uri = await cropToAspect(uri, selectedCrop, cropOffsetX, cropOffsetY);
       }
-      const exported = await exportEditedImage(uri, effective, {
-        overlays: overlays.filter((o) => o.text.trim()),
-      });
-      onSave(exported);
+      if (needsPixel) {
+        uri = await exportEditedImage(uri, effective, { overlays: liveOverlays });
+      }
+      onSave(uri);
     } catch {
       alertMessage('Export failed', 'Could not apply edits. Please try again.');
     } finally {
@@ -308,6 +414,7 @@ export default function PhotoEditor({
     onSave,
     straighten,
     selectedCrop,
+    cropDirty,
     cropOffsetX,
     cropOffsetY,
     overlays,
@@ -362,6 +469,7 @@ export default function PhotoEditor({
   const applyCropNow = useCallback(async () => {
     if (selectedCrop === 'free') return;
     pushHistory();
+    feedback.commit();
     setIsProcessing(true);
     try {
       let uri = workingUri;
@@ -372,6 +480,7 @@ export default function PhotoEditor({
       const next = await cropToAspect(uri, selectedCrop, cropOffsetX, cropOffsetY);
       setWorkingUri(next);
       setSelectedCrop('free');
+      setCropDirty(false);
       setCropOffsetX(0);
       setCropOffsetY(0);
     } catch {
@@ -423,6 +532,7 @@ export default function PhotoEditor({
             const nextY = Math.max(-1, Math.min(1, panStartRef.current.y + gesture.dy / 140));
             setCropOffsetX(nextX);
             setCropOffsetY(nextY);
+            setCropDirty(true);
           }
         },
       }),
@@ -431,7 +541,9 @@ export default function PhotoEditor({
 
   const previewUri = comparing ? originalUri : workingUri;
   const previewStyle =
-    !comparing && filterCss !== 'none' ? ({ filter: filterCss } as object) : undefined;
+    Platform.OS === 'web' && !comparing && filterCss !== 'none'
+      ? ({ filter: filterCss } as object)
+      : undefined;
   const vignetteOpacity = comparing ? 0 : Math.min(0.65, effective.vignette / 70);
   const cinematicOpacity = comparing ? 0 : Math.min(0.55, effective.cinematic / 90);
   const previewTransform = [
@@ -442,31 +554,55 @@ export default function PhotoEditor({
   ];
   const showPanHandlers = activeTab === 'crop' && selectedCrop !== 'free';
 
+  const onTitlePress = () => {
+    const now = Date.now();
+    if (now - titleTaps.current.at > 2800) titleTaps.current.n = 0;
+    titleTaps.current.at = now;
+    titleTaps.current.n += 1;
+    if (titleTaps.current.n >= 5) {
+      titleTaps.current.n = 0;
+      feedback.egg();
+      setTitleHint('Look closer.');
+      setTimeout(() => setTitleHint(''), 1400);
+    }
+  };
+
   return (
-    <Modal visible animationType="slide" presentationStyle="fullScreen">
+    <View style={tw`flex-1 bg-stone-950`}>
       <SafeAreaView style={tw`flex-1 bg-stone-950`} edges={['top', 'bottom']}>
         <View
           style={[
             tw`flex-row items-center justify-between px-4 border-b border-stone-800`,
-            { paddingTop: Math.max(insets.top, 4), paddingBottom: 10 },
+            { paddingBottom: 10, paddingTop: 6 },
           ]}
         >
-          <Pressable onPress={onCancel} disabled={isProcessing} hitSlop={12}>
-            <Text style={tw`text-stone-300 text-base`}>Cancel</Text>
+          <Pressable
+            onPress={() => {
+              feedback.close();
+              onCancel();
+            }}
+            disabled={isProcessing}
+            hitSlop={12}
+            style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
+          >
+            <Ionicons name="close" size={20} color="#E7E5E4" />
           </Pressable>
-          <View style={tw`items-center flex-1 px-2`}>
+          <Pressable onPress={onTitlePress} style={tw`items-center flex-1 px-2`}>
             <Text style={tw`text-white text-base font-bold`} numberOfLines={1}>
-              {title}
+              {titleHint || title}
             </Text>
-            {isEdited && !comparing && (
-              <Text style={tw`text-brand-400 text-[10px] mt-0.5`}>Edited</Text>
+            {isEdited && !comparing && !titleHint && (
+              <Text style={tw`text-brand-400 text-[10px] mt-0.5`}>Looks apply on Done</Text>
             )}
             {comparing && <Text style={tw`text-amber-400 text-[10px] mt-0.5`}>Original</Text>}
-          </View>
-          <Pressable onPress={handleSave} disabled={isProcessing} hitSlop={12}>
-            <Text
-              style={tw`${isProcessing ? 'text-stone-600' : 'text-brand-400'} text-base font-bold`}
-            >
+          </Pressable>
+          <Pressable
+            onPress={handleSave}
+            disabled={isProcessing}
+            hitSlop={6}
+            style={tw`px-4 py-2 rounded-full ${isProcessing ? 'bg-stone-800' : 'bg-brand-600'}`}
+          >
+            <Text style={tw`text-white font-bold text-sm`}>
               {isProcessing ? 'Saving…' : 'Done'}
             </Text>
           </Pressable>
@@ -486,7 +622,7 @@ export default function PhotoEditor({
           </Pressable>
 
           <Pressable
-            onPress={applyAuto}
+            onPress={() => void applyAuto()}
             disabled={isProcessing}
             style={tw`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800`}
             hitSlop={8}
@@ -520,10 +656,15 @@ export default function PhotoEditor({
           <View style={tw`relative w-full h-full`}>
             <Image
               source={{ uri: previewUri }}
-              style={[tw`w-full h-full`, previewStyle, { transform: previewTransform }]}
+              style={[
+                tw`w-full h-full`,
+                previewStyle,
+                { transform: previewTransform, backgroundColor: '#000' },
+              ]}
               contentFit="contain"
-              transition={120}
+              transition={0}
             />
+            <LiveGradeOverlays adj={effective} comparing={comparing} />
             {vignetteOpacity > 0 && (
               <View
                 pointerEvents="none"
@@ -581,8 +722,8 @@ export default function PhotoEditor({
               />
             )}
             {isProcessing && (
-              <View style={tw`absolute inset-0 bg-black/50 items-center justify-center`}>
-                <ActivityIndicator color="#10B981" size="large" />
+              <View style={tw`absolute inset-0 bg-black/55 items-center justify-center`}>
+                <GrowLoader label="Saving look…" />
               </View>
             )}
           </View>
@@ -603,13 +744,16 @@ export default function PhotoEditor({
           {tabs.map((tab) => {
             const active = activeTab === tab.id;
             return (
-              <Pressable
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
-                style={tw`flex-1 items-center py-2.5 border-b-2 ${
-                  active ? 'border-brand-500' : 'border-transparent'
-                }`}
-              >
+                <Pressable
+                  key={tab.id}
+                  onPress={() => {
+                    if (tab.id !== activeTab) feedback.tab();
+                    setActiveTab(tab.id);
+                  }}
+                  style={tw`flex-1 items-center py-2.5 border-b-2 ${
+                    active ? 'border-brand-500' : 'border-transparent'
+                  }`}
+                >
                 <Ionicons name={tab.icon} size={18} color={active ? '#34D399' : '#78716C'} />
                 <Text
                   style={tw`text-[9px] mt-0.5 ${
@@ -626,7 +770,13 @@ export default function PhotoEditor({
         <View style={tw`flex-1 bg-stone-900`}>
           {activeTab === 'looks' && (
             <View style={tw`flex-1 pt-1`}>
-              <FilterCategoryBar active={activeCategory} onSelect={setActiveCategory} />
+              <FilterCategoryBar
+                active={activeCategory}
+                onSelect={(id) => {
+                  feedback.tab();
+                  setActiveCategory(id);
+                }}
+              />
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -644,6 +794,7 @@ export default function PhotoEditor({
                       active={presetId === preset.id}
                       filterCss={thumbFilter}
                       onPress={() => {
+                        feedback.filter();
                         if (presetId !== preset.id) pushHistory();
                         setPresetId(preset.id);
                       }}
@@ -672,10 +823,17 @@ export default function PhotoEditor({
                   onChange={(v) => setAdjust(s.key, v)}
                   onSlidingComplete={() => {
                     adjustHistoryArmed.current = true;
+                    feedback.select();
                   }}
                 />
               ))}
-              <Pressable onPress={resetLooksAndAdjust} style={tw`self-center py-2 px-6 mb-4`}>
+              <Pressable
+                onPress={() => {
+                  feedback.toggle();
+                  resetLooksAndAdjust();
+                }}
+                style={tw`self-center py-2 px-6 mb-4`}
+              >
                 <Text style={tw`text-brand-400 font-semibold text-sm`}>Reset looks & adjust</Text>
               </Pressable>
             </ScrollView>
@@ -698,6 +856,7 @@ export default function PhotoEditor({
             <View style={tw`flex-1 px-4 pt-4`}>
               <Text style={tw`text-stone-400 text-sm mb-3`}>
                 Choose a ratio, drag the photo to reframe, then apply.
+                {preferredAspect ? ` Suggested ${preferredAspect}.` : ''}
               </Text>
               <View style={tw`flex-row flex-wrap gap-2 mb-4`}>
                 {CROP_OPTIONS.map((opt) => (
@@ -706,6 +865,7 @@ export default function PhotoEditor({
                     onPress={() => {
                       pushHistory();
                       setSelectedCrop(opt.id);
+                      setCropDirty(opt.id !== 'free');
                       if (opt.id === 'free') {
                         setCropOffsetX(0);
                         setCropOffsetY(0);
@@ -804,6 +964,6 @@ export default function PhotoEditor({
           )}
         </View>
       </SafeAreaView>
-    </Modal>
+    </View>
   );
 }

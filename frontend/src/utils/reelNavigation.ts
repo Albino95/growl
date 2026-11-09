@@ -1,6 +1,7 @@
 import type { FeedPost } from '../services/api/feed';
 import { isVideoMedia } from '../services/api/media';
 import { getRootNavigator } from '../app/navigation/rootNavigation';
+import { lockNativeUiAudio } from './interactionFeedback';
 
 export function isReelPost(
   post:
@@ -48,6 +49,7 @@ export function openReelsAtPost(
   seedPost?: FeedPost | null,
   mode: 'home' | 'explore' = 'home'
 ) {
+  lockNativeUiAudio();
   const root = getRootNavigator(navigation);
   root?.navigate('Reels', {
     startPostId: postId,
@@ -58,6 +60,7 @@ export function openReelsAtPost(
 
 /** Open the reels viewer without a start post (Home = for-you, Explore = discovery). */
 export function openReelsFeed(navigation: Nav, mode: 'home' | 'explore' = 'home') {
+  lockNativeUiAudio();
   const root = getRootNavigator(navigation);
   root?.navigate('Reels', { mode });
 }

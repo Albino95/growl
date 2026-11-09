@@ -53,6 +53,13 @@ export interface EditAdjustments {
   cinematic: number;
 }
 
+export type ImageToneStats = {
+  luma: number;
+  contrast: number;
+  warmth: number;
+  sat: number;
+};
+
 export const DEFAULT_ADJUSTMENTS: EditAdjustments = {
   exposure: 0,
   brightness: 0,
