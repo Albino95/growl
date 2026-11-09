@@ -6,6 +6,16 @@ import type { ExpoConfig } from '@expo/config';
  */
 const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
 
+// iOS permission prompts. Defined once so the image-picker / camera plugins
+// can't silently replace them with generic text (Apple reviews these).
+const CAMERA_PERMISSION =
+  'Grow! uses the camera so you can take photos and record videos for your posts, stories, reels, and profile picture.';
+const MICROPHONE_PERMISSION =
+  'Grow! uses the microphone to record sound when you film videos for reels and stories.';
+const PHOTOS_PERMISSION =
+  'Grow! accesses your photo library so you can choose photos and videos to share in posts, stories, reels, and your profile.';
+const PHOTOS_ADD_PERMISSION = 'Grow! saves photos and videos you choose to export to your photo library.';
+
 const defineConfig = (): ExpoConfig => ({
   name: 'Grow!',
   slug: 'growl',
@@ -30,11 +40,10 @@ const defineConfig = (): ExpoConfig => ({
     buildNumber: '2',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
-      NSCameraUsageDescription: 'Grow! uses the camera so you can take photos and videos for posts, stories, reels, and your profile.',
-      NSPhotoLibraryUsageDescription:
-        'Grow! accesses your photo library so you can share photos and videos with your growth community.',
-      NSPhotoLibraryAddUsageDescription: 'Grow! may save images you export from your account.',
-      NSMicrophoneUsageDescription: 'Grow! uses the microphone when you record video for reels.',
+      NSCameraUsageDescription: CAMERA_PERMISSION,
+      NSPhotoLibraryUsageDescription: PHOTOS_PERMISSION,
+      NSPhotoLibraryAddUsageDescription: PHOTOS_ADD_PERMISSION,
+      NSMicrophoneUsageDescription: MICROPHONE_PERMISSION,
     },
     usesAppleSignIn: true,
     privacyManifests: {
@@ -97,18 +106,16 @@ const defineConfig = (): ExpoConfig => ({
     [
       'expo-image-picker',
       {
-        photosPermission:
-          'The app accesses your photos to let you share them with your growth community.',
-        cameraPermission: 'The app accesses your camera to let you take photos for your posts.',
+        photosPermission: PHOTOS_PERMISSION,
+        cameraPermission: CAMERA_PERMISSION,
+        microphonePermission: MICROPHONE_PERMISSION,
       },
     ],
     [
       'expo-camera',
       {
-        cameraPermission:
-          'Grow! uses the camera so you can take photos and videos for posts, stories, and reels.',
-        microphonePermission:
-          'Grow! uses the microphone when you record video for reels and stories.',
+        cameraPermission: CAMERA_PERMISSION,
+        microphonePermission: MICROPHONE_PERMISSION,
         recordAudioAndroid: true,
       },
     ],

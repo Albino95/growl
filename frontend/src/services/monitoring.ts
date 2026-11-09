@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 
-const extra = (Constants.expoConfig?.extra ?? {}) as { SENTRY_DSN?: string };
+const extra = (Constants.expoConfig?.extra ?? {}) as { SENTRY_DSN?: string; APP_ENV?: string };
 
 let initialized = false;
 
@@ -11,12 +11,14 @@ export function initMonitoring(): void {
   if (!dsn) return;
 
   try {
-    // Optional peer — install with: cd frontend && npx expo install @sentry/react-native
+    // Loaded lazily so builds without a DSN never touch the native module.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Sentry = require('@sentry/react-native');
+    const Sentry = require('@sentry/react-native') as typeof import('@sentry/react-native');
     Sentry.init({
       dsn,
-      enableInExpoDevelopment: false,
+      environment: extra.APP_ENV || 'development',
+      // Crash and error reports only; never attach IPs, cookies or user emails.
+      sendDefaultPii: false,
       tracesSampleRate: 0.2,
     });
     initialized = true;
