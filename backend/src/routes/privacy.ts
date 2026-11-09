@@ -21,10 +21,15 @@ async function exportUserDataPayload(env: Env, userId: string) {
 
   const [posts, comments, orders, reports] = await Promise.all([
     env.DB.prepare(`SELECT * FROM posts WHERE user_id = ?`).bind(userId).all(),
-    env.DB.prepare(`SELECT * FROM comments WHERE user_id = ?`).bind(userId).all(),
+    env.DB.prepare(
+      `SELECT id, post_id, content, created_at FROM post_engagement WHERE user_id = ? AND type = 'comment'`
+    ).bind(userId).all(),
     env.DB.prepare(`SELECT * FROM orders WHERE user_id = ?`).bind(userId).all(),
-    env.DB.prepare(`SELECT * FROM reports WHERE reporter_id = ? OR target_id = ?`)
-      .bind(userId, userId)
+    // Only reports this user filed — never expose who reported them.
+    env.DB.prepare(
+      `SELECT id, target_id, target_type, reason, status, created_at FROM reports WHERE reporter_id = ?`
+    )
+      .bind(userId)
       .all(),
   ]);
 

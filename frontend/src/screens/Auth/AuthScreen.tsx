@@ -770,7 +770,7 @@ export default function AuthScreen() {
           loading={busy}
         />
 
-        {!isSignUp ? (
+        {!isSignUp && featureFlags.showDemoAccounts ? (
           <View style={tw`mt-5 px-3.5 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/60`}>
             <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
               Demo
