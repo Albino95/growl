@@ -18,7 +18,7 @@ import {
   generateVerificationToken,
   hashVerificationToken,
 } from '../utils/password';
-import { getRequestContext, userAuthPayload } from '../utils/auth';
+import { getAccountRestriction, getRequestContext, userAuthPayload } from '../utils/auth';
 import { generateId } from '../utils/id';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { verifyAppleIdToken } from '../utils/appleAuth';
@@ -30,7 +30,15 @@ import {
   revokeAllUserRefreshTokens,
 } from '../utils/sessions';
 
+async function restrictionError(env: Env, userId: string): Promise<Response | null> {
+  const restriction = await getAccountRestriction(env, userId);
+  if (!restriction) return null;
+  return error(restriction.code, restriction.message, 403);
+}
+
 async function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env: Env) {
+  const blocked = await restrictionError(env, user.id);
+  if (blocked) return blocked;
   const base = userAuthPayload(user);
   const tokens = await issueSessionTokens(env, user.id);
   return json({
@@ -431,43 +439,77 @@ export async function signOut(request: Request, env: Env): Promise<Response> {
   return json({ message: 'Signed out successfully' });
 }
 
+/** Comma-separated env value → trimmed, non-empty list. */
+function envList(value: string | undefined): string[] {
+  return (value || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Verify a Google ID token. Fails closed: GOOGLE_CLIENT_ID must be set
+ * (comma-separated web/iOS/Android client IDs), the token audience must match,
+ * and Google must report the email as verified.
+ */
 async function verifyGoogleIdToken(idToken: string, env: Env): Promise<{ email: string; name?: string }> {
+  const allowedAudiences = envList(env.GOOGLE_CLIENT_ID);
+  if (allowedAudiences.length === 0) throw new Error('Google sign-in is not enabled');
+
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   if (!res.ok) throw new Error('Invalid Google token');
-  const data = (await res.json()) as { email?: string; name?: string; aud?: string };
-  if (!data.email) throw new Error('Google account has no email');
-  if (env.GOOGLE_CLIENT_ID && data.aud && data.aud !== env.GOOGLE_CLIENT_ID) {
+  const data = (await res.json()) as {
+    email?: string;
+    name?: string;
+    aud?: string;
+    iss?: string;
+    email_verified?: string | boolean;
+  };
+  if (!data.aud || !allowedAudiences.includes(data.aud)) {
     throw new Error('Google token audience mismatch');
+  }
+  if (data.iss !== 'accounts.google.com' && data.iss !== 'https://accounts.google.com') {
+    throw new Error('Google token issuer mismatch');
+  }
+  if (!data.email) throw new Error('Google account has no email');
+  if (data.email_verified !== true && data.email_verified !== 'true') {
+    throw new Error('Google email is not verified');
   }
   return { email: data.email.toLowerCase(), name: data.name };
 }
 
+/**
+ * Verify a Facebook user access token. Fails closed: FACEBOOK_APP_ID and
+ * FACEBOOK_APP_SECRET must be set, and debug_token (called with the app token)
+ * must confirm the token is valid and was issued for this app.
+ */
 async function verifyFacebookAccessToken(
   accessToken: string,
   env: Env
 ): Promise<{ email: string; name?: string }> {
+  const appId = env.FACEBOOK_APP_ID?.trim();
+  const appSecret = env.FACEBOOK_APP_SECRET?.trim();
+  if (!appId || !appSecret) throw new Error('Facebook sign-in is not enabled');
+
+  const appToken = `${appId}|${appSecret}`;
+  const dbg = await fetch(
+    `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`
+  );
+  if (!dbg.ok) throw new Error('Invalid Facebook token');
+  const info = (await dbg.json()) as { data?: { app_id?: string; is_valid?: boolean; user_id?: string } };
+  if (!info.data?.is_valid) throw new Error('Facebook token invalid');
+  if (info.data.app_id !== appId) throw new Error('Facebook token audience mismatch');
+
   const res = await fetch(
-    `https://graph.facebook.com/me?fields=email,name&access_token=${encodeURIComponent(accessToken)}`
+    `https://graph.facebook.com/me?fields=id,email,name&access_token=${encodeURIComponent(accessToken)}`
   );
   if (!res.ok) throw new Error('Invalid Facebook token');
   const data = (await res.json()) as { email?: string; name?: string; error?: { message: string }; id?: string };
   if (data.error) throw new Error(data.error.message);
-  if (!data.email) throw new Error('Facebook account must share email to use Growl');
-
-  if (env.FACEBOOK_APP_ID) {
-    const dbg = await fetch(
-      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`
-    );
-    if (dbg.ok) {
-      const info = (await dbg.json()) as { data?: { app_id?: string; is_valid?: boolean } };
-      if (info.data?.app_id && info.data.app_id !== env.FACEBOOK_APP_ID) {
-        throw new Error('Facebook token audience mismatch');
-      }
-      if (info.data && info.data.is_valid === false) {
-        throw new Error('Facebook token invalid');
-      }
-    }
+  if (info.data.user_id && data.id && info.data.user_id !== data.id) {
+    throw new Error('Facebook token user mismatch');
   }
+  if (!data.email) throw new Error('Facebook account must share email to use Growl');
 
   return { email: data.email.toLowerCase(), name: data.name };
 }
@@ -575,6 +617,12 @@ export async function refresh(request: Request, env: Env): Promise<Response> {
 
   if (!user) {
     return error('INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired', 401);
+  }
+
+  const blocked = await restrictionError(env, user.id);
+  if (blocked) {
+    await revokeAllUserRefreshTokens(env, user.id);
+    return blocked;
   }
 
   const base = userAuthPayload(user);

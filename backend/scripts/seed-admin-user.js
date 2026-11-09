@@ -16,10 +16,17 @@ const os = require('os');
 const path = require('path');
 
 const email = (process.env.ADMIN_EMAIL || 'admin@growl.app').toLowerCase();
-const password = process.env.ADMIN_PASSWORD || 'GrowlAdmin123!';
 const local = process.argv.includes('--local');
 const qa = process.argv.includes('--qa');
 const production = process.argv.includes('--production');
+
+// A built-in password is only acceptable for a local database. Remote
+// environments must pass a strong ADMIN_PASSWORD explicitly.
+const password = process.env.ADMIN_PASSWORD || (local ? 'GrowlAdmin123!' : '');
+if (!local && password.length < 12) {
+  console.error('Set ADMIN_PASSWORD (at least 12 characters) for --qa / --production.');
+  process.exit(1);
+}
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;

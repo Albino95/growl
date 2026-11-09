@@ -3,6 +3,7 @@ import { json, error } from '../../utils/response';
 import { requireAdmin, requireRoles, writeAdminAudit, requestIp, type AdminRole } from '../../utils/adminAuth';
 import { validateRequest, userEnforcementSchema, userRoleUpdateSchema } from '../../utils/validation';
 import { assertNotProtectedUser } from '../../utils/contentModeration';
+import { revokeAllUserRefreshTokens } from '../../utils/sessions';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   try {
@@ -163,6 +164,12 @@ export async function enforceUser(request: Request, env: Env, userId: string): P
         strikeDelta
       )
       .run();
+
+    // Sign the user out everywhere; their access token is rejected by
+    // getRequestContext on the next request.
+    if (status === 'suspended' || status === 'banned') {
+      await revokeAllUserRefreshTokens(env, userId);
+    }
 
     await writeAdminAudit(env, {
       adminId: ctx.adminId,

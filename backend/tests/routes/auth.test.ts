@@ -269,10 +269,73 @@ describe('Auth Routes', () => {
   });
 
   describe('signInWithSSO', () => {
+    const GOOGLE_AUD = 'test-google-client.apps.googleusercontent.com';
+    const googleTokenInfo = (overrides: Record<string, unknown> = {}) => ({
+      aud: GOOGLE_AUD,
+      iss: 'https://accounts.google.com',
+      email_verified: 'true',
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      (env as Env).GOOGLE_CLIENT_ID = `other-client-id, ${GOOGLE_AUD}`;
+    });
+
+    const ssoRequest = () =>
+      createMockRequest('https://example.com/api/v1/auth/sso', {
+        method: 'POST',
+        body: { provider: 'google', idToken: 'mock-google-id-token' },
+      });
+
+    const withTokenInfo = async (info: Record<string, unknown>, run: () => Promise<void>) => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => new Response(JSON.stringify(info), { status: 200 });
+      try {
+        await run();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    };
+
+    it('rejects Google sign-in when GOOGLE_CLIENT_ID is not configured', async () => {
+      (env as Env).GOOGLE_CLIENT_ID = undefined;
+      await withTokenInfo(googleTokenInfo({ email: 'a@example.com' }), async () => {
+        const response = await authRoutes.signInWithSSO(ssoRequest(), env);
+        expect(response.status).toBe(401);
+      });
+    });
+
+    it('rejects a Google token issued for another app', async () => {
+      await withTokenInfo(googleTokenInfo({ email: 'a@example.com', aud: 'someone-else' }), async () => {
+        const response = await authRoutes.signInWithSSO(ssoRequest(), env);
+        expect(response.status).toBe(401);
+      });
+    });
+
+    it('rejects a Google token without a verified email', async () => {
+      await withTokenInfo(googleTokenInfo({ email: 'a@example.com', email_verified: 'false' }), async () => {
+        const response = await authRoutes.signInWithSSO(ssoRequest(), env);
+        expect(response.status).toBe(401);
+      });
+    });
+
+    it('rejects Facebook sign-in when the app secret is not configured', async () => {
+      (env as Env).FACEBOOK_APP_ID = '123';
+      (env as Env).FACEBOOK_APP_SECRET = undefined;
+      await withTokenInfo({ email: 'a@example.com' }, async () => {
+        const request = createMockRequest('https://example.com/api/v1/auth/sso', {
+          method: 'POST',
+          body: { provider: 'facebook', accessToken: 'fb-access-token-123' },
+        });
+        const response = await authRoutes.signInWithSSO(request, env);
+        expect(response.status).toBe(401);
+      });
+    });
+
     it('should create user if not exists', async () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = async () =>
-        new Response(JSON.stringify({ email: 'google.user@example.com', name: 'Google User' }), {
+        new Response(JSON.stringify(googleTokenInfo({ email: 'google.user@example.com', name: 'Google User' })), {
           status: 200,
         });
 
@@ -338,7 +401,7 @@ describe('Auth Routes', () => {
     it('should sign in existing SSO user', async () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = async () =>
-        new Response(JSON.stringify({ email: 'existing@example.com', name: 'Existing' }), {
+        new Response(JSON.stringify(googleTokenInfo({ email: 'existing@example.com', name: 'Existing' })), {
           status: 200,
         });
 

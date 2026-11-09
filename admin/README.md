@@ -22,7 +22,7 @@ npm run dev         # http://localhost:5174
 
 | Tab | Who | Credentials |
 |-----|-----|-------------|
-| **Staff** | Platform admins (`admin_users`) | Local/QA: `admin@growl.app` / `GrowlAdmin123!` |
+| **Staff** | Platform admins (`admin_users`) | Local only: `admin@growl.app` / `GrowlAdmin123!`. QA/production use the password set via `ADMIN_PASSWORD` when seeding. |
 | **Seller** | Business users (`users.is_business`) | Demo: `business@growl.app` / `GrowlDemo123!` |
 
 Sellers land on `/seller` (KPIs, products, orders, reports, settings). They never see moderation, users, privacy, or audit routes.
@@ -59,8 +59,8 @@ Production (one-time):
 
 ```bash
 cd backend
-npm run migrate
-node scripts/seed-admin-user.js
+npm run migrate:production
+ADMIN_EMAIL=you@letsgrow.lu ADMIN_PASSWORD='<strong password>' node scripts/seed-admin-user.js --production
 ```
 
 ### Seller demo (local/QA)
