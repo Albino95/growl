@@ -8,7 +8,8 @@ export function isReelPost(
     | Pick<FeedPost, 'metadata' | 'image_url'>
     | { metadata?: Record<string, unknown> | null; image_url?: string | null }
 ): boolean {
-  const m = post.metadata || {};
+  // Metadata comes from several API shapes; read hint fields loosely.
+  const m: Record<string, unknown> = (post.metadata as Record<string, unknown> | null | undefined) || {};
   if (m.format === 'reel') return true;
   if (m.media_type === 'video') return true;
   const uri =

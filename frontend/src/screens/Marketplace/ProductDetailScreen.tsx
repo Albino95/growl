@@ -10,6 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import tw from '../../lib/tw';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
@@ -32,7 +34,7 @@ type ProductDetailRouteParams = {
 type ProductDetailRouteProp = RouteProp<ProductDetailRouteParams, 'ProductDetail'>;
 
 export default function ProductDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<ProductDetailRouteProp>();
   const { productId } = route.params;
   const { user } = useAuth();

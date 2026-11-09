@@ -3,14 +3,14 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import type { StackNavigationProp } from '@react-navigation/stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import tw from '../../lib/tw';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getOrder, type Order } from '../../services/api/marketplace';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 
 type Route = RouteProp<RootStackParamList, 'OrderConfirmation'>;
-type Nav = StackNavigationProp<RootStackParamList>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const POLL_MS = 2000;
 const MAX_POLLS = 15;

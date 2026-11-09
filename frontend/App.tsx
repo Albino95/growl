@@ -40,9 +40,9 @@ function AppContent() {
     const onUrl = ({ url }: { url: string }) => {
       if (url.startsWith('growl://checkout/')) {
         handleCheckoutDeepLink(url);
-      } else if (url.startsWith('growl://reset-password')) {
-        console.log('[deep-link] reset password', url);
       }
+      // growl://reset-password links just open the app; the reset code is
+      // entered on the Auth screen. Never log these URLs (they carry tokens).
     };
     const sub = Linking.addEventListener('url', onUrl);
     Linking.getInitialURL().then((url) => {

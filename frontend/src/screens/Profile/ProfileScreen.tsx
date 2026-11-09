@@ -353,34 +353,20 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const handleSignOutConfirm = async () => {
     const performSignOut = async () => {
       try {
-        console.log('[ProfileScreen] ===== SIGN OUT STARTED =====');
-        console.log('[ProfileScreen] Calling signOut()...');
-        
-        const result = await signOut();
-        console.log('[ProfileScreen] Sign out result:', result);
-        console.log('[ProfileScreen] Result type:', result.type);
-        console.log('[ProfileScreen] Result payload:', result.payload);
-        
-        // Wait a bit to ensure state is cleared
-        console.log('[ProfileScreen] Waiting 200ms for state to clear...');
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        console.log('[ProfileScreen] Getting navigation...');
+        await signOut();
+
+        // Give the auth state a moment to clear before leaving the screen.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
         const rootNavigation = navigation.getParent() || navigation;
-        console.log('[ProfileScreen] Navigation object:', rootNavigation ? 'found' : 'not found');
-        
-        console.log('[ProfileScreen] Dispatching navigation reset...');
         rootNavigation.dispatch(
           CommonActions.reset({
             index: 0,
             routes: [{ name: 'Auth' as never }],
           })
         );
-        console.log('[ProfileScreen] ===== NAVIGATION RESET COMPLETE =====');
       } catch (error) {
-        console.error('[ProfileScreen] ===== SIGN OUT ERROR =====');
-        console.error('[ProfileScreen] Error:', error);
-        console.error('[ProfileScreen] Error stack:', (error as Error)?.stack);
+        console.error('[ProfileScreen] Sign out failed:', error);
         if (Platform.OS === 'web') {
           alert(`Failed to sign out: ${(error as Error)?.message || 'Unknown error'}`);
         } else {

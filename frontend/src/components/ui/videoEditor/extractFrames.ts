@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+// Type-only: the native module itself is still loaded lazily below.
+import type { VideoPlayer } from 'expo-video';
 import {
   nativeMayGenerateThumbnails,
   nativeSampleQuietMs,
@@ -265,13 +267,7 @@ async function deleteQuiet(uri: string): Promise<void> {
 }
 
 function waitPlayerReady(
-  player: {
-    status?: string;
-    addListener: (
-      event: string,
-      cb: (payload: { status?: string }) => void
-    ) => { remove: () => void };
-  },
+  player: VideoPlayer,
   ms: number
 ): Promise<boolean> {
   if (player.status === 'readyToPlay') return Promise.resolve(true);
@@ -316,36 +312,24 @@ async function extractFramesNative(
   const thumbsUri = await copyClipForThumbs(videoUri);
   if (!thumbsUri) return frames;
 
-  let player: {
-    replaceAsync: (source: { uri: string; contentType: 'auto' }) => Promise<void>;
-    generateThumbnailsAsync: (
-      times: number[],
-      options?: { maxWidth?: number; maxHeight?: number }
-    ) => Promise<Array<{ uri?: string } | unknown>>;
-    pause: () => void;
-    release?: () => void;
-    status?: string;
-    addListener: (
-      event: string,
-      cb: (payload: { status?: string }) => void
-    ) => { remove: () => void };
-  } | null = null;
+  let player: VideoPlayer | null = null;
 
   try {
     const ExpoVideo = await import('expo-video');
-    player = ExpoVideo.createVideoPlayer(null);
+    const p = ExpoVideo.createVideoPlayer(null);
+    player = p;
     await withTimeout(
-      player.replaceAsync({ uri: thumbsUri, contentType: 'auto' }).then(() => true),
+      p.replaceAsync({ uri: thumbsUri, contentType: 'auto' }).then(() => true),
       8000,
       false
     );
-    const ready = await waitPlayerReady(player, 8000);
+    const ready = await waitPlayerReady(p, 8000);
     if (!ready) return frames;
 
     const duration = Math.max(durationMs, 1000);
     const times = frames.map((f) => clampThumbnailTimeMs(f.timeMs, duration) / 1000);
     const thumbs = await withTimeout(
-      player.generateThumbnailsAsync(times, { maxWidth: 72, maxHeight: 96 }),
+      p.generateThumbnailsAsync(times, { maxWidth: 72, maxHeight: 96 }),
       10000,
       []
     );

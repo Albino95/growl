@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import tw from '../../lib/tw';
 import { verticalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
@@ -184,9 +184,7 @@ export default function CommentsScreen({
                       onPress={() => {
                         if (item.user_id !== user?.id) {
                           const rootNavigation = navigation.getParent() || navigation;
-                          rootNavigation.navigate('PublicProfile' as never, {
-                            userId: item.user_id,
-                          } as never);
+                          rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: item.user_id }));
                         }
                       }}
                     >
@@ -202,9 +200,7 @@ export default function CommentsScreen({
                           onPress={() => {
                             if (item.user_id !== user?.id) {
                               const rootNavigation = navigation.getParent() || navigation;
-                              rootNavigation.navigate('PublicProfile' as never, {
-                                userId: item.user_id,
-                              } as never);
+                              rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: item.user_id }));
                             }
                           }}
                         >

@@ -496,7 +496,7 @@ async function exportViaJpegJs(
     const base64 = uint8ToBase64(encoded.data);
     if (Platform.OS !== 'web') {
       try {
-        const FileSystem = await import('expo-file-system');
+        const FileSystem = await import('expo-file-system/legacy');
         const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
         if (dir) {
           const path = `${dir}grow-edit-${Date.now()}.jpg`;

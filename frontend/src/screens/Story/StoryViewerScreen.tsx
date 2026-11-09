@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import tw from '../../lib/tw';
@@ -235,7 +235,7 @@ export default function StoryViewerScreen() {
     onStoriesUpdate?.(updatedStories);
     navigation.goBack();
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.navigate('PublicProfile' as never, { userId: currentStory.userId } as never);
+    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: currentStory.userId }));
   };
 
   if (!currentStory) {

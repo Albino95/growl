@@ -8,7 +8,8 @@ import tw from '../../../lib/tw';
 type Props = {
   visible: boolean;
   onClose: () => void;
-  selectedTrack: PostMusicTrack | null;
+  /** Only the id is read, so any stored track shape (e.g. the post draft) fits. */
+  selectedTrack: Pick<PostMusicTrack, 'id'> | null;
   onSelectTrack: (track: PostMusicTrack | null) => void;
 };
 

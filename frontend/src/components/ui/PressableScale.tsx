@@ -16,7 +16,8 @@ type Props = PressableProps & {
   pressedScale?: number;
   /** Fire haptics/sound via app feedback helper. */
   feedback?: boolean | FeedbackKind;
-  children: React.ReactNode;
+  /** Optional: a childless PressableScale works as a tap-to-dismiss backdrop. */
+  children?: React.ReactNode;
 };
 
 /**

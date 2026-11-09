@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import tw from '../../lib/tw';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
@@ -49,7 +49,7 @@ type CheckoutRouteParams = {
   };
 };
 
-type CheckoutNavigationProp = StackNavigationProp<RootStackParamList>;
+type CheckoutNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type CheckoutRouteProp = RouteProp<CheckoutRouteParams, 'Checkout'>;
 
 interface CartItem extends OrderItem {

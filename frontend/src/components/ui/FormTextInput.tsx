@@ -21,18 +21,16 @@ const FormTextInput = forwardRef<TextInputType, Props>(function FormTextInput(
   ref
 ) {
   const accessory = disableDoneAccessory
-    ? {}
+    ? null
     : formInputAccessoryProps(accessoryId, { multiline: !!props.multiline });
   return (
     <TextInput
       ref={ref}
       placeholderTextColor="#A8A29E"
-      {...accessory}
+      {...(accessory ?? {})}
       {...props}
       // Keep accessory id after props so callers can't accidentally strip Done.
-      {...(disableDoneAccessory
-        ? {}
-        : { inputAccessoryViewID: accessory.inputAccessoryViewID })}
+      {...(accessory ? { inputAccessoryViewID: accessory.inputAccessoryViewID } : {})}
       style={[
         tw`bg-surface-page border rounded-2xl px-4 py-3 text-[15px] text-stone-900`,
         { borderColor: error ? '#F87171' : 'rgba(231,229,228,0.9)' },

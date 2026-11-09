@@ -1,4 +1,4 @@
-export type PasswordCheck = { ok: boolean; message?: string };
+export type PasswordCheck = { ok: true } | { ok: false; message: string };
 
 export function validatePasswordStrength(password: string): PasswordCheck {
   if (password.length < 12) {

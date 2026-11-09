@@ -1,8 +1,11 @@
-import type {
-  BottomTabSceneInterpolationProps,
-  BottomTabSceneInterpolatedStyle,
-  TransitionSpec,
-} from '@react-navigation/bottom-tabs';
+import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
+
+// These types are declared by bottom-tabs but not re-exported from its entry
+// point, so derive them from the public options type.
+type TransitionSpec = NonNullable<BottomTabNavigationOptions['transitionSpec']>;
+type SceneStyleInterpolator = NonNullable<BottomTabNavigationOptions['sceneStyleInterpolator']>;
+type BottomTabSceneInterpolationProps = Parameters<SceneStyleInterpolator>[0];
+type BottomTabSceneInterpolatedStyle = ReturnType<SceneStyleInterpolator>;
 
 /** Soft spring — snappy enough to feel intentional, not floaty. */
 export const GrowTabTransitionSpec: TransitionSpec = {

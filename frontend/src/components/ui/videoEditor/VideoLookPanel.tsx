@@ -114,7 +114,7 @@ export default function VideoLookPanel({
             }}
             style={tw`flex-row items-center self-start mb-3 px-3 py-2 rounded-full bg-brand-600/25 border border-brand-500/50`}
           >
-            <Ionicons name="wand-outline" size={14} color="#34D399" />
+            <Ionicons name="color-wand-outline" size={14} color="#34D399" />
             <Text style={tw`text-brand-300 text-xs font-bold ml-1.5`}>Auto enhance</Text>
           </Pressable>
           <FilterCategoryBar active={category} onSelect={setCategory} />

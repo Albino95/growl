@@ -286,7 +286,7 @@ export default function CoachingContractScreen() {
                 </Text>
                 {item.last_photo ? (
                   <Image
-                    source={{ uri: resolvePostMediaUri(item.last_photo, item.seed.category_key, item.seed_id) }}
+                    source={{ uri: resolvePostMediaUri(item.last_photo, item.seed.category_key ?? undefined, item.seed_id) }}
                     style={tw`w-full h-28 rounded-xl mt-2 bg-[#EAE4D6]`}
                     contentFit="cover"
                   />

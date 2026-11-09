@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import CommentsScreen from '../Comments/CommentsScreen';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
@@ -164,7 +164,7 @@ export default function PostDetailScreen() {
 
   const navigateToProfile = () => {
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.navigate('PublicProfile' as never, { userId: post.userId } as never);
+    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: post.userId }));
   };
 
   return (

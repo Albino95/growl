@@ -36,7 +36,7 @@ import {
 } from '../../utils/images';
 import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/ranking';
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
-import { getProducts } from '../../services/api/marketplace';
+import { getProducts, type Product as ApiProduct } from '../../services/api/marketplace';
 import tw from '../../lib/tw';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
 import {
@@ -103,7 +103,7 @@ export default function ExploreScreen() {
   const [addingId, setAddingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [shopPicks, setShopPicks] = useState<RankedProduct[]>([]);
+  const [shopPicks, setShopPicks] = useState<RankedProduct<ApiProduct>[]>([]);
   const [gridPosts, setGridPosts] = useState<FeedPost[]>([]);
   const [searchHits, setSearchHits] = useState<PeopleSearchHit[]>([]);
   const [searchPosts, setSearchPosts] = useState<PostSearchHit[]>([]);
@@ -500,7 +500,7 @@ export default function ExploreScreen() {
       category: p.category,
       subcategory: p.subcategory,
       created_at: p.created_at,
-      metadata: { username: p.username, avatar: p.avatar },
+      metadata: { username: p.username, avatar: p.avatar ?? undefined },
     };
     openPostDetail(feedLike);
   };
