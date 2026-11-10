@@ -79,7 +79,7 @@ bucket_name = "growl-media-qa"
 
 [env.production]
 name = "growl-backend-production"
-vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https://letsgrow.lu,https://www.letsgrow.lu,https://growl.app,https://www.growl.app,https://admin.growl.app", ADMIN_MFA_REQUIRED = "false" }
+vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGINS = "https://letsgrow.lu,https://www.letsgrow.lu,https://growl.app,https://www.growl.app,https://admin.growl.app,https://growl-admin-panel.vercel.app,https://growl-admin.pages.dev", ADMIN_MFA_REQUIRED = "false" }
 triggers = { crons = ["20 * * * *"] }
 
 [[env.production.d1_databases]]
