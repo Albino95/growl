@@ -31,6 +31,7 @@ type CaptureMode = 'photo' | 'video';
 
 const HOLD_MS = 280;
 const MAX_VIDEO_SEC = 60;
+const MAX_RECORD_BYTES = 38 * 1024 * 1024;
 
 function pickRecorderMime(): string {
   if (typeof MediaRecorder === 'undefined') return 'video/webm';
@@ -280,7 +281,11 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
     if (!cameraRef.current) return;
     beginRecordingUi();
     try {
-      const result = await cameraRef.current.recordAsync({ maxDuration: MAX_VIDEO_SEC });
+      const result = await cameraRef.current.recordAsync({
+        maxDuration: MAX_VIDEO_SEC,
+        // Stop just under the API's 40MB limit so a recorded reel always uploads.
+        maxFileSize: MAX_RECORD_BYTES,
+      });
       finishRecordingUi();
       if (result?.uri) {
         onCaptured({
@@ -422,6 +427,8 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                 facing={facing}
                 mode="video"
                 mute={false}
+                // 720p keeps a 60s reel near the 40MB upload cap (1080p is 2-3x larger).
+                videoQuality="720p"
                 onCameraReady={() => setReady(true)}
               />
             )}

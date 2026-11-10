@@ -37,6 +37,63 @@ function normalizeUploadedMediaUrl(url: string, key?: string): string {
   return url;
 }
 
+/** Must match the API's per-file caps (backend/src/routes/media.ts). */
+export const MAX_VIDEO_UPLOAD_BYTES = 40 * 1024 * 1024;
+
+/** Thrown before uploading when a clip is over the limit (no data wasted). */
+export class MediaTooLargeError extends Error {
+  constructor(sizeBytes: number) {
+    const mb = Math.round(sizeBytes / (1024 * 1024));
+    super(`This video is ${mb} MB. The limit is 40 MB — trim it or pick a shorter clip.`);
+    this.name = 'MediaTooLargeError';
+  }
+}
+
+/** Local file size in bytes, or null when it can't be read (web, data URLs). */
+async function localFileSize(uri: string): Promise<number | null> {
+  if (Platform.OS === 'web' || !uri.startsWith('file:')) return null;
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const info = await FileSystem.getInfoAsync(uri);
+    return info.exists && typeof info.size === 'number' ? info.size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST with a timeout and up to `retries` extra attempts on network failures
+ * (dropped connection, timeout). HTTP error responses are returned as-is and
+ * never retried. `makeInit` builds a fresh body for each attempt.
+ */
+async function postWithRetry(
+  url: string,
+  makeInit: () => RequestInit,
+  { timeoutMs, retries }: { timeoutMs: number; retries: number }
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...makeInit(), signal: controller.signal });
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  const timedOut = (lastError as { name?: string })?.name === 'AbortError';
+  throw new Error(
+    timedOut
+      ? 'Upload timed out. Check your connection and try again.'
+      : 'Upload failed — no connection. Check your connection and try again.'
+  );
+}
+
 async function readAccessToken(): Promise<string | null> {
   let token: string | null = getToken();
   if (!token) {
@@ -86,6 +143,12 @@ export async function uploadMediaFile(
   if (!isVideo) {
     sourceUri = await prepareImageForUpload(uri, purpose);
     mimeType = 'image/jpeg';
+  } else {
+    // Fail fast instead of uploading tens of MB only to get a 413.
+    const size = await localFileSize(sourceUri);
+    if (size !== null && size > MAX_VIDEO_UPLOAD_BYTES) {
+      throw new MediaTooLargeError(size);
+    }
   }
 
   const fileName =
@@ -133,40 +196,43 @@ export async function uploadMediaFile(
 
   // 1) Multipart (preferred)
   try {
-    const form = new FormData();
-    form.append('purpose', purpose);
-
-    if (Platform.OS === 'web') {
-      const res = await fetch(sourceUri);
-      const blob = await res.blob();
-      const typed =
-        blob.type && blob.type !== 'application/octet-stream' && blob.type === mimeType
-          ? blob
-          : new Blob([await blob.arrayBuffer()], { type: mimeType });
-      // File gives workers a reliable filename + mime (plain Blob often arrives empty-typed)
-      const file =
-        typeof File !== 'undefined'
-          ? new File([typed], fileName, { type: mimeType })
-          : typed;
-      form.append('file', file, fileName);
-    } else {
-      form.append('file', {
-        uri: sourceUri,
-        name: fileName,
-        type: mimeType,
-      } as unknown as Blob);
-    }
+    const buildForm = async (): Promise<FormData> => {
+      const form = new FormData();
+      form.append('purpose', purpose);
+      if (Platform.OS === 'web') {
+        const res = await fetch(sourceUri);
+        const blob = await res.blob();
+        const typed =
+          blob.type && blob.type !== 'application/octet-stream' && blob.type === mimeType
+            ? blob
+            : new Blob([await blob.arrayBuffer()], { type: mimeType });
+        // File gives workers a reliable filename + mime (plain Blob often arrives empty-typed)
+        const file =
+          typeof File !== 'undefined' ? new File([typed], fileName, { type: mimeType }) : typed;
+        form.append('file', file, fileName);
+      } else {
+        form.append('file', {
+          uri: sourceUri,
+          name: fileName,
+          type: mimeType,
+        } as unknown as Blob);
+      }
+      return form;
+    };
 
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: form,
-    });
+    const form = await buildForm();
+    const response = await postWithRetry(
+      endpoint,
+      // RN re-reads the file from its uri on each attempt; reuse is safe there.
+      () => ({ method: 'POST', headers, body: form }),
+      { timeoutMs: isVideo ? 180_000 : 60_000, retries: 2 }
+    );
     return await parseUploadResponse(response);
   } catch (err) {
+    if (err instanceof MediaTooLargeError) throw err;
     // Videos must stay multipart — JSON base64 hits image-only workers / size limits
     if (isVideo) {
       const msg = err instanceof Error ? err.message : 'Video upload failed';

@@ -6,6 +6,10 @@ import { AUDIO_LIBRARY } from '../constants/audioLibrary';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // 40MB (prefer multipart)
+/** Multipart framing overhead allowed on top of the largest file. */
+const MULTIPART_SLACK_BYTES = 512 * 1024;
+/** JSON/base64 uploads are for images only: 5MB binary ≈ 6.7MB base64 + JSON. */
+const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
 
 type ParsedMedia = {
   mime: string;
@@ -37,6 +41,35 @@ function kindForMime(mime: string): 'image' | 'video' | null {
   if (IMAGE_MIME[m]) return 'image';
   if (VIDEO_MIME[m]) return 'video';
   return null;
+}
+
+/**
+ * Identify the file from its first bytes instead of trusting the client's
+ * declared type or filename. Returns null for anything we don't accept.
+ */
+function detectMime(bytes: Uint8Array): string | null {
+  const at = (i: number) => bytes[i];
+  const ascii = (start: number, len: number) =>
+    String.fromCharCode(...Array.from(bytes.subarray(start, start + len)));
+  if (bytes.length < 12) return null;
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'image/jpeg';
+  if (at(0) === 0x89 && ascii(1, 3) === 'PNG') return 'image/png';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') return 'image/webp';
+  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3) return 'video/webm';
+  if (ascii(4, 4) === 'ftyp') {
+    return ascii(8, 4) === 'qt  ' ? 'video/quicktime' : 'video/mp4';
+  }
+  return null;
+}
+
+/** Re-type parsed media from its real bytes; null if the content isn't allowed. */
+function verifyMedia(media: ParsedMedia): ParsedMedia | null {
+  const mime = detectMime(media.bytes);
+  if (!mime) return null;
+  const kind = kindForMime(mime);
+  const ext = extForMime(mime);
+  if (!kind || !ext) return null;
+  return { ...media, mime, kind, ext };
 }
 
 function guessMimeFromName(name: string): string {
@@ -82,7 +115,7 @@ function parseMediaDataUrl(dataUrl: string): ParsedMedia | null {
 
 async function parseMultipart(
   request: Request
-): Promise<{ media: ParsedMedia; purpose: string } | null> {
+): Promise<{ media: ParsedMedia; purpose: string } | { tooLarge: true } | null> {
   let form: FormData;
   try {
     form = await request.formData();
@@ -95,37 +128,18 @@ async function parseMultipart(
   if (!file || typeof file === 'string') return null;
 
   const blob = file as File;
-  const mime =
-    (blob.type || '').toLowerCase() || guessMimeFromName((blob as File).name || '');
-  let kind = kindForMime(mime);
-  let ext = extForMime(mime);
-  let resolvedMime = mime;
-
-  if (!kind || !ext) {
-    // Last-resort: treat unnamed binary uploads with a video filename as mp4
-    const name = ((blob as File).name || '').toLowerCase();
-    if (
-      name.endsWith('.mp4') ||
-      name.includes('video') ||
-      name.endsWith('.mov') ||
-      name.endsWith('.webm')
-    ) {
-      resolvedMime = name.endsWith('.webm')
-        ? 'video/webm'
-        : name.endsWith('.mov')
-          ? 'video/quicktime'
-          : 'video/mp4';
-      kind = 'video';
-      ext = extForMime(resolvedMime);
-    } else {
-      return null;
-    }
+  if (blob.size > MAX_VIDEO_BYTES) {
+    return { tooLarge: true };
   }
+  // Declared type/filename are only a hint; verifyMedia() decides from the bytes.
+  const declared = (blob.type || '').toLowerCase() || guessMimeFromName(blob.name || '');
+  const ext = extForMime(declared) || 'bin';
+  const kind = kindForMime(declared) || 'image';
 
   const buffer = await blob.arrayBuffer();
   return {
     purpose,
-    media: { mime: resolvedMime, bytes: new Uint8Array(buffer), ext: ext!, kind: kind! },
+    media: { mime: declared, bytes: new Uint8Array(buffer), ext, kind },
   };
 }
 
@@ -175,6 +189,21 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
   }
 
   const contentType = (request.headers.get('content-type') || '').toLowerCase();
+  // Reject oversized bodies before the Worker buffers them (128MB memory).
+  const declaredLength = Number(request.headers.get('content-length') || '0');
+  const bodyCap = contentType.includes('application/json')
+    ? MAX_JSON_BODY_BYTES
+    : MAX_VIDEO_BYTES + MULTIPART_SLACK_BYTES;
+  if (declaredLength > bodyCap) {
+    return error(
+      'PAYLOAD_TOO_LARGE',
+      contentType.includes('application/json')
+        ? 'Upload too large. Send videos as a file upload (max 40MB).'
+        : 'Upload exceeds the 40MB limit. Trim the video or pick a shorter clip.',
+      413
+    );
+  }
+
   let parsed: ParsedMedia | null = null;
   let purpose = 'post';
 
@@ -200,6 +229,9 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
 
   if (contentType.includes('multipart/form-data')) {
     const multi = await parseMultipart(request);
+    if (multi && 'tooLarge' in multi) {
+      return error('PAYLOAD_TOO_LARGE', 'Upload exceeds the 40MB limit. Trim the video or pick a shorter clip.', 413);
+    }
     if (!multi) {
       return error(
         'VALIDATION_ERROR',
@@ -220,6 +252,9 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     // Prefer multipart, then fall back to JSON.
     const cloned = request.clone();
     const multi = await parseMultipart(request);
+    if (multi && 'tooLarge' in multi) {
+      return error('PAYLOAD_TOO_LARGE', 'Upload exceeds the 40MB limit. Trim the video or pick a shorter clip.', 413);
+    }
     if (multi) {
       parsed = multi.media;
       purpose = multi.purpose;
@@ -239,6 +274,12 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
   if (parsed.bytes.byteLength === 0) {
     return error('VALIDATION_ERROR', 'Uploaded media is empty', 400);
   }
+
+  const verified = verifyMedia(parsed);
+  if (!verified) {
+    return error('UNSUPPORTED_MEDIA', 'File is not a JPEG, PNG, WebP, MP4, MOV or WebM.', 415);
+  }
+  parsed = verified;
 
   const maxBytes = parsed.kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
   if (parsed.bytes.byteLength > maxBytes) {
@@ -306,6 +347,8 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
   headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
   headers.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
   headers.set('Accept-Ranges', 'bytes');
+  // Never let a browser reinterpret stored media as HTML/script.
+  headers.set('X-Content-Type-Options', 'nosniff');
 
   const size = obj.size;
   const body = isHead ? null : obj.body;
@@ -366,6 +409,8 @@ export async function getLibraryAudio(
   headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
   headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
   headers.set('Accept-Ranges', 'bytes');
+  // Never let a browser reinterpret stored media as HTML/script.
+  headers.set('X-Content-Type-Options', 'nosniff');
   const len = upstream.headers.get('Content-Length');
   if (len) headers.set('Content-Length', len);
 

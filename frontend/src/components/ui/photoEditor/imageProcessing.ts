@@ -443,6 +443,12 @@ export async function prepareExportSource(
   try {
     const { width, height } = await getImageDimensions(uri);
     const longEdge = Math.max(width, height);
+    // Already a small-enough JPEG written by ImageManipulator (orientation baked
+    // in, unlike camera files that rely on an EXIF tag jpeg-js ignores): reuse it
+    // instead of re-compressing, which costs time and image quality.
+    if (longEdge <= maxEdge && /ImageManipulator\/[^/]+\.jpe?g(\?|$)/i.test(uri)) {
+      return uri;
+    }
     const actions: Parameters<typeof ImageManipulator.manipulateAsync>[1] = [];
     if (longEdge > maxEdge) {
       const scale = maxEdge / longEdge;
