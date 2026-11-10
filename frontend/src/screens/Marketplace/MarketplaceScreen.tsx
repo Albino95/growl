@@ -67,7 +67,9 @@ export default function MarketplaceScreen() {
   );
 
   useEffect(() => {
-    dispatch(fetchProducts(fetchParams));
+    const request = dispatch(fetchProducts(fetchParams));
+    // Abort the superseded search when the query changes or the screen unmounts.
+    return () => request.abort();
   }, [dispatch, fetchParams]);
 
   const onRefresh = async () => {
@@ -227,6 +229,7 @@ export default function MarketplaceScreen() {
                 }}
                 feedback={false}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityRole="button"
                 accessibilityLabel="Open filters"
               >
                 <Ionicons name="options-outline" size={17} color="#059669" />
@@ -239,6 +242,7 @@ export default function MarketplaceScreen() {
                 }}
                 feedback={false}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityRole="button"
                 accessibilityLabel="Your orders"
               >
                 <Ionicons name="receipt-outline" size={17} color="#059669" />
@@ -265,256 +269,256 @@ export default function MarketplaceScreen() {
           onSelectSubcategory={setSelectedSubcategory}
         />
 
-        {isLoading && products.length === 0 ? (
-          <View style={tw`flex-1 px-4 pt-3`}>
-            <SkeletonCard variant="product" />
-            <SkeletonCard variant="product" />
-            <SkeletonCard variant="product" />
-          </View>
-        ) : (
-          <FlatList
-            data={searchFiltered}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={tw`px-4 pt-3 pb-24`}
-            {...feedListPerformanceProps}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing || isLoading}
-                onRefresh={onRefresh}
-                tintColor="#059669"
-                colors={['#059669']}
+        {/* Keep the FlatList (and the SearchField in its header) mounted while loading so
+            typing a search doesn't unmount the input and dismiss the keyboard. */}
+        <FlatList
+          data={searchFiltered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={tw`px-4 pt-3 pb-24`}
+          {...feedListPerformanceProps}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing || isLoading}
+              onRefresh={onRefresh}
+              tintColor="#059669"
+              colors={['#059669']}
+            />
+          }
+          ListHeaderComponent={
+            <>
+              <FadeInUp style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
+                <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
+                <Text style={tw`text-emerald-100 text-sm mt-1`}>
+                  Products ranked by your interests and community picks.
+                </Text>
+              </FadeInUp>
+              <SearchField
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search products"
               />
-            }
-            ListHeaderComponent={
-              <>
-                <FadeInUp style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
-                  <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
-                  <Text style={tw`text-emerald-100 text-sm mt-1`}>
-                    Products ranked by your interests and community picks.
-                  </Text>
-                </FadeInUp>
-                <SearchField
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Search products"
-                />
-                {hasActiveFilters && (
-                  <View style={tw`flex-row flex-wrap mt-2`}>
-                    {inStockOnly ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
-                      </View>
-                    ) : null}
-                    {onMyPathsOnly ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
-                      </View>
-                    ) : null}
-                    {minPrice != null ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
-                      </View>
-                    ) : null}
-                    {maxPrice != null ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
-                      </View>
-                    ) : null}
-                    {sortBy !== 'relevance' ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>
-                          {sortBy === 'price_asc'
-                            ? 'Price ↑'
-                            : sortBy === 'price_desc'
-                              ? 'Price ↓'
-                              : 'Newest'}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                )}
-                {carouselProducts.length > 0 && !searchQuery.trim() ? (
-                  <View style={tw`mt-4 mb-2`}>
-                    <SectionLabel variant="caps">Recommended for you</SectionLabel>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={tw`pt-2 pb-1`}
-                      style={{ flexGrow: 0 }}
-                      {...horizontalScrollProps}
-                    >
-                      {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
-                        const productImage = productThumb(item);
-                        return (
-                          <PressableScale
-                            key={item.id}
-                            feedback="open"
-                            pressedScale={0.97}
-                            style={tw`w-40 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
-                            onPress={() => {
-                              const rootNavigation = navigation.getParent() || navigation;
-                              (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
-                                'ProductDetail',
-                                { productId: item.id }
-                              );
-                            }}
-                          >
-                            {productImage ? (
-                              <Image
-                                source={{ uri: productImage }}
-                                style={tw`w-full h-48 bg-stone-100`}
-                                contentFit="cover"
-                                onError={() => {
-                                  setFailedProductImages((prev) =>
-                                    prev[item.id] ? prev : { ...prev, [item.id]: true }
-                                  );
-                                }}
-                              />
-                            ) : (
-                              <View style={tw`w-full h-48 bg-stone-100 items-center justify-center`}>
-                                <Ionicons name="image-outline" size={28} color="#A8A29E" />
-                              </View>
-                            )}
-                            <View style={tw`p-2.5`}>
-                              <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
-                                {item.name}
-                              </Text>
-                              <Text style={tw`text-base font-bold text-brand-700 mt-1`}>
-                                ${item.price.toFixed(2)}
-                              </Text>
-                              {item.matchLabel ? (
-                                <Text style={tw`text-[10px] text-brand-600 mt-0.5`} numberOfLines={1}>
-                                  {item.matchLabel}
-                                </Text>
-                              ) : item.isNew ? (
-                                <Text style={tw`text-[10px] text-violet-600 mt-0.5`}>New</Text>
-                              ) : null}
-                            </View>
-                          </PressableScale>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                ) : null}
-                <SectionLabel variant="caps">
-                  {selectedCategory
-                    ? getCategoryLabel(
-                        selectedSubcategory
-                          ? `${selectedCategory}:${selectedSubcategory}`
-                          : selectedCategory
-                      )
-                    : 'All products'}
-                </SectionLabel>
-              </>
-            }
-            renderItem={({ item }) => {
-              const productImage = productThumb(item);
-              return (
-                <PressableScale
-                  style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4 mb-3`}
-                  feedback="open"
-                  pressedScale={0.985}
-                  onPress={() => {
-                    const rootNavigation = navigation.getParent() || navigation;
-                    (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
-                      productId: item.id,
-                    });
-                  }}
-                >
-                  <View style={tw`flex-row`}>
-                    {productImage ? (
-                      <Image
-                        source={{ uri: productImage }}
-                        style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 96, height: 120 }]}
-                        contentFit="cover"
-                        transition={150}
-                        onError={() => {
-                          setFailedProductImages((prev) =>
-                            prev[item.id] ? prev : { ...prev, [item.id]: true }
-                          );
-                        }}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          tw`rounded-xl mr-3 bg-stone-100 items-center justify-center`,
-                          { width: 96, height: 120 },
-                        ]}
-                      >
-                        <Ionicons name="image-outline" size={24} color="#A8A29E" />
-                      </View>
-                    )}
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
-                        {item.name}
+              {hasActiveFilters && (
+                <View style={tw`flex-row flex-wrap mt-2`}>
+                  {inStockOnly ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
+                    </View>
+                  ) : null}
+                  {onMyPathsOnly ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
+                    </View>
+                  ) : null}
+                  {minPrice != null ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
+                    </View>
+                  ) : null}
+                  {maxPrice != null ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
+                    </View>
+                  ) : null}
+                  {sortBy !== 'relevance' ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>
+                        {sortBy === 'price_asc'
+                          ? 'Price ↑'
+                          : sortBy === 'price_desc'
+                            ? 'Price ↓'
+                            : 'Newest'}
                       </Text>
-                      <Text style={tw`text-sm text-stone-500 mb-2`} numberOfLines={2}>
-                        {item.description || 'Tap for details'}
-                      </Text>
-                      <View style={tw`flex-row items-center justify-between`}>
-                        <View style={tw`flex-row items-center flex-wrap gap-1`}>
-                          {item.isNew ? (
-                            <View style={tw`px-2 py-0.5 bg-violet-50 rounded-full`}>
-                              <Text style={tw`text-xs font-medium text-violet-700`}>New</Text>
-                            </View>
-                          ) : null}
-                          {item.stock > 0 ? (
-                            <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-full`}>
-                              <Text style={tw`text-xs font-medium text-emerald-800`}>In stock</Text>
-                            </View>
+                    </View>
+                  ) : null}
+                </View>
+              )}
+              {carouselProducts.length > 0 && !searchQuery.trim() ? (
+                <View style={tw`mt-4 mb-2`}>
+                  <SectionLabel variant="caps">Recommended for you</SectionLabel>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={tw`pt-2 pb-1`}
+                    style={{ flexGrow: 0 }}
+                    {...horizontalScrollProps}
+                  >
+                    {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
+                      const productImage = productThumb(item);
+                      return (
+                        <PressableScale
+                          key={item.id}
+                          feedback="open"
+                          pressedScale={0.97}
+                          style={tw`w-40 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
+                          onPress={() => {
+                            const rootNavigation = navigation.getParent() || navigation;
+                            (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
+                              'ProductDetail',
+                              { productId: item.id }
+                            );
+                          }}
+                        >
+                          {productImage ? (
+                            <Image
+                              source={{ uri: productImage }}
+                              style={tw`w-full h-48 bg-stone-100`}
+                              contentFit="cover"
+                              onError={() => {
+                                setFailedProductImages((prev) =>
+                                  prev[item.id] ? prev : { ...prev, [item.id]: true }
+                                );
+                              }}
+                            />
                           ) : (
-                            <View style={tw`px-2 py-0.5 bg-red-50 rounded-full`}>
-                              <Text style={tw`text-xs font-medium text-red-700`}>Sold out</Text>
+                            <View style={tw`w-full h-48 bg-stone-100 items-center justify-center`}>
+                              <Ionicons name="image-outline" size={28} color="#A8A29E" />
                             </View>
                           )}
-                        </View>
-                        <Text style={tw`text-lg font-bold text-emerald-700`}>${item.price.toFixed(2)}</Text>
-                      </View>
-                      {item.matchLabel ? (
-                        <Text style={tw`text-xs text-brand-600 mt-1`} numberOfLines={1}>
-                          {item.matchLabel}
-                        </Text>
-                      ) : null}
+                          <View style={tw`p-2.5`}>
+                            <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
+                              {item.name}
+                            </Text>
+                            <Text style={tw`text-base font-bold text-brand-700 mt-1`}>
+                              ${item.price.toFixed(2)}
+                            </Text>
+                            {item.matchLabel ? (
+                              <Text style={tw`text-[10px] text-brand-600 mt-0.5`} numberOfLines={1}>
+                                {item.matchLabel}
+                              </Text>
+                            ) : item.isNew ? (
+                              <Text style={tw`text-[10px] text-violet-600 mt-0.5`}>New</Text>
+                            ) : null}
+                          </View>
+                        </PressableScale>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : null}
+              <SectionLabel variant="caps">
+                {selectedCategory
+                  ? getCategoryLabel(
+                      selectedSubcategory
+                        ? `${selectedCategory}:${selectedSubcategory}`
+                        : selectedCategory
+                    )
+                  : 'All products'}
+              </SectionLabel>
+            </>
+          }
+          renderItem={({ item }) => {
+            const productImage = productThumb(item);
+            return (
+              <PressableScale
+                style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4 mb-3`}
+                feedback="open"
+                pressedScale={0.985}
+                onPress={() => {
+                  const rootNavigation = navigation.getParent() || navigation;
+                  (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
+                    productId: item.id,
+                  });
+                }}
+              >
+                <View style={tw`flex-row`}>
+                  {productImage ? (
+                    <Image
+                      source={{ uri: productImage }}
+                      style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 96, height: 120 }]}
+                      contentFit="cover"
+                      transition={150}
+                      onError={() => {
+                        setFailedProductImages((prev) =>
+                          prev[item.id] ? prev : { ...prev, [item.id]: true }
+                        );
+                      }}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        tw`rounded-xl mr-3 bg-stone-100 items-center justify-center`,
+                        { width: 96, height: 120 },
+                      ]}
+                    >
+                      <Ionicons name="image-outline" size={24} color="#A8A29E" />
                     </View>
+                  )}
+                  <View style={tw`flex-1`}>
+                    <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
+                      {item.name}
+                    </Text>
+                    <Text style={tw`text-sm text-stone-500 mb-2`} numberOfLines={2}>
+                      {item.description || 'Tap for details'}
+                    </Text>
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <View style={tw`flex-row items-center flex-wrap gap-1`}>
+                        {item.isNew ? (
+                          <View style={tw`px-2 py-0.5 bg-violet-50 rounded-full`}>
+                            <Text style={tw`text-xs font-medium text-violet-700`}>New</Text>
+                          </View>
+                        ) : null}
+                        {item.stock > 0 ? (
+                          <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-full`}>
+                            <Text style={tw`text-xs font-medium text-emerald-800`}>In stock</Text>
+                          </View>
+                        ) : (
+                          <View style={tw`px-2 py-0.5 bg-red-50 rounded-full`}>
+                            <Text style={tw`text-xs font-medium text-red-700`}>Sold out</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={tw`text-lg font-bold text-emerald-700`}>${item.price.toFixed(2)}</Text>
+                    </View>
+                    {item.matchLabel ? (
+                      <Text style={tw`text-xs text-brand-600 mt-1`} numberOfLines={1}>
+                        {item.matchLabel}
+                      </Text>
+                    ) : null}
                   </View>
-                </PressableScale>
-              );
-            }}
-            ListEmptyComponent={
-              error ? (
-                <EmptyState
-                  icon="cloud-offline-outline"
-                  title="Couldn’t load products"
-                  description={error}
-                  actionLabel="Try again"
-                  onAction={() => dispatch(fetchProducts(fetchParams))}
-                />
-              ) : searchQuery.trim() ? (
-                <EmptyState
-                  icon="search-outline"
-                  title="No matches"
-                  description={`Nothing found for “${searchQuery.trim()}”. Try another word or clear filters.`}
-                  actionLabel="Clear search"
-                  onAction={() => setSearchQuery('')}
-                />
-              ) : selectedCategory ? (
-                <EmptyState
-                  icon="filter-outline"
-                  title="No products in this path"
-                  description={emptyDescription}
-                  actionLabel="Clear category"
-                  onAction={clearCategoryFilters}
-                />
-              ) : (
-                <EmptyState
-                  icon="storefront-outline"
-                  title="No products yet"
-                  description={emptyDescription}
-                />
-              )
-            }
-          />
-        )}
+                </View>
+              </PressableScale>
+            );
+          }}
+          ListEmptyComponent={
+            isLoading && products.length === 0 ? (
+              <View>
+                <SkeletonCard variant="product" />
+                <SkeletonCard variant="product" />
+                <SkeletonCard variant="product" />
+              </View>
+            ) : error ? (
+              <EmptyState
+                icon="cloud-offline-outline"
+                title="Couldn’t load products"
+                description={error}
+                actionLabel="Try again"
+                onAction={() => dispatch(fetchProducts(fetchParams))}
+              />
+            ) : searchQuery.trim() ? (
+              <EmptyState
+                icon="search-outline"
+                title="No matches"
+                description={`Nothing found for “${searchQuery.trim()}”. Try another word or clear filters.`}
+                actionLabel="Clear search"
+                onAction={() => setSearchQuery('')}
+              />
+            ) : selectedCategory ? (
+              <EmptyState
+                icon="filter-outline"
+                title="No products in this path"
+                description={emptyDescription}
+                actionLabel="Clear category"
+                onAction={clearCategoryFilters}
+              />
+            ) : (
+              <EmptyState
+                icon="storefront-outline"
+                title="No products yet"
+                description={emptyDescription}
+              />
+            )
+          }
+        />
       </View>
 
       <AnimatedBottomSheet visible={filterOpen} onClose={() => setFilterOpen(false)}>
@@ -527,7 +531,7 @@ export default function MarketplaceScreen() {
                 </Text>
                 <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
               </View>
-              <PressableScale onPress={close} feedback={false} accessibilityLabel="Close filters">
+              <PressableScale onPress={close} feedback={false} accessibilityRole="button" accessibilityLabel="Close filters">
                 <Ionicons name="close" size={24} color="#6B7280" />
               </PressableScale>
             </View>

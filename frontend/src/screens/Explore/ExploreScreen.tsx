@@ -2,7 +2,7 @@
  * Explore — discover people, stories, posts, and shop picks by growth path.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -96,6 +96,8 @@ export default function ExploreScreen() {
     Array<{ userId: string; username: string; avatar: string | null; stories: StoryItem[] }>
   >([]);
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
+  const friendIdsRef = useRef(friendIds);
+  friendIdsRef.current = friendIds;
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,49 +125,72 @@ export default function ExploreScreen() {
   const load = useCallback(async () => {
     try {
       setLoadError(null);
-      const [feedRes, storiesRes, friends, productsRes] = await Promise.all([
+      // allSettled: one failing source must not blank the others.
+      const [feedS, storiesS, friendsS, productsS] = await Promise.allSettled([
         getFeedPosts({ mode: 'explore' }),
         getStories({ mode: 'explore' }),
         listFriends(),
         getProducts({}),
       ]);
-      const posts = feedRes.success && Array.isArray(feedRes.data) ? feedRes.data : [];
-      const products =
-        productsRes.success && Array.isArray(productsRes.data?.products)
-          ? productsRes.data.products
-          : [];
-      const fIds = new Set(friends.map((f) => f.id));
-      setFriendIds(fIds);
+      const feedRes = feedS.status === 'fulfilled' ? feedS.value : null;
+      const storiesRes = storiesS.status === 'fulfilled' ? storiesS.value : null;
+      const productsRes = productsS.status === 'fulfilled' ? productsS.value : null;
+      const feedOk = !!feedRes?.success;
+      const storiesOk = !!storiesRes?.success;
+      const friendsOk = friendsS.status === 'fulfilled';
+      const productsOk = !!productsRes?.success;
 
-      const grouped =
-        storiesRes.success && storiesRes.data?.grouped ? storiesRes.data.grouped : [];
-      setStoryGroups(grouped);
+      const failed: string[] = [];
+      if (!feedOk) failed.push('posts');
+      if (!storiesOk) failed.push('stories');
+      if (!friendsOk) failed.push('friends');
+      if (!productsOk) failed.push('shop');
+      for (const r of [feedS, storiesS, friendsS, productsS]) {
+        if (r.status === 'rejected') console.warn('[Explore] load part failed', r.reason);
+      }
+
+      const posts = feedOk && Array.isArray(feedRes?.data) ? feedRes.data : [];
+      const products =
+        productsOk && Array.isArray(productsRes?.data?.products) ? productsRes.data.products : [];
+      const fIds = friendsOk ? new Set(friendsS.value.map((f) => f.id)) : friendIdsRef.current;
+      if (friendsOk) setFriendIds(fIds);
+
+      const grouped = storiesOk && storiesRes?.data?.grouped ? storiesRes.data.grouped : [];
+      if (storiesOk) setStoryGroups(grouped);
 
       try {
-        setPeople(
-          rankDiscoverPeople(grouped, posts, userPaths, {
-            selfId: user?.id,
+        if (feedOk || storiesOk) {
+          setPeople(
+            rankDiscoverPeople(grouped, posts, userPaths, {
+              selfId: user?.id,
+              friendIds: fIds,
+            })
+          );
+        }
+        if (feedOk) {
+          setReels(
+            rankDiscoverReelPosts(posts, userPaths, {
+              selfId: user?.id,
+              friendIds: fIds,
+            })
+          );
+        }
+        if (productsOk) {
+          setShopPicks(
+            rankMarketplaceProducts(products, userPaths, {
+              userPoints: user?.points,
+            }).slice(0, 8)
+          );
+        }
+        if (feedOk) {
+          const rankedGrid = rankExploreRows(posts, [], userPaths, {
             friendIds: fIds,
+            applyDiversity: true,
           })
-        );
-        setReels(
-          rankDiscoverReelPosts(posts, userPaths, {
-            selfId: user?.id,
-            friendIds: fIds,
-          })
-        );
-        setShopPicks(
-          rankMarketplaceProducts(products, userPaths, {
-            userPoints: user?.points,
-          }).slice(0, 8)
-        );
-        const rankedGrid = rankExploreRows(posts, [], userPaths, {
-          friendIds: fIds,
-          applyDiversity: true,
-        })
-          .filter((r): r is { kind: 'post'; post: FeedPost; score: number } => r.kind === 'post')
-          .map((r) => r.post);
-        setGridPosts(rankedGrid.slice(0, 24));
+            .filter((r): r is { kind: 'post'; post: FeedPost; score: number } => r.kind === 'post')
+            .map((r) => r.post);
+          setGridPosts(rankedGrid.slice(0, 24));
+        }
       } catch (rankErr) {
         console.warn('[Explore] rank failed', rankErr);
         setPeople([]);
@@ -173,11 +198,17 @@ export default function ExploreScreen() {
         setShopPicks([]);
         setGridPosts(posts.slice(0, 24));
       }
+
+      if (failed.length > 0) {
+        setLoadError(
+          failed.length === 4
+            ? 'Could not refresh explore content.'
+            : `Could not load ${failed.join(', ')}.`
+        );
+      }
     } catch (e) {
       console.warn('[Explore] load failed', e);
-      setLoadError('Could not refresh explore content. Pull to retry.');
-      setPeople([]);
-      setReels([]);
+      setLoadError('Could not refresh explore content.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -194,7 +225,19 @@ export default function ExploreScreen() {
     }, [load])
   );
 
+  // Monotonic id of the latest search request; responses from older requests are dropped.
+  const searchSeqRef = useRef(0);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSearchDebounce = () => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+  };
+
   const runSearch = useCallback(async (raw: string, role = accountRole) => {
+    const seq = ++searchSeqRef.current;
     const q = raw.trim();
     if (q.length < 1) {
       setSearchHits([]);
@@ -212,6 +255,7 @@ export default function ExploreScreen() {
         type: 'all',
         role: role === 'all' ? 'all' : role,
       });
+      if (seq !== searchSeqRef.current) return;
       setSearchHits(res.people);
       setSearchPosts(res.posts);
       setPendingRequestIds((prev) => {
@@ -224,18 +268,21 @@ export default function ExploreScreen() {
       });
       setSearchCommitted(true);
     } catch (e: unknown) {
+      if (seq !== searchSeqRef.current) return;
       const msg = e instanceof Error ? e.message : 'Search failed. Try again.';
       setSearchError(msg);
       setSearchHits([]);
       setSearchPosts([]);
     } finally {
-      setSearchLoading(false);
+      if (seq === searchSeqRef.current) setSearchLoading(false);
     }
   }, [accountRole]);
 
   useEffect(() => {
     const q = query.trim();
     if (q.length < 1) {
+      // Invalidate any in-flight request so it can't repopulate cleared results.
+      searchSeqRef.current += 1;
       setSearchHits([]);
       setSearchPosts([]);
       setSearchLoading(false);
@@ -243,16 +290,15 @@ export default function ExploreScreen() {
       setSearchCommitted(false);
       return;
     }
-    let cancelled = false;
     setSearchLoading(true);
     const t = setTimeout(() => {
-      void runSearch(q).finally(() => {
-        if (cancelled) return;
-      });
+      searchDebounceRef.current = null;
+      void runSearch(q);
     }, 320);
+    searchDebounceRef.current = t;
     return () => {
-      cancelled = true;
       clearTimeout(t);
+      if (searchDebounceRef.current === t) searchDebounceRef.current = null;
     };
   }, [query, accountRole, runSearch]);
 
@@ -265,6 +311,8 @@ export default function ExploreScreen() {
       alertMessage('Still growing.', 'You found a quiet corner.');
     }
     setSearchTab('all');
+    // Run now instead of waiting for the pending debounce (avoids a duplicate request).
+    clearSearchDebounce();
     void runSearch(q);
   };
 
@@ -1057,7 +1105,21 @@ export default function ExploreScreen() {
 
       {loadError ? (
         <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl border border-red-200 bg-red-50`}>
-          <Text style={tw`text-sm text-red-700`}>{loadError}</Text>
+          <View style={tw`flex-row items-center justify-between`}>
+            <Text style={tw`flex-1 text-sm text-red-700`}>{loadError}</Text>
+            <TouchableOpacity
+              onPress={onRefresh}
+              disabled={refreshing}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading explore content"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={tw`ml-3`}
+            >
+              <Text style={tw`text-sm font-semibold text-red-700`}>
+                {refreshing ? 'Retrying…' : 'Retry'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : null}
 

@@ -128,6 +128,7 @@ function EntryCard({
               feedback="open"
               onPress={() => onShare(entry)}
               hitSlop={10}
+              accessibilityRole="button"
               accessibilityLabel="Share voice card"
             >
               <Ionicons name="share-outline" size={16} color="#059669" />
@@ -137,6 +138,7 @@ function EntryCard({
             feedback="delete"
             onPress={() => onDelete(entry.id)}
             hitSlop={10}
+            accessibilityRole="button"
             accessibilityLabel="Delete entry"
           >
             <Ionicons name="trash-outline" size={16} color="#A8A29E" />
@@ -189,7 +191,12 @@ export default function JournalScreen() {
   const todayPrompt = useMemo(() => promptForDay(new Date(), userPath), [userPath]);
 
   const loadEntries = useCallback(async () => {
-    await dispatch(fetchJournalEntries()).unwrap();
+    try {
+      await dispatch(fetchJournalEntries()).unwrap();
+    } catch (e) {
+      // The slice stores the error and drives the banner; just avoid an unhandled rejection.
+      console.warn('[Journal] load entries failed', e);
+    }
   }, [dispatch]);
 
   const loadCircle = useCallback(async () => {
@@ -438,6 +445,7 @@ export default function JournalScreen() {
                 feedback="open"
                 onPress={() => navigateFromRoot(navigation, 'Circles')}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityRole="button"
                 accessibilityLabel="Circles"
               >
                 <Ionicons name="people-outline" size={17} color="#059669" />
@@ -447,6 +455,7 @@ export default function JournalScreen() {
               feedback="open"
               onPress={openCompose}
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              accessibilityRole="button"
               accessibilityLabel="New journal entry"
             >
               <Ionicons name="pencil" size={17} color="#059669" />

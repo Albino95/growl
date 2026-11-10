@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import {
   View,
@@ -32,12 +32,7 @@ import { SkeletonList } from '../../components/ui/SkeletonCard';
 import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
-import HeartBurst from '../../components/feed/HeartBurst';
-import FeedReelMedia from '../../components/feed/FeedReelMedia';
-import FeedLikeButton, {
-  ReactionPickerBar,
-  type FeedReaction,
-} from '../../components/feed/FeedLikeButton';
+import { ReactionPickerBar, type FeedReaction } from '../../components/feed/FeedLikeButton';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
@@ -48,7 +43,6 @@ import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavi
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
-import type { VideoEditSettings } from '../../components/ui/VideoEditor';
 import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { openCoachingReachOut } from '../../utils/coachingReachOut';
@@ -58,13 +52,14 @@ import ShareCardSheet, { type ShareCardPayload } from '../../components/share/Sh
 import { copyToClipboard } from '../../utils/csvDownload';
 import PressableScale from '../../components/ui/PressableScale';
 import LiveHalo from '../../components/circles/LiveHalo';
-import GrowAvatar from '../../components/ui/GrowAvatar';
 import { isAppActive } from '../../utils/appActive';
 import HomeEmptyCanvas from '../../components/feed/HomeEmptyCanvas';
 import HomeSitCue from '../../components/feed/HomeSitCue';
 import { useActivationStore } from '../../state/useActivationStore';
 import { getJournalEntries } from '../../services/api/journal';
 import { localDateKey } from '../../components/journal/journalMeta';
+import FeedPostCard, { type FeedCardPost } from './components/FeedPostCard';
+import { useStableCallback } from '../../hooks/useStableCallback';
 
 type Story = {
   id: string;
@@ -80,33 +75,7 @@ type Story = {
 
 type ReactionType = FeedReaction;
 
-type Post = {
-  id: string;
-  userId: string;
-  username: string;
-  avatar: string;
-  image: string;
-  caption: string;
-  category: string;
-  subcategory?: string;
-  likes: number;
-  comments: number;
-  timestamp: string;
-  hasLiked: boolean;
-  reaction: ReactionType;
-  /** Friends (of viewer) who liked — from API when available */
-  friendLikesCount?: number;
-  friendLikers?: string[];
-  isFriend?: boolean;
-  isOwn?: boolean;
-  audioUrl?: string;
-  audioTitle?: string;
-  isReel?: boolean;
-  isInstructor?: boolean;
-  mediaType?: string;
-  contentType?: string;
-  videoEdit?: VideoEditSettings | null;
-};
+type Post = FeedCardPost;
 
 function formatTimeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -450,7 +419,7 @@ export default function FeedScreen({ navigation, route }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse is the trigger
   }, [homePulse]);
 
-  const retryFeed = async () => {
+  const retryFeed = useStableCallback(async () => {
     if (retryingFeed) return;
     setRetryingFeed(true);
     try {
@@ -460,7 +429,10 @@ export default function FeedScreen({ navigation, route }: any) {
     } finally {
       setRetryingFeed(false);
     }
-  };
+  });
+
+  /** Post ids with a like toggle in flight; taps on those posts are ignored until it settles. */
+  const pendingLikeIdsRef = useRef<Set<string>>(new Set());
 
   const toggleLike = async (postId: string, opts?: { fromDoubleTap?: boolean }) => {
     const current =
@@ -474,6 +446,10 @@ export default function FeedScreen({ navigation, route }: any) {
       playHeartBurst(postId);
       return;
     }
+
+    // In-flight guard: rapid taps would fire several toggles and desync heart/count.
+    if (pendingLikeIdsRef.current.has(postId)) return;
+    pendingLikeIdsRef.current.add(postId);
 
     const nextLiked = !wasLiked;
     const nextLikes = nextLiked
@@ -526,6 +502,8 @@ export default function FeedScreen({ navigation, route }: any) {
         ...prev,
         [postId]: wasLiked ? prev[postId] || 'love' : null,
       }));
+    } finally {
+      pendingLikeIdsRef.current.delete(postId);
     }
   };
 
@@ -552,10 +530,12 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const setReaction = async (postId: string, reaction: ReactionType) => {
     setShowReactionPicker(null);
+    if (pendingLikeIdsRef.current.has(postId)) return;
     const current =
       feedSections.flatMap((s) => s.data).find((p) => p.id === postId) ||
       posts.find((p) => p.id === postId);
 
+    pendingLikeIdsRef.current.add(postId);
     try {
       if (reaction === null) {
         if (current?.hasLiked) {
@@ -587,6 +567,8 @@ export default function FeedScreen({ navigation, route }: any) {
       if (reaction === 'love') playHeartBurst(postId);
     } catch {
       // Keep optimistic reaction; avoid a hard feed refresh that can reshuffle posts.
+    } finally {
+      pendingLikeIdsRef.current.delete(postId);
     }
   };
 
@@ -657,10 +639,28 @@ export default function FeedScreen({ navigation, route }: any) {
     ]);
   };
 
+  /** Bumped on every open/close so a late response can't refill (or reopen) the sheet. */
+  const likesRequestRef = useRef(0);
+  const likesLoadingRef = useRef(false);
+
+  const closeLikesModal = () => {
+    likesRequestRef.current += 1;
+    likesLoadingRef.current = false;
+    setLikesLoading(false);
+    setLikesModal(null);
+  };
+
   const openLikesModal = async (post: Post, mode: 'all' | 'friends') => {
+    // Ignore repeat taps while a likes list is loading.
+    if (likesLoadingRef.current) return;
+    likesLoadingRef.current = true;
+    const requestId = ++likesRequestRef.current;
+    // Open the sheet right away with the loading skeleton, then fill it.
     setLikesLoading(true);
+    setLikesModal({ title: mode === 'friends' ? 'Friends who liked' : 'Liked by', users: [] });
     try {
       const likes = await getFeedPostLikes(post.id);
+      if (requestId !== likesRequestRef.current) return;
       const users = mode === 'friends' ? likes.friendLikers : likes.likers;
       setLikesModal({
         title: mode === 'friends' ? 'Friends who liked' : 'Liked by',
@@ -671,17 +671,107 @@ export default function FeedScreen({ navigation, route }: any) {
             : `${likes.likes} total likes`,
       });
     } catch (e: unknown) {
+      if (requestId !== likesRequestRef.current) return;
       setLikesModal({
         title: 'Likes',
         users: [],
         subtitle: e instanceof Error ? e.message : 'Could not load likes',
       });
     } finally {
-      setLikesLoading(false);
+      if (requestId === likesRequestRef.current) {
+        likesLoadingRef.current = false;
+        setLikesLoading(false);
+      }
     }
   };
 
-  const feedListHeader = (
+  // Stable, id-keyed handlers for the memoized FeedPostCard. useStableCallback always
+  // calls the latest closure, so behaviour matches the previous inline handlers.
+  const onCardOpenProfile = useStableCallback((userId: string) => {
+    const rootNavigation = navigation.getParent() || navigation;
+    rootNavigation.navigate('PublicProfile' as never, { userId } as never);
+  });
+  const onCardOpenMenu = useStableCallback((post: Post) => {
+    feedback.open();
+    setPostMenuPost(post);
+  });
+  const onCardMediaPress = useStableCallback((post: Post) => handleMediaPress(post));
+  const onCardMediaError = useCallback((postId: string) => {
+    setFailedPostImages((prev) => (prev[postId] ? prev : { ...prev, [postId]: true }));
+  }, []);
+  const onCardMediaRetry = useCallback((postId: string) => {
+    setFailedPostImages((prev) => {
+      if (!prev[postId]) return prev;
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
+  }, []);
+  const onCardLikePress = useStableCallback((postId: string) => {
+    if (showReactionPicker === postId) {
+      setShowReactionPicker(null);
+      return;
+    }
+    void toggleLike(postId);
+  });
+  const onCardLikeLongPress = useStableCallback((postId: string) => {
+    setShowReactionPicker(showReactionPicker === postId ? null : postId);
+  });
+  const onCardOpenComments = useStableCallback((post: Post) => openComments(post));
+  const onCardShare = useStableCallback((item: Post) => {
+    setSharePayload({
+      kind: 'post',
+      postId: item.id,
+      userId: item.userId,
+      username: item.username,
+      avatar: item.isOwn ? user?.avatar || item.avatar : item.avatar,
+      caption: item.caption,
+      imageUrl: item.image,
+      category: item.category,
+      subcategory: item.subcategory,
+      isInstructor: item.isInstructor,
+      mediaType: item.mediaType,
+      isReel: item.isReel,
+    });
+  });
+  const onCardOpenLikes = useStableCallback((post: Post, mode: 'all' | 'friends') => {
+    void openLikesModal(post, mode);
+  });
+  const onCardToggleAudio = useStableCallback((post: Post) => togglePostAudio(post));
+  const onCardOpenPost = useStableCallback((post: Post) => openPost(post));
+
+  const renderPostItem = useCallback(
+    ({ item }: { item: Post }) => (
+      <FeedPostCard
+        item={item}
+        isActive={feedFocused && item.id === primaryVisiblePostId}
+        mediaFailed={!!failedPostImages[item.id]}
+        heartBurstKey={heartBurst[item.id] || 0}
+        isAudioPlaying={playingAudioId === item.id}
+        onOpenProfile={onCardOpenProfile}
+        onOpenMenu={onCardOpenMenu}
+        onMediaPress={onCardMediaPress}
+        onMediaError={onCardMediaError}
+        onMediaRetry={onCardMediaRetry}
+        onLikePress={onCardLikePress}
+        onLikeLongPress={onCardLikeLongPress}
+        onOpenComments={onCardOpenComments}
+        onShare={onCardShare}
+        onOpenLikes={onCardOpenLikes}
+        onToggleAudio={onCardToggleAudio}
+        onOpenPost={onCardOpenPost}
+      />
+    ),
+    // Handlers are stable; only per-card display state invalidates renderItem.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feedFocused, primaryVisiblePostId, failedPostImages, heartBurst, playingAudioId]
+  );
+
+  const keyExtractor = useCallback((item: Post) => item.id, []);
+
+  const hasPosts = posts.length > 0;
+  // Memoized so scroll-driven state (primaryVisiblePostId) doesn't rebuild the header.
+  const feedListHeader = useMemo(() => (
     <View style={tw`pb-2`}>
       <View style={tw`mx-4 mb-3 px-4 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/70`}>
         <Text style={tw`text-[11px] tracking-[2px] uppercase text-stone-500 font-semibold`}>
@@ -956,7 +1046,7 @@ export default function FeedScreen({ navigation, route }: any) {
         </View>
       )}
 
-      {user?.categories && user.categories.length > 0 && posts.length > 0 ? (
+      {user?.categories && user.categories.length > 0 && hasPosts ? (
         <View style={tw`mx-4 mt-2`}>
           <Text style={tw`text-xs text-stone-500 leading-4`}>
             Suggested faces share a path with you — open a profile to see overlap.
@@ -964,13 +1054,13 @@ export default function FeedScreen({ navigation, route }: any) {
         </View>
       ) : null}
 
-      {!journaledToday && posts.length > 0 ? (
+      {!journaledToday && hasPosts ? (
         <HomeSitCue
           sunday={sundaySit}
           onWrite={openTodayJournal}
           onDismiss={sundaySit ? () => useActivationStore.getState().dismissSunday() : undefined}
         />
-      ) : !hasPostedToday && posts.length > 0 && journaledToday ? (
+      ) : !hasPostedToday && hasPosts && journaledToday ? (
         <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
           <View style={tw`flex-row items-center gap-2`}>
             <Ionicons name="book-outline" size={18} color="#059669" />
@@ -1011,7 +1101,24 @@ export default function FeedScreen({ navigation, route }: any) {
         </View>
       )}
     </View>
-  );
+  ), [
+    navigation,
+    myStories,
+    user?.id,
+    user?.categories,
+    groupedStories,
+    pathCapsules,
+    selectedCategory,
+    hasPosts,
+    journaledToday,
+    sundaySit,
+    openTodayJournal,
+    hasPostedToday,
+    feedStatus,
+    feedError,
+    retryingFeed,
+    retryFeed,
+  ]);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
@@ -1027,6 +1134,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   openReelsFeed(navigation, 'home');
                 }}
                 style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                accessibilityRole="button"
                 accessibilityLabel="Reels"
               >
                 <Ionicons name="play-circle-outline" size={17} color="#059669" />
@@ -1038,7 +1146,7 @@ export default function FeedScreen({ navigation, route }: any) {
         <SectionList
           ref={feedListRef}
           sections={feedSections}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           stickySectionHeadersEnabled={false}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged}
@@ -1061,260 +1169,7 @@ export default function FeedScreen({ navigation, route }: any) {
           }
           {...feedListPerformanceProps}
           {...verticalScrollProps}
-          renderItem={({ item }) => (
-            <View
-              style={tw`mx-5 mb-4 overflow-hidden rounded-2xl bg-[#FFFcf7] border border-stone-200/70 ${
-                item.isReel ? 'border-stone-300/60' : ''
-              }`}
-            >
-              {/* Post Header - Modern Style */}
-              <View style={tw`flex-row items-center justify-between px-4 py-3`}>
-                <TouchableOpacity
-                  style={tw`flex-row items-center flex-1`}
-                  onPress={() => {
-                    const rootNavigation = navigation.getParent() || navigation;
-                    rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
-                  }}
-                >
-                  <GrowAvatar
-                    userId={item.userId}
-                    username={item.username}
-                    uri={item.avatar}
-                    size={44}
-                    style={tw`mr-3`}
-                  />
-                    <View style={tw`flex-1`}>
-                    <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
-                    <View style={tw`flex-row items-center flex-wrap gap-1 mt-0.5`}>
-                      <Text style={tw`text-xs text-stone-500`}>{item.timestamp}</Text>
-                      <View style={tw`px-2 py-0.5 rounded-full bg-brand-50`}>
-                        <Text style={tw`text-[10px] font-semibold text-brand-800`}>
-                          {item.subcategory
-                            ? `${item.category} · ${item.subcategory}`
-                            : item.category}
-                        </Text>
-                      </View>
-                      {item.isInstructor ? (
-                        <View style={tw`px-2 py-0.5 rounded-full bg-emerald-100 flex-row items-center`}>
-                          <Ionicons name="school" size={10} color="#047857" />
-                          <Text style={tw`text-[10px] font-semibold text-emerald-800 ml-0.5`}>
-                            Instructor
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={tw`p-2 -mr-1 z-10`}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  onPress={() => {
-                    feedback.open();
-                    setPostMenuPost(item);
-                  }}
-                  accessibilityLabel="Post options"
-                >
-                  <Ionicons name="ellipsis-horizontal" size={22} color="#57534E" />
-                </TouchableOpacity>
-              </View>
-              {(item.isFriend || item.isOwn) && (
-                <View style={tw`px-4 pb-2`}>
-                  <View
-                    style={tw`self-start rounded-full px-2.5 py-1 ${
-                      item.isOwn ? 'bg-emerald-100' : 'bg-stone-100'
-                    }`}
-                  >
-                    <Text
-                      style={tw`text-[11px] font-semibold ${
-                        item.isOwn ? 'text-emerald-800' : 'text-stone-700'
-                      }`}
-                    >
-                      {item.isOwn ? 'Your post' : 'Friend'}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Post Image — double-tap to like */}
-              <Pressable onPress={() => handleMediaPress(item)} style={tw`relative w-full bg-stone-50`}>
-                <FeedReelMedia
-                  uri={item.image}
-                  postId={item.id}
-                  isReel={item.isReel}
-                  mediaType={item.mediaType}
-                  contentType={item.contentType}
-                  videoEdit={item.videoEdit}
-                  failed={!!failedPostImages[item.id]}
-                  isActive={feedFocused && item.id === primaryVisiblePostId}
-                  muted
-                  onError={() => {
-                    setFailedPostImages((prev) =>
-                      prev[item.id] ? prev : { ...prev, [item.id]: true }
-                    );
-                  }}
-                  onRetry={() => {
-                    setFailedPostImages((prev) => {
-                      if (!prev[item.id]) return prev;
-                      const next = { ...prev };
-                      delete next[item.id];
-                      return next;
-                    });
-                  }}
-                />
-                <HeartBurst triggerKey={heartBurst[item.id] || 0} />
-              </Pressable>
-
-              {/* Post Actions - Modern Style */}
-              <View style={tw`px-4 py-3`}>
-                <View style={tw`flex-row items-center justify-between mb-3`}>
-                  <View style={tw`flex-row items-center`}>
-                    <FeedLikeButton
-                      hasLiked={item.hasLiked}
-                      reaction={item.reaction}
-                      onPress={() => {
-                        if (showReactionPicker === item.id) {
-                          setShowReactionPicker(null);
-                          return;
-                        }
-                        void toggleLike(item.id);
-                      }}
-                      onLongPress={() =>
-                        setShowReactionPicker(showReactionPicker === item.id ? null : item.id)
-                      }
-                    />
-                    <PressableScale
-                      onPress={() => openComments(item)}
-                      hitSlop={8}
-                      style={tw`mr-3.5`}
-                      feedback="open"
-                      accessibilityLabel="Comments"
-                    >
-                      <Ionicons name="chatbubble-outline" size={24} color="#57534E" />
-                    </PressableScale>
-                    <PressableScale
-                      onPress={() => {
-                        setSharePayload({
-                          kind: 'post',
-                          postId: item.id,
-                          userId: item.userId,
-                          username: item.username,
-                          avatar: item.isOwn ? user?.avatar || item.avatar : item.avatar,
-                          caption: item.caption,
-                          imageUrl: item.image,
-                          category: item.category,
-                          subcategory: item.subcategory,
-                          isInstructor: item.isInstructor,
-                          mediaType: item.mediaType,
-                          isReel: item.isReel,
-                        });
-                      }}
-                      hitSlop={8}
-                      feedback="open"
-                      accessibilityLabel="Share post card"
-                    >
-                      <Ionicons name="paper-plane-outline" size={24} color="#57534E" />
-                    </PressableScale>
-                  </View>
-                </View>
-
-                <View style={tw`flex-row items-center flex-wrap mb-2`}>
-                  <TouchableOpacity onPress={() => void openLikesModal(item, 'all')}>
-                    <Text style={tw`font-bold text-stone-900 text-[15px]`}>
-                      {item.likes} {item.likes === 1 ? 'like' : 'likes'}
-                    </Text>
-                  </TouchableOpacity>
-                  {item.comments > 0 ? (
-                    <>
-                      <Text style={tw`text-stone-300 mx-2`}>·</Text>
-                      <TouchableOpacity onPress={() => openComments(item)}>
-                        <Text style={tw`font-semibold text-stone-600 text-[15px]`}>
-                          {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
-                        </Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : null}
-                </View>
-                {(item.friendLikesCount ?? 0) > 0 ? (
-                  <TouchableOpacity onPress={() => void openLikesModal(item, 'friends')}>
-                    <Text style={tw`text-emerald-700 font-semibold mb-2 text-sm`}>
-                      {item.friendLikesCount} from friends
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-                {(item.friendLikers?.length ?? 0) > 0 ? (
-                  <Text style={tw`text-xs text-stone-600 mb-2`}>
-                    Liked by friends: {item.friendLikers?.slice(0, 3).join(', ')}
-                    {(item.friendLikers?.length ?? 0) > 3
-                      ? ` +${(item.friendLikers?.length ?? 0) - 3} more`
-                      : ''}
-                  </Text>
-                ) : null}
-
-                {/* Caption */}
-                <View style={tw`mb-2 flex-row flex-wrap`}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const rootNavigation = navigation.getParent() || navigation;
-                      rootNavigation.navigate('PublicProfile' as never, { userId: item.userId } as never);
-                    }}
-                  >
-                    <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
-                  </TouchableOpacity>
-                  <Text style={tw`text-stone-900 text-base`}> {item.caption}</Text>
-                </View>
-
-                {item.audioTitle ? (
-                  <Pressable
-                    onPress={() => togglePostAudio(item)}
-                    style={tw`flex-row items-center self-start bg-brand-50 border border-brand-200 rounded-full px-3 py-1.5 mb-2`}
-                  >
-                    <Ionicons
-                      name={playingAudioId === item.id ? 'pause' : 'musical-notes'}
-                      size={14}
-                      color="#059669"
-                    />
-                    <Text style={tw`text-brand-800 text-xs font-semibold ml-1.5`}>
-                      {item.audioTitle}
-                    </Text>
-                  </Pressable>
-                ) : null}
-
-                {item.isReel ? (
-                  <Pressable
-                    onPress={() => openPost(item)}
-                    style={tw`mb-2 flex-row items-center self-start bg-emerald-50 border border-emerald-200/80 rounded-full px-3 py-1.5`}
-                  >
-                    <Ionicons name="film-outline" size={14} color="#059669" />
-                    <Text style={tw`text-emerald-800 text-xs font-semibold ml-1.5`}>
-                      Watch in Reels
-                    </Text>
-                  </Pressable>
-                ) : null}
-
-                {/* Comments */}
-                {item.comments > 0 && (
-                  <TouchableOpacity onPress={() => openComments(item)}>
-                    <Text style={tw`text-stone-500 text-sm mb-1`}>
-                      View all {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                {item.comments === 0 ? (
-                  <TouchableOpacity onPress={() => openComments(item)}>
-                    <Text style={tw`text-stone-400 text-xs mb-1`}>No comments yet</Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                {/* Add Comment */}
-                <TouchableOpacity
-                  onPress={() => openComments(item)}
-                  style={tw`mt-2`}
-                >
-                  <Text style={tw`text-stone-500 text-sm`}>Add a comment...</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+          renderItem={renderPostItem}
           ListEmptyComponent={
             feedStatus === 'loading' ? (
               <View style={tw`px-5 pt-4`}>
@@ -1392,7 +1247,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
         <AnimatedBottomSheet
           visible={!!likesModal}
-          onClose={() => setLikesModal(null)}
+          onClose={closeLikesModal}
           maxHeightRatio={0.7}
         >
           {({ close }) => (
@@ -1401,7 +1256,12 @@ export default function FeedScreen({ navigation, route }: any) {
                 <Text style={tw`text-lg font-bold text-stone-900`}>
                   {likesModal?.title || 'Likes'}
                 </Text>
-                <TouchableOpacity onPress={close}>
+                <TouchableOpacity
+                  onPress={close}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close likes"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
                   <Ionicons name="close" size={22} color="#78716C" />
                 </TouchableOpacity>
               </View>
