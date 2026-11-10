@@ -40,6 +40,7 @@ import {
   type CoachingThread,
 } from '../../services/api/instructor';
 import ProposalComposeSheet from '../../components/instructor/ProposalComposeSheet';
+import { COACHING_ACTIVE_STATUS, COACHING_BILLING_NOTE } from '../../constants/coaching';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import tw from '../../lib/tw';
 import EmptyState from '../../components/ui/EmptyState';
@@ -640,7 +641,8 @@ export default function MessagesScreen() {
             <View style={tw`mx-4 mt-3 px-3.5 py-3 rounded-2xl bg-emerald-50 border border-emerald-100`}>
               {thread.contract?.status === 'active' ? (
                 <>
-                  <Text style={tw`text-sm font-bold text-stone-900`}>Plan active · billing coming</Text>
+                  <Text style={tw`text-sm font-bold text-stone-900`}>{COACHING_ACTIVE_STATUS}</Text>
+                  <Text style={tw`text-xs text-stone-600 mt-0.5`}>{COACHING_BILLING_NOTE}</Text>
                   <Text style={tw`text-xs text-stone-600 mt-0.5`}>
                     {thread.contract.weeks} wk · {thread.contract.sessions_per_week}× · €
                     {thread.contract.weekly_fee_eur}/week

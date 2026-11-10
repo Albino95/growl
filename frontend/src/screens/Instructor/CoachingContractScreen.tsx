@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,9 @@ import ReviewSheet from '../../components/instructor/ReviewSheet';
 import { StarRow } from '../../components/instructor/StarRating';
 import { useAuth } from '../../store/hooks';
 import { feedback } from '../../utils/interactionFeedback';
-import { alertMessage } from '../../utils/confirmDialog';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { formatCurrency } from '../../utils/money';
+import { COACHING_ACTIVE_STATUS, COACHING_BILLING_NOTE } from '../../constants/coaching';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { resolvePostMediaUri } from '../../utils/images';
@@ -52,6 +54,8 @@ export default function CoachingContractScreen() {
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<ReviewEligibility | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const hasContractRef = useRef(false);
 
   const isCoach = contract?.instructor_id === user?.id;
 
@@ -59,10 +63,15 @@ export default function CoachingContractScreen() {
     try {
       const res = await getCoachingContract(contractId);
       setContract(res.contract);
+      hasContractRef.current = true;
       setAssignments(res.assignments);
       setReview(res.review || null);
+      setLoadError(null);
     } catch (e) {
-      alertMessage('Plan', e instanceof Error ? e.message : 'Could not load this plan');
+      const msg = e instanceof Error ? e.message : 'Could not load this plan';
+      setLoadError(msg);
+      // Keep showing the plan we already have; only alert on a refresh failure.
+      if (hasContractRef.current) void alertMessage('Plan', msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -127,11 +136,18 @@ export default function CoachingContractScreen() {
 
   const onComplete = async () => {
     if (busy || !contract) return;
+    const ok = await confirmAsync(
+      'Mark plan complete?',
+      'This ends the plan for both of you. You can’t undo it.',
+      { confirmLabel: 'Mark complete', cancelLabel: 'Not yet' }
+    );
+    if (!ok) return;
     setBusy(true);
     try {
       const next = await completeCoachingContract(contract.id);
       setContract(next);
       feedback.open();
+      await load();
     } catch (e) {
       alertMessage('Plan', e instanceof Error ? e.message : 'Could not complete');
     } finally {
@@ -145,6 +161,9 @@ export default function CoachingContractScreen() {
         leftAccessory={
           <PressableScale
             onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
             style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
           >
             <Ionicons name="arrow-back" size={18} color="#1C1917" />
@@ -177,16 +196,19 @@ export default function CoachingContractScreen() {
             {isCoach ? contract.client?.username : contract.instructor?.username}
           </Text>
           <Text style={tw`text-sm text-stone-500 mt-1`}>
-            {contract.status === 'active' ? 'Plan active · billing coming' : contract.status}
+            {contract.status === 'active' ? COACHING_ACTIVE_STATUS : contract.status}
           </Text>
+          {contract.status === 'active' ? (
+            <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>{COACHING_BILLING_NOTE}</Text>
+          ) : null}
 
           <View style={tw`mt-4 px-4 py-3.5 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
             <Text style={tw`text-[16px] font-bold text-stone-900`}>
               {contract.weeks} week{contract.weeks === 1 ? '' : 's'} · {contract.sessions_per_week}× /
-              week · €{contract.weekly_fee_eur}/week
+              week · {formatCurrency(contract.weekly_fee_eur, contract.currency)}/week
             </Text>
             <Text style={tw`text-sm text-stone-600 mt-1`}>
-              €{contract.total_eur} total
+              {formatCurrency(contract.total_eur, contract.currency)} total
               {contract.trial_days ? ` · ${contract.trial_days}-day trial` : ''}
             </Text>
           </View>
@@ -203,7 +225,9 @@ export default function CoachingContractScreen() {
             {contract.status === 'active' ? (
               <PressableScale
                 onPress={() => void onComplete()}
-                style={tw`flex-1 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center`}
+                disabled={busy}
+                accessibilityState={{ disabled: busy }}
+                style={tw`flex-1 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center ${busy ? 'opacity-60' : ''}`}
               >
                 <Text style={tw`text-stone-800 font-bold`}>Mark complete</Text>
               </PressableScale>
@@ -295,7 +319,27 @@ export default function CoachingContractScreen() {
             ))
           )}
         </ScrollView>
-      ) : null}
+      ) : (
+        <View style={tw`flex-1 items-center justify-center px-8`}>
+          <Ionicons name="cloud-offline-outline" size={28} color="#78716C" />
+          <Text style={tw`text-[15px] font-semibold text-stone-800 mt-3 text-center`}>
+            Couldn’t load this plan
+          </Text>
+          {loadError ? (
+            <Text style={tw`text-sm text-stone-500 mt-1 text-center leading-5`}>{loadError}</Text>
+          ) : null}
+          <PressableScale
+            onPress={() => {
+              setLoading(true);
+              void load();
+            }}
+            accessibilityRole="button"
+            style={tw`mt-4 px-5 py-2.5 rounded-2xl bg-emerald-600`}
+          >
+            <Text style={tw`text-white font-bold`}>Try again</Text>
+          </PressableScale>
+        </View>
+      )}
 
       <Modal visible={assignOpen} transparent animationType="slide" onRequestClose={() => setAssignOpen(false)}>
         <KeyboardAvoidingView

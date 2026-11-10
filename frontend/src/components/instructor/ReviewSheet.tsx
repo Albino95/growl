@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -34,6 +34,17 @@ export default function ReviewSheet({
   const [follow, setFollow] = useState(eligibility?.mine?.follow_through || 5);
   const [body, setBody] = useState(eligibility?.mine?.body || '');
 
+  // The sheet stays mounted while closed; re-seed from the saved review each time it opens.
+  const seedStars = eligibility?.mine?.stars || 5;
+  const seedFollow = eligibility?.mine?.follow_through || 5;
+  const seedBody = eligibility?.mine?.body || '';
+  useEffect(() => {
+    if (!visible) return;
+    setStars(seedStars);
+    setFollow(seedFollow);
+    setBody(seedBody);
+  }, [visible, seedStars, seedFollow, seedBody]);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -47,6 +58,9 @@ export default function ReviewSheet({
             </Text>
             <PressableScale
               onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center`}
             >
               <Ionicons name="close" size={18} color="#1C1917" />

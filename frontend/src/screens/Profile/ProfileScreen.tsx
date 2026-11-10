@@ -11,6 +11,8 @@ import {
   StyleSheet,
   Animated,
   Easing,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -53,6 +55,7 @@ import NotificationBellButton from '../../components/navigation/NotificationBell
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import GrowingNowStrip from '../../components/garden/GrowingNowStrip';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
+import { COACHING_ACTIVE_STATUS } from '../../constants/coaching';
 import {
   claimInstructor,
   getInstructorEligibility,
@@ -243,6 +246,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [following, setFollowing] = useState<FriendSummary[]>([]);
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [postsLoaded, setPostsLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
   const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
   connectionsSheetRef.current = connectionsSheet;
@@ -263,9 +268,16 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     setProfileLoading(true);
     try {
       // Lightweight GET connections — avoid POST sync-cohort on every focus (that walks all users).
+      // Each request fails on its own so one error doesn't skip the rest of the profile.
       const [postList, storyList, connections, elig, me, plans] = await Promise.all([
-        getUserPosts(user.id),
-        getUserStories(user.id),
+        getUserPosts(user.id).catch((e) => {
+          console.warn('[ProfileScreen] load posts', e);
+          return null;
+        }),
+        getUserStories(user.id).catch((e) => {
+          console.warn('[ProfileScreen] load stories', e);
+          return null;
+        }),
         getConnections().catch(() => ({
           following: [] as FriendSummary[],
           followers: [] as FriendSummary[],
@@ -280,9 +292,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       if (elig) setEligibility(elig);
       const decay =
         typeof me?.decay_timer === 'number' ? me.decay_timer : user.decayTimer || 7;
-      setSourcePosts(postList);
-      setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
-      setStories(storyList.map(mapStoryToProfileStory));
+      if (postList) {
+        setSourcePosts(postList);
+        setPosts(postList.map((p) => mapFeedPostToProfilePost(p, decay)));
+      }
+      if (storyList) setStories(storyList.map(mapStoryToProfileStory));
       setFollowing(connections.following);
       setFollowers(connections.followers);
       const cats = me?.categories || user?.categories || [];
@@ -330,6 +344,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       console.warn('[ProfileScreen] load profile content', e);
     } finally {
       setProfileLoading(false);
+      setPostsLoaded(true);
     }
   }, [user?.id]);
 
@@ -581,6 +596,20 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         contentContainerStyle={{
           paddingBottom: Platform.OS === 'web' ? 160 : TAB_SCREEN_BOTTOM_PADDING,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              try {
+                await loadProfileContent();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            tintColor="#059669"
+          />
+        }
       >
         {/* Identity */}
         <FadeInUp style={tw`px-5 pt-4 pb-4`}>
@@ -798,7 +827,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <View style={tw`flex-1`}>
                 <Text style={tw`font-semibold text-stone-900`}>My coaching plan</Text>
                 <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                  {myPlans[0].instructor?.username || 'Coach'} · Plan active · billing coming
+                  {myPlans[0].instructor?.username || 'Coach'} · {COACHING_ACTIVE_STATUS}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
@@ -952,7 +981,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 </Text>
               </TouchableOpacity>
             ) : null}
-            {visiblePosts.length === 0 && posts.length > 0 ? (
+            {!postsLoaded && posts.length === 0 ? (
+              <ActivityIndicator color="#059669" style={tw`py-8`} />
+            ) : visiblePosts.length === 0 && posts.length > 0 ? (
               <Text style={tw`text-sm text-stone-500 text-center py-6`}>
                 All posts have decayed. Tap “Show decayed” or extend post lifespan.
               </Text>
@@ -1485,6 +1516,8 @@ function CategoryPickerModal({
           onPress={onClose}
           disabled={saving}
           hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
           style={tw`w-10 h-10 rounded-full bg-white border border-stone-200 items-center justify-center`}
         >
           <Ionicons name="close" size={20} color="#57534E" />

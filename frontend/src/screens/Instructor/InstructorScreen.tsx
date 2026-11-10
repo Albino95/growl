@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -45,14 +45,65 @@ import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { feedback } from '../../utils/interactionFeedback';
 import PressableScale from '../../components/ui/PressableScale';
 import tw from '../../lib/tw';
+import { formatCurrency, parseLocaleNumber } from '../../utils/money';
+import { COACHING_ACTIVE_STATUS, COACHING_LIMITS } from '../../constants/coaching';
 
 type HubTab = 'overview' | 'students' | 'community' | 'partnerships';
 
-function formatMoney(n: number) {
-  return `$${Number(n || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+function formatMoney(n: number, currency?: string | null) {
+  return formatCurrency(Number(n || 0), currency || 'EUR');
+}
+
+type OfferDraft = {
+  weekly: string;
+  sessions: string;
+  weeks: string;
+  trial: string;
+  accepting: boolean;
+};
+
+/** Validate the offer form; returns the parsed values or a user-facing error. */
+function parseOfferDraft(
+  d: OfferDraft
+):
+  | { ok: true; value: { weekly_fee_eur: number; sessions_per_week: number; typical_weeks: number; trial_days: number } }
+  | { ok: false; error: string } {
+  const L = COACHING_LIMITS;
+  const weekly = parseLocaleNumber(d.weekly);
+  if (weekly == null || weekly < L.weeklyFee.min || weekly > L.weeklyFee.max) {
+    return { ok: false, error: `Weekly fee must be between €${L.weeklyFee.min} and €${L.weeklyFee.max}.` };
+  }
+  const whole = (raw: string, lo: number, hi: number) => {
+    const n = parseLocaleNumber(raw);
+    return n != null && Number.isInteger(n) && n >= lo && n <= hi ? n : null;
+  };
+  const sessions = whole(d.sessions, L.sessionsPerWeek.min, L.sessionsPerWeek.max);
+  if (sessions == null) {
+    return {
+      ok: false,
+      error: `Times / week must be a whole number from ${L.sessionsPerWeek.min} to ${L.sessionsPerWeek.max}.`,
+    };
+  }
+  const weeks = whole(d.weeks, L.weeks.min, L.weeks.max);
+  if (weeks == null) {
+    return { ok: false, error: `Weeks must be a whole number from ${L.weeks.min} to ${L.weeks.max}.` };
+  }
+  const trial = whole(d.trial, L.trialDays.min, L.trialDays.max);
+  if (trial == null) {
+    return {
+      ok: false,
+      error: `Trial days must be a whole number from ${L.trialDays.min} to ${L.trialDays.max}.`,
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      weekly_fee_eur: Math.round(weekly * 100) / 100,
+      sessions_per_week: sessions,
+      typical_weeks: weeks,
+      trial_days: trial,
+    },
+  };
 }
 
 function AvatarBubble({
@@ -171,7 +222,7 @@ export default function InstructorScreen({ navigation }: any) {
   const [completedPlans, setCompletedPlans] = useState(0);
   const [inquiries, setInquiries] = useState<CoachingInquiry[]>([]);
   const [contracts, setContracts] = useState<CoachingContract[]>([]);
-  const [offerDraft, setOfferDraft] = useState({
+  const [offerDraft, setOfferDraftState] = useState<OfferDraft>({
     weekly: '10',
     sessions: '3',
     weeks: '2',
@@ -179,6 +230,15 @@ export default function InstructorScreen({ navigation }: any) {
     accepting: true,
   });
   const [offerBusy, setOfferBusy] = useState(false);
+  const [offerError, setOfferError] = useState<string | null>(null);
+  const [acceptingBusy, setAcceptingBusy] = useState(false);
+  // True while the offer form has edits that aren't saved yet, so a focus reload won't clobber them.
+  const offerDirtyRef = useRef(false);
+  const setOfferDraft = useCallback((update: (d: OfferDraft) => OfferDraft) => {
+    offerDirtyRef.current = true;
+    setOfferError(null);
+    setOfferDraftState(update);
+  }, []);
 
   const loadEligibility = useCallback(async () => {
     try {
@@ -206,13 +266,18 @@ export default function InstructorScreen({ navigation }: any) {
       if (mine) {
         setOffering(mine.offering);
         setCompletedPlans(mine.completed_plans);
-        setOfferDraft({
-          weekly: String(mine.offering.weekly_fee_eur),
-          sessions: String(mine.offering.sessions_per_week),
-          weeks: String(mine.offering.typical_weeks),
-          trial: String(mine.offering.trial_days),
-          accepting: mine.offering.accepting,
-        });
+        if (!offerDirtyRef.current) {
+          setOfferDraftState({
+            weekly: String(mine.offering.weekly_fee_eur),
+            sessions: String(mine.offering.sessions_per_week),
+            weeks: String(mine.offering.typical_weeks),
+            trial: String(mine.offering.trial_days),
+            accepting: mine.offering.accepting,
+          });
+        } else {
+          // Accepting is saved immediately, so always mirror the server value.
+          setOfferDraftState((d) => ({ ...d, accepting: mine.offering.accepting }));
+        }
       }
       setInquiries(inquiryRows.filter((i) => i.role === 'instructor' && i.status !== 'closed'));
       setContracts(contractRows.filter((c) => c.role === 'instructor'));
@@ -327,21 +392,60 @@ export default function InstructorScreen({ navigation }: any) {
 
   const saveOffering = async () => {
     if (offerBusy) return;
+    const parsed = parseOfferDraft(offerDraft);
+    if (!parsed.ok) {
+      setOfferError(parsed.error);
+      feedback.error();
+      return;
+    }
     setOfferBusy(true);
     try {
-      const next = await updateMyOffering({
-        weekly_fee_eur: Number(offerDraft.weekly) || 10,
-        sessions_per_week: Number(offerDraft.sessions) || 3,
-        typical_weeks: Number(offerDraft.weeks) || 2,
-        trial_days: Number(offerDraft.trial) || 0,
-        accepting: offerDraft.accepting,
-      });
+      const next = await updateMyOffering({ ...parsed.value, accepting: offerDraft.accepting });
       setOffering(next);
+      offerDirtyRef.current = false;
+      setOfferError(null);
       feedback.success();
     } catch (e) {
       alertMessage('Offer', e instanceof Error ? e.message : 'Could not save');
     } finally {
       setOfferBusy(false);
+    }
+  };
+
+  /** Accepting on/off saves right away (optimistic), using the last saved offer values. */
+  const toggleAccepting = async () => {
+    if (acceptingBusy) return;
+    // Use the last saved offer; if none loaded yet, fall back to a valid draft.
+    let base: Omit<InstructorOffering, 'accepting' | 'currency'> | null = offering;
+    if (!base) {
+      const parsed = parseOfferDraft(offerDraft);
+      if (!parsed.ok) {
+        setOfferError(parsed.error);
+        return;
+      }
+      base = parsed.value;
+    }
+    const prev = offerDraft.accepting;
+    const nextAccepting = !prev;
+    setOfferDraftState((d) => ({ ...d, accepting: nextAccepting }));
+    setOffering((o) => (o ? { ...o, accepting: nextAccepting } : o));
+    setAcceptingBusy(true);
+    try {
+      const next = await updateMyOffering({
+        weekly_fee_eur: base.weekly_fee_eur,
+        sessions_per_week: base.sessions_per_week,
+        typical_weeks: base.typical_weeks,
+        trial_days: base.trial_days,
+        accepting: nextAccepting,
+      });
+      setOffering(next);
+      feedback.select();
+    } catch (e) {
+      setOfferDraftState((d) => ({ ...d, accepting: prev }));
+      setOffering((o) => (o ? { ...o, accepting: prev } : o));
+      alertMessage('Offer', e instanceof Error ? e.message : 'Could not update');
+    } finally {
+      setAcceptingBusy(false);
     }
   };
 
@@ -408,14 +512,21 @@ export default function InstructorScreen({ navigation }: any) {
     }
   };
 
+  const goBackOrProfile = () => {
+    if (navigation.canGoBack?.()) navigation.goBack();
+    else navigation.navigate('Profile');
+  };
+
   if (!user?.isInstructor) {
     return (
       <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
         <GrowChromeHeader
           leftAccessory={
             <Pressable
-              onPress={() => navigation.goBack?.() || navigation.navigate('Profile')}
+              onPress={goBackOrProfile}
+              hitSlop={8}
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              accessibilityRole="button"
               accessibilityLabel="Go back"
             >
               <Ionicons name="arrow-back" size={18} color="#1C1917" />
@@ -434,7 +545,7 @@ export default function InstructorScreen({ navigation }: any) {
             required.
           </Text>
 
-          {loading ? (
+          {loading && !eligibility ? (
             <ActivityIndicator color="#059669" style={tw`mt-8`} />
           ) : eligibility ? (
             <View style={tw`border-t border-stone-200/80 pt-5`}>
@@ -598,8 +709,10 @@ export default function InstructorScreen({ navigation }: any) {
       <GrowChromeHeader
         leftAccessory={
           <Pressable
-            onPress={() => navigation.goBack?.() || navigation.navigate('Profile')}
+            onPress={goBackOrProfile}
+            hitSlop={8}
             style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            accessibilityRole="button"
             accessibilityLabel="Go back"
           >
             <Ionicons name="arrow-back" size={18} color="#1C1917" />
@@ -610,6 +723,8 @@ export default function InstructorScreen({ navigation }: any) {
             <Pressable
               onPress={() => openMessages()}
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              hitSlop={8}
+              accessibilityRole="button"
               accessibilityLabel="Messages"
             >
               <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
@@ -617,6 +732,8 @@ export default function InstructorScreen({ navigation }: any) {
             <Pressable
               onPress={() => navigateFromRoot(navigation, 'Post')}
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              hitSlop={8}
+              accessibilityRole="button"
               accessibilityLabel="Create post"
             >
               <Ionicons name="create-outline" size={17} color="#059669" />
@@ -686,7 +803,8 @@ export default function InstructorScreen({ navigation }: any) {
                   Your offer
                 </Text>
                 <Text style={tw`text-sm text-stone-500 mt-1 mb-3`}>
-                  Trial days stay static on each proposal. €{offering?.weekly_fee_eur ?? 10}/week ·{' '}
+                  New proposals use your current trial length.{' '}
+                  {formatCurrency(offering?.weekly_fee_eur ?? 10, offering?.currency)}/week ·{' '}
                   {completedPlans} completed plans.
                 </Text>
                 <View style={tw`flex-row gap-2 mb-2`}>
@@ -715,10 +833,13 @@ export default function InstructorScreen({ navigation }: any) {
                 </View>
                 <View style={tw`flex-row items-center justify-between`}>
                   <PressableScale
-                    onPress={() => setOfferDraft((d) => ({ ...d, accepting: !d.accepting }))}
+                    onPress={() => void toggleAccepting()}
+                    disabled={acceptingBusy}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: offerDraft.accepting, disabled: acceptingBusy }}
                     style={tw`px-3 py-2 rounded-xl ${
                       offerDraft.accepting ? 'bg-emerald-50' : 'bg-[#EAE4D6]'
-                    }`}
+                    } ${acceptingBusy ? 'opacity-60' : ''}`}
                   >
                     <Text
                       style={tw`text-xs font-semibold ${
@@ -738,6 +859,9 @@ export default function InstructorScreen({ navigation }: any) {
                     </Text>
                   </PressableScale>
                 </View>
+                {offerError ? (
+                  <Text style={tw`text-xs text-red-700 mt-2`}>{offerError}</Text>
+                ) : null}
               </View>
 
               <Text
@@ -905,8 +1029,8 @@ export default function InstructorScreen({ navigation }: any) {
                           {c.client?.username || 'Client'}
                         </Text>
                         <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                          {c.weeks} wk · {c.sessions_per_week}× · €{c.weekly_fee_eur}/week · Plan
-                          active · billing coming
+                          {c.weeks} wk · {c.sessions_per_week}× ·{' '}
+                          {formatCurrency(c.weekly_fee_eur, c.currency)}/week · {COACHING_ACTIVE_STATUS}
                         </Text>
                       </PressableScale>
                     ))}
@@ -965,7 +1089,7 @@ export default function InstructorScreen({ navigation }: any) {
                           {c.client?.username || 'Client'}
                         </Text>
                         <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                          €{c.total_eur} · {c.weeks} weeks
+                          {formatCurrency(c.total_eur, c.currency)} · {c.weeks} weeks
                         </Text>
                       </PressableScale>
                     ))}
@@ -1162,21 +1286,27 @@ export default function InstructorScreen({ navigation }: any) {
                         <>
                           <TouchableOpacity
                             onPress={() => promotePartnership(p)}
-                            style={tw`mr-4 mb-1`}
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            style={tw`mr-6 mb-1 py-1`}
                           >
                             <Text style={tw`text-sm font-bold text-emerald-700`}>Promote</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => void onUpdatePartnership(p, 'paused')}
                             disabled={busyId === p.id}
-                            style={tw`mr-4 mb-1`}
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            style={tw`mr-6 mb-1 py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-stone-600`}>Pause</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => void onUpdatePartnership(p, 'ended')}
                             disabled={busyId === p.id}
-                            style={tw`mb-1`}
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            style={tw`mb-1 py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-red-600`}>End</Text>
                           </TouchableOpacity>
@@ -1186,13 +1316,18 @@ export default function InstructorScreen({ navigation }: any) {
                           <TouchableOpacity
                             onPress={() => void onUpdatePartnership(p, 'active')}
                             disabled={busyId === p.id}
-                            style={tw`mr-4`}
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            style={tw`mr-6 py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-emerald-700`}>Resume</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => void onUpdatePartnership(p, 'ended')}
                             disabled={busyId === p.id}
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            style={tw`py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-red-600`}>End</Text>
                           </TouchableOpacity>
@@ -1201,6 +1336,9 @@ export default function InstructorScreen({ navigation }: any) {
                         <TouchableOpacity
                           onPress={() => void onUpdatePartnership(p, 'active')}
                           disabled={busyId === p.id}
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          style={tw`py-1`}
                         >
                           <Text style={tw`text-sm font-semibold text-emerald-700`}>Reactivate</Text>
                         </TouchableOpacity>

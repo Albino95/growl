@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -177,6 +178,11 @@ export default function PublicProfileScreen() {
   const [endorseBusy, setEndorseBusy] = useState(false);
   const [requestBusy, setRequestBusy] = useState(false);
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+  const [profileError, setProfileError] = useState<'not_found' | 'error' | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  // Latest route userId; responses for a previous user are ignored.
+  const currentUserIdRef = useRef(userId);
+  currentUserIdRef.current = userId;
 
   const isOwnProfile = currentUser?.id === userId;
 
@@ -392,25 +398,48 @@ export default function PublicProfileScreen() {
   }, [isBlocked]);
 
   /** Loads public profile header/stats metadata. */
-  const loadProfile = async () => {
+  const loadProfile = async (opts?: { silent?: boolean }) => {
+    const requestedId = userId;
     try {
-      setLoading(true);
-      const userData = await getPublicProfile(userId);
+      if (!opts?.silent) setLoading(true);
+      const userData = await getPublicProfile(requestedId);
+      if (currentUserIdRef.current !== requestedId) return;
       setProfileUser(userData);
+      setProfileError(null);
     } catch (error) {
+      if (currentUserIdRef.current !== requestedId) return;
       console.error('Error loading profile:', error);
-      setProfileUser(null);
+      const msg = error instanceof Error ? error.message : '';
+      // request() errors carry only a message; the backend 404 says "User not found".
+      const notFound = /not found|\(404\)/i.test(msg);
+      setProfileError(notFound ? 'not_found' : 'error');
+      // Keep showing an already-loaded profile when a refresh fails for a network reason.
+      if (notFound || !opts?.silent) setProfileUser(null);
     } finally {
-      setLoading(false);
+      if (currentUserIdRef.current === requestedId) setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadProfile({ silent: true }),
+        activeTab === 'posts' ? prefetchPrimaryContent() : loadContent(),
+      ]);
+    } finally {
+      setRefreshing(false);
     }
   };
 
   /** Prefetch posts while profile metadata loads so the grid appears faster. */
   const prefetchPrimaryContent = async () => {
     if (isBlocked) return;
+    const requestedId = userId;
     try {
       setLoadingContent(true);
-      const { cards, raw } = await fetchUserPosts(userId);
+      const { cards, raw } = await fetchUserPosts(requestedId);
+      if (currentUserIdRef.current !== requestedId) return;
       setSourcePosts(raw);
       setPosts(cards);
     } catch (error) {
@@ -430,17 +459,22 @@ export default function PublicProfileScreen() {
       return;
     }
     
+    const requestedId = userId;
+    const stale = () => currentUserIdRef.current !== requestedId;
     try {
       setLoadingContent(true);
       if (activeTab === 'posts') {
-        const { cards, raw } = await fetchUserPosts(userId);
+        const { cards, raw } = await fetchUserPosts(requestedId);
+        if (stale()) return;
         setSourcePosts(raw);
         setPosts(cards);
       } else if (activeTab === 'stories') {
-        const userStories = await fetchUserStories(userId);
+        const userStories = await fetchUserStories(requestedId);
+        if (stale()) return;
         setStories(userStories);
       } else if (activeTab === 'journal') {
-        const entries = await fetchPublicJournalEntries(userId);
+        const entries = await fetchPublicJournalEntries(requestedId);
+        if (stale()) return;
         setJournalEntries(entries);
       }
     } catch (error) {
@@ -675,16 +709,36 @@ export default function PublicProfileScreen() {
   }
 
   if (!profileUser) {
+    const failed = profileError === 'error';
     return (
       <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
-          <Ionicons name="person-outline" size={64} color="#A8A29E" />
-          <Text style={tw`text-stone-500 mt-4 text-center text-lg`}>User not found</Text>
+          <Ionicons
+            name={failed ? 'cloud-offline-outline' : 'person-outline'}
+            size={64}
+            color="#A8A29E"
+          />
+          <Text style={tw`text-stone-500 mt-4 text-center text-lg`}>
+            {failed ? 'Couldn’t load this profile' : 'User not found'}
+          </Text>
+          {failed ? (
+            <TouchableOpacity
+              onPress={() => {
+                void loadProfile();
+                void prefetchPrimaryContent();
+              }}
+              accessibilityRole="button"
+              style={tw`mt-4 bg-emerald-600 px-6 py-3 rounded-xl`}
+            >
+              <Text style={tw`text-white font-semibold`}>Try again</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={tw`mt-4 bg-emerald-600 px-6 py-3 rounded-xl`}
+            accessibilityRole="button"
+            style={tw`mt-4 px-6 py-3 rounded-xl ${failed ? 'bg-[#EAE4D6]' : 'bg-emerald-600'}`}
           >
-            <Text style={tw`text-white font-semibold`}>Go Back</Text>
+            <Text style={tw`font-semibold ${failed ? 'text-stone-800' : 'text-white'}`}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -722,6 +776,13 @@ export default function PublicProfileScreen() {
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor="#059669"
+          />
+        }
       >
         <View style={tw`px-5 pt-4 pb-3`}>
           <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-3xl px-4 pt-5 pb-4`}>
@@ -897,7 +958,17 @@ export default function PublicProfileScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  {profileUser.isInstructor ? (
+                  {profileUser.isInstructor &&
+                  profileUser.offering?.accepting === false &&
+                  !friendConnected ? (
+                    <View
+                      accessibilityState={{ disabled: true }}
+                      style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-[#EAE4D6] border border-stone-200/80`}
+                    >
+                      <Ionicons name="pause-circle-outline" size={18} color="#78716C" />
+                      <Text style={tw`font-bold text-sm text-stone-500`}>Not taking plans</Text>
+                    </View>
+                  ) : profileUser.isInstructor && profileUser.offering?.accepting !== false ? (
                     <PressableScale
                       onPress={() => void onReachOut()}
                       disabled={messageBusy}

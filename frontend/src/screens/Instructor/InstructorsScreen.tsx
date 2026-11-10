@@ -31,13 +31,16 @@ export default function InstructorsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const list = await listInstructors({ limit: 40, forPaths: false });
       setItems(list);
-    } catch {
-      setItems([]);
+      setLoadError(null);
+    } catch (e) {
+      // Keep any list we already have; the empty state shows the error + retry.
+      setLoadError(e instanceof Error ? e.message : 'Could not load instructors');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -73,6 +76,9 @@ export default function InstructorsScreen() {
         leftAccessory={
           <PressableScale
             onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
             style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
           >
             <Ionicons name="arrow-back" size={18} color="#1C1917" />
@@ -137,6 +143,17 @@ export default function InstructorsScreen() {
         ListEmptyComponent={
           loading ? (
             <SkeletonList variant="inbox" count={4} />
+          ) : loadError ? (
+            <EmptyState
+              icon="cloud-offline-outline"
+              title="Couldn’t load instructors"
+              description={loadError}
+              actionLabel="Try again"
+              onAction={() => {
+                setLoading(true);
+                void load();
+              }}
+            />
           ) : (
             <EmptyState
               icon="school-outline"

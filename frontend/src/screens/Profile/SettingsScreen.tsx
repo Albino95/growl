@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
-import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -146,16 +146,9 @@ export default function SettingsScreen() {
                 ? 'Students, offer, homework, partnerships'
                 : 'Earn peer endorsements, then claim instructor status'
             }
-            onPress={() => {
-              navigation.goBack();
-              setTimeout(() => {
-                try {
-                  (navigation as any).navigate('Instructor');
-                } catch {
-                  navigateFromRoot(navigation, 'Instructor');
-                }
-              }, 0);
-            }}
+            onPress={() =>
+              getRootNavigator(navigation)?.navigate('Individual', { screen: 'Instructor' })
+            }
           />
         </View>
 

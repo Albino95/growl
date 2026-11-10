@@ -3,6 +3,8 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { StarRow } from './StarRating';
+import { formatCurrency } from '../../utils/money';
+import { COACHING_BILLING_NOTE } from '../../constants/coaching';
 
 type Offer = {
   weekly_fee_eur?: number | null;
@@ -10,6 +12,7 @@ type Offer = {
   typical_weeks?: number | null;
   trial_days?: number | null;
   accepting?: boolean;
+  currency?: string | null;
 };
 
 export default function InstructorOfferCard({
@@ -29,6 +32,7 @@ export default function InstructorOfferCard({
   const weeks = offer?.typical_weeks;
   const total =
     fee != null && weeks != null ? Math.round(fee * weeks * 100) / 100 : null;
+  const currency = offer?.currency || 'EUR';
   const showRating = !!(rating && rating.count > 0);
 
   return (
@@ -40,7 +44,7 @@ export default function InstructorOfferCard({
           </Text>
           {fee != null ? (
             <Text style={tw`text-[28px] font-bold text-stone-900 mt-0.5`}>
-              €{fee}
+              {formatCurrency(fee, currency)}
               <Text style={tw`text-sm font-semibold text-stone-500`}> / week</Text>
             </Text>
           ) : (
@@ -62,14 +66,14 @@ export default function InstructorOfferCard({
           <Chip icon="repeat-outline" label={`${sessions}× / week`} />
         ) : null}
         {weeks ? <Chip icon="calendar-outline" label={`${weeks} weeks`} /> : null}
-        {total != null ? <Chip icon="cash-outline" label={`€${total} total`} /> : null}
+        {total != null ? <Chip icon="cash-outline" label={`${formatCurrency(total, currency)} total`} /> : null}
         {offer?.trial_days ? (
           <Chip icon="hourglass-outline" label={`${offer.trial_days}-day trial`} />
         ) : null}
       </View>
 
       <Text style={tw`text-[13px] text-stone-600 mt-2.5 leading-5`}>
-        Talk first. Then a written proposal. Weekly billing comes later.
+        Talk first. Then a written proposal. {COACHING_BILLING_NOTE}
       </Text>
 
       <View style={tw`flex-row flex-wrap mt-2.5 pt-2 border-t border-emerald-100`}>

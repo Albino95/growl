@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import type { InstructorOffering } from '../../services/api/instructor';
+import { formatCurrency, parseLocaleNumber } from '../../utils/money';
+import { COACHING_LIMITS } from '../../constants/coaching';
 
 type Props = {
   visible: boolean;
@@ -26,9 +28,36 @@ type Props = {
   }) => void;
 };
 
-function num(raw: string, fallback: number) {
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : fallback;
+type Parsed =
+  | { ok: true; weeks: number; sessions: number; weekly: number }
+  | { ok: false; error: string };
+
+function parseProposal(weeksRaw: string, sessionsRaw: string, weeklyRaw: string): Parsed {
+  const L = COACHING_LIMITS;
+  const weeks = parseLocaleNumber(weeksRaw);
+  if (weeks == null || !Number.isInteger(weeks) || weeks < L.weeks.min || weeks > L.weeks.max) {
+    return { ok: false, error: `Weeks must be a whole number from ${L.weeks.min} to ${L.weeks.max}.` };
+  }
+  const sessions = parseLocaleNumber(sessionsRaw);
+  if (
+    sessions == null ||
+    !Number.isInteger(sessions) ||
+    sessions < L.sessionsPerWeek.min ||
+    sessions > L.sessionsPerWeek.max
+  ) {
+    return {
+      ok: false,
+      error: `Times / week must be a whole number from ${L.sessionsPerWeek.min} to ${L.sessionsPerWeek.max}.`,
+    };
+  }
+  const weekly = parseLocaleNumber(weeklyRaw);
+  if (weekly == null || weekly < L.weeklyFee.min || weekly > L.weeklyFee.max) {
+    return {
+      ok: false,
+      error: `Weekly fee must be between €${L.weeklyFee.min} and €${L.weeklyFee.max}.`,
+    };
+  }
+  return { ok: true, weeks, sessions, weekly: Math.round(weekly * 100) / 100 };
 }
 
 export default function ProposalComposeSheet({
@@ -42,12 +71,26 @@ export default function ProposalComposeSheet({
   const [sessions, setSessions] = useState(String(offering?.sessions_per_week ?? 3));
   const [weekly, setWeekly] = useState(String(offering?.weekly_fee_eur ?? 10));
   const [note, setNote] = useState('');
+  const [showError, setShowError] = useState(false);
 
-  const total = useMemo(() => {
-    const w = Math.max(1, Math.floor(num(weeks, 2)));
-    const fee = Math.max(1, num(weekly, 10));
-    return Math.round(w * fee * 100) / 100;
-  }, [weeks, weekly]);
+  // The sheet stays mounted while closed (and before the offering loads); re-seed on open.
+  const seedWeeks = offering?.typical_weeks ?? 2;
+  const seedSessions = offering?.sessions_per_week ?? 3;
+  const seedWeekly = offering?.weekly_fee_eur ?? 10;
+  useEffect(() => {
+    if (!visible) return;
+    setWeeks(String(seedWeeks));
+    setSessions(String(seedSessions));
+    setWeekly(String(seedWeekly));
+    setShowError(false);
+  }, [visible, seedWeeks, seedSessions, seedWeekly]);
+  useEffect(() => {
+    if (visible) setNote('');
+  }, [visible]);
+
+  const parsed = useMemo(() => parseProposal(weeks, sessions, weekly), [weeks, sessions, weekly]);
+  const currency = offering?.currency || 'EUR';
+  const total = parsed.ok ? Math.round(parsed.weeks * parsed.weekly * 100) / 100 : null;
 
   const trial = offering?.trial_days ?? 0;
 
@@ -62,6 +105,9 @@ export default function ProposalComposeSheet({
             <Text style={tw`text-lg font-bold text-stone-900`}>Send a proposal</Text>
             <PressableScale
               onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center`}
             >
               <Ionicons name="close" size={18} color="#1C1917" />
@@ -82,9 +128,15 @@ export default function ProposalComposeSheet({
             <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
               Total
             </Text>
-            <Text style={tw`text-xl font-bold text-stone-900 mt-0.5`}>€{total}</Text>
+            <Text style={tw`text-xl font-bold text-stone-900 mt-0.5`}>
+              {total != null ? formatCurrency(total, currency) : '—'}
+            </Text>
             <Text style={tw`text-xs text-stone-500 mt-0.5`}>Written total for the plan</Text>
           </View>
+
+          {showError && !parsed.ok ? (
+            <Text style={tw`text-xs text-red-700 -mt-1 mb-3`}>{parsed.error}</Text>
+          ) : null}
 
           <TextInput
             value={note}
@@ -96,14 +148,18 @@ export default function ProposalComposeSheet({
           />
 
           <PressableScale
-            onPress={() =>
+            onPress={() => {
+              if (!parsed.ok) {
+                setShowError(true);
+                return;
+              }
               onSend({
-                weeks: Math.max(1, Math.floor(num(weeks, 2))),
-                sessions_per_week: Math.max(1, Math.floor(num(sessions, 3))),
-                weekly_fee_eur: Math.max(1, num(weekly, 10)),
+                weeks: parsed.weeks,
+                sessions_per_week: parsed.sessions,
+                weekly_fee_eur: parsed.weekly,
                 note: note.trim() || undefined,
-              })
-            }
+              });
+            }}
             disabled={busy}
             style={tw`py-3.5 rounded-2xl bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
           >

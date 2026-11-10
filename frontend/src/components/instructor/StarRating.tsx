@@ -51,6 +51,9 @@ export function StarPicker({
             onPress={() => onChange(n)}
             feedback="select"
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`${n} star${n === 1 ? '' : 's'}`}
+            accessibilityState={{ selected: n === value }}
             style={tw`mr-1.5`}
           >
             <Ionicons
