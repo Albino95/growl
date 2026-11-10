@@ -1,3 +1,4 @@
+import { enforceWriteLimit } from './utils/writeLimits';
 import { Env } from './types';
 import { attachCors, cors, error, json } from './utils/response';
 import * as authRoutes from './routes/auth';
@@ -61,6 +62,12 @@ async function handleRequest(
 
     // API version prefix
     const apiPrefix = `/api/${env.API_VERSION || 'v1'}`;
+
+    // Per-account limits on social writes (messages, comments, likes, reports…)
+    if (path.startsWith(apiPrefix)) {
+      const limited = await enforceWriteLimit(request, env, path.slice(apiPrefix.length));
+      if (limited) return limited;
+    }
 
     // Root route - API information
     if (path === '/' || path === '') {

@@ -433,6 +433,24 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
+    // Old accounts (demo seeds, early sign-ups) still store an unsalted SHA-256.
+    // Re-store them as salted PBKDF2 of the client's SHA-256 form — the same
+    // secret new sign-ups store — so both sign-in paths keep working.
+    if (!user.password_hash.startsWith('pbkdf2$')) {
+      try {
+        const canonical = passwordHash || (password ? await hashClientSecret(password) : null);
+        if (canonical) {
+          await env.DB.prepare(
+            `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ? AND password_hash = ?`
+          )
+            .bind(await hashPassword(canonical), user.id, user.password_hash)
+            .run();
+        }
+      } catch (err) {
+        console.error('[signIn] password hash upgrade failed:', err);
+      }
+    }
+
     if (!user.email_verified) {
       if (isVerificationExpired(user.email_verification_expires_at)) {
         await deleteUnverifiedUser(env, user.id);
