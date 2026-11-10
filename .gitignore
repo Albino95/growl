@@ -8,6 +8,9 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+# CI installs these two apps with `npm ci`, so their lockfiles are tracked.
+!frontend/package-lock.json
+!backend/package-lock.json
 
 # Expo
 .expo/
