@@ -63,12 +63,15 @@ function buildPathOptions(userCats: string[]): PathOption[] {
   return options;
 }
 
+/** Stable empty list so the selector doesn't return a new array each time. */
+const NO_CATEGORIES: string[] = [];
+
 /**
  * Plant a seed — only from the user’s growth paths, with goal metrics.
  */
 export default function PlantSeedScreen() {
   const navigation = useNavigation();
-  const userCats = useAppSelector((s) => s.auth.user?.categories || []);
+  const userCats = useAppSelector((s) => s.auth.user?.categories ?? NO_CATEGORIES);
   const pathOptions = useMemo(() => buildPathOptions(userCats), [userCats]);
 
   const [parentKey, setParentKey] = useState<string | null>(null);

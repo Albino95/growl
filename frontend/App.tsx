@@ -8,7 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { store } from './src/store/store';
 import RootNavigator from './src/app/navigation/RootNavigator';
 import { useAppDispatch, useAppSelector } from './src/store/store';
-import { hydrateAuth } from './src/store/slices/authSlice';
+import { hydrateAuth, signOut } from './src/store/slices/authSlice';
 import BrandLoadingScreen from './src/components/common/BrandLoadingScreen';
 import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
@@ -17,16 +17,26 @@ import { initMonitoring } from './src/services/monitoring';
 import {
   navigationRef,
   handleCheckoutDeepLink,
+  resetToAuth,
 } from './src/app/navigation/navigationRef';
+import { setSessionExpiredHandler } from './src/services/api/http';
 
 initMonitoring();
+
+// Refresh token rejected (expired, revoked, banned): clear every slice and go
+// back to sign-in instead of showing a logged-in UI whose requests all fail.
+setSessionExpiredHandler(() => {
+  if (!store.getState().auth.token) return;
+  void store.dispatch(signOut()).finally(() => resetToAuth());
+});
 
 // Keep native splash (solid emerald) up until BrandLoadingScreen is painted.
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 function AppContent() {
   const dispatch = useAppDispatch();
-  const { token, hydrated } = useAppSelector((state) => state.auth);
+  const token = useAppSelector((state) => state.auth.token);
+  const hydrated = useAppSelector((state) => state.auth.hydrated);
   const [bootDone, setBootDone] = useState(false);
 
   useEffect(() => {

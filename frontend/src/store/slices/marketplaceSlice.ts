@@ -35,6 +35,8 @@ interface MarketplaceState {
   isLoading: boolean;
   error: string | null;
   selectedCategory: string | null;
+  /** requestId of the newest product search; older responses are ignored. */
+  latestProductsRequestId: string | null;
 }
 
 const initialState: MarketplaceState = {
@@ -44,6 +46,7 @@ const initialState: MarketplaceState = {
   isLoading: false,
   error: null,
   selectedCategory: null,
+  latestProductsRequestId: null,
 };
 
 // Async thunks
@@ -134,15 +137,20 @@ const marketplaceSlice = createSlice({
   extraReducers: (builder) => {
     // Fetch Products
     builder
-      .addCase(fetchProducts.pending, (state) => {
+      .addCase(fetchProducts.pending, (state, action) => {
+        state.latestProductsRequestId = action.meta.requestId;
         state.isLoading = true;
         state.error = null;
       })
       .addCase(fetchProducts.fulfilled, (state, action) => {
+        // Typing fast fires several searches; only the newest may win.
+        if (action.meta.requestId !== state.latestProductsRequestId) return;
         state.products = action.payload;
         state.isLoading = false;
       })
       .addCase(fetchProducts.rejected, (state, action) => {
+        // Aborted on purpose (screen left / newer search): not an error.
+        if (action.meta.aborted || action.meta.requestId !== state.latestProductsRequestId) return;
         state.isLoading = false;
         state.error = action.error.message || 'Failed to fetch products';
       });

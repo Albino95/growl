@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,9 @@ import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
 import tw from '../../lib/tw';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
+import { alertMessage } from '../../utils/confirmDialog';
+import { useAppDispatch } from '../../store/hooks';
+import { patchFeedPostEngagement } from '../../store/slices/feedSlice';
 
 type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
@@ -48,6 +51,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
+  const dispatch = useAppDispatch();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { post: initialPost } = route.params;
@@ -116,6 +120,17 @@ export default function PostDetailScreen() {
     }
   };
 
+  // Keep the feed's copy of this post in sync with likes made here, so the
+  // count and heart match when the user goes back.
+  const engagementSynced = useRef(false);
+  useEffect(() => {
+    if (!engagementSynced.current) {
+      engagementSynced.current = true;
+      return;
+    }
+    dispatch(patchFeedPostEngagement({ id: post.id, likes: post.likes, has_liked: post.hasLiked }));
+  }, [dispatch, post.id, post.likes, post.hasLiked]);
+
   const toggleLike = async () => {
     try {
       const res = await toggleFeedPostLike(post.id);
@@ -127,12 +142,8 @@ export default function PostDetailScreen() {
         reaction: liked ? prev.reaction || 'love' : null,
       }));
     } catch {
-      setPost((prev) => ({
-        ...prev,
-        hasLiked: !prev.hasLiked,
-        likes: prev.hasLiked ? Math.max(0, prev.likes - 1) : prev.likes + 1,
-        reaction: prev.hasLiked ? null : 'love',
-      }));
+      // The like didn't reach the server: leave the heart as it was.
+      void alertMessage('Could not update like', 'Check your connection and try again.');
     }
   };
 

@@ -82,6 +82,17 @@ async function persistTokens(access: string, refresh?: string) {
   }
 }
 
+let onSessionExpired: (() => void) | null = null;
+
+/**
+ * Register what to do when the server definitively rejects the refresh token
+ * (expired, revoked, banned/suspended). The app signs out and returns to Auth
+ * so the UI never looks logged in while every request fails.
+ */
+export function setSessionExpiredHandler(handler: (() => void) | null): void {
+  onSessionExpired = handler;
+}
+
 /** Single-flight refresh so concurrent 401s don't rotate/revoke each other. */
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
@@ -110,6 +121,11 @@ async function refreshAccessToken(): Promise<string | null> {
           clearToken();
           await deleteSecureItem(TOKEN_KEY);
           await deleteSecureItem(REFRESH_KEY);
+          try {
+            onSessionExpired?.();
+          } catch {
+            /* never let the handler break the request path */
+          }
         }
         return null;
       }
