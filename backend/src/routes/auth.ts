@@ -16,6 +16,7 @@ import {
   verifyPassword,
   hashClientSecret,
   generateVerificationToken,
+  MAX_CODE_ATTEMPTS,
   hashVerificationToken,
 } from '../utils/password';
 import { getAccountRestriction, getRequestContext, userAuthPayload } from '../utils/auth';
@@ -47,6 +48,27 @@ async function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env:
     refreshToken: tokens.refreshToken,
     expiresIn: tokens.expiresIn,
   });
+}
+
+/**
+ * Atomically count one guess against a user's current code. Returns false once
+ * MAX_CODE_ATTEMPTS have been used (the UPDATE then matches no row).
+ */
+async function reserveCodeAttempt(
+  env: Env,
+  userId: string,
+  column: 'email_verification_attempts' | 'password_reset_attempts'
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `UPDATE users SET ${column} = ${column} + 1 WHERE id = ? AND ${column} < ?`
+  )
+    .bind(userId, MAX_CODE_ATTEMPTS)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+function tooManyCodeAttempts(nextStep: string): Response {
+  return error('TOO_MANY_ATTEMPTS', `Too many incorrect codes. ${nextStep}`, 429);
 }
 
 async function rateLimitOrError(
@@ -163,7 +185,7 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
         const tokenHash = await hashVerificationToken(verifyToken);
         const expiresAt = existingUser.email_verification_expires_at as string;
         await env.DB.prepare(
-          `UPDATE users SET password_hash = ?, email_verification_token_hash = ?,
+          `UPDATE users SET password_hash = ?, email_verification_token_hash = ?, email_verification_attempts = 0,
            updated_at = datetime('now') WHERE id = ? AND COALESCE(email_verified, 0) = 0`
         )
           .bind(passwordHashToStore, tokenHash, existingUser.id)
@@ -238,6 +260,9 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
     return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
   }
 
+  const limited = await rateLimitOrError(request, env, 'verify', 30, 900);
+  if (limited) return limited;
+
   const validation = await validateRequest(request, verifyEmailSchema);
   if (!validation.success) return validation.response;
 
@@ -246,16 +271,27 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
   const tokenHash = await hashVerificationToken(code.trim().replace(/\s/g, ''));
 
   const user = await env.DB.prepare(
-    `SELECT * FROM users WHERE email = ? AND email_verification_token_hash = ?`
+    `SELECT id, email_verified, email_verification_token_hash, email_verification_expires_at
+     FROM users WHERE email = ?`
   )
-    .bind(normalizedEmail, tokenHash)
+    .bind(normalizedEmail)
     .first<{
       id: string;
-      email_verification_expires_at: string;
       email_verified: number;
-    } & Record<string, unknown>>();
+      email_verification_token_hash: string | null;
+      email_verification_expires_at: string;
+    }>();
 
-  if (!user) {
+  if (!user || !user.email_verification_token_hash) {
+    return error('INVALID_CODE', 'Invalid verification code', 400);
+  }
+
+  // Spend one attempt atomically before comparing, so parallel guesses can't
+  // exceed the limit. A new code (resend) resets the counter.
+  if (!(await reserveCodeAttempt(env, user.id, 'email_verification_attempts'))) {
+    return tooManyCodeAttempts('Request a new verification code.');
+  }
+  if (user.email_verification_token_hash !== tokenHash) {
     return error('INVALID_CODE', 'Invalid verification code', 400);
   }
 
@@ -275,7 +311,8 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
 
   await env.DB.prepare(
     `UPDATE users SET email_verified = 1, email_verification_token_hash = NULL,
-     email_verification_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
+     email_verification_expires_at = NULL, email_verification_attempts = 0,
+     updated_at = datetime('now') WHERE id = ?`
   )
     .bind(user.id)
     .run();
@@ -329,7 +366,7 @@ export async function resendVerification(request: Request, env: Env): Promise<Re
   const tokenHash = await hashVerificationToken(verifyToken);
   const expiresAt = user.email_verification_expires_at as string;
   await env.DB.prepare(
-    `UPDATE users SET email_verification_token_hash = ?, updated_at = datetime('now')
+    `UPDATE users SET email_verification_token_hash = ?, email_verification_attempts = 0, updated_at = datetime('now')
      WHERE id = ? AND COALESCE(email_verified, 0) = 0`
   )
     .bind(tokenHash, user.id)
@@ -668,7 +705,7 @@ export async function forgotPassword(request: Request, env: Env): Promise<Respon
 
   await env.DB.prepare(
     `UPDATE users SET password_reset_token_hash = ?, password_reset_expires_at = ?,
-     updated_at = datetime('now') WHERE id = ?`
+     password_reset_attempts = 0, updated_at = datetime('now') WHERE id = ?`
   )
     .bind(tokenHash, expiresAt, user.id)
     .run();
@@ -709,13 +746,19 @@ export async function resetPassword(request: Request, env: Env): Promise<Respons
   const tokenHash = await hashVerificationToken(code.trim().replace(/\s/g, ''));
 
   const user = await env.DB.prepare(
-    `SELECT id, password_reset_expires_at FROM users
-     WHERE email = ? AND password_reset_token_hash = ?`
+    `SELECT id, password_reset_token_hash, password_reset_expires_at FROM users WHERE email = ?`
   )
-    .bind(normalizedEmail, tokenHash)
-    .first<{ id: string; password_reset_expires_at: string }>();
+    .bind(normalizedEmail)
+    .first<{ id: string; password_reset_token_hash: string | null; password_reset_expires_at: string }>();
 
-  if (!user) {
+  if (!user || !user.password_reset_token_hash) {
+    return error('INVALID_CODE', 'Invalid or expired reset code', 400);
+  }
+
+  if (!(await reserveCodeAttempt(env, user.id, 'password_reset_attempts'))) {
+    return tooManyCodeAttempts('Request a new reset code.');
+  }
+  if (user.password_reset_token_hash !== tokenHash) {
     return error('INVALID_CODE', 'Invalid or expired reset code', 400);
   }
 
@@ -733,7 +776,8 @@ export async function resetPassword(request: Request, env: Env): Promise<Respons
 
   await env.DB.prepare(
     `UPDATE users SET password_hash = ?, password_reset_token_hash = NULL,
-     password_reset_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
+     password_reset_expires_at = NULL, password_reset_attempts = 0,
+     updated_at = datetime('now') WHERE id = ?`
   )
     .bind(passwordHashToStore, user.id)
     .run();
