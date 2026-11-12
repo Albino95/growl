@@ -21,6 +21,7 @@ import CATEGORIES from '../../data/categories';
 import { uploadMediaFile } from '../../services/api/media';
 import StickyFooter from '../ui/StickyFooter';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { parseLocaleNumber } from '../../utils/money';
 
 const KEYBOARD_ACCESSORY_ID = 'product-form-done';
 
@@ -56,6 +57,8 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [stockError, setStockError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const priceRef = useRef<TextInput>(null);
@@ -71,6 +74,8 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     setStock(product?.stock?.toString() || '');
     setImageUrl(product?.image_url || '');
     setUploadNotice(null);
+    setPriceError(null);
+    setStockError(null);
   }, [product, visible]);
 
   const selectedCategoryData = CATEGORIES.find((c) => c.key === category);
@@ -103,12 +108,18 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
       alertMessage('Missing category', 'Select a category');
       return;
     }
-    if (!price || parseFloat(price) <= 0) {
-      alertMessage('Invalid price', 'Enter a valid price');
-      return;
-    }
-    if (stock === '' || parseInt(stock, 10) < 0) {
-      alertMessage('Invalid stock', 'Enter a valid stock quantity');
+    // Accept "12,50" as well as "12.50".
+    const parsedPrice = parseLocaleNumber(price);
+    const parsedStock = parseLocaleNumber(stock);
+    const nextPriceError =
+      parsedPrice == null || parsedPrice <= 0 ? 'Enter a price above 0, e.g. 12,50' : null;
+    const nextStockError =
+      parsedStock == null || parsedStock < 0 || !Number.isInteger(parsedStock)
+        ? 'Enter a whole number of 0 or more'
+        : null;
+    setPriceError(nextPriceError);
+    setStockError(nextStockError);
+    if (nextPriceError || nextStockError || parsedPrice == null || parsedStock == null) {
       return;
     }
 
@@ -149,8 +160,8 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
         description: description.trim() || undefined,
         category,
         subcategory: subcategory || undefined,
-        price: parseFloat(price),
-        stock: parseInt(stock, 10),
+        price: Math.round(parsedPrice * 100) / 100,
+        stock: parsedStock,
         image_url: persistableImageUrl,
       });
       onClose();
@@ -299,11 +310,14 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
 
             <View style={tw`flex-row gap-3 mb-8`}>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Price ($) *</Text>
+                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Price (€) *</Text>
                 <TextInput
                   ref={priceRef}
                   value={price}
-                  onChangeText={setPrice}
+                  onChangeText={(v) => {
+                    setPrice(v);
+                    if (priceError) setPriceError(null);
+                  }}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
                   style={inputStyle}
@@ -312,13 +326,19 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => stockRef.current?.focus()}
                 />
+                {priceError ? (
+                  <Text style={tw`text-xs text-red-600 mt-1`}>{priceError}</Text>
+                ) : null}
               </View>
               <View style={tw`flex-1`}>
                 <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Stock *</Text>
                 <TextInput
                   ref={stockRef}
                   value={stock}
-                  onChangeText={setStock}
+                  onChangeText={(v) => {
+                    setStock(v);
+                    if (stockError) setStockError(null);
+                  }}
                   placeholder="0"
                   keyboardType="number-pad"
                   style={inputStyle}
@@ -327,6 +347,9 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => Keyboard.dismiss()}
                 />
+                {stockError ? (
+                  <Text style={tw`text-xs text-red-600 mt-1`}>{stockError}</Text>
+                ) : null}
               </View>
             </View>
           </ScrollView>

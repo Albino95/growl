@@ -35,6 +35,7 @@ import {
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { formatCurrency, parseLocaleNumber } from '../../utils/money';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
@@ -73,9 +74,9 @@ function partnershipTerms(p: {
   fixed_fee?: number | null;
 }) {
   const type = p.partnership_type || 'commission';
-  if (type === 'fixed') return `$${Number(p.fixed_fee ?? 0).toFixed(0)} fixed`;
+  if (type === 'fixed') return `${formatCurrency(Number(p.fixed_fee ?? 0))} fixed`;
   if (type === 'hybrid') {
-    return `${p.commission_rate ?? 0}% + $${Number(p.fixed_fee ?? 0).toFixed(0)}`;
+    return `${p.commission_rate ?? 0}% + ${formatCurrency(Number(p.fixed_fee ?? 0))}`;
   }
   return `${p.commission_rate ?? 0}% commission`;
 }
@@ -152,6 +153,12 @@ export default function GrowScreen() {
     maxUses: '',
   });
   const [promoBusy, setPromoBusy] = useState(false);
+  // Inline validation messages for numeric inputs (comma or dot decimals accepted).
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<'commission' | 'budget' | 'promoValue' | 'promoMaxUses', string>>
+  >({});
+  const clearFieldError = (key: 'commission' | 'budget' | 'promoValue' | 'promoMaxUses') =>
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
 
   const stackNav = navigation.getParent?.() || navigation;
   const loading = growStatus === 'loading' && partnerships.length === 0 && discoverInstructors.length === 0;
@@ -269,14 +276,15 @@ export default function GrowScreen() {
   const openDiscoverModal = (instructor: DiscoverInstructor) => {
     setRequestCommission('12');
     setRequestMessage('');
+    clearFieldError('commission');
     setDiscoverTarget(instructor);
   };
 
   const sendPartnershipRequest = async () => {
     if (!discoverTarget || busyId) return;
-    const rate = Number(requestCommission);
-    if (!Number.isFinite(rate) || rate <= 0 || rate > 100) {
-      alertMessage('Invalid rate', 'Enter a commission rate between 1 and 100.');
+    const rate = parseLocaleNumber(requestCommission);
+    if (rate == null || rate <= 0 || rate > 100) {
+      setFieldErrors((prev) => ({ ...prev, commission: 'Enter a rate between 0 and 100, e.g. 12,5' }));
       return;
     }
     try {
@@ -299,13 +307,13 @@ export default function GrowScreen() {
 
   const handleCreateCampaign = async () => {
     const name = campaignForm.name.trim();
-    const budget = Number(campaignForm.budget);
+    const budget = parseLocaleNumber(campaignForm.budget);
     if (!name) {
       alertMessage('Missing name', 'Please enter a campaign name.');
       return;
     }
-    if (!Number.isFinite(budget) || budget <= 0) {
-      alertMessage('Invalid budget', 'Please enter a valid budget.');
+    if (budget == null || budget <= 0) {
+      setFieldErrors((prev) => ({ ...prev, budget: 'Enter a budget above 0, e.g. 1500 or 99,50' }));
       return;
     }
     const endDate =
@@ -327,23 +335,25 @@ export default function GrowScreen() {
 
   const handleCreatePromo = async () => {
     const code = promoForm.code.trim();
-    const value = Number(promoForm.value);
+    const value = parseLocaleNumber(promoForm.value);
     const maxUsesRaw = promoForm.maxUses.trim();
-    const maxUses = maxUsesRaw ? Number(maxUsesRaw) : undefined;
+    const maxUses = maxUsesRaw ? parseLocaleNumber(maxUsesRaw) : undefined;
     if (!code) {
       alertMessage('Missing code', 'Enter a promo code.');
       return;
     }
-    if (!Number.isFinite(value) || value <= 0) {
-      alertMessage('Invalid value', 'Enter a valid discount value.');
-      return;
-    }
-    if (promoForm.type === 'percent' && value > 100) {
-      alertMessage('Invalid percent', 'Percent discount cannot exceed 100.');
-      return;
-    }
-    if (maxUsesRaw && (!Number.isFinite(maxUses) || (maxUses as number) <= 0)) {
-      alertMessage('Invalid max uses', 'Max uses must be a positive whole number, or leave it blank.');
+    const valueError =
+      value == null || value <= 0
+        ? 'Enter a discount above 0, e.g. 10 or 7,50'
+        : promoForm.type === 'percent' && value > 100
+          ? 'Percent discount cannot exceed 100'
+          : undefined;
+    const maxUsesError =
+      maxUsesRaw && (maxUses == null || maxUses <= 0 || !Number.isInteger(maxUses))
+        ? 'Use a whole number above 0, or leave it blank'
+        : undefined;
+    if (valueError || maxUsesError || value == null) {
+      setFieldErrors((prev) => ({ ...prev, promoValue: valueError, promoMaxUses: maxUsesError }));
       return;
     }
     try {
@@ -353,7 +363,7 @@ export default function GrowScreen() {
         type: promoForm.type,
         value,
         max_uses:
-          typeof maxUses === 'number' && Number.isFinite(maxUses) ? Math.floor(maxUses) : undefined,
+          typeof maxUses === 'number' ? Math.floor(maxUses) : undefined,
       });
       alertMessage('Created', `Promo code ${code.toUpperCase()} is active.`);
       setPromoForm({ code: '', type: 'percent', value: '', maxUses: '' });
@@ -435,7 +445,7 @@ export default function GrowScreen() {
             {categoriesPreview(partner.categories)} · {partnershipTerms(partner)}
           </Text>
           <Text style={tw`text-xs text-stone-600 mt-1`}>
-            ${revenue.toFixed(2)} attributed
+            {formatCurrency(revenue)} attributed
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
@@ -758,7 +768,7 @@ export default function GrowScreen() {
                     </View>
                   </View>
                   <Text style={tw`text-sm font-semibold text-stone-900 mb-3`}>
-                    Budget ${campaign.budget.toFixed(0)}
+                    Budget {formatCurrency(Number(campaign.budget || 0))}
                   </Text>
                   {campaign.end_date ? (
                     <Text style={tw`text-xs text-stone-400 mb-3`}>
@@ -843,27 +853,39 @@ export default function GrowScreen() {
                 ))}
               </View>
               <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>
-                Value {promoForm.type === 'percent' ? '(%)' : '(USD)'}
+                Value {promoForm.type === 'percent' ? '(%)' : '(€)'}
               </Text>
               <TextInput
                 {...formInputAccessoryProps()}
                 value={promoForm.value}
-                onChangeText={(value) => setPromoForm((p) => ({ ...p, value }))}
+                onChangeText={(value) => {
+                  setPromoForm((p) => ({ ...p, value }));
+                  clearFieldError('promoValue');
+                }}
                 placeholder={promoForm.type === 'percent' ? '20' : '10'}
                 placeholderTextColor="#A8A29E"
-                keyboardType="numeric"
-                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+                keyboardType="decimal-pad"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.promoValue ? 'mb-1' : 'mb-3'} text-stone-900`}
               />
+              {fieldErrors.promoValue ? (
+                <Text style={tw`text-xs text-red-600 mb-3`}>{fieldErrors.promoValue}</Text>
+              ) : null}
               <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Max uses (optional)</Text>
               <TextInput
                 {...formInputAccessoryProps()}
                 value={promoForm.maxUses}
-                onChangeText={(maxUses) => setPromoForm((p) => ({ ...p, maxUses }))}
+                onChangeText={(maxUses) => {
+                  setPromoForm((p) => ({ ...p, maxUses }));
+                  clearFieldError('promoMaxUses');
+                }}
                 placeholder="100"
                 placeholderTextColor="#A8A29E"
-                keyboardType="numeric"
-                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-4 text-stone-900`}
+                keyboardType="number-pad"
+                style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.promoMaxUses ? 'mb-1' : 'mb-4'} text-stone-900`}
               />
+              {fieldErrors.promoMaxUses ? (
+                <Text style={tw`text-xs text-red-600 mb-4`}>{fieldErrors.promoMaxUses}</Text>
+              ) : null}
               <TouchableOpacity
                 style={tw`bg-emerald-600 rounded-xl py-3 items-center ${promoBusy ? 'opacity-60' : ''}`}
                 disabled={promoBusy}
@@ -889,7 +911,7 @@ export default function GrowScreen() {
                     <View style={tw`flex-1 pr-2`}>
                       <Text style={tw`text-base font-bold text-stone-900`}>{promo.code}</Text>
                       <Text style={tw`text-sm text-stone-600 mt-1`}>
-                        {promo.type === 'percent' ? `${promo.value}% off` : `$${promo.value.toFixed(2)} off`}
+                        {promo.type === 'percent' ? `${promo.value}% off` : `${formatCurrency(promo.value)} off`}
                         {promo.max_uses != null ? ` · max ${promo.max_uses} uses` : ''}
                       </Text>
                       <Text style={tw`text-xs text-stone-400 mt-1`}>
@@ -975,16 +997,22 @@ export default function GrowScreen() {
               ))}
             </View>
 
-            <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Budget (USD)</Text>
+            <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Budget (€)</Text>
             <TextInput
                 {...formInputAccessoryProps()}
               value={campaignForm.budget}
-              onChangeText={(budget) => setCampaignForm((p) => ({ ...p, budget }))}
+              onChangeText={(budget) => {
+                setCampaignForm((p) => ({ ...p, budget }));
+                clearFieldError('budget');
+              }}
               placeholder="1500"
               placeholderTextColor="#A8A29E"
-              keyboardType="numeric"
-              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+              keyboardType="decimal-pad"
+              style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.budget ? 'mb-1' : 'mb-3'} text-stone-900`}
             />
+            {fieldErrors.budget ? (
+              <Text style={tw`text-xs text-red-600 mb-3`}>{fieldErrors.budget}</Text>
+            ) : null}
 
             <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>End date (YYYY-MM-DD)</Text>
             <TextInput
@@ -1091,7 +1119,7 @@ export default function GrowScreen() {
                     <View style={tw`flex-row justify-between py-2`}>
                       <Text style={tw`text-sm text-stone-500`}>Attributed revenue</Text>
                       <Text style={tw`text-sm font-semibold text-stone-900`}>
-                        ${(selectedPerf?.attributed_revenue ?? 0).toFixed(2)}
+                        {formatCurrency(selectedPerf?.attributed_revenue ?? 0)}
                       </Text>
                     </View>
                     <View style={tw`flex-row justify-between py-2`}>
@@ -1183,12 +1211,18 @@ export default function GrowScreen() {
                   <TextInput
                 {...formInputAccessoryProps()}
                     value={requestCommission}
-                    onChangeText={setRequestCommission}
-                    keyboardType="numeric"
+                    onChangeText={(v) => {
+                      setRequestCommission(v);
+                      clearFieldError('commission');
+                    }}
+                    keyboardType="decimal-pad"
                     placeholder="12"
                     placeholderTextColor="#A8A29E"
-                    style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
+                    style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.commission ? 'mb-1' : 'mb-3'} text-stone-900`}
                   />
+                  {fieldErrors.commission ? (
+                    <Text style={tw`text-xs text-red-600 mb-3`}>{fieldErrors.commission}</Text>
+                  ) : null}
                   <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Message (optional)</Text>
                   <TextInput
                 {...formInputAccessoryProps({ multiline: true })}

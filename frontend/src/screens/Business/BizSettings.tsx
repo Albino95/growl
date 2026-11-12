@@ -186,7 +186,6 @@ export default function BizSettings() {
 
   const stackNav = navigation.getParent?.() || navigation;
   const logoPreview = logoLocalUri || logoUrl || null;
-  const net = useAppSelector((s) => s.business.kpis?.net_revenue ?? s.business.kpis?.total_revenue ?? 0);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['bottom']}>
@@ -287,16 +286,9 @@ export default function BizSettings() {
           <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
             Payouts
           </Text>
-          <View style={tw`flex-row`}>
-            <View style={tw`flex-1 pr-4`}>
-              <Text style={tw`text-xs text-stone-500`}>Available</Text>
-              <Text style={tw`text-lg font-bold text-emerald-700`}>${(net * 0.92).toFixed(2)}</Text>
-            </View>
-            <View style={tw`flex-1 border-l border-stone-200/80 pl-4`}>
-              <Text style={tw`text-xs text-stone-500`}>Fee hold</Text>
-              <Text style={tw`text-lg font-bold text-stone-800`}>${(net * 0.08).toFixed(2)}</Text>
-            </View>
-          </View>
+          <Text style={tw`text-sm text-stone-500 leading-5`}>
+            Payouts aren't enabled yet. No balance is available to withdraw.
+          </Text>
         </View>
 
         <View style={tw`px-5 py-4 border-b border-stone-200/70`}>

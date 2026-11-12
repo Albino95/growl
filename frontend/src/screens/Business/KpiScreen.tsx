@@ -18,6 +18,7 @@ import { fetchBusinessGrow } from '../../store/slices/businessSlice';
 import { exportOrdersCsv } from '../../services/api/business';
 import { downloadCsv } from '../../utils/csvDownload';
 import { alertMessage } from '../../utils/confirmDialog';
+import { formatCurrency } from '../../utils/money';
 import PeriodToggle from '../../components/business/PeriodToggle';
 import KpiCard from '../../components/business/KpiCard';
 import SectionLabel from '../../components/ui/SectionLabel';
@@ -154,7 +155,7 @@ export default function KpiScreen() {
             <View style={tw`flex-1`}>
               <Text style={tw`font-semibold text-emerald-900 mb-1`}>Raise basket size</Text>
               <Text style={tw`text-sm text-emerald-800 leading-5`}>
-                Bundle complementary SKUs — your AOV is ${aov.toFixed(2)}, below the $25 target.
+                Bundle complementary SKUs — your AOV is {formatCurrency(aov)}, below the {formatCurrency(25)} target.
               </Text>
             </View>
           </View>
@@ -162,11 +163,11 @@ export default function KpiScreen() {
 
         <SectionLabel>Revenue</SectionLabel>
         <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
-          <KpiCard label="Net revenue" value={`$${Number(net).toFixed(2)}`} icon="cash-outline" />
-          <KpiCard label="Gross revenue" value={`$${Number(gross).toFixed(2)}`} icon="trending-up-outline" />
-          <KpiCard label="Refunds" value={`$${Number(refunds).toFixed(2)}`} icon="return-down-back-outline" trend="down" />
+          <KpiCard label="Net revenue" value={formatCurrency(Number(net))} icon="cash-outline" />
+          <KpiCard label="Gross revenue" value={formatCurrency(Number(gross))} icon="trending-up-outline" />
+          <KpiCard label="Refunds" value={formatCurrency(Number(refunds))} icon="return-down-back-outline" trend="down" />
           <KpiCard label="Refund rate" value={`${Number(refundRate).toFixed(1)}%`} icon="stats-chart-outline" />
-          <KpiCard label="AOV" value={`$${Number(aov).toFixed(2)}`} icon="cart-outline" />
+          <KpiCard label="AOV" value={formatCurrency(Number(aov))} icon="cart-outline" />
           <KpiCard label="Units sold" value={String(unitsSold)} icon="cube-outline" />
         </View>
 
@@ -188,7 +189,7 @@ export default function KpiScreen() {
                         {label}
                       </Text>
                       <Text style={tw`text-[10px] font-semibold text-stone-600`}>
-                        ${(p.revenue || 0).toFixed(0)}
+                        {formatCurrency(Math.round(p.revenue || 0))}
                       </Text>
                     </View>
                   );
@@ -244,7 +245,7 @@ export default function KpiScreen() {
                   <Text style={tw`text-xs text-stone-500`}>{p.units_sold} units</Text>
                 </View>
                 <Text style={tw`text-sm font-semibold text-emerald-700`}>
-                  ${Number(p.revenue).toFixed(2)}
+                  {formatCurrency(Number(p.revenue || 0))}
                 </Text>
               </View>
             ))
@@ -255,7 +256,7 @@ export default function KpiScreen() {
         <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
           <KpiCard
             label="Inventory value"
-            value={`$${Number(kpis?.inventory_value ?? 0).toFixed(2)}`}
+            value={formatCurrency(Number(kpis?.inventory_value ?? 0))}
             icon="layers-outline"
           />
           <KpiCard
@@ -296,7 +297,7 @@ export default function KpiScreen() {
                   </Text>
                 </View>
                 <Text style={tw`text-sm font-semibold text-emerald-700`}>
-                  ${p.attributed_revenue.toFixed(2)}
+                  {formatCurrency(Number(p.attributed_revenue || 0))}
                 </Text>
               </View>
             ))

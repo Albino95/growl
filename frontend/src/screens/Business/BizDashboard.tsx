@@ -17,7 +17,13 @@ import {
   fetchNotifications,
   markNotificationReadLocal,
 } from '../../store/slices/businessSlice';
-import { markBusinessNotificationRead } from '../../services/api/business';
+import {
+  markBusinessNotificationRead,
+  orderBusinessTotal,
+  orderCurrency,
+} from '../../services/api/business';
+import MarketplaceCheckoutBanner from '../../components/business/MarketplaceCheckoutBanner';
+import { formatCurrency } from '../../utils/money';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { verticalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import BusinessScreen from '../../components/business/BusinessScreen';
@@ -168,8 +174,6 @@ export default function BizDashboard() {
   const recent = (kpis?.recent_orders || []).slice(0, 5);
   const net = kpis?.net_revenue ?? kpis?.total_revenue ?? 0;
   const aov = kpis?.aov ?? 0;
-  const availablePayout = net * 0.92;
-  const feePending = net * 0.08;
 
   const notificationBadge =
     unreadCount > 0 ? (
@@ -253,6 +257,7 @@ export default function BizDashboard() {
         }
       >
         <View style={tw`px-5 mb-4`}>
+          <MarketplaceCheckoutBanner style={tw`mb-3`} />
           <PeriodToggle value={period} onChange={setPeriod} />
         </View>
 
@@ -279,7 +284,7 @@ export default function BizDashboard() {
             <View style={tw`flex-row flex-wrap gap-2.5`}>
               <KpiCard
                 label="Net revenue"
-                value={`$${Number(net).toFixed(2)}`}
+                value={formatCurrency(Number(net))}
                 change={`${kpis?.deltas?.net_revenue_pct ?? 0}%`}
                 trend={(kpis?.deltas?.net_revenue_pct ?? 0) >= 0 ? 'up' : 'down'}
                 icon="cash-outline"
@@ -295,7 +300,7 @@ export default function BizDashboard() {
               />
               <KpiCard
                 label="AOV"
-                value={`$${Number(aov).toFixed(2)}`}
+                value={formatCurrency(Number(aov))}
                 change="avg"
                 trend="neutral"
                 icon="cart-outline"
@@ -317,23 +322,10 @@ export default function BizDashboard() {
         </View>
 
         <View style={tw`px-5 mb-6`}>
-          <SectionHeading title="Payout balance" />
-          <View style={tw`flex-row`}>
-            <View style={tw`flex-1 pr-4`}>
-              <Text style={tw`text-xs text-stone-500`}>Available</Text>
-              <Text style={tw`text-xl font-bold text-emerald-700 mt-0.5`}>
-                ${availablePayout.toFixed(2)}
-              </Text>
-            </View>
-            <View style={tw`flex-1 border-l border-stone-200/80 pl-4`}>
-              <Text style={tw`text-xs text-stone-500`}>Platform fee hold</Text>
-              <Text style={tw`text-xl font-bold text-stone-800 mt-0.5`}>
-                ${feePending.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-          <Text style={tw`text-xs text-stone-500 mt-2 leading-4`}>
-            Estimated from net revenue this period. Transfers settle through your connected payout method.
+          <SectionHeading title="Payouts" />
+          <Text style={tw`text-sm text-stone-500 leading-5`}>
+            Payouts aren't enabled yet. Your revenue figures above are tracked, but no balance is
+            available to withdraw.
           </Text>
         </View>
 
@@ -385,7 +377,7 @@ export default function BizDashboard() {
                   </View>
                   <View style={tw`items-end`}>
                     <Text style={tw`font-bold text-stone-900`}>
-                      ${Number(order.total || 0).toFixed(2)}
+                      {formatCurrency(orderBusinessTotal(order), orderCurrency(order))}
                     </Text>
                     <View style={tw`mt-1`}>
                       <OrderStatusPill status={order.status || 'pending'} />

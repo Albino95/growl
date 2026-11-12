@@ -51,6 +51,41 @@ async function fetchRawText(path: string): Promise<string> {
 
 export type BusinessPeriod = 'today' | 'week' | 'month';
 
+/**
+ * Checkout orders exist before payment completes (payment_status 'unpaid'). They are shown to
+ * the seller as "Awaiting payment" and cannot be advanced.
+ */
+export function isOrderAwaitingPayment(order: {
+  payment_status?: string | null;
+  awaiting_payment?: boolean;
+}): boolean {
+  if (typeof order.awaiting_payment === 'boolean') return order.awaiting_payment;
+  if (!order.payment_status) return false;
+  return order.payment_status !== 'paid' && order.payment_status !== 'refunded';
+}
+
+/** Currency for an order; orders don't store one yet, so this defaults to EUR. */
+export function orderCurrency(order: unknown): string {
+  const c = (order as { currency?: unknown } | null)?.currency;
+  return typeof c === 'string' && c ? c : 'EUR';
+}
+
+/** This seller's share of an order (only their items), falling back to the order total. */
+export function orderBusinessTotal(order: {
+  total?: number;
+  items?: Array<{ quantity?: number; price?: number }>;
+  business_total?: number;
+}): number {
+  if (typeof order.business_total === 'number') return order.business_total;
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    return order.items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0),
+      0
+    );
+  }
+  return Number(order.total || 0);
+}
+
 export interface DashboardKPIs {
   period?: BusinessPeriod;
   total_products: number;
@@ -174,8 +209,11 @@ export async function getBusinessProducts(
   );
 }
 
-export async function getBusinessOrders(): Promise<{ success: boolean; data: Order[] }> {
-  return request<{ success: boolean; data: Order[] }>('/business/orders');
+export async function getBusinessOrders(
+  offset = 0
+): Promise<{ success: boolean; data: Order[] }> {
+  const query = offset > 0 ? `?offset=${Math.floor(offset)}` : '';
+  return request<{ success: boolean; data: Order[] }>(`/business/orders${query}`);
 }
 
 export async function getBusinessOrderDetail(orderId: string): Promise<{ success: boolean; data: Order }> {
@@ -410,33 +448,38 @@ export type OrderFulfillmentPayload = {
 };
 
 export async function getBusinessCustomers(): Promise<{ customers: BusinessCustomer[] }> {
-  return request<{ customers: BusinessCustomer[] }>('/business/customers');
+  const res = await request<{ success: boolean; data: { customers: BusinessCustomer[] } }>(
+    '/business/customers'
+  );
+  return { customers: res.data?.customers || [] };
 }
 
 export async function updateOrderFulfillment(
   orderId: string,
   payload: OrderFulfillmentPayload
 ): Promise<{ ok: boolean; metadata: Record<string, unknown> }> {
-  return request<{ ok: boolean; metadata: Record<string, unknown> }>(
-    `/business/orders/${encodeURIComponent(orderId)}/fulfillment`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }
-  );
+  const res = await request<{
+    success: boolean;
+    data: { ok: boolean; metadata: Record<string, unknown> };
+  }>(`/business/orders/${encodeURIComponent(orderId)}/fulfillment`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return { ok: Boolean(res.data?.ok), metadata: res.data?.metadata || {} };
 }
 
 export async function requestOrderRefund(
   orderId: string,
   payload: { reason: string; amount?: number }
 ): Promise<{ ok: boolean; metadata: Record<string, unknown> }> {
-  return request<{ ok: boolean; metadata: Record<string, unknown> }>(
-    `/business/orders/${encodeURIComponent(orderId)}/refund-request`,
-    {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }
-  );
+  const res = await request<{
+    success: boolean;
+    data: { ok: boolean; metadata: Record<string, unknown> };
+  }>(`/business/orders/${encodeURIComponent(orderId)}/refund-request`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return { ok: Boolean(res.data?.ok), metadata: res.data?.metadata || {} };
 }
 
 export async function exportOrdersCsv(period: BusinessPeriod = 'month'): Promise<string> {
@@ -450,9 +493,11 @@ export async function exportProductsCsv(): Promise<string> {
 export async function getBusinessNotifications(
   limit = 50
 ): Promise<{ notifications: BusinessNotification[] }> {
-  return request<{ notifications: BusinessNotification[] }>(
-    `/business/notifications?limit=${limit}`
-  );
+  const res = await request<{
+    success: boolean;
+    data: { notifications: BusinessNotification[] };
+  }>(`/business/notifications?limit=${limit}`);
+  return { notifications: res.data?.notifications || [] };
 }
 
 export async function markBusinessNotificationRead(

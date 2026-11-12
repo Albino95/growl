@@ -10,6 +10,7 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchCustomers } from '../../store/slices/businessSlice';
 import { feedListPerformanceProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import type { BusinessCustomer } from '../../services/api/business';
+import { formatCurrency } from '../../utils/money';
 
 function formatDate(dateString: string) {
   const d = new Date(dateString);
@@ -21,6 +22,8 @@ export default function CustomersScreen() {
   const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
   const customers = useAppSelector((s) => s.business.customers);
+  const customersStatus = useAppSelector((s) => s.business.customersStatus);
+  const customersError = useAppSelector((s) => s.business.customersError);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(customers.length === 0);
 
@@ -28,7 +31,7 @@ export default function CustomersScreen() {
     try {
       await dispatch(fetchCustomers()).unwrap();
     } catch {
-      // silent — empty state handles
+      // error is stored in the slice (customersError) and rendered below
     } finally {
       setLoading(false);
     }
@@ -48,7 +51,9 @@ export default function CustomersScreen() {
     const tabNav = navigation.getParent()?.getParent?.() || navigation.getParent?.() || navigation;
     tabNav.navigate('BusinessMain', {
       screen: 'Orders',
-      params: { search: customer.username || customer.email || customer.user_id },
+      // OrdersScreen search matches order id, shipping name and buyer user_id; the
+      // user_id is the only one guaranteed to match this customer's orders.
+      params: { search: customer.user_id },
     });
   };
 
@@ -71,7 +76,9 @@ export default function CustomersScreen() {
       <View style={tw`flex-row mt-3`}>
         <View style={tw`flex-1`}>
           <Text style={tw`text-xs text-stone-500`}>LTV</Text>
-          <Text style={tw`text-sm font-bold text-emerald-700`}>${Number(item.total_spent).toFixed(2)}</Text>
+          <Text style={tw`text-sm font-bold text-emerald-700`}>
+            {formatCurrency(Number(item.total_spent || 0))}
+          </Text>
         </View>
         <View style={tw`flex-1`}>
           <Text style={tw`text-xs text-stone-500`}>Orders</Text>
@@ -107,6 +114,17 @@ export default function CustomersScreen() {
               <SkeletonCard variant="product" />
               <SkeletonCard variant="product" />
             </View>
+          ) : customersStatus === 'failed' ? (
+            <BusinessEmptyState
+              icon="cloud-offline-outline"
+              title="Couldn't load customers"
+              description={customersError || 'Check your connection and try again.'}
+              actionLabel="Retry"
+              onAction={() => {
+                setLoading(true);
+                void load();
+              }}
+            />
           ) : (
             <BusinessEmptyState
               icon="people-outline"

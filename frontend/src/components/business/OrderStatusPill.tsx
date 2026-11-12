@@ -13,9 +13,18 @@ const COLORS: Record<string, { bg: string; text: string }> = {
 
 type Props = {
   status: string;
+  /** Unpaid checkout order: shown as "Awaiting payment" regardless of status. */
+  awaitingPayment?: boolean;
 };
 
-export default function OrderStatusPill({ status }: Props) {
+export default function OrderStatusPill({ status, awaitingPayment }: Props) {
+  if (awaitingPayment && status !== 'cancelled') {
+    return (
+      <View style={tw`px-2 py-0.5 rounded-full bg-stone-100`}>
+        <Text style={tw`text-xs font-semibold text-stone-600`}>Awaiting payment</Text>
+      </View>
+    );
+  }
   const c = COLORS[status] || { bg: 'bg-stone-100', text: 'text-stone-700' };
   return (
     <View style={tw`px-2 py-0.5 rounded-full ${c.bg}`}>

@@ -24,7 +24,12 @@ import BusinessScreen from '../../components/business/BusinessScreen';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import CATEGORIES from '../../data/categories';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { fetchBusinessProducts, setCatalogFilter } from '../../store/slices/businessSlice';
+import {
+  fetchBusinessDashboard,
+  fetchBusinessProducts,
+  setCatalogFilter,
+} from '../../store/slices/businessSlice';
+import { formatCurrency } from '../../utils/money';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 import type { BusinessProduct } from '../../services/api/business';
@@ -61,16 +66,22 @@ export default function InventoryScreen() {
     setRefreshing(false);
   };
 
+  // Catalog changes affect dashboard KPIs (stock, inventory value, low-stock alerts).
+  const refreshAfterCatalogChange = async () => {
+    await dispatch(fetchBusinessProducts());
+    void dispatch(fetchBusinessDashboard({ force: true, silent: true }));
+  };
+
   const handleCreateProduct = async (productData: Parameters<typeof createProduct>[0]) => {
     await createProduct(productData);
-    await dispatch(fetchBusinessProducts());
+    await refreshAfterCatalogChange();
     alertMessage('Saved', 'Product created successfully');
   };
 
   const handleUpdateProduct = async (productData: Parameters<typeof updateProduct>[1]) => {
     if (!editingProduct) return;
     await updateProduct(editingProduct.id, productData);
-    await dispatch(fetchBusinessProducts());
+    await refreshAfterCatalogChange();
     setEditingProduct(null);
     alertMessage('Saved', 'Product updated successfully');
   };
@@ -83,7 +94,7 @@ export default function InventoryScreen() {
     if (!ok) return;
     try {
       await deleteProduct(product.id);
-      await dispatch(fetchBusinessProducts());
+      await refreshAfterCatalogChange();
       alertMessage('Deleted', 'Product removed');
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Failed to delete');
@@ -114,6 +125,7 @@ export default function InventoryScreen() {
     []
   );
   const loading = productsStatus === 'loading' && products.length === 0;
+  const loadFailed = productsStatus === 'failed' && products.length === 0;
 
   const renderProduct = ({ item: product }: { item: BusinessProduct }) => {
     const sku = `PRD-${product.id.slice(-6).toUpperCase()}`;
@@ -136,7 +148,7 @@ export default function InventoryScreen() {
               {sku} · {categoryName(product.category)}
               {product.units_sold != null ? ` · ${product.units_sold} sold` : ''}
             </Text>
-            <Text style={tw`text-lg font-bold text-stone-900 mt-1.5`}>${product.price.toFixed(2)}</Text>
+            <Text style={tw`text-lg font-bold text-stone-900 mt-1.5`}>{formatCurrency(Number(product.price || 0))}</Text>
           </View>
         </View>
         <View style={tw`flex-row gap-2 mt-3`}>
@@ -195,7 +207,7 @@ export default function InventoryScreen() {
           items={[
             { label: 'Products', value: String(products.length), tone: 'emerald' },
             { label: 'Low stock', value: String(lowStockCount), tone: 'amber' },
-            { label: 'Value', value: `$${totalValue.toFixed(0)}`, tone: 'stone' },
+            { label: 'Value', value: formatCurrency(Math.round(totalValue)), tone: 'stone' },
           ]}
         />
         <View style={tw`flex-row gap-2 mt-3`}>
@@ -238,6 +250,14 @@ export default function InventoryScreen() {
               <SkeletonCard variant="product" />
               <SkeletonCard variant="product" />
             </View>
+          ) : loadFailed ? (
+            <BusinessEmptyState
+              icon="cloud-offline-outline"
+              title="Couldn't load products"
+              description="Check your connection and try again."
+              actionLabel="Retry"
+              onAction={() => void dispatch(fetchBusinessProducts())}
+            />
           ) : (
             <BusinessEmptyState
               icon="cube-outline"

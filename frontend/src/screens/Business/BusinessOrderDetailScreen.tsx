@@ -17,15 +17,23 @@ import {
   getBusinessOrderDetail,
   updateOrderFulfillment,
   requestOrderRefund,
+  isOrderAwaitingPayment,
+  orderBusinessTotal,
+  orderCurrency,
   type Order,
 } from '../../services/api/business';
+import { formatCurrency } from '../../utils/money';
 import { updateOrderStatus } from '../../services/api/marketplace';
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { copyToClipboard } from '../../utils/csvDownload';
 import { createConversation } from '../../services/api/messages';
 import { useAuth, useAppDispatch } from '../../store/hooks';
-import { fetchBusinessSettings } from '../../store/slices/businessSlice';
+import {
+  fetchBusinessDashboard,
+  fetchBusinessSettings,
+  patchLocalOrderStatus,
+} from '../../store/slices/businessSlice';
 import { parseShippingAddress, safeParseJson } from '../../utils/safeJson';
 
 type BusinessOrderDetailParams = {
@@ -142,7 +150,12 @@ export default function BusinessOrderDetailScreen() {
         });
       }
       const res = await updateOrderStatus(order.id, next);
-      if (res.success && res.data) setOrder(res.data);
+      if (res.success && res.data) {
+        // Keep list-only fields (awaiting_payment, business_total) from the detail payload.
+        setOrder({ ...order, ...res.data, items: res.data.items ?? order.items });
+        dispatch(patchLocalOrderStatus({ orderId: order.id, status: res.data.status }));
+        void dispatch(fetchBusinessDashboard({ force: true, silent: true }));
+      }
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -159,7 +172,7 @@ export default function BusinessOrderDetailScreen() {
     }
     const ok = await confirmAsync(
       'Request refund',
-      `Submit a refund request for $${Number(order.total).toFixed(2)}? Platform support will review.`,
+      `Submit a refund request for ${formatCurrency(orderBusinessTotal(order), orderCurrency(order))}? Platform support will review.`,
       { confirmLabel: 'Submit', destructive: true }
     );
     if (!ok) return;
@@ -222,7 +235,9 @@ export default function BusinessOrderDetailScreen() {
   const metadata = safeParseJson<OrderMetadata>(order.metadata, {});
   const shipping = parseShippingAddress(order.shipping_address);
   const statusIdx = TIMELINE.indexOf((order.status as (typeof TIMELINE)[number]) || 'pending');
-  const next = NEXT[order.status || 'pending'];
+  const awaitingPayment = isOrderAwaitingPayment(order);
+  const next = awaitingPayment ? null : NEXT[order.status || 'pending'];
+  const currency = orderCurrency(order);
   const refundPending = Boolean(metadata.refund_requested_at);
 
   return (
@@ -233,14 +248,20 @@ export default function BusinessOrderDetailScreen() {
             <Text style={tw`text-lg font-bold text-stone-900`}>
               Order #{order.id.slice(-8).toUpperCase()}
             </Text>
-            <OrderStatusPill status={order.status || 'pending'} />
+            <OrderStatusPill status={order.status || 'pending'} awaitingPayment={awaitingPayment} />
           </View>
           <Text style={tw`text-sm text-stone-500`}>
             Payment: {metadata.payment_method || 'Card'}
           </Text>
           <Text style={tw`text-2xl font-bold text-emerald-700 mt-2`}>
-            ${Number(order.total).toFixed(2)}
+            {formatCurrency(orderBusinessTotal(order), currency)}
           </Text>
+          {awaitingPayment ? (
+            <Text style={tw`text-xs text-stone-600 mt-2`}>
+              Awaiting payment — the customer hasn't completed checkout yet. Don't ship until it
+              shows as paid.
+            </Text>
+          ) : null}
           {refundPending ? (
             <Text style={tw`text-xs text-amber-700 mt-2 font-semibold`}>Refund request pending review</Text>
           ) : null}
@@ -339,11 +360,11 @@ export default function BusinessOrderDetailScreen() {
               <View style={tw`flex-1 pr-2`}>
                 <Text style={tw`text-sm font-medium text-stone-900`}>{item.product_name || 'Product'}</Text>
                 <Text style={tw`text-xs text-stone-500`}>
-                  Qty {item.quantity} · ${Number(item.price).toFixed(2)}
+                  Qty {item.quantity} · {formatCurrency(Number(item.price), currency)}
                 </Text>
               </View>
               <Text style={tw`text-sm font-semibold text-stone-900`}>
-                ${(Number(item.price) * Number(item.quantity)).toFixed(2)}
+                {formatCurrency(Number(item.price) * Number(item.quantity), currency)}
               </Text>
             </View>
           ))}
@@ -359,7 +380,7 @@ export default function BusinessOrderDetailScreen() {
           />
         ) : null}
 
-        {!refundPending && order.status !== 'cancelled' ? (
+        {!refundPending && !awaitingPayment && order.status !== 'cancelled' ? (
           <View style={tw`bg-white rounded-2xl p-4 border border-stone-100 mb-3`}>
             <Text style={tw`text-base font-semibold text-stone-900 mb-2`}>Refund request</Text>
             <FormTextInput

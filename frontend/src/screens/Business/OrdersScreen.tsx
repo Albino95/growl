@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import {
   feedListPerformanceProps,
@@ -19,7 +19,14 @@ import SearchField from '../../components/ui/SearchField';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { parseShippingAddress, safeParseJson } from '../../utils/safeJson';
-import type { Order } from '../../services/api/business';
+import {
+  isOrderAwaitingPayment,
+  orderBusinessTotal,
+  orderCurrency,
+  type Order,
+} from '../../services/api/business';
+import MarketplaceCheckoutBanner from '../../components/business/MarketplaceCheckoutBanner';
+import { formatCurrency } from '../../utils/money';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 
 const NEXT_STATUS: Record<string, string | null> = {
@@ -42,9 +49,12 @@ export default function OrdersScreen() {
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(route.params?.search || '');
 
-  useEffect(() => {
-    void dispatch(fetchBusinessOrders());
-  }, [dispatch]);
+  // Refetch whenever the tab regains focus (e.g. after changing status in order detail).
+  useFocusEffect(
+    useCallback(() => {
+      void dispatch(fetchBusinessOrders());
+    }, [dispatch])
+  );
 
   useEffect(() => {
     if (route.params?.search) setSearchQuery(route.params.search);
@@ -81,7 +91,10 @@ export default function OrdersScreen() {
     let list = orders;
     if (statusFilter !== 'all') {
       if (statusFilter === 'pending') {
-        list = list.filter((o) => o.status === 'pending' || o.status === 'processing');
+        list = list.filter(
+          (o) =>
+            (o.status === 'pending' || o.status === 'processing') && !isOrderAwaitingPayment(o)
+        );
       } else {
         list = list.filter((o) => o.status === statusFilter);
       }
@@ -100,16 +113,22 @@ export default function OrdersScreen() {
     });
   }, [orders, statusFilter, searchQuery]);
 
-  const totalRevenue = orders
+  // Only paid orders count as revenue / fulfilment work; use this seller's share of each order.
+  const paidOrders = orders.filter((o) => !isOrderAwaitingPayment(o));
+  const totalRevenue = paidOrders
     .filter((o) => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const pendingCount = orders.filter((o) => o.status === 'pending' || o.status === 'processing').length;
+    .reduce((sum, o) => sum + orderBusinessTotal(o), 0);
+  const pendingCount = paidOrders.filter(
+    (o) => o.status === 'pending' || o.status === 'processing'
+  ).length;
   const loading = ordersStatus === 'loading' && orders.length === 0;
+  const loadFailed = ordersStatus === 'failed' && orders.length === 0;
 
   const renderOrder = ({ item: order }: { item: Order }) => {
     const shipping = parseShippingAddress(order.shipping_address);
     const customer = shipping?.name || 'Customer';
-    const next = NEXT_STATUS[order.status || 'pending'];
+    const awaitingPayment = isOrderAwaitingPayment(order);
+    const next = awaitingPayment ? null : NEXT_STATUS[order.status || 'pending'];
     const itemCount = order.items?.length || 0;
     const meta = safeParseJson<{ tracking_number?: string; carrier?: string }>(order.metadata, {});
     const trackingLine =
@@ -142,10 +161,13 @@ export default function OrdersScreen() {
             </View>
             <View style={tw`items-end`}>
               <Text style={tw`text-lg font-bold text-stone-900`}>
-                ${Number(order.total || 0).toFixed(2)}
+                {formatCurrency(orderBusinessTotal(order), orderCurrency(order))}
               </Text>
               <View style={tw`mt-1`}>
-                <OrderStatusPill status={order.status || 'pending'} />
+                <OrderStatusPill
+                  status={order.status || 'pending'}
+                  awaitingPayment={awaitingPayment}
+                />
               </View>
             </View>
           </View>
@@ -175,9 +197,10 @@ export default function OrdersScreen() {
       onMessages={() => navigation.getParent()?.navigate('BusinessMessages')}
     >
       <View style={tw`px-5 pb-3`}>
+        <MarketplaceCheckoutBanner style={tw`mb-3`} />
         <BusinessStatStrip
           items={[
-            { label: 'Revenue', value: `$${totalRevenue.toFixed(2)}`, tone: 'emerald' },
+            { label: 'Revenue', value: formatCurrency(totalRevenue), tone: 'emerald' },
             { label: 'To fulfill', value: String(pendingCount), tone: 'amber' },
             { label: 'Total', value: String(orders.length), tone: 'stone' },
           ]}
@@ -234,6 +257,14 @@ export default function OrdersScreen() {
               <SkeletonCard variant="product" />
               <SkeletonCard variant="product" />
             </View>
+          ) : loadFailed ? (
+            <BusinessEmptyState
+              icon="cloud-offline-outline"
+              title="Couldn't load orders"
+              description="Check your connection and try again."
+              actionLabel="Retry"
+              onAction={() => void dispatch(fetchBusinessOrders())}
+            />
           ) : (
             <BusinessEmptyState
               icon="receipt-outline"
