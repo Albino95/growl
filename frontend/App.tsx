@@ -10,6 +10,8 @@ import RootNavigator from './src/app/navigation/RootNavigator';
 import { useAppDispatch, useAppSelector } from './src/store/store';
 import { hydrateAuth, signOut } from './src/store/slices/authSlice';
 import BrandLoadingScreen from './src/components/common/BrandLoadingScreen';
+import { markBootSplashDone } from './src/components/auth/bootSplashSignal';
+import { theme } from './src/lib/tw';
 import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
 import { KeyboardDoneAccessory } from './src/components/ui/KeyboardDoneAccessory';
@@ -88,7 +90,12 @@ function AppContent() {
             showWordmark
             message="Still growing."
             ready={hydrated}
-            onFinished={() => setBootDone(true)}
+            // Signed out: melt the emerald field into the cream auth page.
+            exitBackground={hydrated && !token ? theme.colors.page : undefined}
+            onFinished={() => {
+              setBootDone(true);
+              markBootSplashDone();
+            }}
             onLayout={onLoaderLayout}
           />
         </View>

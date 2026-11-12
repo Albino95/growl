@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Animated, AccessibilityInfo } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
 import Screen from '../../components/ui/Screen';
@@ -10,6 +10,7 @@ import { updateProfileOnServer } from '../../services/api/profile';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { alertMessage } from '../../utils/confirmDialog';
 import tw from '../../lib/tw';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type CategoryPickScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Categories'>;
 
@@ -21,6 +22,56 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
   const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
   const [saving, setSaving] = React.useState(false);
   const { setOnboardingComplete, refreshProfile } = useAuth();
+  const reducedMotion = useReducedMotion();
+  // Header, path picker, CTA: staggered rise-in on mount (opacity only with Reduce Motion).
+  const groups = React.useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
+  const [entranceStatic, setEntranceStatic] = React.useState(false);
+
+  React.useEffect(() => {
+    let anim: Animated.CompositeAnimation | null = null;
+    let cancelled = false;
+    const run = (reduced: boolean) => {
+      if (cancelled) return;
+      setEntranceStatic(reduced);
+      anim = reduced
+        ? Animated.parallel(
+            groups.map((v) => Animated.timing(v, { toValue: 1, duration: 150, useNativeDriver: true }))
+          )
+        : Animated.stagger(
+            70,
+            groups.map((v) =>
+              Animated.spring(v, {
+                toValue: 1,
+                damping: 18,
+                stiffness: 180,
+                mass: 1,
+                useNativeDriver: true,
+              })
+            )
+          );
+      anim.start();
+    };
+    // Read the setting directly so the first frame uses the right motion.
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((r) => run(!!r))
+      .catch(() => run(false));
+    return () => {
+      cancelled = true;
+      anim?.stop();
+    };
+  }, [groups]);
+
+  const groupStyle = (v: Animated.Value) => ({
+    opacity: v,
+    transform: [
+      {
+        translateY: v.interpolate({
+          inputRange: [0, 1],
+          outputRange: entranceStatic || reducedMotion ? [0, 0] : [14, 0],
+        }),
+      },
+    ],
+  });
 
   const handleContinue = async () => {
     if (selectedCategories.length === 0) {
@@ -55,7 +106,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
   return (
     <Screen background="page" edges={['top', 'bottom']}>
       <View style={tw`px-5 pt-4 pb-6 flex-1 max-w-md w-full self-center`}>
-        <View style={tw`mb-4`}>
+        <Animated.View style={[tw`mb-4`, groupStyle(groups[0])]}>
           <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
             Grow!
           </Text>
@@ -63,17 +114,21 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
           <Text style={tw`text-stone-500 text-base leading-6 mt-2`}>
             Pick up to 3 growth areas (multiple focuses per area). This shapes your feed, shop ranking, and who can endorse you.
           </Text>
-        </View>
+        </Animated.View>
 
-        <View style={tw`flex-1 mb-4`}>
+        <Animated.View style={[tw`flex-1 mb-4`, groupStyle(groups[1])]}>
           <GrowthAreasPicker value={selectedCategories} onChange={setSelectedCategories} />
-        </View>
+        </Animated.View>
 
-        <PrimaryButton
-          label={saving ? 'Saving…' : 'Continue to Grow!'}
-          onPress={handleContinue}
-          disabled={selectedCategories.length === 0 || saving}
-        />
+        <Animated.View style={groupStyle(groups[2])}>
+          <PrimaryButton
+            label="Continue to Grow!"
+            accessibilityLabel={saving ? 'Saving your paths' : 'Continue to Grow!'}
+            onPress={handleContinue}
+            disabled={selectedCategories.length === 0 || saving}
+            loading={saving}
+          />
+        </Animated.View>
       </View>
     </Screen>
   );

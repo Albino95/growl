@@ -23,6 +23,12 @@ type Props = {
   ready?: boolean;
   /** After grow + smile (+ ready) and the exit fade. */
   onFinished?: () => void;
+  /**
+   * Cold-start only: colour of the screen underneath (e.g. the cream auth page).
+   * When set, the exit cross-fades the background into this colour while the
+   * mark fades, instead of fading the whole emerald field over the next screen.
+   */
+  exitBackground?: string;
 };
 
 const PALETTE = {
@@ -78,6 +84,7 @@ export default function BrandLoadingScreen({
   onLayout,
   ready = true,
   onFinished,
+  exitBackground,
 }: Props) {
   const palette = PALETTE[variant];
   const grow = useRef(new Animated.Value(0)).current;
@@ -86,6 +93,11 @@ export default function BrandLoadingScreen({
   const breath = useRef(new Animated.Value(0)).current;
   const enter = useRef(new Animated.Value(0)).current;
   const exit = useRef(new Animated.Value(1)).current;
+  const bgShift = useRef(new Animated.Value(0)).current;
+  const contentOut = useRef(new Animated.Value(1)).current;
+  const exitBackgroundRef = useRef(exitBackground);
+  exitBackgroundRef.current = exitBackground;
+  const reducedRef = useRef(false);
 
   const introDoneRef = useRef(false);
   const finishedRef = useRef(false);
@@ -106,15 +118,37 @@ export default function BrandLoadingScreen({
     finishedRef.current = true;
     loopsRef.current.speck?.stop();
     loopsRef.current.breath?.stop();
+    const duration = reducedRef.current ? 150 : EXIT_MS;
+    if (exitBackgroundRef.current) {
+      // Emerald → next screen's background, mark fades out on top. When done the
+      // overlay is the same colour as the screen below, so unmounting is seamless.
+      Animated.parallel([
+        Animated.timing(bgShift, {
+          toValue: 1,
+          duration,
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOut, {
+          toValue: 0,
+          duration: Math.round(duration * 0.7),
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) onFinishedRef.current?.();
+      });
+      return;
+    }
     Animated.timing(exit, {
       toValue: 0,
-      duration: EXIT_MS,
+      duration,
       easing: EASE_OUT,
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) onFinishedRef.current?.();
     });
-  }, [exit]);
+  }, [bgShift, contentOut, exit]);
 
   const startLoops = useCallback(() => {
     const speckLoop = Animated.loop(
@@ -165,6 +199,7 @@ export default function BrandLoadingScreen({
 
     const play = (reduced: boolean) => {
       if (cancelled) return;
+      reducedRef.current = reduced;
       if (reduced) {
         grow.setValue(1);
         smile.setValue(1);
@@ -241,10 +276,20 @@ export default function BrandLoadingScreen({
     >
       {manageStatusBar ? <StatusBar style={palette.status} /> : null}
 
+      {exitBackground ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: exitBackground, opacity: bgShift }]}
+        />
+      ) : null}
+
       <Animated.View
         style={[
           styles.content,
-          { opacity: enter, transform: [{ translateY: contentY }] },
+          {
+            opacity: Animated.multiply(enter, contentOut),
+            transform: [{ translateY: contentY }],
+          },
         ]}
       >
         {showWordmark ? (

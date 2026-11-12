@@ -8,6 +8,7 @@ import PressableScale from '../../components/ui/PressableScale';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedback } from '../../utils/interactionFeedback';
 import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type StepId =
   | 'welcome'
@@ -251,8 +252,15 @@ function Mascot({
 }) {
   const bounce = useRef(new Animated.Value(0)).current;
   const spin = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) {
+      // No bounce/spin; the step crossfade carries the change.
+      bounce.setValue(1);
+      spin.setValue(1);
+      return;
+    }
     bounce.setValue(0);
     spin.setValue(0);
     Animated.parallel([
@@ -268,7 +276,7 @@ function Mascot({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [icon, bounce, spin]);
+  }, [icon, bounce, spin, reducedMotion]);
 
   const scale = bounce.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] });
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['-8deg', '0deg'] });
@@ -327,6 +335,7 @@ export default function DemoTutorial({ onFinished }: Props) {
   const fade = useRef(new Animated.Value(1)).current;
   const slide = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
+  const reducedMotion = useReducedMotion();
 
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
@@ -340,6 +349,16 @@ export default function DemoTutorial({ onFinished }: Props) {
       return;
     }
     feedback.select();
+    if (reducedMotion) {
+      // Opacity-only crossfade, ≤150ms total, no slide.
+      slide.setValue(0);
+      Animated.timing(fade, { toValue: 0, duration: 60, useNativeDriver: true }).start(() => {
+        setIndex(next);
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+        Animated.timing(fade, { toValue: 1, duration: 90, useNativeDriver: true }).start();
+      });
+      return;
+    }
     Animated.parallel([
       Animated.timing(fade, { toValue: 0, duration: 120, useNativeDriver: true }),
       Animated.timing(slide, {
