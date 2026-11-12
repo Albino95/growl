@@ -35,8 +35,31 @@ export function AdjustSlider({
     if (snapped !== safeValue) onChange(snapped);
   };
 
+  const step = Math.max(1, Math.round((max - min) / 20));
+  const nudge = (dir: 1 | -1) => {
+    onSlidingStart?.();
+    commit(Math.max(min, Math.min(max, live + dir * step)));
+    onSlidingComplete?.();
+  };
+  // Screen readers get one adjustable control (swipe up/down) instead of the
+  // raw slider; web keeps the native range input, which is already accessible.
+  const a11y =
+    Platform.OS === 'web'
+      ? {}
+      : {
+          accessible: true,
+          accessibilityRole: 'adjustable' as const,
+          accessibilityLabel: label,
+          accessibilityValue: { min, max, now: live },
+          accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+          onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
+            if (e.nativeEvent.actionName === 'increment') nudge(1);
+            else if (e.nativeEvent.actionName === 'decrement') nudge(-1);
+          },
+        };
+
   return (
-    <View style={tw`mb-4`}>
+    <View style={tw`mb-4`} {...a11y}>
       <View style={tw`flex-row justify-between mb-1`}>
         <Text style={tw`text-stone-300 text-sm font-medium`}>{label}</Text>
         <Text style={tw`text-stone-500 text-sm`}>{live}</Text>
@@ -48,6 +71,7 @@ export function AdjustSlider({
           max,
           step: 1,
           value: live,
+          'aria-label': label,
           onMouseDown: () => {
             sliding.current = true;
             onSlidingStart?.();

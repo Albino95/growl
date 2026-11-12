@@ -18,6 +18,8 @@ type Props = {
   onLongSubmit?: () => void;
   /** Override primary CTA (default: Share Post). */
   submitLabel?: string;
+  /** False when the user has no categories yet — explains where to add one. */
+  hasCategories?: boolean;
 };
 
 export default function PostStickyBar({
@@ -31,6 +33,7 @@ export default function PostStickyBar({
   onSubmit,
   onLongSubmit,
   submitLabel = 'Share Post',
+  hasCategories = true,
 }: Props) {
   return (
     <StickyFooter transparent style={tw`bg-stone-900 border-t border-white/10`}>
@@ -38,6 +41,12 @@ export default function PostStickyBar({
         <View style={tw`flex-row items-stretch gap-2 mb-3`}>
           <Pressable
             onPress={onOpenCategory}
+            accessibilityRole="button"
+            accessibilityLabel={
+              selectedCategory
+                ? `Category: ${getCategoryLabel(selectedCategory)}`
+                : 'Choose a category (required)'
+            }
             style={tw`flex-1 min-w-0 flex-row items-center justify-between bg-white/10 border border-white/20 rounded-2xl px-3 py-3`}
           >
             <View style={tw`flex-row items-center flex-1 min-w-0`}>
@@ -51,6 +60,7 @@ export default function PostStickyBar({
           {onOpenMusic ? (
             <Pressable
               onPress={onOpenMusic}
+              accessibilityRole="button"
               style={tw`w-14 flex-shrink-0 items-center justify-center bg-white/10 border border-white/20 rounded-2xl`}
               accessibilityLabel={audioTrack ? `Music: ${audioTrack.title}` : 'Add music'}
             >
@@ -71,8 +81,10 @@ export default function PostStickyBar({
         loading={isPosting}
       />
       {hasImage && !selectedCategory && (
-        <Text style={tw`text-white/50 text-xs text-center mt-2`}>
-          Photo and category are required
+        <Text style={tw`text-amber-200/90 text-xs text-center mt-2`} accessibilityLiveRegion="polite">
+          {hasCategories
+            ? 'Choose a category above to share.'
+            : 'Add interests in your profile to pick a category — it\'s required to share.'}
         </Text>
       )}
     </StickyFooter>

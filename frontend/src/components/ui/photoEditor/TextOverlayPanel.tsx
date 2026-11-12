@@ -30,6 +30,21 @@ const ALIGNS: { id: TextAlign; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'right', icon: 'text' },
 ];
 
+const COLOR_NAMES: Record<string, string> = {
+  '#FFFFFF': 'White',
+  '#F8FAFC': 'Off-white',
+  '#FBBF24': 'Yellow',
+  '#F59E0B': 'Amber',
+  '#34D399': 'Mint',
+  '#10B981': 'Green',
+  '#38BDF8': 'Sky blue',
+  '#818CF8': 'Indigo',
+  '#F472B6': 'Pink',
+  '#FB7185': 'Rose',
+  '#000000': 'Black',
+  '#1C1917': 'Charcoal',
+};
+
 /** Size uses integer 70–180 (%) so the thumb stays stable. */
 function ScaleSlider({
   scale,
@@ -52,8 +67,23 @@ function ScaleSlider({
     onChange(next / 100);
   };
 
+  const a11y =
+    Platform.OS === 'web'
+      ? {}
+      : {
+          accessible: true,
+          accessibilityRole: 'adjustable' as const,
+          accessibilityLabel: 'Text size',
+          accessibilityValue: { min: 70, max: 180, now: live, text: `${live}%` },
+          accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+          onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
+            if (e.nativeEvent.actionName === 'increment') commit(live + 10);
+            else if (e.nativeEvent.actionName === 'decrement') commit(live - 10);
+          },
+        };
+
   return (
-    <View style={tw`mb-4`}>
+    <View style={tw`mb-4`} {...a11y}>
       <View style={tw`flex-row justify-between mb-1`}>
         <Text style={tw`text-stone-300 text-sm font-medium`}>Size</Text>
         <Text style={tw`text-stone-400 text-sm`}>{live}%</Text>
@@ -65,6 +95,7 @@ function ScaleSlider({
           max: 180,
           step: 1,
           value: live,
+          'aria-label': 'Text size',
           onMouseDown: () => {
             sliding.current = true;
           },
@@ -145,6 +176,8 @@ export default function TextOverlayPanel({
         </View>
         <Pressable
           onPress={() => onAdd()}
+          accessibilityRole="button"
+          accessibilityLabel="Add text"
           style={tw`flex-row items-center gap-1.5 bg-brand-600 px-3.5 py-2.5 rounded-full`}
         >
           <Ionicons name="add" size={18} color="#fff" />
@@ -167,6 +200,8 @@ export default function TextOverlayPanel({
               if (activeOverlay) onUpdate({ text: phrase });
               else onAdd(phrase);
             }}
+            accessibilityRole="button"
+            accessibilityLabel={`Use phrase ${phrase}`}
             style={tw`px-3 py-2 rounded-full bg-stone-800 border border-stone-700 mr-2`}
           >
             <Text style={tw`text-stone-200 text-xs font-semibold`}>{phrase}</Text>
@@ -188,6 +223,9 @@ export default function TextOverlayPanel({
               <Pressable
                 key={o.id}
                 onPress={() => onSelectOverlay(o.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Text layer ${idx + 1}: ${o.text.trim() || 'empty'}`}
+                accessibilityState={{ selected: activeOverlay?.id === o.id }}
                 style={[
                   tw`px-3 py-2 rounded-xl mr-2 border`,
                   activeOverlay?.id === o.id
@@ -238,6 +276,9 @@ export default function TextOverlayPanel({
                 <Pressable
                   key={s.id}
                   onPress={() => onUpdate({ style: s.id })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${s.label} text style`}
+                  accessibilityState={{ selected }}
                   style={[
                     tw`mr-2 px-3.5 py-2.5 rounded-2xl border min-w-[72px]`,
                     selected
@@ -266,6 +307,9 @@ export default function TextOverlayPanel({
                 <Pressable
                   key={c}
                   onPress={() => onUpdate({ color: c })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Text color ${COLOR_NAMES[c] || c}`}
+                  accessibilityState={{ selected }}
                   style={[
                     tw`w-9 h-9 rounded-full border-2 items-center justify-center`,
                     {
@@ -303,6 +347,9 @@ export default function TextOverlayPanel({
                 <Pressable
                   key={preset.label}
                   onPress={() => onUpdate({ scale: preset.scale })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Text size ${preset.label}`}
+                  accessibilityState={{ selected }}
                   style={[
                     tw`flex-1 items-center py-2 rounded-xl border`,
                     selected
@@ -338,6 +385,8 @@ export default function TextOverlayPanel({
               <Pressable
                 key={p.id}
                 onPress={() => onUpdate({ y: p.y })}
+                accessibilityRole="button"
+                accessibilityLabel={`Move text to ${p.label.toLowerCase()}`}
                 style={tw`flex-1 items-center py-2.5 rounded-xl bg-stone-800 border border-stone-700`}
               >
                 <Ionicons name={p.icon} size={16} color="#A8A29E" />
@@ -353,6 +402,9 @@ export default function TextOverlayPanel({
                 <Pressable
                   key={a.id}
                   onPress={() => onUpdate({ align: a.id })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Align text ${a.id}`}
+                  accessibilityState={{ selected }}
                   style={[
                     tw`flex-1 items-center py-2.5 rounded-xl border`,
                     selected
@@ -374,6 +426,8 @@ export default function TextOverlayPanel({
 
           <Pressable
             onPress={onRemove}
+            accessibilityRole="button"
+            accessibilityLabel="Remove text"
             style={tw`self-start flex-row items-center gap-2 py-2 mb-4 px-1`}
           >
             <Ionicons name="trash-outline" size={18} color="#F87171" />

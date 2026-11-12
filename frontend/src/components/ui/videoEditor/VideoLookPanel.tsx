@@ -80,7 +80,12 @@ export default function VideoLookPanel({
     <View style={tw`pt-1`}>
       <View style={tw`flex-row items-center justify-between mb-2`}>
         <Text style={tw`text-white text-sm font-bold`}>Color & mood</Text>
-        <Pressable onPress={onResetLooks} hitSlop={8}>
+        <Pressable
+          onPress={onResetLooks}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Reset color and mood"
+        >
           <Text style={tw`text-brand-400 text-xs font-semibold`}>Reset</Text>
         </Pressable>
       </View>
@@ -92,6 +97,9 @@ export default function VideoLookPanel({
             <Pressable
               key={s.id}
               onPress={() => setSection(s.id)}
+              accessibilityRole="tab"
+              accessibilityLabel={s.label}
+              accessibilityState={{ selected: active }}
               style={[tw`flex-1 flex-row items-center justify-center py-2 rounded-xl`, active && tw`bg-white/12`]}
             >
               <Ionicons name={s.icon} size={14} color={active ? '#34D399' : '#78716C'} />
@@ -112,6 +120,8 @@ export default function VideoLookPanel({
               feedback.autoLook();
               onAdjustChange({ ...DEFAULT_ADJUSTMENTS, ...AUTO_ENHANCE_ADJUSTMENTS });
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Auto enhance"
             style={tw`flex-row items-center self-start mb-3 px-3 py-2 rounded-full bg-brand-600/25 border border-brand-500/50`}
           >
             <Ionicons name="color-wand-outline" size={14} color="#34D399" />
@@ -133,6 +143,9 @@ export default function VideoLookPanel({
                     feedback.filter();
                     onPresetChange(preset.id === 'original' ? null : preset.id);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${preset.label} preset`}
+                  accessibilityState={{ selected }}
                   style={tw`mr-3 items-center`}
                 >
                   <View
@@ -206,7 +219,14 @@ export default function VideoLookPanel({
             {VIDEO_LOOKS.map((l) => {
               const selected = lookId === l.id;
               return (
-                <Pressable key={l.id} onPress={() => onLookIdChange(l.id)} style={tw`mr-3 items-center`}>
+                <Pressable
+                  key={l.id}
+                  onPress={() => onLookIdChange(l.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${l.label} grade`}
+                  accessibilityState={{ selected }}
+                  style={tw`mr-3 items-center`}
+                >
                   <View
                     style={[
                       tw`w-[72px] h-24 rounded-2xl overflow-hidden border-2`,

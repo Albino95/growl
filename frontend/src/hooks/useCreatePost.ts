@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAuth, useAppDispatch, useAppSelector } from '../store/hooks';
 import {
@@ -64,6 +64,8 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
     'idle'
   );
   const { user, updateUser } = useAuth();
+  /** Sync in-flight guard: Redux isPosting lags a render, so a double tap could publish twice. */
+  const inFlightRef = useRef(false);
 
   const userCategories = user?.categories || [];
   const hasDraft = Boolean(image || caption.trim() || audioTrack);
@@ -83,8 +85,9 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
       return false;
     }
 
-    if (isPosting) return false;
+    if (isPosting || inFlightRef.current) return false;
 
+    inFlightRef.current = true;
     dispatch(setPosting(true));
     setPostingPhase('preparing');
     try {
@@ -209,6 +212,7 @@ export function useCreatePost(onSuccess?: () => void, extras?: CreatePostExtras)
       alertMessage('Post not published', `${errorMessage}\n\nYour draft is still here.`);
       return false;
     } finally {
+      inFlightRef.current = false;
       dispatch(setPosting(false));
       setPostingPhase('idle');
     }

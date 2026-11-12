@@ -13,6 +13,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
 import { alertMessage } from '../../../utils/confirmDialog';
+import { showPermissionDenied } from '../../../utils/permissionPrompt';
 
 export type ReelCaptureResult = {
   uri: string;
@@ -103,19 +104,51 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
     let cam = camPerm;
     if (!cam?.granted) cam = await requestCamPerm();
     if (!cam?.granted) {
-      await alertMessage('Permission needed', 'Allow camera access to capture a reel.');
+      await showPermissionDenied('camera', {
+        canAskAgain: cam?.canAskAgain,
+        message: 'Allow camera access to capture a reel.',
+      });
       return false;
     }
-    if (!isWeb) {
-      let mic = micPerm;
-      if (!mic?.granted) mic = await requestMicPerm();
-      if (!mic?.granted) {
-        await alertMessage(
-          'Microphone needed',
-          'Allow microphone access to record video with sound.'
-        );
-        return false;
+    return true;
+  };
+
+  // Native records muted when the mic is denied instead of failing the capture.
+  const micGranted = micPerm?.granted === true;
+  const recordMuted = !isWeb && !micGranted;
+  const micNoticeShown = useRef(false);
+
+  /**
+   * Camera + microphone check right before recording. Returns whether to go
+   * ahead; a denied mic still records (muted), only a denied camera stops it.
+   */
+  const ensureRecordPermissions = async (): Promise<boolean> => {
+    if (isWeb) return true;
+    let cam = camPerm;
+    if (!cam?.granted) {
+      cam = await requestCamPerm();
+    }
+    if (!cam?.granted) {
+      await showPermissionDenied('camera', {
+        canAskAgain: cam?.canAskAgain,
+        message: 'Allow camera access to record a reel.',
+      });
+      return false;
+    }
+    let mic = micPerm;
+    if (!mic?.granted && mic?.canAskAgain !== false) {
+      mic = await requestMicPerm();
+      if (mic?.granted) {
+        // Let CameraView pick up mute={false} before recordAsync starts.
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
+    }
+    if (!mic?.granted && !micNoticeShown.current) {
+      micNoticeShown.current = true;
+      await showPermissionDenied('microphone', {
+        canAskAgain: mic?.canAskAgain,
+        message: 'Your video will be recorded without sound. Allow microphone access to add sound.',
+      });
     }
     return true;
   };
@@ -130,20 +163,24 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
     const startWebCamera = async () => {
       try {
         stopWebStream();
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing === 'front' ? 'user' : 'environment' },
-          audio: true,
-        });
+        const video = { facingMode: facing === 'front' ? 'user' : 'environment' };
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video, audio: true });
+        } catch {
+          // Mic blocked: keep the camera and record without sound.
+          stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+        }
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
         webStreamRef.current = stream;
-        const video = webVideoRef.current;
-        if (video) {
-          video.srcObject = stream;
-          video.muted = true;
-          await video.play();
+        const previewEl = webVideoRef.current;
+        if (previewEl) {
+          previewEl.srcObject = stream;
+          previewEl.muted = true;
+          await previewEl.play();
         }
         setReady(true);
       } catch (e) {
@@ -237,6 +274,16 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
   const startRecording = async (fromTapMode: boolean) => {
     if (recordingRef.current || busy) return;
     tapRecordMode.current = fromTapMode;
+
+    if (!isWeb) {
+      const needsPrompt = !camPerm?.granted || (!micGranted && !micNoticeShown.current);
+      const ok = await ensureRecordPermissions();
+      if (!ok) return;
+      // A permission dialog interrupts a hold-to-record press: don't start a
+      // recording nobody is holding; the next press records normally.
+      if (needsPrompt && !fromTapMode && !pressActive.current) return;
+      if (recordingRef.current) return;
+    }
 
     if (isWeb) {
       const stream = webStreamRef.current;
@@ -392,11 +439,12 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
             </Text>
             <Pressable
               onPress={() => void ensurePermissions()}
+              accessibilityRole="button"
               style={tw`bg-brand-600 px-6 py-3.5 rounded-full mt-6`}
             >
               <Text style={tw`text-white font-bold`}>Allow camera</Text>
             </Pressable>
-            <Pressable onPress={onClose} style={tw`mt-4 py-2`}>
+            <Pressable onPress={onClose} accessibilityRole="button" style={tw`mt-4 py-2`}>
               <Text style={tw`text-stone-400 font-semibold`}>Cancel</Text>
             </Pressable>
           </SafeAreaView>
@@ -426,7 +474,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                 style={StyleSheet.absoluteFillObject}
                 facing={facing}
                 mode="video"
-                mute={false}
+                mute={recordMuted}
                 // 720p keeps a 60s reel near the 40MB upload cap (1080p is 2-3x larger).
                 videoQuality="720p"
                 onCameraReady={() => setReady(true)}
@@ -437,6 +485,8 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
               <View style={tw`flex-row items-center justify-between px-4 pt-2`}>
                 <Pressable
                   onPress={onClose}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close camera"
                   style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
                 >
                   <Ionicons name="close" size={22} color="#fff" />
@@ -455,6 +505,9 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                 <Pressable
                   onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
                   disabled={recording}
+                  accessibilityRole="button"
+                  accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to back camera'}
+                  accessibilityState={{ disabled: recording }}
                   style={tw`w-10 h-10 rounded-full bg-black/45 items-center justify-center`}
                 >
                   <Ionicons name="camera-reverse-outline" size={22} color="#fff" />
@@ -468,6 +521,9 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                   <Pressable
                     onPress={() => switchMode('photo')}
                     disabled={recording}
+                    accessibilityRole="button"
+                    accessibilityLabel="Photo mode"
+                    accessibilityState={{ selected: mode === 'photo', disabled: recording }}
                     style={[tw`px-5 py-2 rounded-full`, mode === 'photo' ? tw`bg-white` : tw`bg-transparent`]}
                   >
                     <Text style={tw`text-xs font-bold ${mode === 'photo' ? 'text-black' : 'text-white/80'}`}>
@@ -477,6 +533,9 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                   <Pressable
                     onPress={() => switchMode('video')}
                     disabled={recording}
+                    accessibilityRole="button"
+                    accessibilityLabel="Video mode"
+                    accessibilityState={{ selected: mode === 'video', disabled: recording }}
                     style={[tw`px-5 py-2 rounded-full`, mode === 'video' ? tw`bg-white` : tw`bg-transparent`]}
                   >
                     <Text style={tw`text-xs font-bold ${mode === 'video' ? 'text-black' : 'text-white/80'}`}>
@@ -491,6 +550,9 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                   <Pressable
                     onPress={onVideoShutterPress}
                     disabled={!ready || busy}
+                    accessibilityRole="button"
+                    accessibilityLabel={recording ? 'Stop recording' : 'Record'}
+                    accessibilityState={{ disabled: !ready || busy }}
                     style={[
                       tw`w-[78px] h-[78px] rounded-full items-center justify-center border-4 border-red-500`,
                       recording ? tw`bg-red-500/35` : tw`bg-transparent`,
@@ -503,6 +565,10 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                     onPressIn={onPhotoPressIn}
                     onPressOut={onPhotoPressOut}
                     disabled={!ready || busy}
+                    accessibilityRole="button"
+                    accessibilityLabel={recording ? 'Stop recording' : 'Take photo'}
+                    accessibilityHint={recording ? undefined : 'Hold to record video'}
+                    accessibilityState={{ disabled: !ready || busy }}
                     style={[
                       tw`w-[78px] h-[78px] rounded-full items-center justify-center border-4`,
                       {

@@ -25,7 +25,12 @@ export default function PostMusicSheet({ visible, onClose, selectedTrack, onSele
         >
           <View style={tw`flex-row items-center justify-between mb-4`}>
             <Text style={tw`text-lg font-bold text-stone-900`}>Add music</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close music"
+            >
               <Ionicons name="close" size={24} color="#78716C" />
             </Pressable>
           </View>

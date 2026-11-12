@@ -52,6 +52,8 @@ import {
 } from '../../components/ui/videoEditor/videoEditorPolicy';
 import { useDeferredNativePlayer } from '../../components/ui/videoEditor/useDeferredNativePlayer';
 import EditorErrorBoundary from '../../components/ui/EditorErrorBoundary';
+import { showPermissionDenied } from '../../utils/permissionPrompt';
+import { useCreateFlowLeaveGuard } from '../../hooks/useCreateFlowLeaveGuard';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
 type Props = { navigation: Nav };
@@ -79,16 +81,24 @@ function ToolChip({
   label,
   onPress,
   danger,
+  disabled,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
       style={tw`flex-row items-center rounded-full px-3.5 py-2.5 mr-2 flex-shrink-0 ${
+        disabled ? 'opacity-40 ' : ''
+      }${
         danger ? 'bg-red-500/80 border border-red-400/40' : 'bg-white/15 border border-white/20'
       }`}
       hitSlop={6}
@@ -129,6 +139,7 @@ export default function CreateReelScreen({ navigation }: Props) {
   const [wantPlay, setWantPlay] = useState(false);
   const [stillsBusy, setStillsBusy] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
+  const publishingRef = useRef(false);
   const clipStill = stillSourceFromFrames(clipFrames);
   const previewActive = Boolean(
     wantPlay &&
@@ -141,6 +152,26 @@ export default function CreateReelScreen({ navigation }: Props) {
       !showPhotoEditor
   );
   const previewArmed = useDeferredNativePlayer(previewActive);
+
+  const { leave } = useCreateFlowLeaveGuard({
+    navigation,
+    hasDraft: (Boolean(mediaUri) || Boolean(caption.trim()) || importing) && !showSuccess,
+    busy: posting,
+    editorOpen: showPhotoEditor || showVideoEditor,
+    onCloseEditor: () => {
+      setShowPhotoEditor(false);
+      setShowVideoEditor(false);
+      setOpeningEditor(false);
+    },
+    discardTitle: 'Discard reel?',
+    discardMessage: 'Your draft will be lost.',
+  });
+
+  // Categories can arrive after mount (profile refresh) — still default to the first.
+  const firstCategory = userCategories[0];
+  useEffect(() => {
+    if (!selectedCategory && firstCategory) setSelectedCategory(firstCategory);
+  }, [selectedCategory, firstCategory]);
 
   useEffect(() => {
     if (mediaUri && !showPhotoEditor && !showVideoEditor && !openingEditor) {
@@ -216,9 +247,12 @@ export default function CreateReelScreen({ navigation }: Props) {
 
   const pickFromLibrary = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        await alertMessage('Permission needed', 'Allow library access to create a reel.');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        await showPermissionDenied('photos', {
+          canAskAgain: perm.canAskAgain,
+          message: 'Allow library access to create a reel.',
+        });
         return;
       }
 
@@ -291,6 +325,7 @@ export default function CreateReelScreen({ navigation }: Props) {
   };
 
   const handleClose = async () => {
+    if (posting) return;
     if (!mediaUri && !caption.trim()) {
       navigation.goBack();
       return;
@@ -300,17 +335,18 @@ export default function CreateReelScreen({ navigation }: Props) {
       destructive: true,
     });
     if (!confirmed) return;
-    navigation.goBack();
+    leave(() => navigation.goBack());
   };
 
   const publishReel = async () => {
-    if (!mediaUri || posting) return;
+    if (!mediaUri || posting || publishingRef.current) return;
     if (!selectedCategory) {
       await alertMessage('Category required', 'Pick a growth path category for this reel.');
       setShowCategorySheet(true);
       return;
     }
 
+    publishingRef.current = true;
     setPosting(true);
     try {
       if (mediaKind === 'video' && previewArmed) {
@@ -453,6 +489,7 @@ export default function CreateReelScreen({ navigation }: Props) {
       const msg = err instanceof Error ? err.message : 'Failed to publish reel';
       await alertMessage('Reel not published', `${msg}\n\nNothing was posted to your feed.`);
     } finally {
+      publishingRef.current = false;
       setPosting(false);
     }
   };
@@ -505,6 +542,7 @@ export default function CreateReelScreen({ navigation }: Props) {
             hasImage
             isPosting={posting}
             canPost={canPublish}
+            hasCategories={userCategories.length > 0}
             onOpenCategory={() => setShowCategorySheet(true)}
             onSubmit={() => {
               if (/^(grow!?|🌱|still growing\.?)$/i.test(caption.trim())) {
@@ -544,7 +582,7 @@ export default function CreateReelScreen({ navigation }: Props) {
               onPress={() => {
                 const postId = publishedPostId;
                 const seed = publishedPost;
-                navigation.goBack();
+                leave(() => navigation.goBack());
                 requestAnimationFrame(() => {
                   openReelsAtPost(navigation, postId, seed);
                 });
@@ -555,7 +593,8 @@ export default function CreateReelScreen({ navigation }: Props) {
             </Pressable>
           ) : null}
           <Pressable
-            onPress={() => navigation.goBack()}
+            onPress={() => leave(() => navigation.goBack())}
+            accessibilityRole="button"
             style={tw`w-full py-3.5 rounded-2xl items-center border border-white/25`}
           >
             <Text style={tw`text-white font-semibold`}>Done</Text>
@@ -659,6 +698,7 @@ export default function CreateReelScreen({ navigation }: Props) {
                   onPress={() => setWantPlay(true)}
                   style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
                   hitSlop={8}
+                  accessibilityRole="button"
                   accessibilityLabel="Play clip"
                 >
                   <Ionicons name="play" size={22} color="#fff" />
@@ -697,6 +737,7 @@ export default function CreateReelScreen({ navigation }: Props) {
             <ToolChip
               icon={mediaKind === 'video' ? 'cut-outline' : 'color-wand-outline'}
               label="Edit"
+              disabled={posting}
               onPress={() => {
                 if (openingEditor || showVideoEditor || showPhotoEditor) return;
                 hushNativeAudio(900);
@@ -707,12 +748,14 @@ export default function CreateReelScreen({ navigation }: Props) {
             <ToolChip
               icon="images-outline"
               label="Replace"
+              disabled={posting}
               onPress={() => void pickFromLibrary()}
             />
             <ToolChip
               icon="trash-outline"
               label="Remove"
               danger
+              disabled={posting}
               onPress={() => void handleRemove()}
             />
           </ScrollView>

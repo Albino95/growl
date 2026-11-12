@@ -14,7 +14,8 @@ type Props = {
   onPickLibrary: () => void;
   onEditPhoto: () => void;
   onRemovePhoto: () => void;
-  onOpenMusic: () => void;
+  /** Omit to hide the Music chip (e.g. native, where soundtracks can't play). */
+  onOpenMusic?: () => void;
 };
 
 function ToolChip({
@@ -23,17 +24,23 @@ function ToolChip({
   onPress,
   active,
   danger,
+  disabled,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
   active?: boolean;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={tw`flex-row items-center rounded-full px-3.5 py-2.5 mr-2 flex-shrink-0 ${
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!active, disabled: !!disabled }}
+      style={tw`flex-row items-center rounded-full px-3.5 py-2.5 mr-2 flex-shrink-0 ${disabled ? 'opacity-40 ' : ''}${
         danger
           ? 'bg-red-500/80 border border-red-400/40'
           : active
@@ -117,15 +124,24 @@ export default function PostImageStage({
         contentContainerStyle={tw`px-4 py-3 items-center`}
         style={tw`flex-grow-0 flex-shrink-0`}
       >
-        <ToolChip icon="color-wand-outline" label="Edit" onPress={onEditPhoto} />
+        <ToolChip icon="color-wand-outline" label="Edit" onPress={onEditPhoto} disabled={isPosting} />
+        {onOpenMusic ? (
+          <ToolChip
+            icon="musical-notes-outline"
+            label="Music"
+            onPress={onOpenMusic}
+            active={hasMusic}
+            disabled={isPosting}
+          />
+        ) : null}
+        <ToolChip icon="images-outline" label="Replace" onPress={onPickLibrary} disabled={isPosting} />
         <ToolChip
-          icon="musical-notes-outline"
-          label="Music"
-          onPress={onOpenMusic}
-          active={hasMusic}
+          icon="trash-outline"
+          label="Remove"
+          danger
+          onPress={onRemovePhoto}
+          disabled={isPosting}
         />
-        <ToolChip icon="images-outline" label="Replace" onPress={onPickLibrary} />
-        <ToolChip icon="trash-outline" label="Remove" danger onPress={onRemovePhoto} />
       </ScrollView>
     </View>
   );

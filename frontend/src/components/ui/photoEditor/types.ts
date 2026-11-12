@@ -95,6 +95,9 @@ export const TEXT_COLORS = [
   '#1C1917',
 ] as const;
 
+/** Text layers per photo/clip — adding past this is blocked with a message. */
+export const MAX_TEXT_OVERLAYS = 5;
+
 export const TEXT_QUICK_PHRASES = [
   'GROW',
   'Day 1',

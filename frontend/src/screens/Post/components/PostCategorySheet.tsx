@@ -40,7 +40,12 @@ export default function PostCategorySheet({
         >
           <View style={tw`flex-row items-center justify-between mb-4`}>
             <Text style={tw`text-lg font-bold text-stone-900`}>Choose category</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close categories"
+            >
               <Ionicons name="close" size={24} color="#78716C" />
             </Pressable>
           </View>

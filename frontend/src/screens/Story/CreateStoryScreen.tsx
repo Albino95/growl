@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,9 @@ import { createStory } from '../../services/api/stories';
 import { uploadMediaApi, uploadMediaFile } from '../../services/api/media';
 import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
-import { alertMessage } from '../../utils/confirmDialog';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { showPermissionDenied } from '../../utils/permissionPrompt';
+import { useCreateFlowLeaveGuard } from '../../hooks/useCreateFlowLeaveGuard';
 import PhotoEditor from '../../components/ui/PhotoEditor';
 import VideoEditor, {
   ReelVideoPlayer,
@@ -73,6 +75,9 @@ export default function CreateStoryScreen({ navigation }: Props) {
   const [clipFrames, setClipFrames] = useState<FrameThumb[]>([]);
   const [wantPlay, setWantPlay] = useState(false);
   const [stillsBusy, setStillsBusy] = useState(false);
+  /** User ran an editor and saved (photo look / video trim) — worth confirming before discard. */
+  const [mediaEdited, setMediaEdited] = useState(false);
+  const publishingRef = useRef(false);
   const clipStill = stillSourceFromFrames(clipFrames);
   const previewActive = Boolean(
     wantPlay &&
@@ -85,6 +90,22 @@ export default function CreateStoryScreen({ navigation }: Props) {
       !showEditor
   );
   const previewArmed = useDeferredNativePlayer(previewActive);
+
+  const closeEditors = useCallback(() => {
+    setShowEditor(false);
+    setShowVideoEditor(false);
+    setOpeningEditor(false);
+  }, []);
+
+  const { leave, canAutoLeave } = useCreateFlowLeaveGuard({
+    navigation,
+    hasDraft: Boolean(image) || importing,
+    busy: posting,
+    editorOpen: showEditor || showVideoEditor,
+    onCloseEditor: closeEditors,
+    discardTitle: 'Discard story?',
+    discardMessage: 'Your photo or clip and caption will be lost.',
+  });
 
   useEffect(() => {
     if (!openingEditor) return;
@@ -143,6 +164,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
         nextEdit.trimEndMs = 30000;
       }
       setVideoEdit(nextEdit);
+      setMediaEdited(false);
       setShowEditor(false);
       setShowVideoEditor(false);
       setOpeningEditor(false);
@@ -150,11 +172,15 @@ export default function CreateStoryScreen({ navigation }: Props) {
       let uri = immediate.uri;
       let kind = immediate.kind;
       let durationMs = immediate.durationMs;
-      const picked = await persistPickerAsset(asset);
-      if (picked.uri) uri = picked.uri;
-      kind = picked.kind;
-      if (picked.mimeType) setMimeType(picked.mimeType);
-      if (picked.durationMs > 0) durationMs = picked.durationMs;
+      try {
+        const picked = await persistPickerAsset(asset);
+        if (picked.uri) uri = picked.uri;
+        kind = picked.kind;
+        if (picked.mimeType) setMimeType(picked.mimeType);
+        if (picked.durationMs > 0) durationMs = picked.durationMs;
+      } catch {
+        /* keep the picker URI — same fallback as reels */
+      }
       setMediaKind(kind);
       setClipDurationMs(durationMs);
       if (kind === 'video') {
@@ -166,6 +192,8 @@ export default function CreateStoryScreen({ navigation }: Props) {
         try {
           const frames = await sampleClipFramesQuiet(uri, durationMs, setClipFrames);
           setClipFrames(frames);
+        } catch {
+          /* stills are optional — keep placeholders */
         } finally {
           setStillsBusy(false);
         }
@@ -180,30 +208,42 @@ export default function CreateStoryScreen({ navigation }: Props) {
   }, []);
 
   const pickMedia = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      alertMessage('Permission needed', 'Allow library access to publish a story.');
-      setOpeningCamera(false);
-      return;
-    }
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        setOpeningCamera(false);
+        await showPermissionDenied('photos', {
+          canAskAgain: perm.canAskAgain,
+          message: 'Allow library access to publish a story.',
+        });
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync(FAST_STORY_PICKER);
-    hushNativeAudio(1800);
+      const result = await ImagePicker.launchImageLibraryAsync(FAST_STORY_PICKER);
+      hushNativeAudio(1800);
 
-    if (!result.canceled && result.assets[0]) {
-      await applyAsset(result.assets[0]);
-    } else {
+      if (!result.canceled && result.assets[0]) {
+        await applyAsset(result.assets[0]);
+      } else {
+        setOpeningCamera(false);
+      }
+    } catch (err: unknown) {
       setOpeningCamera(false);
+      const msg = err instanceof Error && err.message ? err.message : 'Could not add that photo or clip.';
+      void alertMessage('Could not add media', `${msg}\n\nTry another photo or clip, or use the camera.`);
     }
   }, [applyAsset]);
 
   const takePhoto = useCallback(async () => {
     setOpeningCamera(true);
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        alertMessage('Permission needed', 'Allow camera access to capture a story.');
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
         setOpeningCamera(false);
+        await showPermissionDenied('camera', {
+          canAskAgain: perm.canAskAgain,
+          message: 'Allow camera access to capture a story.',
+        });
         return;
       }
 
@@ -222,7 +262,8 @@ export default function CreateStoryScreen({ navigation }: Props) {
   }, [applyAsset]);
 
   const publishStory = async () => {
-    if (!image || posting) return;
+    if (!image || posting || publishingRef.current) return;
+    publishingRef.current = true;
     setPosting(true);
     try {
       if (mediaKind === 'video' && previewArmed) {
@@ -292,13 +333,41 @@ export default function CreateStoryScreen({ navigation }: Props) {
       });
 
       feedback.success();
-      navigation.goBack();
+      // Only pop if the user is still here — never yank them off another screen.
+      if (canAutoLeave()) leave(() => navigation.goBack());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to publish story';
       alertMessage('Story not published', `${msg}\n\nYour draft is still here.`);
     } finally {
+      publishingRef.current = false;
       setPosting(false);
     }
+  };
+
+  const resetDraft = () => {
+    setImage(null);
+    setCaption('');
+    setMediaKind('image');
+    setMimeType(undefined);
+    setVideoEdit(DEFAULT_VIDEO_EDIT);
+    setClipDurationMs(0);
+    setClipFrames([]);
+    setWantPlay(false);
+    setOpeningCamera(false);
+    setMediaEdited(false);
+  };
+
+  const handleRetake = async () => {
+    if (posting) return;
+    if (caption.trim() || mediaEdited) {
+      const ok = await confirmAsync(
+        'Discard this story?',
+        'Your caption and edits will be lost.',
+        { confirmLabel: 'Discard', destructive: true }
+      );
+      if (!ok) return;
+    }
+    resetDraft();
   };
 
   if (showEditor && image && mediaKind === 'image') {
@@ -310,6 +379,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
           preferredAspect="9:16"
           enableOverlays
           onSave={(editedUri) => {
+            if (editedUri !== image) setMediaEdited(true);
             setImage(editedUri);
             setShowEditor(false);
           }}
@@ -328,11 +398,18 @@ export default function CreateStoryScreen({ navigation }: Props) {
         <VideoEditor
           videoUri={image}
           title="Edit story"
+          mode="story"
           initialSettings={videoEdit}
           maxClipMs={30000}
           hintDurationMs={clipDurationMs}
           initialFrames={clipFrames}
           onSave={(settings) => {
+            if (
+              settings.trimStartMs !== videoEdit.trimStartMs ||
+              settings.trimEndMs !== videoEdit.trimEndMs
+            ) {
+              setMediaEdited(true);
+            }
             setVideoEdit(settings);
             setShowVideoEditor(false);
           }}
@@ -350,6 +427,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
             onPress={() => navigation.goBack()}
             hitSlop={12}
             style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
+            accessibilityRole="button"
             accessibilityLabel="Close"
           >
             <Ionicons name="close" size={24} color="#fff" />
@@ -408,13 +486,24 @@ export default function CreateStoryScreen({ navigation }: Props) {
 
         {!openingCamera && !importing && (
           <View style={tw`flex-row items-center justify-center gap-10 px-6 pb-6`}>
-            <Pressable onPress={() => void pickMedia()} style={tw`items-center`} hitSlop={8}>
+            <Pressable
+              onPress={() => void pickMedia()}
+              style={tw`items-center`}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Open gallery"
+            >
               <View style={tw`w-12 h-12 rounded-xl border-2 border-white/40 overflow-hidden bg-stone-800 items-center justify-center`}>
                 <Ionicons name="images" size={22} color="#A8A29E" />
               </View>
               <Text style={tw`text-stone-500 text-[10px] mt-1.5 font-semibold`}>Gallery</Text>
             </Pressable>
-            <Pressable onPress={() => void takePhoto()} hitSlop={8}>
+            <Pressable
+              onPress={() => void takePhoto()}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Take photo or video"
+            >
               <View
                 style={[
                   tw`rounded-full border-4 border-white items-center justify-center`,
@@ -437,19 +526,11 @@ export default function CreateStoryScreen({ navigation }: Props) {
     <View style={[styles.captureRoot, { paddingTop: insets.top }]}>
       <View style={tw`flex-row items-center justify-between px-4 py-3`}>
         <Pressable
-          onPress={() => {
-            setImage(null);
-            setCaption('');
-            setMediaKind('image');
-            setMimeType(undefined);
-            setVideoEdit(DEFAULT_VIDEO_EDIT);
-            setClipDurationMs(0);
-            setClipFrames([]);
-            setWantPlay(false);
-            setOpeningCamera(false);
-          }}
+          onPress={() => void handleRetake()}
+          disabled={posting}
           hitSlop={12}
           style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
+          accessibilityRole="button"
           accessibilityLabel="Retake"
         >
           <Ionicons name="chevron-back" size={24} color="#fff" />
@@ -462,9 +543,11 @@ export default function CreateStoryScreen({ navigation }: Props) {
             setWantPlay(false);
             setOpeningEditor(true);
           }}
+          disabled={posting}
           hitSlop={12}
           style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
-          accessibilityLabel="Edit"
+          accessibilityRole="button"
+          accessibilityLabel={mediaKind === 'video' ? 'Trim clip' : 'Edit photo'}
         >
           <Ionicons
             name={mediaKind === 'video' ? 'cut-outline' : 'color-filter-outline'}
@@ -518,6 +601,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
                 onPress={() => setWantPlay(true)}
                 style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
                 hitSlop={8}
+                accessibilityRole="button"
                 accessibilityLabel="Play clip"
               >
                 <Ionicons name="play" size={22} color="#fff" />
@@ -563,6 +647,7 @@ export default function CreateStoryScreen({ navigation }: Props) {
       >
         <Pressable
           onPress={() => void pickMedia()}
+          disabled={posting}
           style={tw`flex-1 py-3.5 rounded-full bg-white/10 items-center justify-center border border-white/10`}
         >
           <Text style={tw`text-white font-semibold`}>Gallery</Text>

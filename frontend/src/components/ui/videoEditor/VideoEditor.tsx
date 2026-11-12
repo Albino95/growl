@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   StyleSheet,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
@@ -19,7 +20,13 @@ import tw from '../../../lib/tw';
 import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
 import { feedback } from '../../../utils/interactionFeedback';
 import type { TextOverlay, TextOverlayStyle, EditAdjustments } from '../photoEditor/types';
-import { TEXT_COLORS, TEXT_QUICK_PHRASES, DEFAULT_ADJUSTMENTS } from '../photoEditor/types';
+import {
+  TEXT_QUICK_PHRASES,
+  DEFAULT_ADJUSTMENTS,
+  MAX_TEXT_OVERLAYS,
+} from '../photoEditor/types';
+import { alertMessage, confirmAsync } from '../../../utils/confirmDialog';
+import { MUSIC_PLAYBACK_SUPPORTED } from '../../../utils/mediaCapabilities';
 import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
 import { AdjustSlider } from '../photoEditor/AdjustSlider';
 import type { VideoEditSettings, VideoLookId } from './types';
@@ -100,6 +107,11 @@ type Props = {
   hintDurationMs?: number;
   /** Stills sampled before any expo-av player opened the clip. */
   initialFrames?: FrameThumb[];
+  /**
+   * 'story' keeps only trim: the story API stores just the media URL (+ trim
+   * params), so looks, text, sound, speed, flip and cover would be dropped.
+   */
+  mode?: 'reel' | 'story';
   onSave: (settings: VideoEditSettings) => void;
   onCancel: () => void;
 };
@@ -111,9 +123,12 @@ export default function VideoEditor({
   maxClipMs,
   hintDurationMs = 0,
   initialFrames,
+  mode = 'reel',
   onSave,
   onCancel,
 }: Props) {
+  const isStory = mode === 'story';
+  const visibleTabs = isStory ? TABS.filter((t) => t.id === 'edit') : TABS;
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const maxPreviewW = winW - 24;
@@ -184,6 +199,8 @@ export default function VideoEditor({
     initial.overlays[0]?.id ?? null
   );
   const [musicGenre, setMusicGenre] = useState<(typeof MUSIC_GENRE_FILTERS)[number]>('All');
+  const initialSnap = useRef(initial).current;
+  const initialTrackId = useRef(audioTrackId).current;
 
   useEffect(() => {
     if (!initialFrames?.some((f) => f.uri && !f.placeholder)) return;
@@ -517,8 +534,15 @@ export default function VideoEditor({
   );
 
   const addText = (text?: string) => {
+    if (overlays.length >= MAX_TEXT_OVERLAYS) {
+      void alertMessage(
+        'Text limit reached',
+        `You can add up to ${MAX_TEXT_OVERLAYS} text layers. Remove one to add another.`
+      );
+      return;
+    }
     const o = newOverlay(text || 'GROW');
-    setOverlays((prev) => [...prev.slice(0, 4), o]);
+    setOverlays((prev) => [...prev, o]);
     setActiveOverlayId(o.id);
     setTab('edit');
   };
@@ -580,6 +604,54 @@ export default function VideoEditor({
     setActiveOverlayId(null);
   };
 
+  const hasUnsavedChanges =
+    Math.abs(originalVolume - initialSnap.originalVolume) > 0.001 ||
+    speed !== initialSnap.speed ||
+    trimStartMs !== initialSnap.trimStartMs ||
+    clipEndMs(trimEndMs, durationMs) !== clipEndMs(initialSnap.trimEndMs, durationMs) ||
+    coverMs !== initialSnap.coverMs ||
+    flipH !== initialSnap.flipH ||
+    flipV !== initialSnap.flipV ||
+    lookId !== initialSnap.lookId ||
+    filterPresetId !== initialSnap.filterPresetId ||
+    JSON.stringify(manualAdjust) !==
+      JSON.stringify({ ...DEFAULT_ADJUSTMENTS, ...initialSnap.manualAdjust }) ||
+    audioTrackId !== initialTrackId ||
+    Math.abs(audioVolume - initialSnap.audioVolume) > 0.001 ||
+    JSON.stringify(overlays) !== JSON.stringify(initialSnap.overlays);
+
+  const closingRef = useRef(false);
+  /** Close, confirming first only when there is something to lose. */
+  const requestClose = useCallback(async () => {
+    if (closingRef.current) return;
+    if (hasUnsavedChanges) {
+      closingRef.current = true;
+      try {
+        const discard = await confirmAsync(
+          'Discard edits?',
+          'Your changes to this clip will be lost.',
+          { confirmLabel: 'Discard', destructive: true }
+        );
+        if (!discard) return;
+      } finally {
+        closingRef.current = false;
+      }
+    }
+    setPlaying(false);
+    setPlayerArmed(false);
+    onCancel();
+  }, [hasUnsavedChanges, onCancel]);
+
+  // Android hardware back closes the editor (with the same confirm), never the screen.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      void requestClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [requestClose]);
+
   const flipTransform = [
     { scaleX: flipH ? -1 : 1 },
     { scaleY: flipV ? -1 : 1 },
@@ -593,12 +665,9 @@ export default function VideoEditor({
         {/* Header */}
         <View style={tw`flex-row items-center justify-between px-4 py-3 z-30`}>
           <Pressable
-            onPress={() => {
-              setPlaying(false);
-              setPlayerArmed(false);
-              onCancel();
-            }}
+            onPress={() => void requestClose()}
             hitSlop={10}
+            accessibilityRole="button"
             accessibilityLabel="Close editor"
             style={tw`w-11 h-11 rounded-full bg-black items-center justify-center border border-white/20`}
           >
@@ -620,6 +689,8 @@ export default function VideoEditor({
           </Pressable>
           <Pressable
             onPress={() => void finishAndSave()}
+            accessibilityRole="button"
+            accessibilityLabel="Done editing"
             style={tw`px-4 py-2 rounded-full bg-brand-600`}
             hitSlop={6}
           >
@@ -740,6 +811,7 @@ export default function VideoEditor({
             <Pressable
               onPress={() => void togglePlay()}
               hitSlop={8}
+              accessibilityRole="button"
               accessibilityLabel={playing ? 'Pause' : 'Play'}
               style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
             >
@@ -791,14 +863,22 @@ export default function VideoEditor({
           </Text>
         </View>
 
-        {/* Tabs */}
-        <View style={tw`flex-row px-2 pt-2 pb-1`}>
-          {TABS.map((t) => {
+        {/* Tabs — stories only get trim, so no tab bar there */}
+        {isStory ? (
+          <Text style={tw`text-stone-500 text-[11px] text-center px-6 pt-2`}>
+            Stories keep your trim. Looks, text, sound and speed are for reels.
+          </Text>
+        ) : null}
+        <View style={[tw`flex-row px-2 pt-2 pb-1`, isStory && tw`hidden`]}>
+          {visibleTabs.map((t) => {
             const selected = tab === t.id;
             return (
               <Pressable
                 key={t.id}
                 onPress={() => setTab(t.id)}
+                accessibilityRole="tab"
+                accessibilityLabel={t.label}
+                accessibilityState={{ selected }}
                 style={[
                   tw`flex-1 items-center py-2 mx-0.5 rounded-2xl`,
                   selected ? tw`bg-white/12` : tw`bg-transparent`,
@@ -841,11 +921,14 @@ export default function VideoEditor({
               onSeek={(ms) => void seekTo(ms)}
             />
 
+            {!isStory ? (
             <View style={tw`mt-5 pt-4 border-t border-stone-800`}>
               <View style={tw`flex-row items-center justify-between mb-3`}>
                 <Text style={tw`text-white text-sm font-bold`}>Text</Text>
                 <Pressable
                   onPress={() => addText()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add text"
                   style={tw`flex-row items-center gap-1 bg-brand-600 px-3 py-2 rounded-full`}
                 >
                   <Ionicons name="add" size={16} color="#fff" />
@@ -860,6 +943,8 @@ export default function VideoEditor({
                       if (activeOverlay) updateActive({ text: phrase });
                       else addText(phrase);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use phrase ${phrase}`}
                     style={tw`px-3 py-2 rounded-full bg-stone-800 border border-stone-700 mr-2`}
                   >
                     <Text style={tw`text-stone-200 text-xs font-semibold`}>{phrase}</Text>
@@ -884,6 +969,9 @@ export default function VideoEditor({
                         <Pressable
                           key={s.id}
                           onPress={() => updateActive({ style: s.id })}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${s.label} text style`}
+                          accessibilityState={{ selected }}
                           style={[
                             tw`px-3 py-2 rounded-xl border mr-2`,
                             selected
@@ -916,8 +1004,11 @@ export default function VideoEditor({
                 </Text>
               )}
             </View>
+            ) : null}
 
             <View style={tw`mt-5 pt-4 border-t border-stone-800 pb-2`}>
+              {!isStory ? (
+              <>
               <Text style={tw`text-white text-sm font-bold mb-3`}>Tools</Text>
               <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
                 Speed
@@ -929,6 +1020,9 @@ export default function VideoEditor({
                     <Pressable
                       key={s.value}
                       onPress={() => setSpeed(s.value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Speed ${s.label}`}
+                      accessibilityState={{ selected }}
                       style={[
                         tw`px-3.5 py-2.5 rounded-2xl border min-w-[72px]`,
                         selected
@@ -950,6 +1044,9 @@ export default function VideoEditor({
               <View style={tw`flex-row gap-3 mb-4`}>
                 <Pressable
                   onPress={() => setFlipH((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Flip horizontally"
+                  accessibilityState={{ selected: flipH }}
                   style={[
                     tw`flex-1 flex-row items-center justify-center py-3 rounded-2xl border`,
                     flipH ? tw`bg-brand-600/25 border-brand-500` : tw`bg-stone-900 border-stone-700`,
@@ -960,6 +1057,9 @@ export default function VideoEditor({
                 </Pressable>
                 <Pressable
                   onPress={() => setFlipV((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Flip vertically"
+                  accessibilityState={{ selected: flipV }}
                   style={[
                     tw`flex-1 flex-row items-center justify-center py-3 rounded-2xl border`,
                     flipV ? tw`bg-brand-600/25 border-brand-500` : tw`bg-stone-900 border-stone-700`,
@@ -975,6 +1075,7 @@ export default function VideoEditor({
               <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-4 py-4 mb-4`}>
                 <Pressable
                   onPress={() => setCoverMs(positionMs)}
+                  accessibilityRole="button"
                   style={tw`py-3 rounded-xl bg-brand-600 items-center`}
                 >
                   <Text style={tw`text-white font-bold text-sm`}>
@@ -987,8 +1088,11 @@ export default function VideoEditor({
                   </Text>
                 ) : null}
               </View>
+              </>
+              ) : null}
               <Pressable
                 onPress={resetAll}
+                accessibilityRole="button"
                 style={tw`flex-row items-center justify-center gap-2 py-3 rounded-2xl border border-stone-700 bg-stone-900`}
               >
                 <Ionicons name="refresh-outline" size={18} color="#A8A29E" />
@@ -1039,6 +1143,8 @@ export default function VideoEditor({
                 />
                 <Pressable
                   onPress={() => setOriginalVolume(isOriginalMuted ? 1 : 0)}
+                  accessibilityRole="button"
+                  accessibilityLabel={isOriginalMuted ? 'Unmute original sound' : 'Mute original sound'}
                   style={tw`self-start flex-row items-center gap-2 mb-4 -mt-1`}
                 >
                   <Ionicons
@@ -1055,6 +1161,30 @@ export default function VideoEditor({
                   </Text>
                 </Pressable>
 
+                {!MUSIC_PLAYBACK_SUPPORTED ? (
+                  <View style={tw`bg-stone-900 border border-stone-800 rounded-2xl px-4 py-3 mb-3`}>
+                    <Text style={tw`text-stone-300 text-xs font-semibold`}>
+                      Music isn't available in the app yet
+                    </Text>
+                    <Text style={tw`text-stone-500 text-[11px] mt-1`}>
+                      The app can't play soundtracks, so adding music is web-only for now.
+                    </Text>
+                    {selectedTrack ? (
+                      <Pressable
+                        onPress={() => selectTrack(null)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove music ${selectedTrack.title}`}
+                        style={tw`self-start mt-2 flex-row items-center gap-1.5`}
+                      >
+                        <Ionicons name="close-circle-outline" size={16} color="#F87171" />
+                        <Text style={tw`text-red-400 text-xs font-semibold`}>
+                          Remove "{selectedTrack.title}"
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : (
+                <>
                 <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
                   Music library
                 </Text>
@@ -1068,6 +1198,9 @@ export default function VideoEditor({
                       <Pressable
                         key={g}
                         onPress={() => setMusicGenre(g)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${g} music`}
+                        accessibilityState={{ selected }}
                         style={[
                           tw`px-3 py-1.5 rounded-full mr-2 border`,
                           selected
@@ -1088,6 +1221,9 @@ export default function VideoEditor({
                 </ScrollView>
                 <Pressable
                   onPress={() => selectTrack(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="No music"
+                  accessibilityState={{ selected: !selectedTrack }}
                   style={[
                     tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
                     !selectedTrack
@@ -1110,6 +1246,9 @@ export default function VideoEditor({
                     <Pressable
                       key={track.id}
                       onPress={() => selectTrack(track)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${track.title} by ${track.artist}`}
+                      accessibilityState={{ selected: active }}
                       style={[
                         tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border`,
                         active
@@ -1151,6 +1290,8 @@ export default function VideoEditor({
                     />
                   </View>
                 ) : null}
+                </>
+                )}
               </View>
             )}
           </ScrollView>

@@ -516,8 +516,11 @@ async function exportViaJpegJs(
       }
     }
     return `data:image/jpeg;base64,${base64}`;
-  } catch {
-    return uri;
+  } catch (err) {
+    // Never hand back the unedited photo as if the edits were applied —
+    // PhotoEditor catches this and shows "Export failed" so the user can retry.
+    const reason = err instanceof Error && err.message ? `: ${err.message}` : '';
+    throw new Error(`Could not apply edits${reason}`);
   }
 }
 

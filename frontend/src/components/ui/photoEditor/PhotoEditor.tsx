@@ -8,6 +8,7 @@ import {
   StyleSheet,
   PanResponder,
   Platform,
+  BackHandler,
 } from 'react-native';
 import GrowLoader from '../GrowLoader';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +16,7 @@ import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
-import { alertMessage } from '../../../utils/confirmDialog';
+import { alertMessage, confirmAsync } from '../../../utils/confirmDialog';
 import { feedback } from '../../../utils/interactionFeedback';
 import type {
   CropAspect,
@@ -24,7 +25,7 @@ import type {
   PhotoEditorProps,
   TextOverlay,
 } from './types';
-import { DEFAULT_ADJUSTMENTS } from './types';
+import { DEFAULT_ADJUSTMENTS, MAX_TEXT_OVERLAYS } from './types';
 import { getPresetsForCategory } from './presets';
 import FilterCategoryBar from './FilterCategoryBar';
 import TextOverlayPanel from './TextOverlayPanel';
@@ -208,7 +209,13 @@ function FilterThumb({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={tw`items-center mr-3`}>
+    <Pressable
+      onPress={onPress}
+      style={tw`items-center mr-3`}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} look`}
+      accessibilityState={{ selected: active }}
+    >
       <View
         style={[
           tw`w-[76px] h-[76px] rounded-2xl overflow-hidden`,
@@ -492,13 +499,20 @@ export default function PhotoEditor({
 
   const addTextOverlay = useCallback(
     (text?: string) => {
+      if (overlays.length >= MAX_TEXT_OVERLAYS) {
+        void alertMessage(
+          'Text limit reached',
+          `You can add up to ${MAX_TEXT_OVERLAYS} text layers. Remove one to add another.`
+        );
+        return;
+      }
       pushHistory();
       const o = newOverlay(text || 'GROW');
-      setOverlays((prev) => [...prev.slice(0, 4), o]);
+      setOverlays((prev) => [...prev, o]);
       setActiveOverlayId(o.id);
       setActiveTab('overlay');
     },
-    [pushHistory]
+    [overlays.length, pushHistory]
   );
 
   const updateActiveOverlay = useCallback(
@@ -554,6 +568,38 @@ export default function PhotoEditor({
   ];
   const showPanHandlers = activeTab === 'crop' && selectedCrop !== 'free';
 
+  const hasUnsavedChanges = isEdited || cropDirty || history.length > 0;
+  const closingRef = useRef(false);
+
+  /** Close, confirming first only when there is something to lose. */
+  const requestClose = useCallback(async () => {
+    if (isProcessing || closingRef.current) return;
+    if (hasUnsavedChanges) {
+      closingRef.current = true;
+      try {
+        const discard = await confirmAsync('Discard edits?', 'Your changes to this photo will be lost.', {
+          confirmLabel: 'Discard',
+          destructive: true,
+        });
+        if (!discard) return;
+      } finally {
+        closingRef.current = false;
+      }
+    }
+    feedback.close();
+    onCancel();
+  }, [hasUnsavedChanges, isProcessing, onCancel]);
+
+  // Android hardware back closes the editor (with the same confirm), never the screen.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      void requestClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [requestClose]);
+
   const onTitlePress = () => {
     const now = Date.now();
     if (now - titleTaps.current.at > 2800) titleTaps.current.n = 0;
@@ -577,12 +623,11 @@ export default function PhotoEditor({
           ]}
         >
           <Pressable
-            onPress={() => {
-              feedback.close();
-              onCancel();
-            }}
+            onPress={() => void requestClose()}
             disabled={isProcessing}
             hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close editor"
             style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
           >
             <Ionicons name="close" size={20} color="#E7E5E4" />
@@ -600,6 +645,9 @@ export default function PhotoEditor({
             onPress={handleSave}
             disabled={isProcessing}
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={isProcessing ? 'Saving edits' : 'Done editing'}
+            accessibilityState={{ disabled: isProcessing, busy: isProcessing }}
             style={tw`px-4 py-2 rounded-full ${isProcessing ? 'bg-stone-800' : 'bg-brand-600'}`}
           >
             <Text style={tw`text-white font-bold text-sm`}>
@@ -612,6 +660,9 @@ export default function PhotoEditor({
           <Pressable
             onPress={handleUndo}
             disabled={history.length === 0 || isProcessing}
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
+            accessibilityState={{ disabled: history.length === 0 || isProcessing }}
             style={tw`flex-row items-center gap-1.5 px-2 py-1 ${
               history.length === 0 ? 'opacity-35' : ''
             }`}
@@ -624,6 +675,8 @@ export default function PhotoEditor({
           <Pressable
             onPress={() => void applyAuto()}
             disabled={isProcessing}
+            accessibilityRole="button"
+            accessibilityLabel="Auto enhance"
             style={tw`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800`}
             hitSlop={8}
           >
@@ -635,6 +688,9 @@ export default function PhotoEditor({
             onPressIn={() => setComparing(true)}
             onPressOut={() => setComparing(false)}
             disabled={isProcessing}
+            accessibilityRole="button"
+            accessibilityLabel="Compare with original"
+            accessibilityHint="Press and hold to see the original photo"
             style={tw`flex-row items-center gap-1.5 px-2 py-1`}
             hitSlop={8}
           >
@@ -750,6 +806,9 @@ export default function PhotoEditor({
                     if (tab.id !== activeTab) feedback.tab();
                     setActiveTab(tab.id);
                   }}
+                  accessibilityRole="tab"
+                  accessibilityLabel={tab.label}
+                  accessibilityState={{ selected: active }}
                   style={tw`flex-1 items-center py-2.5 border-b-2 ${
                     active ? 'border-brand-500' : 'border-transparent'
                   }`}
@@ -872,6 +931,9 @@ export default function PhotoEditor({
                       }
                     }}
                     disabled={isProcessing}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Crop ${opt.label}`}
+                    accessibilityState={{ selected: selectedCrop === opt.id, disabled: isProcessing }}
                     style={tw`px-3.5 py-2.5 rounded-xl border ${
                       selectedCrop === opt.id
                         ? 'bg-brand-600 border-brand-500'
@@ -892,6 +954,8 @@ export default function PhotoEditor({
                 <Pressable
                   onPress={() => void applyCropNow()}
                   disabled={isProcessing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply crop"
                   style={tw`self-start flex-row items-center gap-2 bg-brand-600 px-4 py-3 rounded-xl`}
                 >
                   <Ionicons name="crop" size={18} color="#fff" />
@@ -921,6 +985,8 @@ export default function PhotoEditor({
                     key={action.label}
                     onPress={() => void action.onPress()}
                     disabled={isProcessing}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.label}
                     style={tw`items-center`}
                   >
                     <View
@@ -940,6 +1006,7 @@ export default function PhotoEditor({
                 <Text style={tw`text-stone-500 text-xs`}>+15°</Text>
               </View>
               <Slider
+                accessibilityLabel="Straighten"
                 style={tw`w-full h-8 mb-3`}
                 minimumValue={-15}
                 maximumValue={15}
@@ -954,6 +1021,8 @@ export default function PhotoEditor({
                 <Pressable
                   onPress={() => void commitStraighten()}
                   disabled={isProcessing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply straighten"
                   style={tw`self-start flex-row items-center gap-2 bg-stone-800 px-4 py-2.5 rounded-xl mb-6`}
                 >
                   <Ionicons name="checkmark" size={18} color="#34D399" />

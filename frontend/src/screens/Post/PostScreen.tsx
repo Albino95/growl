@@ -7,7 +7,7 @@ import PhotoEditor from '../../components/ui/PhotoEditor';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { useCreatePost } from '../../hooks/useCreatePost';
-import { confirmAsync, alertMessage } from '../../utils/confirmDialog';
+import { confirmAsync } from '../../utils/confirmDialog';
 import PostComposerLayout from './components/PostComposerLayout';
 import PostImageStage from './components/PostImageStage';
 import PostCaptionOverlay from './components/PostCaptionOverlay';
@@ -20,6 +20,9 @@ import { FAST_CAMERA, FAST_IMAGE_PICKER } from '../../utils/prepareImageUpload';
 import { persistPickerAsset } from '../../utils/pickedMedia';
 import EditorErrorBoundary from '../../components/ui/EditorErrorBoundary';
 import { feedback } from '../../utils/interactionFeedback';
+import { showPermissionDenied } from '../../utils/permissionPrompt';
+import { MUSIC_PLAYBACK_SUPPORTED } from '../../utils/mediaCapabilities';
+import { useCreateFlowLeaveGuard } from '../../hooks/useCreateFlowLeaveGuard';
 
 type PostScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Post'>;
 
@@ -36,6 +39,9 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   const [showSuccess, setShowSuccess] = useState(false);
   const captionInputRef = useRef<import('react-native').TextInput>(null);
   const seeded = useRef(false);
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Assigned after the leave guard below; the success callback reads it lazily.
+  const afterPublishRef = useRef<() => void>(() => undefined);
 
   const promoteExtras = {
     productId: route.params?.productId,
@@ -61,10 +67,35 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     submitPost,
   } = useCreatePost(() => {
     setShowSuccess(true);
-    setTimeout(() => {
-      navigation.goBack();
+    if (successTimer.current) clearTimeout(successTimer.current);
+    successTimer.current = setTimeout(() => {
+      successTimer.current = null;
+      afterPublishRef.current();
     }, 600);
   }, promoteExtras);
+
+  const { leave, canAutoLeave } = useCreateFlowLeaveGuard({
+    navigation,
+    hasDraft: hasDraft && !showSuccess,
+    busy: isPosting,
+    editorOpen: showEditor,
+    onCloseEditor: () => setShowEditor(false),
+    onDiscard: clearDraft,
+    discardTitle: 'Discard post?',
+    discardMessage: 'Your draft will be lost.',
+  });
+
+  // Only pop after publishing if the user is still on this screen.
+  afterPublishRef.current = () => {
+    if (canAutoLeave()) leave(() => navigation.goBack());
+  };
+
+  useEffect(
+    () => () => {
+      if (successTimer.current) clearTimeout(successTimer.current);
+    },
+    []
+  );
 
   useEffect(() => {
     if (seeded.current) return;
@@ -72,6 +103,15 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     if (route.params?.caption) setCaption(route.params.caption);
     if (route.params?.category) setCategory(route.params.category);
   }, [route.params?.caption, route.params?.category, setCaption, setCategory]);
+
+  // Like reels: default to the user's first category so Share isn't silently disabled.
+  const firstCategory = userCategories[0];
+  useEffect(() => {
+    if (route.params?.category) return;
+    if (!selectedCategory && firstCategory) setCategory(firstCategory);
+    // setCategory is a fresh closure each render; keyed on the values that matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, firstCategory, route.params?.category]);
 
   useEffect(() => {
     if (image && !showEditor) {
@@ -81,9 +121,12 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   }, [image, showEditor]);
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      alertMessage('Permission needed', 'We need camera roll permissions to post images.');
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') {
+      await showPermissionDenied('photos', {
+        canAskAgain: perm.canAskAgain,
+        message: 'We need photo library access to post images.',
+      });
       return;
     }
 
@@ -96,9 +139,12 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   };
 
   const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      alertMessage('Permission needed', 'We need camera permissions to take photos.');
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (perm.status !== 'granted') {
+      await showPermissionDenied('camera', {
+        canAskAgain: perm.canAskAgain,
+        message: 'We need camera access to take photos.',
+      });
       return;
     }
 
@@ -123,6 +169,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
   };
 
   const handleClose = async () => {
+    if (isPosting) return;
     if (!hasDraft) {
       navigation.goBack();
       return;
@@ -134,7 +181,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
     );
     if (!confirmed) return;
     clearDraft();
-    navigation.goBack();
+    leave(() => navigation.goBack());
   };
 
   if (showEditor && image) {
@@ -168,6 +215,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
             hasImage
             isPosting={isPosting}
             canPost={canPost}
+            hasCategories={userCategories.length > 0}
             submitLabel={
               postingPhase === 'uploading'
                 ? 'Uploading photo…'
@@ -178,7 +226,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
                     : undefined
             }
             onOpenCategory={() => setShowCategorySheet(true)}
-            onOpenMusic={() => setShowMusicSheet(true)}
+            onOpenMusic={MUSIC_PLAYBACK_SUPPORTED ? () => setShowMusicSheet(true) : undefined}
             onSubmit={() => {
               if (/^(grow!?|🌱|still growing\.?)$/i.test(caption.trim())) {
                 feedback.celebrate();
@@ -233,7 +281,7 @@ export default function PostScreen({ navigation }: PostScreenProps) {
         onPickLibrary={pickImage}
         onEditPhoto={() => setShowEditor(true)}
         onRemovePhoto={() => void handleRemovePhoto()}
-        onOpenMusic={() => setShowMusicSheet(true)}
+        onOpenMusic={MUSIC_PLAYBACK_SUPPORTED ? () => setShowMusicSheet(true) : undefined}
       />
 
       {image && (

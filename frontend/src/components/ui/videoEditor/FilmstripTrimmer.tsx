@@ -22,6 +22,10 @@ import {
 } from './filmstripMath';
 
 const STRIP_H = 84;
+/** Screen-reader nudge size for IN / OUT / playhead (swipe up / down). */
+const A11Y_STEP_MS = 500;
+
+type A11yActionEvent = { nativeEvent: { actionName: string } };
 
 function formatMs(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -164,6 +168,43 @@ export default function FilmstripTrimmer({
     return best;
   }, [frames, positionMs]);
 
+  const nudgeHandle = (mode: 'start' | 'end' | 'play', dir: 1 | -1) => {
+    const delta = dir * A11Y_STEP_MS;
+    if (mode === 'start') {
+      const next = Math.max(0, Math.min(start + delta, end - MIN_TRIM_MS));
+      onChangeTrim(next, end);
+      onSeek(next);
+      return;
+    }
+    if (mode === 'end') {
+      const next = Math.min(duration, Math.max(end + delta, start + MIN_TRIM_MS));
+      onChangeTrim(start, next);
+      onSeek(next);
+      return;
+    }
+    const raw = positionMs + delta;
+    onSeek(
+      playheadClampedToTrim() ? Math.max(start, Math.min(end, raw)) : clampPlayheadMs(raw, duration)
+    );
+  };
+
+  const handleA11y = (mode: 'start' | 'end' | 'play', label: string, valueMs: number) => ({
+    accessible: true,
+    accessibilityRole: 'adjustable' as const,
+    accessibilityLabel: label,
+    accessibilityValue: {
+      min: 0,
+      max: Math.round(duration / 1000),
+      now: Math.round(valueMs / 1000),
+      text: formatMs(valueMs),
+    },
+    accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+    onAccessibilityAction: (e: A11yActionEvent) => {
+      if (e.nativeEvent.actionName === 'increment') nudgeHandle(mode, 1);
+      else if (e.nativeEvent.actionName === 'decrement') nudgeHandle(mode, -1);
+    },
+  });
+
   const onTapFrame = (frame: FrameThumb) => {
     const t = frame.timeMs;
     if (tapFrameAdjustsTrim()) {
@@ -215,6 +256,8 @@ export default function FilmstripTrimmer({
                   <Pressable
                     key={`ph-${i}`}
                     onPress={() => onTapFrame(f || { uri: '', timeMs: t })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Seek to ${formatMs(t)}`}
                     style={{
                       width: cellW,
                       height: STRIP_H,
@@ -232,6 +275,8 @@ export default function FilmstripTrimmer({
                 <Pressable
                   key={`${f.timeMs}-${i}`}
                   onPress={() => onTapFrame(f)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Seek to ${formatMs(t)}`}
                   style={{ width: cellW, height: STRIP_H }}
                 >
                   <Image
@@ -279,6 +324,7 @@ export default function FilmstripTrimmer({
           <View
             collapsable={false}
             {...startPan.panHandlers}
+            {...handleA11y('start', 'Trim start', start)}
             style={[
               styles.handle,
               { left: startLeft },
@@ -291,6 +337,7 @@ export default function FilmstripTrimmer({
           <View
             collapsable={false}
             {...endPan.panHandlers}
+            {...handleA11y('end', 'Trim end', end)}
             style={[
               styles.handle,
               { left: endLeft },
@@ -303,6 +350,7 @@ export default function FilmstripTrimmer({
           <View
             collapsable={false}
             {...playPan.panHandlers}
+            {...handleA11y('play', 'Playhead', positionMs)}
             style={[
               styles.playheadHit,
               { left: Math.max(0, Math.min(contentW - 22, playX - 11)) },

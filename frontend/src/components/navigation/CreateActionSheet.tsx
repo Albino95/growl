@@ -13,30 +13,13 @@ type Props = {
   onSelect: (action: CreateAction) => void;
 };
 
+/** Main create actions first, then the quieter ones (journal, gated seed/circle). */
 const ACTIONS: Array<{
   key: CreateAction;
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
-  {
-    key: 'seed',
-    title: 'Plant a seed',
-    subtitle: 'Start a goal from your paths — grow it into a tree',
-    icon: 'leaf-outline',
-  },
-  {
-    key: 'circle',
-    title: 'Start a circle',
-    subtitle: 'A room of up to 10 on your path — voice & video later',
-    icon: 'people-outline',
-  },
-  {
-    key: 'journal',
-    title: 'Journal entry',
-    subtitle: 'Private by default — reflect on a skill or goal',
-    icon: 'book-outline',
-  },
   {
     key: 'post',
     title: 'New post',
@@ -54,6 +37,24 @@ const ACTIONS: Array<{
     title: 'New story',
     subtitle: 'Ephemeral update for 24 hours',
     icon: 'ellipse-outline',
+  },
+  {
+    key: 'journal',
+    title: 'Journal entry',
+    subtitle: 'Private by default — reflect on a skill or goal',
+    icon: 'book-outline',
+  },
+  {
+    key: 'seed',
+    title: 'Plant a seed',
+    subtitle: 'Start a goal from your paths — grow it into a tree',
+    icon: 'leaf-outline',
+  },
+  {
+    key: 'circle',
+    title: 'Start a circle',
+    subtitle: 'A room of up to 10 on your path — voice & video later',
+    icon: 'people-outline',
   },
 ];
 
@@ -101,6 +102,9 @@ function ActionRow({
           feedback.open();
           onSelect(action.key);
         }}
+        accessibilityRole="button"
+        accessibilityLabel={action.title}
+        accessibilityHint={action.subtitle}
         style={({ pressed }) => [
           tw`flex-row items-center rounded-2xl px-4 py-3.5 mb-2 border border-stone-200`,
           { backgroundColor: pressed ? '#F5F0E8' : '#FFFFFF' },
@@ -154,6 +158,7 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
             feedback.close();
             onClose();
           }}
+          accessibilityRole="button"
           accessibilityLabel="Dismiss create menu"
         />
         <Animated.View
@@ -167,9 +172,11 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
           ]}
         >
           <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-1`}>Create</Text>
+          <Text style={tw`text-lg font-semibold text-stone-900 mb-1`} accessibilityRole="header">
+            Create
+          </Text>
           <Text style={tw`text-sm text-stone-500 mb-4`}>
-            Journal, post, or share a reel — Shop stays in the tab bar.
+            Post, reel, story, or journal — Shop stays in the tab bar.
           </Text>
 
           {ACTIONS.filter((action) => {
