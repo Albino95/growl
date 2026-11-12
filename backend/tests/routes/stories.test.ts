@@ -152,12 +152,13 @@ describe('Stories Routes', () => {
       let viewRecorded = false;
 
       mockDb.prepare = (query: string) => {
-        if (query.includes('SELECT id, user_id FROM stories')) {
+        if (query.includes('FROM stories WHERE id = ?') && query.includes('user_id')) {
           return {
             bind: () => ({
               first: async () => ({
                 id: 'story-1',
                 user_id: 'user-2', // Different user
+                active: 1, // still inside the 24h window
               }),
             }),
           };
@@ -337,10 +338,10 @@ describe('Stories Routes', () => {
             }),
           };
         }
-        if (query.includes('SELECT id FROM posts WHERE id = ?')) {
+        if (query.includes('FROM posts WHERE id = ?')) {
           return {
             bind: () => ({
-              first: async () => ({ id: 'post-1' }),
+              first: async () => ({ id: 'post-1', user_id: 'post-author' }),
             }),
           };
         }

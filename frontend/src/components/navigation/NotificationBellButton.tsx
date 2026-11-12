@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, Animated } from 'react-native';
+import { View, Text, Animated, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import { getUnreadNotificationCount } from '../../services/api/notifications';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { isAppActive } from '../../utils/appActive';
+
+const BADGE_REFRESH_MS = 60_000;
 
 /** Compact chrome bell with unread badge. */
 export default function NotificationBellButton() {
@@ -28,18 +31,28 @@ export default function NotificationBellButton() {
     return () => loop.stop();
   }, [count, pulse]);
 
+  // Refresh on focus, when the app returns to the foreground, and every 60s
+  // while this screen is focused (blurred tab screens stay mounted; they don't poll).
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      void getUnreadNotificationCount()
-        .then((n) => {
-          if (!cancelled) setCount(n);
-        })
-        .catch(() => {
-          if (!cancelled) setCount(0);
-        });
+      const refresh = (force = false) => {
+        if (!force && !isAppActive()) return;
+        void getUnreadNotificationCount()
+          .then((n) => {
+            if (!cancelled) setCount(n);
+          })
+          .catch(() => undefined);
+      };
+      refresh(true);
+      const interval = setInterval(() => refresh(), BADGE_REFRESH_MS);
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') refresh(true);
+      });
       return () => {
         cancelled = true;
+        clearInterval(interval);
+        sub.remove();
       };
     }, [])
   );

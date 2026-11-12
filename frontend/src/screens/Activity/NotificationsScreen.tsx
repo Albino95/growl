@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -90,6 +90,15 @@ function metaForType(type: string): {
         chipText: 'text-[#E11D48]',
         rail: '#F97066',
       };
+    case 'post_comment':
+      return {
+        icon: 'chatbubble',
+        label: 'Comment',
+        tint: '#059669',
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: '#059669',
+      };
     case 'instructor_claim':
     case 'coaching_inquiry':
     case 'coaching_proposal':
@@ -135,6 +144,8 @@ function metaForType(type: string): {
   }
 }
 
+const PAGE_SIZE = 40;
+
 function isActionableEndorseRequest(item: ActivityNotification): boolean {
   return (
     item.type === 'endorsement_request' &&
@@ -151,20 +162,44 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
 
   const unread = useMemo(() => items.filter((n) => n.unread).length, [items]);
 
   const load = useCallback(async () => {
     try {
-      const res = await listNotifications({ limit: 50 });
+      const res = await listNotifications({ limit: PAGE_SIZE });
       setItems(res.notifications);
+      setHasMore(res.notifications.length >= PAGE_SIZE);
     } catch {
       setItems([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loadingMoreRef.current || loading || refreshing) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const res = await listNotifications({ limit: PAGE_SIZE, offset: items.length });
+      setItems((prev) => {
+        const seen = new Set(prev.map((n) => n.id));
+        return [...prev, ...res.notifications.filter((n) => !seen.has(n.id))];
+      });
+      setHasMore(res.notifications.length >= PAGE_SIZE);
+    } catch {
+      /* keep what we have; a later scroll retries */
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [hasMore, loading, refreshing, items.length]);
 
   useFocusEffect(
     useCallback(() => {
@@ -196,6 +231,7 @@ export default function NotificationsScreen() {
 
     if (item.ref_type === 'growth_seed' && item.ref_id) {
       if (SHOW_SEEDS) navigateFromRoot(navigation, 'SeedDetail', { seedId: item.ref_id });
+      else if (item.actor?.id) navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
       return;
     }
 
@@ -211,10 +247,14 @@ export default function NotificationsScreen() {
 
     if (item.ref_type === 'growth_group' && item.ref_id) {
       if (SHOW_CIRCLES) navigateFromRoot(navigation, 'CircleDetail', { groupId: item.ref_id });
+      else if (item.actor?.id) navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
       return;
     }
 
-    if ((item.ref_type === 'post' || item.type === 'post_like') && item.ref_id) {
+    if (
+      (item.ref_type === 'post' || item.type === 'post_like' || item.type === 'post_comment') &&
+      item.ref_id
+    ) {
       try {
         const remote = await getFeedPost(item.ref_id);
         if (remote) {
@@ -317,16 +357,21 @@ export default function NotificationsScreen() {
           unread > 0 ? (
             <PressableScale
               onPress={() => {
-                void markAllNotificationsRead().then(() => {
-                  setItems((prev) =>
-                    prev.map((n) => ({
-                      ...n,
-                      unread: false,
-                      read_at: n.read_at || new Date().toISOString(),
-                    }))
-                  );
-                  feedback.success();
-                });
+                void markAllNotificationsRead()
+                  .then(() => {
+                    setItems((prev) =>
+                      prev.map((n) => ({
+                        ...n,
+                        unread: false,
+                        read_at: n.read_at || new Date().toISOString(),
+                      }))
+                    );
+                    feedback.success();
+                  })
+                  .catch(() => {
+                    feedback.error();
+                    void alertMessage('Notifications', 'Could not mark everything as read. Try again.');
+                  });
               }}
               feedback={false}
             >
@@ -375,6 +420,15 @@ export default function NotificationsScreen() {
               }}
               tintColor="#059669"
             />
+          }
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={tw`py-4 items-center`}>
+                <ActivityIndicator color="#059669" />
+              </View>
+            ) : null
           }
           ListEmptyComponent={
             <EmptyState

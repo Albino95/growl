@@ -18,6 +18,7 @@ import tw from '../../lib/tw';
 import { resolveStoryDisplayUri, resolveAvatarUri, avatarSource } from '../../utils/images';
 import { useAuth } from '../../store/hooks';
 import { createConversation } from '../../services/api/messages';
+import { viewStory } from '../../services/api/stories';
 import { alertMessage } from '../../utils/confirmDialog';
 import {
   lockNativeUiAudio,
@@ -28,6 +29,17 @@ import { isVideoMedia } from '../../services/api/media';
 import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+/** A video story that never reports playback progress within this window is skipped. */
+const VIDEO_STALL_SKIP_MS = 10000;
+
+/** Opening a ring at 0 jumps to the first story not yet seen (Instagram-style). */
+function startIndexFor(stories: Story[], initialIndex: number | undefined): number {
+  const idx = initialIndex || 0;
+  if (idx > 0 || !stories.length) return Math.min(idx, Math.max(0, stories.length - 1));
+  const firstUnseen = stories.findIndex((s) => !s.hasViewed);
+  return firstUnseen > 0 ? firstUnseen : 0;
+}
 
 function storyVideoTrim(url: string): { trimStartMs: number; trimEndMs: number } | undefined {
   try {
@@ -75,8 +87,14 @@ export default function StoryViewerScreen() {
 
   const [stories, setStories] = useState(initialStories);
   const storiesRef = useRef(initialStories);
-  const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
-  const currentIndexRef = useRef(initialIndex || 0);
+  const [startIndex] = useState(() => startIndexFor(initialStories, initialIndex));
+  const [currentIndex, setCurrentIndex] = useState(startIndex);
+  const currentIndexRef = useRef(startIndex);
+  /** Story ids actually displayed in this session — the only ones marked seen. */
+  const shownIdsRef = useRef<Set<string>>(new Set());
+  /** Story ids already reported to the server (one POST per story). */
+  const reportedIdsRef = useRef<Set<string>>(new Set());
+  const videoProgressSeenRef = useRef(false);
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [messageBusy, setMessageBusy] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -102,10 +120,18 @@ export default function StoryViewerScreen() {
     return next;
   };
 
-  const markAllViewedAndClose = useRef(() => {
-    const updatedStories = storiesRef.current.map((story) => ({ ...story, hasViewed: true }));
+  /** Only stories that were actually on screen count as seen. */
+  const markShownViewed = () => {
+    const shown = shownIdsRef.current;
+    const updatedStories = storiesRef.current.map((story) =>
+      shown.has(story.id) ? { ...story, hasViewed: true } : story
+    );
     syncStories(updatedStories);
     onStoriesUpdate?.(updatedStories);
+  };
+
+  const markAllViewedAndClose = useRef(() => {
+    markShownViewed();
     navigation.goBack();
   }).current;
 
@@ -194,15 +220,46 @@ export default function StoryViewerScreen() {
     }
     setPreviousUserId(currentStory?.userId || null);
 
+    const shownStory = storiesRef.current[currentIndex];
+    if (shownStory) {
+      shownIdsRef.current.add(shownStory.id);
+      // One server view per story actually shown (skip own + already-seen ones).
+      if (
+        !reportedIdsRef.current.has(shownStory.id) &&
+        !shownStory.hasViewed &&
+        shownStory.userId !== authUser?.id
+      ) {
+        reportedIdsRef.current.add(shownStory.id);
+        viewStory(shownStory.id).catch(() => undefined);
+      }
+    }
+
     // Mark current story as viewed + push to parent so Feed ring updates immediately
-    if (storiesRef.current[currentIndex] && !storiesRef.current[currentIndex].hasViewed) {
+    if (shownStory && !shownStory.hasViewed) {
       const next = markIndexViewed(currentIndex);
       onStoriesUpdate?.(next);
     }
 
+    // Warm the cache for the next photo story so the tap-through doesn't flash.
+    const upcoming = storiesRef.current[currentIndex + 1];
+    if (upcoming) {
+      const nextUri = resolveStoryDisplayUri(upcoming.image, upcoming.userId, upcoming.id);
+      if (nextUri && !isVideoMedia({ uri: nextUri })) {
+        ExpoImage.prefetch(nextUri).catch(() => undefined);
+      }
+    }
+
     progressAnim.setValue(0);
     if (isVideoStory) {
+      // The player has no error callback: if playback never starts, move on.
+      videoProgressSeenRef.current = false;
+      const stall = setTimeout(() => {
+        if (!videoProgressSeenRef.current && currentIndexRef.current === currentIndex) {
+          goToNextStory();
+        }
+      }, VIDEO_STALL_SKIP_MS);
       return () => {
+        clearTimeout(stall);
         progressAnim.setValue(0);
       };
     }
@@ -230,9 +287,7 @@ export default function StoryViewerScreen() {
   // Removed duplicate goToNextStory / goToPreviousStory — see refs above
 
   const navigateToProfile = () => {
-    const updatedStories = storiesRef.current.map((story) => ({ ...story, hasViewed: true }));
-    syncStories(updatedStories);
-    onStoriesUpdate?.(updatedStories);
+    markShownViewed();
     navigation.goBack();
     const rootNavigation = navigation.getParent() || navigation;
     rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: currentStory.userId }));
@@ -281,6 +336,7 @@ export default function StoryViewerScreen() {
               style={tw`w-full h-full`}
               onEnded={goToNextStory}
               onProgress={(positionMs, durationMs) => {
+                if (positionMs > 0 || durationMs > 0) videoProgressSeenRef.current = true;
                 if (durationMs > 0) {
                   progressAnim.setValue(Math.max(0, Math.min(1, positionMs / durationMs)));
                 }

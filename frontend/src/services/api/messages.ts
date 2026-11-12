@@ -72,16 +72,34 @@ export async function createConversation(targetUserId: string): Promise<{
   });
 }
 
+/** Max message length accepted by the server (sendMessageSchema). */
+export const MESSAGE_MAX_LENGTH = 4000;
+
+export type MessagesPageCursor = { before: string; before_id: string };
+
+/**
+ * Newest page of a conversation (chronological order). Pass `cursor` (from
+ * `next_before`) to load the page of older messages before it.
+ */
 export async function getMessages(
   conversationId: string,
-  params?: { limit?: number; offset?: number }
+  params?: { limit?: number; cursor?: MessagesPageCursor | null }
 ): Promise<{
   success: boolean;
-  data: { messages: ChatMessage[]; peer_last_read_at?: string | null; limit: number; offset: number };
+  data: {
+    messages: ChatMessage[];
+    peer_last_read_at?: string | null;
+    limit: number;
+    has_more?: boolean;
+    next_before?: MessagesPageCursor | null;
+  };
 }> {
   const query = new URLSearchParams();
   if (params?.limit) query.append('limit', String(params.limit));
-  if (params?.offset) query.append('offset', String(params.offset));
+  if (params?.cursor?.before) {
+    query.append('before', params.cursor.before);
+    query.append('before_id', params.cursor.before_id);
+  }
   const qs = query.toString();
   return request(
     `/messages/conversations/${encodeURIComponent(conversationId)}/messages${qs ? `?${qs}` : ''}`

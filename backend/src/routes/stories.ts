@@ -4,6 +4,7 @@ import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
 import { validateRequest } from '../utils/validation';
 import { z } from 'zod';
+import { isBlocked } from './friends';
 
 const createStorySchema = z.object({
   image_url: z
@@ -26,6 +27,13 @@ const createStorySchema = z.object({
     ),
   caption: z.string().max(500, 'Caption too long').optional(),
 });
+
+/**
+ * Stories (and their views) are hard-deleted by the hourly cron after this many
+ * days. Matches the owner's own-story history window in getUserStories so the
+ * purge never removes something the app still shows. R2 media is kept.
+ */
+export const STORY_PURGE_AFTER_DAYS = 90;
 
 /**
  * GET /api/v1/stories
@@ -155,8 +163,13 @@ export async function getUserStories(
     const viewerId = ctx.userId || '';
     const viewingSelf = !!ctx.userId && ctx.userId === userId;
 
+    // Blocked either way: behave as if the user has no stories (same rule as the tray).
+    if (!viewingSelf && viewerId && (await isBlocked(env, viewerId, userId))) {
+      return json({ stories: [] });
+    }
+
     const timeClause = viewingSelf
-      ? `s.user_id = ? AND s.created_at > datetime('now', '-90 days')`
+      ? `s.user_id = ? AND s.created_at > datetime('now', '-${STORY_PURGE_AFTER_DAYS} days')`
       : `s.user_id = ? AND s.created_at > datetime('now', '-24 hours')`;
 
     const stories = await env.DB.prepare(
@@ -273,10 +286,14 @@ export async function viewStory(
   }
 
   try {
-    // Check if story exists
-    const story = await env.DB.prepare('SELECT id, user_id FROM stories WHERE id = ?')
+    // Check if story exists (and is still inside its 24h window)
+    const story = await env.DB.prepare(
+      `SELECT id, user_id,
+        CASE WHEN created_at > datetime('now', '-24 hours') THEN 1 ELSE 0 END AS active
+       FROM stories WHERE id = ?`
+    )
       .bind(storyId)
-      .first();
+      .first<{ id: string; user_id: string; active: number }>();
 
     if (!story) {
       return error('STORY_NOT_FOUND', 'Story not found', 404);
@@ -285,6 +302,14 @@ export async function viewStory(
     // Don't count own views
     if (story.user_id === ctx.userId) {
       return json({ viewed: true });
+    }
+
+    // Hide existence from blocked pairs; expired stories no longer collect views.
+    if (await isBlocked(env, ctx.userId, story.user_id)) {
+      return error('STORY_NOT_FOUND', 'Story not found', 404);
+    }
+    if (!Number(story.active)) {
+      return error('STORY_EXPIRED', 'This story has expired', 410);
     }
 
     // Check if already viewed
@@ -358,4 +383,87 @@ export async function deleteStory(
     console.error('[deleteStory] Error:', err);
     return error('DATABASE_ERROR', 'Failed to delete story', 500);
   }
+}
+
+/**
+ * GET /api/v1/stories/:storyId/viewers
+ * Owner-only list of who viewed a story (newest first).
+ */
+export async function getStoryViewers(
+  request: Request,
+  env: Env,
+  storyId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const story = await env.DB.prepare('SELECT id, user_id FROM stories WHERE id = ?')
+      .bind(storyId)
+      .first<{ id: string; user_id: string }>();
+    if (!story) {
+      return error('STORY_NOT_FOUND', 'Story not found', 404);
+    }
+    if (story.user_id !== ctx.userId) {
+      return error('FORBIDDEN', 'Only the story owner can see viewers', 403);
+    }
+
+    const rows = await env.DB.prepare(
+      `SELECT sv.user_id, sv.viewed_at, u.metadata, u.is_instructor
+       FROM story_views sv
+       JOIN users u ON u.id = sv.user_id
+       WHERE sv.story_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM user_relationships r
+           WHERE r.type = 'block'
+             AND ((r.user_id = ? AND r.target_user_id = sv.user_id)
+               OR (r.user_id = sv.user_id AND r.target_user_id = ?))
+         )
+       ORDER BY sv.viewed_at DESC
+       LIMIT 500`
+    )
+      .bind(storyId, ctx.userId, ctx.userId)
+      .all<{ user_id: string; viewed_at: string; metadata: string; is_instructor: number }>();
+
+    const viewers = (rows.results || []).map((row) => {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(row.metadata || '{}') as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+      return {
+        id: row.user_id,
+        username: (typeof meta.username === 'string' && meta.username) || 'User',
+        avatar: (typeof meta.avatar === 'string' && meta.avatar) || null,
+        is_instructor: !!row.is_instructor,
+        viewed_at: row.viewed_at,
+      };
+    });
+
+    return json({ viewers, count: viewers.length });
+  } catch (err) {
+    console.error('[getStoryViewers] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to fetch story viewers', 500);
+  }
+}
+
+/**
+ * Cron: hard-delete stories older than STORY_PURGE_AFTER_DAYS plus their view rows.
+ * Media objects in R2 are intentionally left alone. Returns stories removed.
+ */
+export async function purgeExpiredStories(env: Env): Promise<number> {
+  const cutoff = `-${STORY_PURGE_AFTER_DAYS} days`;
+  await env.DB.prepare(
+    `DELETE FROM story_views
+     WHERE story_id IN (SELECT id FROM stories WHERE created_at < datetime('now', ?))`
+  )
+    .bind(cutoff)
+    .run();
+  const res = await env.DB.prepare(`DELETE FROM stories WHERE created_at < datetime('now', ?)`)
+    .bind(cutoff)
+    .run();
+  return Number(res.meta?.changes) || 0;
 }

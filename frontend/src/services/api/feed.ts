@@ -119,12 +119,35 @@ export async function getUserPosts(userId: string): Promise<FeedPost[]> {
   return res.data;
 }
 
-export async function getFeedPostComments(postId: string): Promise<FeedComment[]> {
+/** Server page size for comments; a full page means older comments may exist. */
+export const COMMENT_PAGE_SIZE = 50;
+/** Server-side max comment length (createCommentSchema). */
+export const COMMENT_MAX_LENGTH = 1000;
+
+/**
+ * Newest page of comments in chronological order. Pass the oldest loaded
+ * comment as `before` to fetch the page of older comments.
+ */
+export async function getFeedPostComments(
+  postId: string,
+  before?: Pick<FeedComment, 'id' | 'created_at'> | null
+): Promise<FeedComment[]> {
+  const qs = before
+    ? `?before=${encodeURIComponent(before.created_at)}&before_id=${encodeURIComponent(before.id)}`
+    : '';
   const res = await request<{ success: boolean; data: FeedComment[] }>(
-    `/feed/posts/${encodeURIComponent(postId)}/comments`
+    `/feed/posts/${encodeURIComponent(postId)}/comments${qs}`
   );
   if (!res.success || !Array.isArray(res.data)) return [];
   return res.data;
+}
+
+/** Deletes a comment (allowed for the comment author and the post author). */
+export async function deleteFeedPostComment(postId: string, commentId: string): Promise<void> {
+  await request(
+    `/feed/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE' }
+  );
 }
 
 export async function createFeedPostComment(postId: string, content: string): Promise<FeedComment> {

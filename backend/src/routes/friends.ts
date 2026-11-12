@@ -40,7 +40,7 @@ function parseCategoriesFromMetadata(raw: string | undefined): string[] {
 }
 
 /** Checks if either user has an active block against the other user. */
-async function isBlocked(env: Env, u: string, v: string): Promise<boolean> {
+export async function isBlocked(env: Env, u: string, v: string): Promise<boolean> {
   const row = await env.DB.prepare(
     `SELECT 1 AS ok FROM user_relationships WHERE type = 'block'
      AND ((user_id = ? AND target_user_id = ?) OR (user_id = ? AND target_user_id = ?)) LIMIT 1`

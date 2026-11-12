@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,8 +19,12 @@ import { verticalScrollProps, feedListPerformanceProps } from '../../constants/s
 import {
   getFeedPostComments,
   createFeedPostComment,
+  deleteFeedPostComment,
+  COMMENT_PAGE_SIZE,
+  COMMENT_MAX_LENGTH,
   type FeedComment,
 } from '../../services/api/feed';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
@@ -47,6 +51,23 @@ interface CommentsScreenProps {
   postCaption: string;
   onClose: () => void;
   onCommentsChanged?: (count: number) => void;
+  /** Post author's id — lets them remove comments on their post. */
+  postUserId?: string;
+}
+
+/** SQLite `YYYY-MM-DD HH:MM:SS` (UTC) or ISO → epoch ms. */
+function commentTime(raw: string): number {
+  const v = String(raw || '').trim();
+  const iso = /T/.test(v) ? v : `${v.replace(' ', 'T')}Z`;
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Dedupes by id and keeps chronological order (oldest first); stable for equal times. */
+function mergeComments(a: FeedComment[], b: FeedComment[]): FeedComment[] {
+  const byId = new Map<string, FeedComment>();
+  for (const c of [...a, ...b]) byId.set(c.id, c);
+  return Array.from(byId.values()).sort((x, y) => commentTime(x.created_at) - commentTime(y.created_at));
 }
 
 export default function CommentsScreen({
@@ -55,6 +76,7 @@ export default function CommentsScreen({
   postCaption,
   onClose,
   onCommentsChanged,
+  postUserId,
 }: CommentsScreenProps) {
   const [comments, setComments] = useState<FeedComment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,12 +88,31 @@ export default function CommentsScreen({
   const { user } = useAuth();
   const navigation = useNavigation();
 
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Post author can moderate their thread; fall back to username match when the
+  // caller didn't pass the author id.
+  const isPostAuthor = postUserId
+    ? !!user?.id && postUserId === user.id
+    : !!user?.username && user.username === postUsername;
+
+  // Set after a local add/delete; the effect below then reports the new count.
+  const countDirtyRef = useRef(false);
+  useEffect(() => {
+    if (!countDirtyRef.current) return;
+    countDirtyRef.current = false;
+    // Only report when every comment is loaded, otherwise it would undercount.
+    if (!hasOlder) onCommentsChanged?.(comments.length);
+  }, [comments, hasOlder, onCommentsChanged]);
+
   const loadComments = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
       const list = await getFeedPostComments(postId);
       setComments(list);
+      setHasOlder(list.length >= COMMENT_PAGE_SIZE);
     } catch {
       setComments([]);
       setLoadError('Could not load comments. Check your connection and try again.');
@@ -84,22 +125,66 @@ export default function CommentsScreen({
     void loadComments();
   }, [loadComments]);
 
+  const loadOlderComments = async () => {
+    const oldest = comments[0];
+    if (!oldest || loadingOlder || !hasOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await getFeedPostComments(postId, oldest);
+      setComments((prev) => mergeComments(page, prev));
+      setHasOlder(page.length >= COMMENT_PAGE_SIZE);
+    } catch {
+      void alertMessage('Comments', 'Could not load earlier comments.');
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
   const submitComment = async (text: string) => {
     if (!text || sending) return;
     setSending(true);
     setSendError(null);
+    let created: FeedComment;
     try {
-      await createFeedPostComment(postId, text);
-      setCommentText('');
-      setFailedCommentDraft('');
-      const list = await getFeedPostComments(postId);
-      setComments(list);
-      onCommentsChanged?.(list.length);
+      created = await createFeedPostComment(postId, text);
     } catch {
       setFailedCommentDraft(text);
       setSendError('Failed to send comment. Please retry.');
-    } finally {
       setSending(false);
+      return;
+    }
+    // Posted: show it right away and clear the draft so a retry can't double-post.
+    setCommentText('');
+    setFailedCommentDraft('');
+    countDirtyRef.current = true;
+    setComments((prev) => mergeComments(prev, [created]));
+    setSending(false);
+    // Best-effort refresh for other people's new comments; failures are silent.
+    try {
+      const latest = await getFeedPostComments(postId);
+      countDirtyRef.current = true;
+      setComments((prev) => mergeComments(prev, latest));
+    } catch {
+      /* keep optimistic list */
+    }
+  };
+
+  const deleteComment = async (comment: FeedComment) => {
+    if (deletingId) return;
+    const ok = await confirmAsync('Delete comment?', 'This removes the comment for everyone.', {
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    setDeletingId(comment.id);
+    try {
+      await deleteFeedPostComment(postId, comment.id);
+      countDirtyRef.current = true;
+      setComments((prev) => prev.filter((c) => c.id !== comment.id));
+    } catch (e) {
+      void alertMessage('Comments', e instanceof Error ? e.message : 'Could not delete comment.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -175,8 +260,28 @@ export default function CommentsScreen({
               contentContainerStyle={tw`px-4 py-3 pb-6`}
               {...verticalScrollProps}
               {...feedListPerformanceProps}
+              ListHeaderComponent={
+                hasOlder ? (
+                  <TouchableOpacity
+                    onPress={() => void loadOlderComments()}
+                    disabled={loadingOlder}
+                    style={tw`self-center mb-3 px-4 py-2 rounded-full bg-[#EAE4D6]`}
+                    accessibilityRole="button"
+                    accessibilityLabel="Load earlier comments"
+                  >
+                    {loadingOlder ? (
+                      <ActivityIndicator size="small" color="#78716C" />
+                    ) : (
+                      <Text style={tw`text-xs font-semibold text-stone-600`}>
+                        Load earlier comments
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null
+              }
               renderItem={({ item }) => {
                 const uname = item.user?.username || 'Member';
+                const canDelete = (!!user?.id && item.user_id === user.id) || isPostAuthor;
                 const avatarUri = resolveAvatarUri(item.user_id, uname, item.user?.avatar ?? '');
                 return (
                   <View style={tw`flex-row items-start mb-4`}>
@@ -208,9 +313,27 @@ export default function CommentsScreen({
                         </TouchableOpacity>
                         <Text style={tw`text-sm text-stone-800`}>{item.content}</Text>
                       </View>
-                      <Text style={tw`text-xs text-stone-500 ml-2`}>
-                        {formatCommentTime(item.created_at)}
-                      </Text>
+                      <View style={tw`flex-row items-center ml-2`}>
+                        <Text style={tw`text-xs text-stone-500`}>
+                          {formatCommentTime(item.created_at)}
+                        </Text>
+                        {canDelete ? (
+                          <TouchableOpacity
+                            onPress={() => void deleteComment(item)}
+                            disabled={deletingId === item.id}
+                            style={tw`ml-3`}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Delete comment"
+                          >
+                            {deletingId === item.id ? (
+                              <ActivityIndicator size="small" color="#A8A29E" />
+                            ) : (
+                              <Text style={tw`text-xs font-semibold text-stone-500`}>Delete</Text>
+                            )}
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
                   </View>
                 );
@@ -247,6 +370,7 @@ export default function CommentsScreen({
                   placeholder="Add a comment..."
                   value={commentText}
                   onChangeText={setCommentText}
+                  maxLength={COMMENT_MAX_LENGTH}
                   multiline
                   style={tw`text-sm text-stone-900`}
                   placeholderTextColor="#A8A29E"

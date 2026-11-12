@@ -8,6 +8,7 @@ export type NotificationType =
   | 'endorsement_request'
   | 'endorsement_accepted'
   | 'post_like'
+  | 'post_comment'
   | 'instructor_claim'
   | 'group_join'
   | 'group_invite'
@@ -56,6 +57,11 @@ export async function createUserNotification(
      * item (e.g. unlike + like again must not notify the author twice).
      */
     oncePerActorAndRef?: boolean;
+    /**
+     * Skip if this actor already sent this type about the same item within the
+     * last N minutes (e.g. a burst of comments notifies once, later ones again).
+     */
+    coalesceWithinMinutes?: number;
   }
 ): Promise<void> {
   if (!input.userId) return;
@@ -71,6 +77,19 @@ export async function createUserNotification(
         .bind(input.userId, input.actorId, input.type, input.refId)
         .first();
       if (existing) return;
+    }
+
+    const windowMinutes = Math.floor(Number(input.coalesceWithinMinutes) || 0);
+    if (windowMinutes > 0 && input.actorId && input.refId) {
+      const recent = await env.DB.prepare(
+        `SELECT 1 FROM user_notifications
+         WHERE user_id = ? AND actor_id = ? AND type = ? AND ref_id = ?
+           AND created_at > datetime('now', ?)
+         LIMIT 1`
+      )
+        .bind(input.userId, input.actorId, input.type, input.refId, `-${windowMinutes} minutes`)
+        .first();
+      if (recent) return;
     }
 
     await env.DB.prepare(

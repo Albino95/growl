@@ -22,10 +22,13 @@ import {
   sendMessage,
   createConversation,
   reactToMessage,
+  MESSAGE_MAX_LENGTH,
   type ConversationSummary,
   type ChatMessage,
   type MessageReactionEmoji,
+  type MessagesPageCursor,
 } from '../../services/api/messages';
+import { confirmSentMessage, mergeMessages } from '../../components/messages/mergeMessages';
 import HeartBurst from '../../components/feed/HeartBurst';
 import {
   ReactionPicker,
@@ -74,6 +77,9 @@ function conversationLane(c: ConversationSummary): InboxTab {
 type ActiveConversation = ConversationSummary & {
   messages: ChatMessage[];
   peer_last_read_at?: string | null;
+  /** Server has messages older than the oldest one loaded. */
+  has_older?: boolean;
+  older_cursor?: MessagesPageCursor | null;
 };
 
 function sameMessageSnapshot(a: ChatMessage[], b: ChatMessage[]): boolean {
@@ -196,6 +202,7 @@ export default function MessagesScreen() {
   const [pickerId, setPickerId] = useState<string | null>(null);
   const [burstKey, setBurstKey] = useState(0);
   const [burstMsgId, setBurstMsgId] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const lastTapRef = useRef<{ id: string; at: number } | null>(null);
   const hydrateWalls = useChatWallpaperStore((s) => s.hydrate);
   const setWall = useChatWallpaperStore((s) => s.setWall);
@@ -261,6 +268,8 @@ export default function MessagesScreen() {
         coaching: conversation.coaching || !!coaching?.inquiry,
         messages: res.data?.messages ?? [],
         peer_last_read_at: res.data?.peer_last_read_at ?? null,
+        has_older: !!res.data?.has_more,
+        older_cursor: res.data?.next_before ?? null,
       });
       setConversations((prev) =>
         prev.map((c) => (c.id === conversation.id ? { ...c, unread: false } : c))
@@ -285,9 +294,11 @@ export default function MessagesScreen() {
       if (selectedIdRef.current) {
         void getMessages(selectedIdRef.current)
           .then((res) => {
-            const msgs = res.data?.messages ?? [];
+            const serverPage = res.data?.messages ?? [];
             setSelectedConversation((prev) => {
               if (!prev || prev.id !== selectedIdRef.current) return prev;
+              // Merge (never replace): keeps older pages plus temp-/failed sends on screen.
+              const msgs = mergeMessages(prev.messages, serverPage);
               if (sameMessageSnapshot(prev.messages, msgs) && prev.peer_last_read_at === (res.data?.peer_last_read_at ?? prev.peer_last_read_at)) {
                 return prev;
               }
@@ -388,9 +399,7 @@ export default function MessagesScreen() {
         if (!prev) return prev;
         return {
           ...prev,
-          messages: prev.messages.map((m) =>
-            m.id === tempId && saved ? { ...saved, is_own: true } : m
-          ),
+          messages: saved ? confirmSentMessage(prev.messages, tempId, saved) : prev.messages,
           last_message: saved?.body ?? body,
           last_message_at: saved?.created_at ?? optimistic.created_at,
         };
@@ -469,7 +478,7 @@ export default function MessagesScreen() {
         const res = await getMessages(convId);
         setSelectedConversation((prev) =>
           prev && prev.id === convId
-            ? { ...prev, messages: res.data?.messages ?? prev.messages }
+            ? { ...prev, messages: mergeMessages(prev.messages, res.data?.messages ?? []) }
             : prev
         );
       } catch {
@@ -478,13 +487,39 @@ export default function MessagesScreen() {
     }
   }, [selectedConversation?.messages]);
 
+  // Follow the newest message only; prepending older history must not jump to the bottom.
+  const lastMessageId =
+    selectedConversation?.messages[selectedConversation.messages.length - 1]?.id ?? null;
   useEffect(() => {
-    if (!selectedConversation?.messages.length) return;
+    if (!lastMessageId) return;
     const t = setTimeout(() => {
       threadListRef.current?.scrollToEnd({ animated: true });
     }, 60);
     return () => clearTimeout(t);
-  }, [selectedConversation?.id, selectedConversation?.messages.length]);
+  }, [selectedConversation?.id, lastMessageId]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const conv = selectedConversation;
+    if (!conv || loadingOlder || !conv.has_older || !conv.older_cursor) return;
+    const convId = conv.id;
+    setLoadingOlder(true);
+    try {
+      const res = await getMessages(convId, { cursor: conv.older_cursor });
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== convId) return prev;
+        return {
+          ...prev,
+          messages: mergeMessages(prev.messages, res.data?.messages ?? []),
+          has_older: !!res.data?.has_more,
+          older_cursor: res.data?.next_before ?? null,
+        };
+      });
+    } catch (e) {
+      void alertMessage('Inbox', e instanceof Error ? e.message : 'Could not load earlier messages');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [selectedConversation, loadingOlder]);
 
   const reloadThread = async (peerId: string) => {
     try {
@@ -715,6 +750,29 @@ export default function MessagesScreen() {
               contentContainerStyle={tw`px-4 py-3 pb-4`}
               onScrollBeginDrag={() => setPickerId(null)}
               keyboardShouldPersistTaps="handled"
+              // Keeps the visible message in place when older history is prepended.
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              ListHeaderComponent={
+                selectedConversation.has_older ? (
+                  <TouchableOpacity
+                    onPress={() => void loadOlderMessages()}
+                    disabled={loadingOlder}
+                    style={tw`self-center my-2 px-4 py-2 rounded-full ${
+                      darkWall ? 'bg-white/10' : 'bg-black/5'
+                    }`}
+                    accessibilityRole="button"
+                    accessibilityLabel="Load earlier messages"
+                  >
+                    {loadingOlder ? (
+                      <ActivityIndicator size="small" color={wall.meta} />
+                    ) : (
+                      <Text style={[tw`text-[13px] font-semibold`, { color: wall.meta }]}>
+                        Load earlier messages
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null
+              }
               renderItem={({ item, index }) => {
                 const failed = failedIds.has(item.id);
                 const pending = item.id.startsWith('temp-');
@@ -878,6 +936,7 @@ export default function MessagesScreen() {
                   placeholder="Message…"
                   value={messageText}
                   onChangeText={setMessageText}
+                  maxLength={MESSAGE_MAX_LENGTH}
                   multiline
                   style={[
                     tw`flex-1 text-[15px] max-h-28 py-2.5`,
