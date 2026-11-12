@@ -1033,18 +1033,16 @@ export async function assignHomework(
         .bind(seedId)
         .first<{ id: string; title: string }>();
       if (!seed) return error('NOT_FOUND', 'Seed not found', 404);
-      const clientMember = await env.DB.prepare(
-        `SELECT user_id FROM growth_seed_members WHERE seed_id = ? AND user_id = ?`
+      // Only the client's own seeds can carry homework — otherwise a coach could
+      // attach themselves (and their client) to anyone's seed by id.
+      const clientOwner = await env.DB.prepare(
+        `SELECT user_id FROM growth_seed_members
+         WHERE seed_id = ? AND user_id = ? AND role = 'owner' AND status = 'active'`
       )
         .bind(seedId, contract.client_id)
         .first();
-      if (!clientMember) {
-        await env.DB.prepare(
-          `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
-           VALUES (?, ?, 'owner', 'active', ?)`
-        )
-          .bind(seedId, contract.client_id, now)
-          .run();
+      if (!clientOwner) {
+        return error('FORBIDDEN', 'Homework can only be attached to one of your client’s own seeds', 403);
       }
       const coachMember = await env.DB.prepare(
         `SELECT user_id FROM growth_seed_members WHERE seed_id = ? AND user_id = ?`

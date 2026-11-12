@@ -7,6 +7,7 @@ import {
   computeEligibility,
   countEndorsements,
   countUserPosts,
+  parseUserCategories,
   resolveUserCategories,
 } from '../utils/instructorEligibility';
 import { POINTS, awardPoints } from '../utils/points';
@@ -111,7 +112,8 @@ export async function getInstructors(request: Request, env: Env): Promise<Respon
     const ranked: Ranked[] = [];
     for (const row of instructors.results || []) {
       if (ctx.userId && row.id === ctx.userId) continue;
-      const cats = await resolveUserCategories(env, row.id, row.metadata);
+      // List loop: metadata categories only (no per-row posts fallback query).
+      const cats = parseUserCategories(row.metadata);
       const meta = parseMeta(row.metadata);
       const shared = categoriesOverlap(viewerCats, cats);
       if (categoryFilter) {
@@ -228,7 +230,7 @@ export async function suggestEndorsers(request: Request, env: Env): Promise<Resp
     const suggestions = [];
     for (const f of friends.results || []) {
       if (votedSet.has(f.id)) continue;
-      const cats = await resolveUserCategories(env, f.id, f.metadata);
+      const cats = parseUserCategories(f.metadata);
       const shared = categoriesOverlap(myCats, cats);
       if (shared.length === 0) continue;
       const meta = parseMeta(f.metadata);
@@ -852,7 +854,7 @@ export async function getInstructorHub(request: Request, env: Env): Promise<Resp
     const learners = [];
     for (const f of friendRows.results || []) {
       if (endorserIds.has(f.id)) continue;
-      const cats = await resolveUserCategories(env, f.id, f.metadata);
+      const cats = parseUserCategories(f.metadata);
       const shared = categoriesOverlap(myCats, cats);
       if (shared.length === 0) continue;
       const meta = parseMeta(f.metadata);
@@ -1241,10 +1243,10 @@ export async function listIncomingEndorsementRequests(
       }>();
 
     const requests = [];
+    const myCats = await resolveUserCategories(env, ctx.userId, ctx.user?.metadata);
     for (const row of rows.results || []) {
       const meta = parseMeta(row.metadata);
-      const cats = await resolveUserCategories(env, row.from_user_id, row.metadata);
-      const myCats = await resolveUserCategories(env, ctx.userId, ctx.user?.metadata);
+      const cats = parseUserCategories(row.metadata);
       requests.push({
         id: row.id,
         message: row.message,

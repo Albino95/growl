@@ -86,7 +86,7 @@ export async function listAppReviews(request: Request, env: Env): Promise<Respon
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const canReply = canReplyAppReviews(ctx.user.email, env);
+  const canReply = canReplyAppReviews(ctx.user, env);
   const statusClause = canReply ? '' : `WHERE r.status = 'published'`;
 
   try {
@@ -188,7 +188,7 @@ export async function upsertAppReview(request: Request, env: Env): Promise<Respo
 
     const row = await loadReview(env, id);
     return json({
-      review: row ? mapReview(row, ctx.userId, canReplyAppReviews(ctx.user.email, env)) : null,
+      review: row ? mapReview(row, ctx.userId, canReplyAppReviews(ctx.user, env)) : null,
     });
   } catch (err) {
     console.error('[upsertAppReview]', err);
@@ -201,7 +201,7 @@ export async function replyAppReview(request: Request, env: Env, reviewId: strin
   if (!ctx.isAuthenticated || !ctx.userId || !ctx.user) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
-  if (!canReplyAppReviews(ctx.user.email, env)) {
+  if (!canReplyAppReviews(ctx.user, env)) {
     return error('FORBIDDEN', 'Only the Grow! team can reply', 403);
   }
 

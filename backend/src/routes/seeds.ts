@@ -119,6 +119,29 @@ async function countActiveGrowing(env: Env, userId: string): Promise<number> {
   return Number(row?.c) || 0;
 }
 
+type MemberJoinRow = MemberRow & { metadata: string; is_instructor: number };
+
+function mapMemberRow(r: MemberJoinRow) {
+  let username = 'User';
+  let avatar: string | null = null;
+  try {
+    const meta = JSON.parse(r.metadata || '{}') as { username?: string; avatar?: string };
+    username = meta.username || username;
+    avatar = meta.avatar || null;
+  } catch {
+    /* ignore */
+  }
+  return {
+    user_id: r.user_id,
+    role: r.role,
+    status: r.status,
+    joined_at: r.joined_at,
+    username,
+    avatar,
+    is_instructor: !!r.is_instructor,
+  };
+}
+
 async function loadMembers(env: Env, seedId: string) {
   const rows = await env.DB.prepare(
     `SELECT m.*, u.metadata, u.is_instructor
@@ -127,28 +150,78 @@ async function loadMembers(env: Env, seedId: string) {
      WHERE m.seed_id = ? AND m.status IN ('active', 'pending')`
   )
     .bind(seedId)
-    .all<MemberRow & { metadata: string; is_instructor: number }>();
+    .all<MemberJoinRow>();
 
-  return (rows.results || []).map((r) => {
-    let username = 'User';
-    let avatar: string | null = null;
-    try {
-      const meta = JSON.parse(r.metadata || '{}') as { username?: string; avatar?: string };
-      username = meta.username || username;
-      avatar = meta.avatar || null;
-    } catch {
-      /* ignore */
-    }
-    return {
-      user_id: r.user_id,
-      role: r.role,
-      status: r.status,
-      joined_at: r.joined_at,
-      username,
-      avatar,
-      is_instructor: !!r.is_instructor,
-    };
-  });
+  return (rows.results || []).map(mapMemberRow);
+}
+
+/** Members for many seeds in one query (ids passed as one JSON param — no 100-param limit). */
+async function loadMembersForSeeds(
+  env: Env,
+  seedIds: string[]
+): Promise<Map<string, ReturnType<typeof mapMemberRow>[]>> {
+  const bySeed = new Map<string, ReturnType<typeof mapMemberRow>[]>();
+  if (seedIds.length === 0) return bySeed;
+  const rows = await env.DB.prepare(
+    `SELECT m.*, u.metadata, u.is_instructor
+     FROM growth_seed_members m
+     JOIN users u ON u.id = m.user_id
+     WHERE m.seed_id IN (SELECT value FROM json_each(?))
+       AND m.status IN ('active', 'pending')`
+  )
+    .bind(JSON.stringify(seedIds))
+    .all<MemberJoinRow>();
+  for (const r of rows.results || []) {
+    const list = bySeed.get(r.seed_id) || [];
+    list.push(mapMemberRow(r));
+    bySeed.set(r.seed_id, list);
+  }
+  return bySeed;
+}
+
+/**
+ * Seed invites go only to existing users the inviter is connected to:
+ * friends (either direction) or a coaching relationship (inquiry or contract).
+ */
+async function canInviteToSeed(env: Env, inviterId: string, targetId: string): Promise<boolean> {
+  if (!targetId || targetId === inviterId) return false;
+  const row = await env.DB.prepare(
+    `SELECT u.id,
+       EXISTS (
+         SELECT 1 FROM user_relationships r
+         WHERE r.type = 'friend'
+           AND ((r.user_id = ? AND r.target_user_id = u.id) OR (r.user_id = u.id AND r.target_user_id = ?))
+       ) AS is_friend,
+       EXISTS (
+         SELECT 1 FROM coaching_inquiries ci
+         WHERE (ci.instructor_id = ? AND ci.client_id = u.id) OR (ci.instructor_id = u.id AND ci.client_id = ?)
+       ) AS has_inquiry,
+       EXISTS (
+         SELECT 1 FROM coaching_contracts cc
+         WHERE (cc.instructor_id = ? AND cc.client_id = u.id) OR (cc.instructor_id = u.id AND cc.client_id = ?)
+       ) AS has_contract
+     FROM users u
+     WHERE u.id = ?`
+  )
+    .bind(inviterId, inviterId, inviterId, inviterId, inviterId, inviterId, targetId)
+    .first<{ id: string; is_friend: number; has_inquiry: number; has_contract: number }>();
+  if (!row) return false;
+  return !!(Number(row.is_friend) || Number(row.has_inquiry) || Number(row.has_contract));
+}
+
+const MAX_SEED_TITLE = 120;
+const MAX_METRIC_LABEL = 40;
+const LIST_SEEDS_LIMIT = 100;
+
+/** Check-in photos: an https URL or our own media path (/api/v1/media/...). */
+function isAllowedSeedPhotoUrl(raw: string): boolean {
+  if (raw.length > 2048) return false;
+  if (/^\/api\/v\d+\/media\//i.test(raw)) return true;
+  try {
+    return new URL(raw).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function formatSeed(row: SeedRow, members: Awaited<ReturnType<typeof loadMembers>>) {
@@ -225,16 +298,18 @@ export async function listSeeds(request: Request, env: Env): Promise<Response> {
        JOIN growth_seed_members m ON m.seed_id = s.id
        WHERE m.user_id = ? AND m.status = 'active' AND m.role IN ('owner', 'instructor', 'witness')
          AND ${statusFilter}
-       ORDER BY COALESCE(s.matured_at, s.updated_at) DESC`
+       ORDER BY COALESCE(s.matured_at, s.updated_at) DESC
+       LIMIT ${LIST_SEEDS_LIMIT}`
     )
       .bind(ctx.userId)
       .all<SeedRow>();
 
-    const seeds = [];
-    for (const row of rows.results || []) {
-      const members = await loadMembers(env, row.id);
-      seeds.push(formatSeed(row, members));
-    }
+    const seedRows = rows.results || [];
+    const membersBySeed = await loadMembersForSeeds(
+      env,
+      seedRows.map((r) => r.id)
+    );
+    const seeds = seedRows.map((row) => formatSeed(row, membersBySeed.get(row.id) || []));
 
     const maturedRow = await env.DB.prepare(
       `SELECT COUNT(*) as c
@@ -305,14 +380,21 @@ export async function createSeed(request: Request, env: Env): Promise<Response> 
   }
 
   const title =
-    (body.title || '').trim() ||
+    (typeof body.title === 'string' ? body.title : '').trim() ||
     subcategoryKey
       .split('-')
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
 
-  const metricType = (body.metric_type || '').trim() || null;
-  const metricUnit = (body.metric_unit || '').trim() || null;
+  if (title.length > MAX_SEED_TITLE) {
+    return error('VALIDATION_ERROR', `Title must be at most ${MAX_SEED_TITLE} characters`, 400);
+  }
+
+  const metricType = (typeof body.metric_type === 'string' ? body.metric_type : '').trim() || null;
+  const metricUnit = (typeof body.metric_unit === 'string' ? body.metric_unit : '').trim() || null;
+  if ((metricType && metricType.length > MAX_METRIC_LABEL) || (metricUnit && metricUnit.length > MAX_METRIC_LABEL)) {
+    return error('VALIDATION_ERROR', `Goal type and unit must be at most ${MAX_METRIC_LABEL} characters`, 400);
+  }
   const metricStart =
     typeof body.metric_start === 'number' && Number.isFinite(body.metric_start)
       ? body.metric_start
@@ -334,7 +416,14 @@ export async function createSeed(request: Request, env: Env): Promise<Response> 
   }
 
   const inviteRole = body.invite_role || 'witness';
-  const inviteUserId = (body.invite_user_id || '').trim() || null;
+  if (!['witness', 'owner', 'instructor'].includes(inviteRole)) {
+    return error('VALIDATION_ERROR', 'Invalid invite role', 400);
+  }
+  const inviteUserId =
+    (typeof body.invite_user_id === 'string' ? body.invite_user_id : '').trim() || null;
+  if (inviteUserId && inviteUserId !== ctx.userId && !(await canInviteToSeed(env, ctx.userId, inviteUserId))) {
+    return error('FORBIDDEN', 'You can only invite friends or people you coach with', 403);
+  }
   const ownership = inviteUserId && inviteRole === 'owner' ? 'shared' : 'solo';
 
   const seedId = generateId('seed');
@@ -540,7 +629,10 @@ export async function waterSeed(
   }
 
   const note = (body.note || '').trim().slice(0, 500) || null;
-  const photoUrl = (body.photo_url || '').trim() || null;
+  const photoUrl = (typeof body.photo_url === 'string' ? body.photo_url : '').trim() || null;
+  if (photoUrl && !isAllowedSeedPhotoUrl(photoUrl)) {
+    return error('VALIDATION_ERROR', 'Photo must be an uploaded image (https)', 400);
+  }
   const metricValue =
     typeof body.metric_value === 'number' && Number.isFinite(body.metric_value)
       ? body.metric_value
@@ -811,7 +903,7 @@ export async function inviteToSeed(
     return error('VALIDATION_ERROR', 'Invalid JSON', 400);
   }
 
-  const targetId = (body.user_id || '').trim();
+  const targetId = (typeof body.user_id === 'string' ? body.user_id : '').trim();
   const role = (body.role || 'witness') as 'witness' | 'owner' | 'instructor';
   if (!targetId) return error('VALIDATION_ERROR', 'user_id required', 400);
   if (!['witness', 'owner', 'instructor'].includes(role)) {
@@ -822,6 +914,9 @@ export async function inviteToSeed(
     const me = await getMember(env, seedId, ctx.userId);
     if (!me || me.status !== 'active' || me.role !== 'owner') {
       return error('FORBIDDEN', 'Only owners can invite', 403);
+    }
+    if (!(await canInviteToSeed(env, ctx.userId, targetId))) {
+      return error('FORBIDDEN', 'You can only invite friends or people you coach with', 403);
     }
 
     const existing = await getMember(env, seedId, targetId);

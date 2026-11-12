@@ -231,7 +231,15 @@ export async function updateProfile(
   const validation = await validateRequest(request, updateUserSchema);
   if (!validation.success) return validation.response;
 
-  const { username, avatar, categories, metadata, decay_timer } = validation.data;
+  const { avatar, metadata } = validation.data;
+  // metadata is already allow-listed by profileMetadataSchema (unknown/server-owned keys dropped).
+  const incomingMeta: Record<string, unknown> = { ...(metadata || {}) };
+  const username = validation.data.username ?? metadata?.username;
+  const categories = validation.data.categories ?? metadata?.categories;
+  const decay_timer = validation.data.decay_timer ?? metadata?.decay_timer;
+  delete incomingMeta.username;
+  delete incomingMeta.categories;
+  delete incomingMeta.decay_timer;
 
   try {
     const user = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
@@ -242,11 +250,30 @@ export async function updateProfile(
       return error('USER_NOT_FOUND', 'User not found', 404);
     }
 
-    const currentMetadata = JSON.parse(user.metadata || '{}');
-    const incomingMeta =
-      metadata && typeof metadata === 'object' ? { ...metadata } : {};
-    // Avatar must come from top-level field (https-validated). Never accept arbitrary metadata.avatar.
-    delete (incomingMeta as Record<string, unknown>).avatar;
+    let currentMetadata: Record<string, unknown> = {};
+    try {
+      currentMetadata = JSON.parse(user.metadata || '{}');
+    } catch {
+      currentMetadata = {};
+    }
+
+    // Usernames are unique case-insensitively. Only checked when it actually changes,
+    // so legacy duplicates can still save the rest of their profile.
+    if (
+      username &&
+      username.toLowerCase() !== String(currentMetadata.username ?? '').trim().toLowerCase()
+    ) {
+      const taken = await env.DB.prepare(
+        `SELECT id FROM users
+         WHERE lower(trim(json_extract(metadata, '$.username'))) = ? AND id != ?
+         LIMIT 1`
+      )
+        .bind(username.toLowerCase(), ctx.userId)
+        .first<{ id: string }>();
+      if (taken) {
+        return error('USERNAME_TAKEN', 'That username is already taken', 409);
+      }
+    }
 
     const updatedMetadata: Record<string, unknown> = {
       ...currentMetadata,

@@ -51,8 +51,8 @@ export async function getJournalEntries(request: Request, env: Env): Promise<Res
   const url = new URL(request.url);
   const scope = url.searchParams.get('scope') || 'mine';
   const visibility = url.searchParams.get('visibility');
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
-  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const limit = clampInt(url.searchParams.get('limit'), 50, 1, 100);
+  const offset = clampInt(url.searchParams.get('offset'), 0, 0, 10000);
 
   let query: string;
   const bindings: (string | number)[] = [];
@@ -96,8 +96,9 @@ export async function getUserPublicJournalEntries(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const limit = Math.min(parseInt(new URL(request.url).searchParams.get('limit') || '50', 10), 100);
-  const offset = parseInt(new URL(request.url).searchParams.get('offset') || '0', 10);
+  const params = new URL(request.url).searchParams;
+  const limit = clampInt(params.get('limit'), 50, 1, 100);
+  const offset = clampInt(params.get('offset'), 0, 0, 10000);
 
   try {
     const rows = await env.DB.prepare(
@@ -270,6 +271,13 @@ export async function deleteJournalEntry(
   }
 }
 
+/** Parses an integer query param; NaN/out-of-range values fall back / clamp. */
+function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const n = parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 function mutedJournalIdsFromMetadata(metadataJson: string | null | undefined): Set<string> {
   try {
     const meta = JSON.parse(metadataJson || '{}') as { mutedJournalUserIds?: unknown };
@@ -290,7 +298,7 @@ export async function getJournalReflections(request: Request, env: Env): Promise
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const limit = Math.min(parseInt(new URL(request.url).searchParams.get('limit') || '30', 10), 50);
+  const limit = clampInt(new URL(request.url).searchParams.get('limit'), 30, 1, 50);
 
   try {
     const rows = await env.DB.prepare(
@@ -365,36 +373,42 @@ export async function getCircleJournalEntries(request: Request, env: Env): Promi
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const limit = Math.min(parseInt(new URL(request.url).searchParams.get('limit') || '40', 10), 60);
+  const limit = clampInt(new URL(request.url).searchParams.get('limit'), 40, 1, 60);
 
   try {
-    const me = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
-      .bind(ctx.userId)
-      .first<{ metadata: string }>();
-    const muted = mutedJournalIdsFromMetadata(me?.metadata);
-
-    const friendIds = [...(await getFriendUserIds(env, ctx.userId))].filter((id) => !muted.has(id));
-    if (friendIds.length === 0) {
-      return json({ entries: [], total: 0, limit });
-    }
-
-    const placeholders = friendIds.map(() => '?').join(',');
+    // ctx.user is the row getRequestContext already loaded — no second users read.
+    const muted = mutedJournalIdsFromMetadata(ctx.user?.metadata);
+    // D1 caps bound parameters at 100: friends come from a subquery (any count),
+    // muted ids are excluded inline for the first 80 and filtered in JS for the rest.
+    const mutedInline = [...muted].slice(0, 80);
+    const mutedClause = mutedInline.length
+      ? `AND j.user_id NOT IN (${mutedInline.map(() => '?').join(',')})`
+      : '';
     const rows = await env.DB.prepare(
       `SELECT j.*, u.metadata AS author_metadata, u.email AS author_email
        FROM journal_entries j
        INNER JOIN users u ON u.id = j.user_id
        WHERE j.is_public = 1
-         AND j.user_id IN (${placeholders})
+         AND j.user_id IN (
+           SELECT target_user_id FROM user_relationships WHERE user_id = ? AND type = 'friend'
+           UNION
+           SELECT user_id FROM user_relationships WHERE target_user_id = ? AND type = 'friend'
+         )
+         ${mutedClause}
        ORDER BY j.created_at DESC
        LIMIT ?`
     )
-      .bind(...friendIds, Math.max(limit * 3, 60))
+      .bind(ctx.userId, ctx.userId, ...mutedInline, Math.max(limit * 3, 60))
       .all<
         JournalRow & {
           author_metadata: string;
           author_email: string;
         }
       >();
+    const visibleRows = (rows.results || []).filter((r) => !muted.has(r.user_id));
+    if (visibleRows.length === 0) {
+      return json({ entries: [], total: 0, limit });
+    }
 
     // Warmth score: recent DM peers rank higher than cold friends.
     const warmPeers = new Set<string>();
@@ -431,7 +445,7 @@ export async function getCircleJournalEntries(request: Request, env: Env): Promi
     };
 
     const scored: CircleHit[] = [];
-    for (const row of rows.results || []) {
+    for (const row of visibleRows) {
       let authorMeta: Record<string, unknown> = {};
       try {
         authorMeta = JSON.parse(row.author_metadata || '{}');
@@ -712,9 +726,7 @@ export async function muteJournalAuthor(request: Request, env: Env): Promise<Res
   }
 
   try {
-    const me = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
-      .bind(ctx.userId)
-      .first<{ metadata: string }>();
+    const me = ctx.user;
     if (!me) return error('NOT_FOUND', 'User not found', 404);
 
     let meta: Record<string, unknown> = {};

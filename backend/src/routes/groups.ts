@@ -262,14 +262,30 @@ async function stampGroupLocation(env: Env, groupId: string, prefs: CirclePrefs)
     .run();
 }
 
-async function pruneEmptyGroups(env: Env): Promise<void> {
+const LIST_GROUPS_LIMIT = 50;
+
+/**
+ * Global circle housekeeping: drop empty user/cohort circles and split any circle
+ * over MAX_CIRCLE_MEMBERS into cohorts. Both scan every group, so they run on a
+ * schedule (wire into the Worker's scheduled() handler) rather than per request.
+ */
+export async function runGroupMaintenance(env: Env): Promise<void> {
+  await pruneEmptyGroups(env);
+  await rebalanceOverflow(env);
+}
+
+/** Deletes empty user/cohort circles — all of them, or just `onlyGroupId`. */
+async function pruneEmptyGroups(env: Env, onlyGroupId?: string): Promise<void> {
   const empty = await env.DB.prepare(
     `SELECT g.id FROM growth_groups g
      WHERE g.kind IN ('user', 'cohort')
+       ${onlyGroupId ? 'AND g.id = ?' : ''}
        AND NOT EXISTS (
          SELECT 1 FROM growth_group_members m WHERE m.group_id = g.id
        )`
-  ).all<{ id: string }>();
+  )
+    .bind(...(onlyGroupId ? [onlyGroupId] : []))
+    .all<{ id: string }>();
   for (const row of empty.results || []) {
     await env.DB.prepare(`DELETE FROM growth_group_pulses WHERE group_id = ?`).bind(row.id).run();
     await env.DB.prepare(`DELETE FROM growth_group_call_interest WHERE group_id = ?`)
@@ -502,7 +518,7 @@ async function placeInPath(
   const newId = await spawnCohort(env, template, podIndex, prefs);
   const spawned = await tryJoin(env, newId, userId, 'host', prefs);
   if (spawned === 'full') {
-    await pruneEmptyGroups(env);
+    await pruneEmptyGroups(env, newId);
     return { code: 'CIRCLE_FULL', message: 'Could not open a circle just then', status: 409 };
   }
   return { groupId: newId, created: true };
@@ -542,20 +558,31 @@ export async function listGroups(request: Request, env: Env): Promise<Response> 
   }
 
   try {
-    await pruneEmptyGroups(env);
-    await rebalanceOverflow(env);
+    // Global cleanup (pruneEmptyGroups / rebalanceOverflow) runs from the cron via
+    // runGroupMaintenance — not on every list request.
     const userCats = await resolveUserCategories(env, ctx.userId);
     await ensureStartingMemberships(env, ctx.userId, userCats);
     const prefs = await loadPrefs(env, ctx.userId);
 
+    // Capped at LIST_GROUPS_LIMIT. Priority for the cap: my circles, then starting
+    // templates (needed for "start in a path"), then the busiest others. The
+    // response keeps the original display order (joined, kind, size, name).
     const rows = await env.DB.prepare(
       `${GROUP_SELECT}
-       ORDER BY joined DESC, g.kind ASC, member_count DESC, g.name ASC`
+       ORDER BY joined DESC, CASE WHEN g.kind = 'starting' THEN 0 ELSE 1 END ASC,
+                member_count DESC, g.name ASC
+       LIMIT ${LIST_GROUPS_LIMIT}`
     )
       .bind(ctx.userId)
       .all<GroupRow>();
 
-    const all = rows.results || [];
+    const all = (rows.results || []).slice().sort(
+      (a, b) =>
+        Number(b.joined || 0) - Number(a.joined || 0) ||
+        String(a.kind).localeCompare(String(b.kind)) ||
+        Number(b.member_count || 0) - Number(a.member_count || 0) ||
+        String(a.name).localeCompare(String(b.name))
+    );
     const groups = all.map(mapGroup);
     const mine = groups.filter((g) => g.joined);
     const minePath = new Set(
@@ -688,8 +715,6 @@ export async function placeGroup(request: Request, env: Env): Promise<Response> 
   }
 
   try {
-    await pruneEmptyGroups(env);
-    await rebalanceOverflow(env);
     const userCats = await resolveUserCategories(env, ctx.userId);
     const placed = await placeInPath(env, ctx.userId, String(body.path_key || ''), userCats);
     if ('code' in placed) {
@@ -786,6 +811,18 @@ export async function getGroup(request: Request, env: Env, groupId: string): Pro
       .first<GroupRow>();
     if (!row) return error('NOT_FOUND', 'Circle not found', 404);
 
+    // Member list, pulse notes and call interest are for members only;
+    // everyone else gets the circle summary.
+    if (!Number(row.joined)) {
+      return json({
+        group: mapGroup(row),
+        members: [],
+        pulses: [],
+        my_call_interest: [],
+        prefs: await loadPrefs(env, ctx.userId),
+      });
+    }
+
     const members = await env.DB.prepare(
       `SELECT m.user_id, m.role, m.joined_at, m.last_pulse_at, u.metadata
        FROM growth_group_members m
@@ -871,9 +908,6 @@ export async function joinGroup(request: Request, env: Env, groupId: string): Pr
   }
 
   try {
-    await pruneEmptyGroups(env);
-    await rebalanceOverflow(env);
-
     const group = await env.DB.prepare(`SELECT * FROM growth_groups WHERE id = ?`)
       .bind(groupId)
       .first<GroupRow>();

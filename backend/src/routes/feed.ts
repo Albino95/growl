@@ -29,34 +29,30 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Get user metadata
-  const user = await env.DB.prepare(
-    'SELECT metadata FROM users WHERE id = ?'
-  )
-    .bind(ctx.userId)
-    .first<{ metadata: string }>();
-
+  // Viewer metadata comes from the users row getRequestContext already loaded.
+  const user = ctx.user;
   if (!user) {
     return error('USER_NOT_FOUND', 'User not found', 404);
   }
 
-  const metadata = JSON.parse(user.metadata || '{}');
-  const categories = metadata.categories || [];
-  const blockedUsersFromMeta = Array.isArray(metadata.blockedUsers) ? metadata.blockedUsers : [];
-  const mutedUsersFromMeta = Array.isArray(metadata.mutedUsers) ? metadata.mutedUsers : [];
-  const moderationRows = await env.DB.prepare(
-    `SELECT target_user_id, type
-     FROM user_relationships
-     WHERE user_id = ? AND type IN ('block', 'mute')`
-  )
-    .bind(ctx.userId)
-    .all<{ target_user_id: string; type: string }>();
-  const blockedUsers = new Set<string>(blockedUsersFromMeta);
-  const mutedUsers = new Set<string>(mutedUsersFromMeta);
-  for (const row of moderationRows.results || []) {
-    if (row.type === 'block') blockedUsers.add(row.target_user_id);
-    if (row.type === 'mute') mutedUsers.add(row.target_user_id);
+  let metadata: Record<string, any> = {};
+  try {
+    metadata = JSON.parse(user.metadata || '{}');
+  } catch {
+    metadata = {};
   }
+  const categories = metadata.categories || [];
+  // Legacy moderation lists stored on the user row. Relationship-table blocks/mutes
+  // are excluded with a subquery (any count); the legacy list is inlined but capped
+  // so the query stays well under D1's 100 bound-parameter limit.
+  const legacyExcludedAll = new Set<string>(
+    [
+      ...(Array.isArray(metadata.blockedUsers) ? metadata.blockedUsers : []),
+      ...(Array.isArray(metadata.mutedUsers) ? metadata.mutedUsers : []),
+    ].filter((x: unknown): x is string => typeof x === 'string' && x.length > 0)
+  );
+  // First 80 inline in SQL; any remainder is filtered after the fetch.
+  const legacyExcluded = [...legacyExcludedAll].slice(0, 80);
 
   // Pull a recent post window and hydrate engagement counters in one query.
   // Explore needs a wider window so discovery isn't empty after a quiet week.
@@ -68,8 +64,8 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
       p.*,
       u.metadata as user_metadata,
       u.is_instructor,
-      COUNT(DISTINCT pe1.id) as likes_count,
-      COUNT(DISTINCT pe2.id) as comments_count,
+      (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+      (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
       (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
       (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
         INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
@@ -81,8 +77,6 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
         WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likers_csv
     FROM posts p
     JOIN users u ON p.user_id = u.id
-    LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
-    LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.created_at > datetime('now', '${recencyWindow}')
       AND COALESCE(p.is_hidden, 0) = 0
       AND p.image_url IS NOT NULL
@@ -92,15 +86,17 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const bindings: any[] = [];
 
-  // Exclusion list merges metadata-based moderation with relationship-table moderation.
-  if (blockedUsers.size > 0 || mutedUsers.size > 0) {
-    const excludedUsers = [...new Set([...blockedUsers, ...mutedUsers])];
-    query += ` AND p.user_id NOT IN (${excludedUsers.map(() => '?').join(',')})`;
-    bindings.push(...excludedUsers);
+  query += `
+      AND p.user_id NOT IN (
+        SELECT target_user_id FROM user_relationships WHERE user_id = ? AND type IN ('mute', 'block')
+      )`;
+  bindings.push(ctx.userId);
+  if (legacyExcluded.length > 0) {
+    query += ` AND p.user_id NOT IN (${legacyExcluded.map(() => '?').join(',')})`;
+    bindings.push(...legacyExcluded);
   }
 
   query += `
-    GROUP BY p.id
     ORDER BY p.engagement_score DESC, p.created_at DESC
     LIMIT ${feedLimit}
   `;
@@ -123,6 +119,7 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
 
   const scoredPosts = (posts.results || [])
     .filter((post) => {
+      if (legacyExcludedAll.has(post.user_id)) return false;
       const url = typeof post.image_url === 'string' ? post.image_url.trim() : '';
       return /^https:\/\//i.test(url);
     })
@@ -395,22 +392,19 @@ export async function getPost(
       p.*,
       u.metadata as user_metadata,
       u.is_instructor,
-      COUNT(DISTINCT pe1.id) as likes_count,
-      COUNT(DISTINCT pe2.id) as comments_count,
+      (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+      (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
       (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
       (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
         INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
         WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
-    LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
-    LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.id = ?
       AND COALESCE(p.is_hidden, 0) = 0
       AND p.image_url IS NOT NULL
       AND trim(p.image_url) != ''
-      AND p.image_url LIKE 'https://%'
-    GROUP BY p.id`
+      AND p.image_url LIKE 'https://%'`
   )
     .bind(viewerId, viewerId, postId)
     .first<
@@ -475,14 +469,23 @@ export async function toggleLike(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Check if already liked
-  const existing = await env.DB.prepare(
-    'SELECT id FROM post_engagement WHERE post_id = ? AND user_id = ? AND type = ?'
+  // Race-safe toggle: insert the like only if absent. The unique partial index
+  // uq_post_engagement_like (post_id, user_id WHERE type='like') turns a concurrent
+  // duplicate insert into a no-op. Nothing inserted → the like already existed → unlike.
+  const engagementId = generateId('engagement');
+  const inserted = await env.DB.prepare(
+    `INSERT INTO post_engagement (id, post_id, user_id, type, created_at)
+     SELECT ?, ?, ?, 'like', datetime('now')
+     WHERE NOT EXISTS (
+       SELECT 1 FROM post_engagement WHERE post_id = ? AND user_id = ? AND type = 'like'
+     )
+     ON CONFLICT DO NOTHING`
   )
-    .bind(postId, ctx.userId, 'like')
-    .first();
+    .bind(engagementId, postId, ctx.userId, postId, ctx.userId)
+    .run();
+  const insertedRows = Number((inserted as { meta?: { changes?: number } } | null)?.meta?.changes ?? 0);
 
-  if (existing) {
+  if (insertedRows === 0) {
     // Unlike
     await env.DB.prepare(
       'DELETE FROM post_engagement WHERE post_id = ? AND user_id = ? AND type = ?'
@@ -495,14 +498,6 @@ export async function toggleLike(
 
     return json({ liked: false });
   } else {
-    // Like
-    const engagementId = generateId('engagement');
-    await env.DB.prepare(
-      'INSERT INTO post_engagement (id, post_id, user_id, type, created_at) VALUES (?, ?, ?, ?, datetime("now"))'
-    )
-      .bind(engagementId, postId, ctx.userId, 'like')
-      .run();
-
     // Update engagement score
     await updateEngagementScore(env, postId);
 
@@ -591,22 +586,19 @@ export async function getUserPosts(
         p.*,
         u.metadata as user_metadata,
         u.is_instructor,
-        COUNT(DISTINCT pe1.id) as likes_count,
-        COUNT(DISTINCT pe2.id) as comments_count,
+        (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+        (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
         (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
         (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
           INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
           WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
       FROM posts p
       JOIN users u ON p.user_id = u.id
-      LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
-      LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
       WHERE p.user_id = ?
         AND COALESCE(p.is_hidden, 0) = 0
         AND p.image_url IS NOT NULL
         AND trim(p.image_url) != ''
         AND p.image_url LIKE 'https://%'
-      GROUP BY p.id
       ORDER BY p.created_at DESC
       LIMIT 100`
     )

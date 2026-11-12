@@ -4,6 +4,26 @@ import { error } from './response';
 // Order status enum
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'completed' | 'cancelled';
 
+/** Max serialized size for free-form client metadata blobs (posts, journal, products). */
+export const MAX_CLIENT_METADATA_BYTES = 4096;
+
+function jsonByteLength(value: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value ?? null)).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+const boundedMetadataRecord = z
+  .record(z.any())
+  .refine((v) => jsonByteLength(v) <= MAX_CLIENT_METADATA_BYTES, {
+    message: 'metadata is too large',
+  });
+
+/** Max line items / product ids per order, checkout or campaign request. */
+const MAX_ITEMS = 50;
+
 const strongPasswordSchema = z
   .string()
   .min(12, 'Password must be at least 12 characters')
@@ -120,7 +140,7 @@ export const createPostSchema = z.object({
     },
     z.string().optional()
   ),
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 /** Accept only http(s) URLs; strip local picker URIs (file://, ph://, content://) before validate. */
@@ -155,16 +175,18 @@ export const createProductSchema = z.object({
   stock: z.number().int().min(0, 'Stock cannot be negative'),
   image_url: productRemoteImageUrl,
   images: productRemoteImageUrls,
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 export const createOrderSchema = z.object({
-  items: z.array(
-    z.object({
-      product_id: z.string(),
-      quantity: z.number().int().positive(),
-    })
-  ),
+  items: z
+    .array(
+      z.object({
+        product_id: z.string(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .max(MAX_ITEMS, `At most ${MAX_ITEMS} items per order`),
   shipping_address: z.object({
     name: z.string().min(1),
     street: z.string().min(1),
@@ -187,12 +209,14 @@ export const createOrderSchema = z.object({
 });
 
 export const checkoutSessionSchema = z.object({
-  items: z.array(
-    z.object({
-      product_id: z.string(),
-      quantity: z.number().int().positive(),
-    })
-  ),
+  items: z
+    .array(
+      z.object({
+        product_id: z.string(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .max(MAX_ITEMS, `At most ${MAX_ITEMS} items per order`),
   shipping_address: z.object({
     name: z.string().min(1),
     street: z.string().min(1),
@@ -205,8 +229,51 @@ export const checkoutSessionSchema = z.object({
   cancel_url: z.string().url().optional(),
 });
 
+/** Growth-path keys: at most 3 distinct parent paths ("fitness" / "fitness:running"). */
+const categoryListSchema = z
+  .array(z.string().max(80))
+  .max(30)
+  .refine(
+    (cats) => new Set(cats.map((k) => (k.includes(':') ? k.split(':')[0] : k))).size <= 3,
+    { message: 'You can select a maximum of 3 growth paths' }
+  );
+
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, 'Username must be at least 3 characters')
+  .max(32, 'Username must be at most 32 characters');
+
+/** Max serialized size of the client-supplied profile metadata patch. */
+export const MAX_PROFILE_METADATA_BYTES = 8192;
+
+/**
+ * Client-editable profile metadata. Anything not listed here (points, instructor
+ * flags/claims, moderation lists, enforcement, …) is server-owned and silently
+ * dropped. avatar is accepted only via the top-level (https-validated) field.
+ */
+export const profileMetadataSchema = z
+  .object({
+    username: usernameSchema.optional(),
+    bio: z.string().max(300, 'Bio must be at most 300 characters').nullable().optional(),
+    status: z.string().max(120).nullable().optional(),
+    teaching_headline: z.string().max(120).nullable().optional(),
+    categories: categoryListSchema.optional(),
+    decay_timer: z.number().int().min(1).max(365).optional(),
+    notifications_prefs: z
+      .object({
+        notificationsEnabled: z.boolean().optional(),
+        emailNotifications: z.boolean().optional(),
+        pushNotifications: z.boolean().optional(),
+        marketingEmails: z.boolean().optional(),
+      })
+      .optional(),
+    pinned_post_ids: z.array(z.string().max(64)).max(3).optional(),
+  })
+  .strip();
+
 export const updateUserSchema = z.object({
-  username: z.string().min(3).optional(),
+  username: usernameSchema.optional(),
   /**
    * Avatar URL persisted in user metadata (backend-owned).
    * Empty string clears. Only https: URLs accepted (API media or seeded hosts).
@@ -220,20 +287,16 @@ export const updateUserSchema = z.object({
       z.literal(''),
     ])
     .optional(),
-  categories: z
-    .array(z.string())
-    .optional()
-    .refine(
-      (cats) => {
-        if (!cats) return true;
-        const parents = new Set(cats.map((k) => (k.includes(':') ? k.split(':')[0] : k)));
-        return parents.size <= 3;
-      },
-      { message: 'You can select a maximum of 3 growth paths' }
-    ),
+  categories: categoryListSchema.optional(),
   /** Post lifespan in days (1–365). Also accepted via metadata.decay_timer. */
   decay_timer: z.number().int().min(1).max(365).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z
+    .record(z.any())
+    .refine((v) => jsonByteLength(v) <= MAX_PROFILE_METADATA_BYTES, {
+      message: 'Profile data is too large',
+    })
+    .pipe(profileMetadataSchema)
+    .optional(),
 });
 
 export const updateOrderStatusSchema = z.object({
@@ -271,7 +334,7 @@ export const createCampaignSchema = z.object({
   budget: z.number().positive(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
-  product_ids: z.array(z.string()).optional(),
+  product_ids: z.array(z.string()).max(MAX_ITEMS).optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -282,7 +345,7 @@ export const updateCampaignSchema = z.object({
   status: z.enum(['active', 'paused', 'completed']).optional(),
   start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),
-  product_ids: z.array(z.string()).optional(),
+  product_ids: z.array(z.string()).max(MAX_ITEMS).optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -446,7 +509,7 @@ export const createJournalEntrySchema = z.object({
   mood: journalMoodSchema,
   tags: z.array(z.string().max(40)).max(20).optional(),
   is_public: z.boolean().optional().default(false),
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 export const updateJournalEntrySchema = z.object({
@@ -455,7 +518,7 @@ export const updateJournalEntrySchema = z.object({
   mood: journalMoodSchema.nullable(),
   tags: z.array(z.string().max(40)).max(20).optional(),
   is_public: z.boolean().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 export const createConversationSchema = z.object({

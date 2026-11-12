@@ -642,10 +642,26 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
 
     return sessionResponse(user, env);
   } catch (err: unknown) {
+    // Log the detail; only our own user-facing messages reach the client (never
+    // provider/DB internals).
     console.error('[signInWithSSO] Error:', err);
-    const msg = err instanceof Error ? err.message : 'SSO sign in failed';
-    return error('SSO_ERROR', msg, 401);
+    return error('SSO_ERROR', publicSsoErrorMessage(err), 401);
   }
+}
+
+/** Messages thrown by our SSO verifiers that are safe and useful to show users. */
+const SSO_PUBLIC_MESSAGES = new Set([
+  'Google sign-in is not enabled',
+  'Facebook sign-in is not enabled',
+  'Apple sign-in is not enabled',
+  'Google account has no email',
+  'Google email is not verified',
+  'Facebook account must share email to use Growl',
+]);
+
+export function publicSsoErrorMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  return SSO_PUBLIC_MESSAGES.has(msg) ? msg : 'Sign-in failed. Please try again.';
 }
 
 type UserRow = Parameters<typeof userAuthPayload>[0] & { email_verified?: number };

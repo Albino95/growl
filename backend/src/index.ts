@@ -1,4 +1,5 @@
 import { enforceWriteLimit } from './utils/writeLimits';
+import { runGroupMaintenance } from './routes/groups';
 import { Env } from './types';
 import { attachCors, cors, error, json } from './utils/response';
 import * as authRoutes from './routes/auth';
@@ -38,11 +39,25 @@ export default {
   },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      purgeExpiredUnverifiedUsers(env).then((removed) => {
-        if (removed > 0) {
-          console.log(`[cron] Purged ${removed} expired unverified signup(s)`);
-        }
-      })
+      purgeExpiredUnverifiedUsers(env)
+        .then((removed) => {
+          if (removed > 0) {
+            console.log(`[cron] Purged ${removed} expired unverified signup(s)`);
+          }
+        })
+        .catch((err) => console.error('[cron] purgeExpiredUnverifiedUsers', err))
+    );
+    // Circle pruning/rebalancing used to run on every GET /groups; now hourly.
+    ctx.waitUntil(
+      runGroupMaintenance(env).catch((err) => console.error('[cron] runGroupMaintenance', err))
+    );
+    ctx.waitUntil(
+      storiesRoutes
+        .purgeExpiredStories(env)
+        .then((removed) => {
+          if (removed > 0) console.log(`[cron] Purged ${removed} old stor(y/ies)`);
+        })
+        .catch((err) => console.error('[cron] purgeExpiredStories', err))
     );
   },
 };
@@ -551,6 +566,11 @@ async function handleRequest(
         if (request.method === 'POST') {
           return storiesRoutes.viewStory(request, env, storyId);
         }
+      }
+
+      const storyViewersMatch = path.match(new RegExp(`^${apiPrefix}/stories/([^/]+)/viewers$`));
+      if (storyViewersMatch && request.method === 'GET') {
+        return storiesRoutes.getStoryViewers(request, env, storyViewersMatch[1]);
       }
 
       const userStoriesMatch = path.match(new RegExp(`^${apiPrefix}/stories/user/([^/]+)$`));

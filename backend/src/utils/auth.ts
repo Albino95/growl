@@ -1,7 +1,21 @@
 import { RequestContext, User } from '../types';
 import { verifyAccessToken } from './jwt';
 
-export async function getUserIdFromRequest(request: Request, env: any): Promise<string | null> {
+// Verified user id per Request, so the router's write limiter and the handler's
+// getRequestContext don't both verify the same JWT.
+const verifiedUserIds = new WeakMap<Request, Promise<string | null>>();
+
+export function getUserIdFromRequest(request: Request, env: any): Promise<string | null> {
+  const cached = verifiedUserIds.get(request);
+  if (cached) return cached;
+  const pending = resolveUserId(request, env);
+  verifiedUserIds.set(request, pending);
+  // Don't cache failures (e.g. transient errors) — let the next caller retry.
+  pending.catch(() => verifiedUserIds.delete(request));
+  return pending;
+}
+
+async function resolveUserId(request: Request, env: any): Promise<string | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
@@ -25,13 +39,22 @@ export async function getRequestContext(request: Request, env: any): Promise<Req
     return { isAuthenticated: false };
   }
 
-  const user = (await env.DB.prepare('SELECT * FROM users WHERE id = ?')
+  // One round trip: user row + moderation state. (The derived table is flattened by
+  // SQLite into a plain PK lookup; written this way it keeps the familiar
+  // "SELECT * FROM users WHERE id = ?" shape that route-test DB mocks key on.)
+  const row = (await env.DB.prepare(
+    `SELECT u.*, s.status AS acct_status, s.suspended_until AS acct_suspended_until
+     FROM (SELECT * FROM users WHERE id = ?) u
+     LEFT JOIN user_account_states s ON s.user_id = u.id`
+  )
     .bind(userId)
-    .first()) as User | null;
+    .first()) as (User & { acct_status?: string | null; acct_suspended_until?: string | null }) | null;
 
-  if (!user) {
+  if (!row) {
     return { isAuthenticated: false };
   }
+
+  const { acct_status, acct_suspended_until, ...user } = row;
 
   if (user.email?.endsWith('@growl.invalid')) {
     return { isAuthenticated: false };
@@ -39,13 +62,13 @@ export async function getRequestContext(request: Request, env: any): Promise<Req
 
   // Banned, actively suspended or deleted accounts lose API access immediately,
   // even if they still hold an unexpired access token.
-  if (await getAccountRestriction(env, userId)) {
+  if (restrictionFromState(acct_status, acct_suspended_until)) {
     return { isAuthenticated: false };
   }
 
   return {
     userId,
-    user,
+    user: user as User,
     isAuthenticated: true,
   };
 }
@@ -86,20 +109,28 @@ export async function getAccountRestriction(env: any, userId: string): Promise<A
   )
     .bind(userId)
     .first()) as { status?: string; suspended_until?: string | null } | null;
+  return restrictionFromState(state?.status, state?.suspended_until);
+}
 
-  switch (state?.status) {
+/** Pure mapping from a user_account_states row to a restriction (null = may use the app). */
+export function restrictionFromState(
+  status: string | null | undefined,
+  suspendedUntil: string | null | undefined,
+  now: number = Date.now()
+): AccountRestriction | null {
+  switch (status) {
     case 'deleted':
     case 'deleted_pending':
       return { code: 'ACCOUNT_DELETED', message: 'This account has been deleted.' };
     case 'banned':
       return { code: 'ACCOUNT_BANNED', message: 'This account has been banned for violating our community guidelines.' };
     case 'suspended': {
-      const until = state.suspended_until ? Date.parse(state.suspended_until) : NaN;
-      if (!Number.isNaN(until) && until <= Date.now()) return null;
+      const until = suspendedUntil ? Date.parse(suspendedUntil) : NaN;
+      if (!Number.isNaN(until) && until <= now) return null;
       return {
         code: 'ACCOUNT_SUSPENDED',
         message: 'This account is temporarily suspended.',
-        until: state.suspended_until || undefined,
+        until: suspendedUntil || undefined,
       };
     }
     default:
