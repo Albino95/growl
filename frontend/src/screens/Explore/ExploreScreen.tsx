@@ -20,7 +20,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
-import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { getStories, type StoryItem } from '../../services/api/stories';
 import {
   addFriend,
   listFriends,
@@ -433,12 +433,7 @@ export default function ExploreScreen() {
     (root as { navigate: (a: string, b: object) => void }).navigate('StoryViewer', {
       stories: fullStories,
       initialIndex: 0,
-      onStoriesUpdate: (updatedStories: typeof fullStories) => {
-        const viewedIds = updatedStories.filter((story) => story.hasViewed).map((story) => story.id);
-        if (viewedIds.length > 0) {
-          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
-        }
-      },
+      // StoryViewer records each view once on the server.
     });
   };
 

@@ -300,6 +300,7 @@ export default function PostDetailScreen() {
           <CommentsScreen
             postId={post.id}
             postUsername={post.username}
+            postUserId={post.userId}
             postCaption={post.caption}
             onClose={() => setShowComments(false)}
           />

@@ -35,7 +35,7 @@ import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/Catego
 import { ReactionPickerBar, type FeedReaction } from '../../components/feed/FeedLikeButton';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
-import { getStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { getStories, type StoryItem } from '../../services/api/stories';
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
@@ -871,13 +871,8 @@ export default function FeedScreen({ navigation, route }: any) {
                 rootNavigation.navigate('StoryViewer' as never, {
                   stories: fullStories,
                   initialIndex: 0,
+                  // StoryViewer records each view once; this only updates the ring.
                   onStoriesUpdate: (updatedStories: typeof fullStories) => {
-                    const ids = updatedStories
-                      .filter((us) => us.hasViewed)
-                      .map((us) => us.id);
-                    if (ids.length > 0) {
-                      Promise.all(ids.map((id) => viewStory(id))).catch(() => undefined);
-                    }
                     setStories((prev) =>
                       prev.map((s) => {
                         const updated = updatedStories.find((us) => us.id === s.id);
@@ -1231,6 +1226,7 @@ export default function FeedScreen({ navigation, route }: any) {
             <CommentsScreen
               postId={selectedPost.id}
               postUsername={selectedPost.username}
+              postUserId={selectedPost.userId}
               postCaption={selectedPost.caption}
               onClose={() => setSelectedPost(null)}
               onCommentsChanged={(count) => {

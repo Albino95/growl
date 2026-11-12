@@ -32,7 +32,7 @@ import {
 } from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
-import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
+import { getUserStories, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 import { getUserPublicJournalEntries } from '../../services/api/journal';
@@ -503,11 +503,8 @@ export default function PublicProfileScreen() {
         hasViewed: story.hasViewed,
       })),
       initialIndex,
+      // StoryViewer records each view once; this only updates local seen state.
       onStoriesUpdate: (updatedStories: Array<{ id: string; hasViewed?: boolean }>) => {
-        const viewedIds = updatedStories.filter((s) => s.hasViewed).map((s) => s.id);
-        if (viewedIds.length > 0) {
-          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
-        }
         setStories((prev) =>
           prev.map((story) => {
             const updated = updatedStories.find((s) => s.id === story.id);

@@ -709,6 +709,7 @@ export default function ReelsScreen() {
           <CommentsScreen
             postId={commentsPost.id}
             postUsername={commentsPost.metadata?.username || 'Member'}
+            postUserId={commentsPost.user_id}
             postCaption={commentsPost.caption || ''}
             onClose={() => setCommentsPost(null)}
             onCommentsChanged={(count) => {
