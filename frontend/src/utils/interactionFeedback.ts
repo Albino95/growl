@@ -1,5 +1,5 @@
 import { Platform, Vibration } from 'react-native';
-import { Audio } from 'expo-av';
+import type { Audio } from 'expo-av';
 import { useUiPrefsStore } from '../state/useUiPrefsStore';
 
 export type FeedbackKind =
@@ -212,6 +212,19 @@ const SOUND_MODULES: Record<NonNullable<KindConfig['sound']>, number> = {
 
 let webAudioCtx: AudioContext | null = null;
 let audioModeReady = false;
+
+/** expo-av is loaded on the first native UI sound, not at app start. */
+let avModule: typeof import('expo-av') | null = null;
+function getAv(): typeof import('expo-av') {
+  if (!avModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    avModule = require('expo-av') as typeof import('expo-av');
+  }
+  return avModule;
+}
+function getAudio(): typeof Audio {
+  return getAv().Audio;
+}
 const nativeSounds = new Map<string, Audio.Sound>();
 const nativeLoading = new Map<string, Promise<Audio.Sound | null>>();
 /** Camera / ImagePicker leaves expo-av in a bad state on iOS — skip sounds briefly. */
@@ -246,6 +259,9 @@ export function lockNativeUiAudio(): void {
 
 export function unlockNativeUiAudio(): void {
   hushNativeUntil = 0;
+  // Reels set playsInSilentModeIOS: true while playing; re-apply the
+  // silent-switch-respecting mode before the next UI sound.
+  audioModeReady = false;
 }
 
 let Haptics: typeof import('expo-haptics') | null = null;
@@ -289,8 +305,13 @@ function playWebTone(cfg: NonNullable<KindConfig['web']>) {
 async function ensureAudioMode() {
   if (audioModeReady) return;
   try {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
+    // UI sounds are ambient: they must stay quiet when the iPhone silent
+    // switch is on. (User-started playback — reels, Garden ambience — sets
+    // its own mode when it starts.)
+    await getAudio().setAudioModeAsync({
+      playsInSilentModeIOS: false,
+      // Mix with the user's music instead of stopping it for a click.
+      interruptionModeIOS: getAv().InterruptionModeIOS.MixWithOthers,
       allowsRecordingIOS: false,
       staysActiveInBackground: false,
     });
@@ -309,7 +330,7 @@ async function getNativeSound(key: NonNullable<KindConfig['sound']>): Promise<Au
   const load = (async () => {
     try {
       await ensureAudioMode();
-      const { sound } = await Audio.Sound.createAsync(SOUND_MODULES[key], {
+      const { sound } = await getAudio().Sound.createAsync(SOUND_MODULES[key], {
         shouldPlay: false,
         volume: 0.38,
       });

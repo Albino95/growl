@@ -133,93 +133,133 @@ async function loadUserFromApi(
   };
 }
 
-export const hydrateAuth = createAsyncThunk('auth/hydrate', async (_, { rejectWithValue }) => {
-  try {
-    const token = await getSecureItem(TOKEN_KEY);
-    const refreshToken = await getSecureItem(REFRESH_KEY);
-    const cachedUser = await readCachedUser();
+/** Cold-start profile check must not hold the splash on a slow network. */
+const HYDRATE_PROFILE_TIMEOUT_MS = 6_000;
 
-    if (!token && !refreshToken) {
-      clearToken();
-      return { token: null, user: null };
-    }
-
-    if (token) {
-      setToken(token);
-      try {
-        // Lite profile — avoid streak/eligibility queries on every cold start
-        const user = await loadUserFromApi(undefined, { stats: false });
-        await cacheUserSnapshot(user);
-        return { token, user };
-      } catch (error) {
-        // Network blip with a still-valid access token — stay signed in offline
-        if (isTransientAuthError(error) && cachedUser) {
-          console.warn('[Auth] hydrate: profile unreachable, using cache');
-          return { token, user: cachedUser };
-        }
-        // Access token may be expired — try refresh below
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('Request timed out. Check your connection.')),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
       }
-    }
+    );
+  });
+}
 
-    if (refreshToken) {
-      try {
-        const res = await refreshSessionApi(refreshToken);
-        await persistSession(res.token, res.refreshToken);
-        const user = userFromSession(res);
-        await cacheUserSnapshot(user);
-        return { token: res.token, user };
-      } catch (error) {
-        // Keep session on network errors — only wipe on definitive auth failure
-        if (isTransientAuthError(error)) {
-          if (token && cachedUser) {
-            console.warn('[Auth] hydrate: refresh unreachable, keeping session');
-            setToken(token);
-            return { token, user: cachedUser };
-          }
-          // Tokens exist but we can't reach the server — don't force logout
-          if (token) {
-            setToken(token);
-            return {
-              token,
-              user:
-                cachedUser ||
-                ({
-                  id: 'offline',
-                  hasCompletedOnboarding: true,
-                  categories: [],
-                } satisfies User),
-            };
-          }
-          return rejectWithValue(
-            'Could not reach Grow! servers. Check your connection and try again.'
-          );
-        }
-        // Invalid / expired refresh — real sign-out
-        await clearSessionStorage();
-        return rejectWithValue('Session expired. Please sign in again.');
-      }
-    }
-
-    await clearSessionStorage();
-    return rejectWithValue('Session expired. Please sign in again.');
-  } catch (error) {
-    console.error('[Auth] hydrate failed:', error);
-    // Never wipe tokens on unexpected/transient failures
-    if (isTransientAuthError(error)) {
+export const hydrateAuth = createAsyncThunk(
+  'auth/hydrate',
+  async (_, { rejectWithValue, dispatch }) => {
+    try {
       const token = await getSecureItem(TOKEN_KEY);
+      const refreshToken = await getSecureItem(REFRESH_KEY);
       const cachedUser = await readCachedUser();
+
+      if (!token && !refreshToken) {
+        clearToken();
+        return { token: null, user: null };
+      }
+
+      // Fast path: a signed-in user with a cached snapshot enters the app
+      // immediately; the profile is revalidated in the background. An expired
+      // access token is handled by http's refresh-on-401, and a definitively
+      // dead session by the session-expired handler — never by a network error.
       if (token && cachedUser) {
         setToken(token);
+        setTimeout(() => {
+          void dispatch(refreshProfile({ stats: false }));
+        }, 0);
         return { token, user: cachedUser };
       }
-      return rejectWithValue(
-        'Could not reach Grow! servers. Check your connection and try again.'
-      );
+
+      if (token) {
+        setToken(token);
+        try {
+          // Lite profile — avoid streak/eligibility queries on every cold start
+          const user = await withTimeout(
+            loadUserFromApi(undefined, { stats: false }),
+            HYDRATE_PROFILE_TIMEOUT_MS
+          );
+          await cacheUserSnapshot(user);
+          return { token, user };
+        } catch (error) {
+          // Network blip with a still-valid access token — stay signed in offline
+          if (isTransientAuthError(error) && cachedUser) {
+            console.warn('[Auth] hydrate: profile unreachable, using cache');
+            return { token, user: cachedUser };
+          }
+          // Access token may be expired — try refresh below
+        }
+      }
+
+      if (refreshToken) {
+        try {
+          const res = await refreshSessionApi(refreshToken);
+          await persistSession(res.token, res.refreshToken);
+          const user = userFromSession(res);
+          await cacheUserSnapshot(user);
+          return { token: res.token, user };
+        } catch (error) {
+          // Keep session on network errors — only wipe on definitive auth failure
+          if (isTransientAuthError(error)) {
+            if (token && cachedUser) {
+              console.warn('[Auth] hydrate: refresh unreachable, keeping session');
+              setToken(token);
+              return { token, user: cachedUser };
+            }
+            // Tokens exist but we can't reach the server — don't force logout
+            if (token) {
+              setToken(token);
+              return {
+                token,
+                user:
+                  cachedUser ||
+                  ({
+                    id: 'offline',
+                    hasCompletedOnboarding: true,
+                    categories: [],
+                  } satisfies User),
+              };
+            }
+            return rejectWithValue(
+              'Could not reach Grow! servers. Check your connection and try again.'
+            );
+          }
+          // Invalid / expired refresh — real sign-out
+          await clearSessionStorage();
+          return rejectWithValue('Session expired. Please sign in again.');
+        }
+      }
+
+      await clearSessionStorage();
+      return rejectWithValue('Session expired. Please sign in again.');
+    } catch (error) {
+      console.error('[Auth] hydrate failed:', error);
+      // Never wipe tokens on unexpected/transient failures
+      if (isTransientAuthError(error)) {
+        const token = await getSecureItem(TOKEN_KEY);
+        const cachedUser = await readCachedUser();
+        if (token && cachedUser) {
+          setToken(token);
+          return { token, user: cachedUser };
+        }
+        return rejectWithValue(
+          'Could not reach Grow! servers. Check your connection and try again.'
+        );
+      }
+      await clearSessionStorage();
+      return rejectWithValue('Session expired. Please sign in again.');
     }
-    await clearSessionStorage();
-    return rejectWithValue('Session expired. Please sign in again.');
   }
-});
+);
 
 export const signUp = createAsyncThunk(
   'auth/signUp',

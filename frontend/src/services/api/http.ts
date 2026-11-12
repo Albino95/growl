@@ -72,6 +72,66 @@ function networkErrorMessage(error: unknown): string {
   return `Could not reach Grow! servers (${host}). Please try again in a moment.`;
 }
 
+/** Default per-attempt timeout so a dead network can't hang a screen (or the splash). */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+/** Base64 media uploads go through `request` too and can legitimately take longer. */
+const UPLOAD_REQUEST_TIMEOUT_MS = 120_000;
+const REFRESH_TIMEOUT_MS = 10_000;
+
+export const REQUEST_TIMEOUT_MESSAGE = 'Request timed out. Check your connection.';
+
+class RequestTimeoutError extends Error {
+  constructor() {
+    super(REQUEST_TIMEOUT_MESSAGE);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
+export function isRequestTimeoutError(error: unknown): boolean {
+  return error instanceof RequestTimeoutError;
+}
+
+/** Extra options accepted by `request` on top of `fetch`'s RequestInit. */
+export type RequestOptions = RequestInit & {
+  /** Per-attempt timeout in ms (default 15s). */
+  timeoutMs?: number;
+};
+
+/**
+ * fetch with an AbortController deadline. Honours a caller-supplied `signal`
+ * (caller aborts propagate as the normal AbortError); our own deadline is
+ * reported as a RequestTimeoutError with a user-facing message.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  const outer = init.signal;
+  const onOuterAbort = () => controller.abort();
+  if (outer) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener('abort', onOuterAbort);
+  }
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new RequestTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener('abort', onOuterAbort);
+  }
+}
+
 let refreshInFlight: Promise<string | null> | null = null;
 
 async function persistTokens(access: string, refresh?: string) {
@@ -102,11 +162,16 @@ async function refreshAccessToken(): Promise<string | null> {
       const refreshToken = await getSecureItem(REFRESH_KEY);
       if (!refreshToken) return null;
 
-      const res = await fetch(`${BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+      // Timeout / network failure lands in the outer catch → null (session kept).
+      const res = await fetchWithTimeout(
+        `${BASE_URL}/auth/refresh`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        },
+        REFRESH_TIMEOUT_MS
+      );
 
       let data: any = null;
       try {
@@ -160,14 +225,16 @@ async function readAccessToken(): Promise<string | null> {
 async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  retries = 1
+  retries = 1,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 ): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await fetch(url, init);
+      return await fetchWithTimeout(url, init, timeoutMs);
     } catch (error) {
       lastError = error;
+      // Timeouts are not retried — that would just double the wait on a dead link.
       if (!isNetworkError(error) || attempt === retries) throw error;
       await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
     }
@@ -181,7 +248,7 @@ export function getApiBaseUrl(): string {
 
 const getInflight = new Map<string, Promise<unknown>>();
 
-export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const method = String(options.method || 'GET').toUpperCase();
   if (method === 'GET') {
@@ -202,9 +269,13 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
 
 async function requestOnce<T>(
   path: string,
-  options: RequestInit,
+  requestOptions: RequestOptions,
   url: string
 ): Promise<T> {
+  const { timeoutMs: timeoutOverride, ...options } = requestOptions;
+  const timeoutMs =
+    timeoutOverride ??
+    (path.startsWith('/media/upload') ? UPLOAD_REQUEST_TIMEOUT_MS : DEFAULT_REQUEST_TIMEOUT_MS);
   const bootstrap = isAuthBootstrapPath(path);
   const method = String(options.method || 'GET').toUpperCase();
 
@@ -223,7 +294,7 @@ async function requestOnce<T>(
 
   let res: Response;
   try {
-    res = await fetchWithRetry(url, { ...options, headers }, bootstrap ? 2 : 1);
+    res = await fetchWithRetry(url, { ...options, headers }, bootstrap ? 2 : 1, timeoutMs);
   } catch (error: unknown) {
     console.warn('[HTTP] fetch failed', { url, error });
     if (isNetworkError(error)) {
@@ -239,7 +310,7 @@ async function requestOnce<T>(
     if (next) {
       headers.Authorization = `Bearer ${next}`;
       try {
-        res = await fetchWithRetry(url, { ...options, headers }, 1);
+        res = await fetchWithRetry(url, { ...options, headers }, 1, timeoutMs);
       } catch (error: unknown) {
         console.warn('[HTTP] retry after refresh failed', { url, error });
         if (isNetworkError(error)) {

@@ -3,7 +3,8 @@ import { View, Text, Pressable, useWindowDimensions, Platform } from 'react-nati
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { isVideoMedia } from '../../services/api/media';
-import { ReelVideoPlayer, type VideoEditSettings } from '../ui/VideoEditor';
+import ReelVideoPlayer from '../ui/videoEditor/ReelVideoPlayer';
+import type { VideoEditSettings } from '../ui/videoEditor/types';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
 import tw from '../../lib/tw';
 
