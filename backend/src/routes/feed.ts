@@ -7,6 +7,8 @@ import { alignPostTaxonomy, categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 import { POINTS, awardPoints } from '../utils/points';
 import { createUserNotification, resolveUsername } from '../utils/notifications';
+import { recordActivity } from '../utils/activity';
+import { awardBadgeSafe } from '../utils/badges';
 
 type FeedLiker = {
   id: string;
@@ -320,6 +322,8 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       .run();
 
     const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CREATE_POST);
+    // Growth streak + badges (never fails the post).
+    const growth = await recordActivity(env, ctx.userId, 'post', { path: category });
 
     return json(
       {
@@ -332,6 +336,7 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         engagement_score: 0,
         points_awarded: POINTS.CREATE_POST,
         points_total: pointsTotal ?? undefined,
+        new_badges: growth.newBadges,
         created_at: new Date().toISOString(),
         metadata: {
           ...postMetadata,
@@ -516,6 +521,7 @@ export async function toggleLike(
         refId: postId,
         oncePerActorAndRef: true,
       });
+      await awardBadgeSafe(env, post.user_id, 'first_encourage_received');
     }
 
     return json({ liked: true });

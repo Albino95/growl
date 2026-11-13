@@ -27,6 +27,7 @@ import * as adminBusinessRoutes from './routes/admin/business';
 import * as adminAuditRoutes from './routes/admin/audit';
 import * as adminDashboardRoutes from './routes/admin/dashboard';
 import * as appReviewsRoutes from './routes/appReviews';
+import * as growthRoutes from './routes/growth';
 import { purgeExpiredUnverifiedUsers } from './jobs/purgeUnverifiedUsers';
 
 /**
@@ -995,6 +996,53 @@ async function handleRequest(
 
       if (path === `${apiPrefix}/admin/audit/logs` && request.method === 'GET') {
         return adminAuditRoutes.listAuditLogs(request, env);
+      }
+
+      // Growth system (docs/GROWTH_SYSTEM.md): streak, Today, badges, recap, progress, challenges, invites
+      if (path === `${apiPrefix}/me/streak` && request.method === 'GET') {
+        return growthRoutes.getMyStreak(request, env);
+      }
+      if (path === `${apiPrefix}/me/today`) {
+        if (request.method === 'GET') return growthRoutes.getToday(request, env);
+        if (request.method === 'PUT') return growthRoutes.putToday(request, env);
+      }
+      if (path === `${apiPrefix}/me/badges` && request.method === 'GET') {
+        return growthRoutes.getMyBadges(request, env);
+      }
+      if (path === `${apiPrefix}/me/badges/seen` && request.method === 'POST') {
+        return growthRoutes.markBadgesSeen(request, env);
+      }
+      if (path === `${apiPrefix}/me/recap` && request.method === 'GET') {
+        return growthRoutes.getRecap(request, env);
+      }
+      if (path === `${apiPrefix}/me/progress` && request.method === 'GET') {
+        return growthRoutes.getProgress(request, env);
+      }
+      if (path === `${apiPrefix}/me/invite` && request.method === 'GET') {
+        return growthRoutes.getMyInvite(request, env);
+      }
+      if (path === `${apiPrefix}/me/invite/redeem` && request.method === 'POST') {
+        return growthRoutes.redeemMyInvite(request, env);
+      }
+      const userBadgesMatch = path.match(new RegExp(`^${apiPrefix}/users/([^/]+)/badges$`));
+      if (userBadgesMatch && request.method === 'GET') {
+        return growthRoutes.getUserBadges(request, env, userBadgesMatch[1]);
+      }
+      const inviteLookupMatch = path.match(new RegExp(`^${apiPrefix}/invites/([^/]+)$`));
+      if (inviteLookupMatch && request.method === 'GET') {
+        return growthRoutes.lookupInvite(request, env, inviteLookupMatch[1]);
+      }
+      if (path === `${apiPrefix}/challenges` && request.method === 'GET') {
+        return growthRoutes.listChallenges(request, env);
+      }
+      const challengeJoinMatch = path.match(new RegExp(`^${apiPrefix}/challenges/([^/]+)/join$`));
+      if (challengeJoinMatch) {
+        if (request.method === 'POST') return growthRoutes.joinChallenge(request, env, challengeJoinMatch[1]);
+        if (request.method === 'DELETE') return growthRoutes.leaveChallenge(request, env, challengeJoinMatch[1]);
+      }
+      const challengeMatch = path.match(new RegExp(`^${apiPrefix}/challenges/([^/]+)$`));
+      if (challengeMatch && request.method === 'GET') {
+        return growthRoutes.getChallengeDetail(request, env, challengeMatch[1]);
       }
 
       // Health check / ping endpoint

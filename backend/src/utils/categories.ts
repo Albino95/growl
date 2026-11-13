@@ -71,3 +71,33 @@ export function categoryRelevanceScore(
   }
   return score;
 }
+
+/** Top-level growth paths (mirrors frontend/src/data/categories.ts keys). */
+export const GROWTH_PATHS = [
+  'fitness',
+  'art',
+  'nutrition',
+  'mindset',
+  'discipline',
+  'martial-arts',
+  'language',
+  'coding',
+  'sustainability',
+  'wellness',
+  'finance',
+] as const;
+
+export type GrowthPath = (typeof GROWTH_PATHS)[number];
+
+const GROWTH_PATH_SET = new Set<string>(GROWTH_PATHS);
+
+/** True for a known top-level path, or "path:sub" whose top level is known. */
+export function isKnownGrowthPath(p: unknown): boolean {
+  if (typeof p !== 'string') return false;
+  const s = p.trim().toLowerCase();
+  if (!s || s.length > 80) return false;
+  const i = s.indexOf(':');
+  const top = i > 0 ? s.slice(0, i) : s;
+  if (!GROWTH_PATH_SET.has(top)) return false;
+  return i < 0 || /^[a-z0-9-]+$/.test(s.slice(i + 1));
+}

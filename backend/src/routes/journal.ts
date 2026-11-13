@@ -8,6 +8,8 @@ import {
   updateJournalEntrySchema,
 } from '../utils/validation';
 import { getFriendUserIds } from './friends';
+import { recordActivity } from '../utils/activity';
+import { awardBadgeSafe } from '../utils/badges';
 
 type JournalRow = {
   id: string;
@@ -166,7 +168,8 @@ export async function createJournalEntry(request: Request, env: Env): Promise<Re
       return error('DATABASE_ERROR', 'Failed to create journal entry', 500);
     }
 
-    return json(formatJournalEntry(row), 201);
+    const growth = await recordActivity(env, ctx.userId, 'journal');
+    return json({ ...formatJournalEntry(row), new_badges: growth.newBadges }, 201);
   } catch (err) {
     console.error('[createJournalEntry]', err);
     return error('DATABASE_ERROR', 'Failed to create journal entry', 500);
@@ -533,6 +536,7 @@ export async function feelJournalEntry(
       )
         .bind(generateId('jfeel'), entryId, ctx.userId)
         .run();
+      await awardBadgeSafe(env, entry.user_id, 'first_encourage_received');
     }
 
     return json({ ok: true, entryId, feltThis: true });

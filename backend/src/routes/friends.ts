@@ -4,6 +4,7 @@ import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
 import { usernameSearchRank } from '../utils/usernameSearch';
 import { createUserNotification, resolveUsername } from '../utils/notifications';
+import { awardBadgeSafe } from '../utils/badges';
 
 /** Normalize onboarding paths like art:violin → cohort keys include leaf + parent (art). */
 export function expandCohortKeys(paths: string[]): Set<string> {
@@ -723,6 +724,8 @@ export async function addFriend(request: Request, env: Env): Promise<Response> {
         .bind(targetUserId, ctx.userId)
         .run();
       await ensureBidirectionalFriend(env, ctx.userId, targetUserId, 'manual');
+      await awardBadgeSafe(env, ctx.userId, 'first_friend');
+      await awardBadgeSafe(env, targetUserId, 'first_friend');
       const accepterName = await resolveUsername(env, ctx.userId);
       await createUserNotification(env, {
         userId: targetUserId,

@@ -104,3 +104,37 @@ CREATE TABLE user_notifications (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
+
+/**
+ * Full production schema: every migration in order (also proves the chain applies
+ * cleanly on a fresh SQLite). `upTo` stops before the named migration file.
+ */
+export function loadMigrationsSql(opts: { upTo?: string; only?: string } = {}): string {
+  const req = createRequire(import.meta.url);
+  const fs = req('node:fs') as typeof import('node:fs');
+  const path = req('node:path') as typeof import('node:path');
+  const dir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../migrations');
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .filter((f) => (opts.only ? f === opts.only : !opts.upTo || f < opts.upTo))
+    .map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))
+    .join('\n');
+}
+
+/** Wraps a D1 stand-in and records the largest number of bound params seen. */
+export function trackParams<T extends { prepare: (sql: string) => any }>(d1: T) {
+  const stats = { maxParams: 0, maxSql: '' };
+  const wrap = (stmt: any, sql: string): any => ({
+    ...stmt,
+    bind: (...args: unknown[]) => {
+      if (args.length > stats.maxParams) {
+        stats.maxParams = args.length;
+        stats.maxSql = sql;
+      }
+      return wrap(stmt.bind(...args), sql);
+    },
+  });
+  return { d1: { prepare: (sql: string) => wrap(d1.prepare(sql), sql) }, stats };
+}

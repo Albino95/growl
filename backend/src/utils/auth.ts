@@ -1,5 +1,6 @@
 import { RequestContext, User } from '../types';
 import { verifyAccessToken } from './jwt';
+import { isValidTimeZone } from './days';
 
 // Verified user id per Request, so the router's write limiter and the handler's
 // getRequestContext don't both verify the same JWT.
@@ -66,11 +67,29 @@ export async function getRequestContext(request: Request, env: any): Promise<Req
     return { isAuthenticated: false };
   }
 
+  await syncTimezone(request, env, user as User & { timezone?: string });
+
   return {
     userId,
     user: user as User,
     isAuthenticated: true,
   };
+}
+
+/**
+ * Growth system: the app sends `X-Timezone: <IANA>` on every request. Store it when
+ * valid and different from the loaded row — no extra query when unchanged.
+ */
+async function syncTimezone(request: Request, env: any, user: User & { timezone?: string }): Promise<void> {
+  const tz = request.headers.get('X-Timezone')?.trim();
+  if (!tz || typeof user.timezone !== 'string' || user.timezone === tz) return;
+  if (!isValidTimeZone(tz)) return;
+  try {
+    await env.DB.prepare('UPDATE users SET timezone = ? WHERE id = ?').bind(tz, user.id).run();
+    user.timezone = tz;
+  } catch (err) {
+    console.error('[auth] timezone update failed', err);
+  }
 }
 
 export function userAuthPayload(user: User) {

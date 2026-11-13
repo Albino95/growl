@@ -18,6 +18,9 @@ export type NotificationType =
   | 'coaching_homework'
   | 'app_review'
   | 'app_review_reply'
+  | 'badge_earned'
+  | 'challenge_completed'
+  | 'invite_joined'
   | 'system';
 
 function parseUsername(metadata: string | null | undefined): string {

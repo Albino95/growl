@@ -9,7 +9,14 @@ import { error } from './response';
  * Generous for real use; checked in the router before the handler runs.
  * Paths are relative to the API prefix (e.g. /api/v1).
  */
-type WriteLimit = { name: string; pattern: RegExp; limit: number; windowSeconds: number };
+type WriteLimit = {
+  name: string;
+  pattern: RegExp;
+  limit: number;
+  windowSeconds: number;
+  /** Methods this rule applies to (default POST only). */
+  methods?: string[];
+};
 
 export const WRITE_LIMITS: WriteLimit[] = [
   { name: 'message', pattern: /^\/messages\/conversations(\/[^/]+\/messages(\/[^/]+\/reaction)?)?$/, limit: 60, windowSeconds: 300 },
@@ -30,11 +37,25 @@ export const WRITE_LIMITS: WriteLimit[] = [
   },
   { name: 'seed-invite', pattern: /^\/seeds\/[^/]+\/invite$/, limit: 30, windowSeconds: 3600 },
   { name: 'app-review-reply', pattern: /^\/app-reviews\/[^/]+\/reply$/, limit: 30, windowSeconds: 3600 },
+  // Growth system
+  { name: 'checkin', pattern: /^\/me\/today$/, limit: 30, windowSeconds: 3600, methods: ['PUT'] },
+  { name: 'invite-redeem', pattern: /^\/me\/invite\/redeem$/, limit: 10, windowSeconds: 3600 },
+  {
+    name: 'challenge-join',
+    pattern: /^\/challenges\/[^/]+\/join$/,
+    limit: 30,
+    windowSeconds: 3600,
+    methods: ['POST', 'DELETE'],
+  },
+  { name: 'badges-seen', pattern: /^\/me\/badges\/seen$/, limit: 60, windowSeconds: 3600 },
 ];
 
 export function matchWriteLimit(method: string, relativePath: string): WriteLimit | null {
-  if (method !== 'POST') return null;
-  return WRITE_LIMITS.find((l) => l.pattern.test(relativePath)) ?? null;
+  return (
+    WRITE_LIMITS.find(
+      (l) => (l.methods ?? ['POST']).includes(method) && l.pattern.test(relativePath)
+    ) ?? null
+  );
 }
 
 /** Returns a 429 response when the caller is over the limit for this route, else null. */

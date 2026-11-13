@@ -9,7 +9,8 @@ import {
   countUserPosts,
   resolveUserCategories,
 } from '../utils/instructorEligibility';
-import { countEndorsementsGiven, computePostStreak } from '../utils/points';
+import { countEndorsementsGiven } from '../utils/points';
+import { getStreakState } from '../utils/activity';
 import {
   countCompletedPlans,
   getOffering,
@@ -197,7 +198,13 @@ export async function getProfile(request: Request, env: Env): Promise<Response> 
 
   const [endorsementsGiven, streakDays] = await Promise.all([
     countEndorsementsGiven(env, ctx.userId),
-    computePostStreak(env, ctx.userId),
+    // Unified growth streak (current), kept as streak_days for older app builds.
+    getStreakState(env, ctx.userId)
+      .then((s) => s?.state.current ?? 0)
+      .catch((err) => {
+        console.error('[getProfile] streak failed:', err);
+        return 0;
+      }),
   ]);
 
   const postCount = instructor?.postCount ?? (await countUserPosts(env, ctx.userId));

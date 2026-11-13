@@ -5,6 +5,7 @@ import { generateId } from '../utils/id';
 import { validateRequest } from '../utils/validation';
 import { z } from 'zod';
 import { isBlocked } from './friends';
+import { recordActivity } from '../utils/activity';
 
 const createStorySchema = z.object({
   image_url: z
@@ -253,6 +254,8 @@ export async function createStory(request: Request, env: Env): Promise<Response>
       .bind(storyId, ctx.userId, image_url, caption || null, expiresAt.toISOString())
       .run();
 
+    const growth = await recordActivity(env, ctx.userId, 'story');
+
     return json(
       {
         id: storyId,
@@ -261,6 +264,7 @@ export async function createStory(request: Request, env: Env): Promise<Response>
         caption,
         views: 0,
         createdAt: new Date().toISOString(),
+        new_badges: growth.newBadges,
       },
       201
     );

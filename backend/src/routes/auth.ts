@@ -21,6 +21,7 @@ import {
 } from '../utils/password';
 import { getAccountRestriction, getRequestContext, userAuthPayload } from '../utils/auth';
 import { generateId } from '../utils/id';
+import { normalizeInviteCode, redeemPendingSignupInvite } from '../utils/invites';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { verifyAppleIdToken } from '../utils/appleAuth';
 import { checkRateLimit, clientIp } from '../utils/rateLimit';
@@ -154,7 +155,8 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
     const validation = await validateRequest(request, signUpSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password, passwordHash, username } = validation.data;
+    const { email, password, passwordHash, username, invite_code } = validation.data;
+    const pendingInviteCode = normalizeInviteCode(invite_code);
     const normalizedEmail = email.trim().toLowerCase();
 
     const existingUser = await env.DB.prepare(
@@ -190,6 +192,14 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
         )
           .bind(passwordHashToStore, tokenHash, existingUser.id)
           .run();
+        if (pendingInviteCode) {
+          await env.DB.prepare(
+            `UPDATE users SET metadata = json_set(COALESCE(metadata, '{}'), '$.pending_invite_code', ?)
+             WHERE id = ? AND COALESCE(email_verified, 0) = 0`
+          )
+            .bind(pendingInviteCode, existingUser.id)
+            .run();
+        }
 
         const mailError = await sendPendingVerification(env, normalizedEmail, verifyToken);
         if (mailError) return mailError;
@@ -213,6 +223,8 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
       timePreferences: [],
       blockedUsers: [],
       mutedUsers: [],
+      // Redeemed once the email is verified (growth system invites).
+      ...(pendingInviteCode ? { pending_invite_code: pendingInviteCode } : {}),
     };
 
     await env.DB.prepare(
@@ -316,6 +328,8 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
   )
     .bind(user.id)
     .run();
+
+  await redeemPendingSignupInvite(env, user.id);
 
   return json({ verified: true, message: 'Email verified. You can sign in now.' });
 }

@@ -43,6 +43,8 @@ export const signUpSchema = z
     password: strongPasswordSchema.optional(),
     passwordHash: clientPasswordHashSchema.optional(),
     username: z.string().min(3, 'Username must be at least 3 characters').max(32).optional(),
+    /** Optional invite code (growth system); redeemed after email verification. */
+    invite_code: z.string().trim().max(32).optional(),
   })
   .refine((data) => !!data.password || !!data.passwordHash, {
     message: 'password or passwordHash is required',
@@ -538,6 +540,26 @@ export const reactToMessageSchema = z.object({
 /**
  * Validate request body against a schema
  */
+// ---- Growth system (docs/GROWTH_SYSTEM.md) ----
+
+/** PUT /me/today — partial update merged with the day's existing check-in. */
+export const todayCheckinSchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'day must be YYYY-MM-DD'),
+  mood: z.number().int().min(1).max(5).nullable().optional(),
+  path: z.string().trim().max(80).nullable().optional(),
+  intention: z.string().trim().max(140, 'Keep your intention under 140 characters').nullable().optional(),
+  rest: z.boolean().optional(),
+  followup: z.enum(['yes', 'partly', 'no']).nullable().optional(),
+});
+
+export const badgesSeenSchema = z.object({
+  ids: z.array(z.string().trim().min(1).max(64)).max(50),
+});
+
+export const inviteRedeemSchema = z.object({
+  code: z.string().trim().min(1, 'Invite code is required').max(32),
+});
+
 export async function validateRequest<T>(
   request: Request,
   schema: z.ZodSchema<T>

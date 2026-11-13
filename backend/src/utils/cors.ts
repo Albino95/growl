@@ -1,7 +1,7 @@
 import { Env } from '../types';
 
 const DEFAULT_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
-const DEFAULT_HEADERS = 'Content-Type, Authorization';
+const DEFAULT_HEADERS = 'Content-Type, Authorization, X-Timezone';
 
 /**
  * Resolve Access-Control-Allow-Origin from CORS_ORIGINS (comma-separated).

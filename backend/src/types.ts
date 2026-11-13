@@ -41,6 +41,9 @@ export interface User {
   email_verified?: number;
   email_verification_token_hash?: string | null;
   email_verification_expires_at?: string | null;
+  /** IANA timezone for the growth system's local day (default 'UTC'). */
+  timezone?: string;
+  invite_code?: string | null;
   created_at: string;
   updated_at: string;
 }
