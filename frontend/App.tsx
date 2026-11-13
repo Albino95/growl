@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
+import { Animated, Easing, Linking, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { Provider } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
@@ -11,7 +11,7 @@ import RootNavigator from './src/app/navigation/RootNavigator';
 import { useAppDispatch, useAppSelector } from './src/store/store';
 import { hydrateAuth, signOut } from './src/store/slices/authSlice';
 import BrandLoadingScreen from './src/components/common/BrandLoadingScreen';
-import { markBootSplashDone } from './src/components/auth/bootSplashSignal';
+import { markBootSplashDone, onBootRevealStart } from './src/components/auth/bootSplashSignal';
 import { theme } from './src/lib/tw';
 import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
@@ -25,6 +25,17 @@ import {
 } from './src/app/navigation/navigationRef';
 import { setBadgesEarnedHandler, setSessionExpiredHandler } from './src/services/api/http';
 import { useGrowthStore } from './src/state/useGrowthStore';
+
+// Hold the native splash (brand mark on emerald) until BrandLoadingScreen has
+// painted the same mark at the same rect. First thing at module scope, before
+// anything else can yield to the native side; Sentry init follows immediately.
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
+try {
+  // Short native crossfade so the handoff is invisible even if a frame differs.
+  SplashScreen.setOptions({ duration: 150, fade: true });
+} catch {
+  // Older native module without setOptions: default hide is fine.
+}
 
 initMonitoring();
 
@@ -41,9 +52,6 @@ setSessionExpiredHandler(() => {
   if (!store.getState().auth.token) return;
   void store.dispatch(signOut()).finally(() => resetToAuth());
 });
-
-// Keep native splash (solid emerald) up until BrandLoadingScreen is painted.
-SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 // Start reading `grow.firstOpenSeen` now (non-blocking) so the splash can pick
 // daily vs first-launch within its 100ms budget.
@@ -77,23 +85,47 @@ function AppContent() {
     return () => sub.remove();
   }, []);
 
-  const onLoaderLayout = useCallback(() => {
-    SplashScreen.hideAsync().catch(() => undefined);
+  // Native splash goes only once the JS mark has loaded at the native rect
+  // (both layers onLoadEnd + layout) — never merely on layout or on `hydrated`,
+  // either of which can beat the mark's first paint and flash emerald.
+  const onBootMarkPainted = useCallback(() => {
+    requestAnimationFrame(() => {
+      SplashScreen.hideAsync().catch(() => undefined);
+    });
   }, []);
 
-  useEffect(() => {
-    if (hydrated) {
-      SplashScreen.hideAsync().catch(() => undefined);
-    }
-  }, [hydrated]);
+  // The app underneath settles 1.03 → 1 while the splash blooms off it.
+  const navScale = useRef(new Animated.Value(1.03)).current;
+  const [navSettled, setNavSettled] = useState(false);
+  useEffect(
+    () =>
+      onBootRevealStart(({ animate }) => {
+        if (!animate) {
+          navScale.setValue(1);
+          setNavSettled(true);
+          return;
+        }
+        Animated.timing(navScale, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start(() => setNavSettled(true));
+      }),
+    [navScale],
+  );
 
   return (
     <View style={styles.root}>
       {hydrated ? (
-        <NavigationContainer key={token || 'no-token'} ref={navigationRef} linking={linking}>
-          <StatusBar style="auto" />
-          <RootNavigator />
-        </NavigationContainer>
+        <Animated.View
+          style={[styles.nav, navSettled ? null : { transform: [{ scale: navScale }] }]}
+        >
+          <NavigationContainer key={token || 'no-token'} ref={navigationRef} linking={linking}>
+            <StatusBar style="auto" />
+            <RootNavigator />
+          </NavigationContainer>
+        </Animated.View>
       ) : (
         <View style={styles.hold} />
       )}
@@ -111,7 +143,7 @@ function AppContent() {
               setBootDone(true);
               markBootSplashDone();
             }}
-            onLayout={onLoaderLayout}
+            onMarkPainted={onBootMarkPainted}
           />
         </View>
       ) : null}
@@ -122,6 +154,7 @@ function AppContent() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#049669' },
   hold: { flex: 1, backgroundColor: '#049669' },
+  nav: { flex: 1 },
   splash: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 50,
@@ -131,7 +164,7 @@ const styles = StyleSheet.create({
 
 export default function App() {
   useEffect(() => {
-    // Safety: if JS hangs, still drop the native emerald splash.
+    // Safety: if the mark never reports loaded, still drop the native splash.
     const t = setTimeout(() => {
       SplashScreen.hideAsync().catch(() => undefined);
     }, 2500);

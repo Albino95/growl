@@ -24,10 +24,21 @@ const defineConfig = (): ExpoConfig => ({
   icon: './assets/icon.png',
   scheme: 'growl',
   userInterfaceStyle: 'light',
-  // Native cold-start: solid emerald only — animated BrandLoadingScreen takes over in JS.
+  // Native cold-start: the brand mark (cream leaf + smile, transparent) centred
+  // at 128pt on emerald. BrandLoadingScreen draws the same mark at the same rect
+  // (centre of the full window, 128×128) so the JS handoff is seamless.
+  // Must stay in sync with the expo-splash-screen plugin block below.
   splash: {
-    image: './assets/splash.png',
-    resizeMode: 'cover',
+    image: './assets/splash-mark.png',
+    imageWidth: 128,
+    resizeMode: 'contain',
+    backgroundColor: '#049669',
+  },
+  // Launch with light icons over the emerald splash; expo-status-bar takes over in JS.
+  // backgroundColor is what the splash plugin already injects (it copies
+  // splash.backgroundColor and warns on a mismatch) — stated here so it's explicit.
+  androidStatusBar: {
+    barStyle: 'light-content',
     backgroundColor: '#049669',
   },
   updates: {
@@ -40,6 +51,8 @@ const defineConfig = (): ExpoConfig => ({
     buildNumber: '2',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // Light status bar over the emerald launch screen (JS switches it at reveal).
+      UIStatusBarStyle: 'UIStatusBarStyleLightContent',
       NSCameraUsageDescription: CAMERA_PERMISSION,
       NSPhotoLibraryUsageDescription: PHOTOS_PERMISSION,
       NSPhotoLibraryAddUsageDescription: PHOTOS_ADD_PERMISSION,
@@ -99,8 +112,9 @@ const defineConfig = (): ExpoConfig => ({
       'expo-splash-screen',
       {
         backgroundColor: '#049669',
-        image: './assets/splash.png',
-        resizeMode: 'cover',
+        image: './assets/splash-mark.png',
+        imageWidth: 128,
+        resizeMode: 'contain',
       },
     ],
     [
