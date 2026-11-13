@@ -500,7 +500,8 @@ export default function StoryViewerScreen() {
           <PressableScale
             style={tw`bg-white/20 rounded-chip px-6 py-3 flex-row items-center`}
             onPress={() => {
-              if (!likedIds[currentStory.id]) haptic('tapLight');
+              // Stories hold the audio session, so this is haptic-only in practice.
+              haptic(likedIds[currentStory.id] ? 'unlike' : 'like');
               setLikedIds((prev) => ({
                 ...prev,
                 [currentStory.id]: !prev[currentStory.id],

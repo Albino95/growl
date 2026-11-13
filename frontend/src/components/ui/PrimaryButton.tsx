@@ -26,8 +26,12 @@ type Props = {
   success?: boolean;
   variant?: 'solid' | 'soft' | 'ghost';
   accessibilityLabel?: string;
-  /** Haptic on press for state-changing actions (default: silent). */
-  feedback?: FeedbackKind;
+  /**
+   * Feedback on press. Default: 'commit' (light tap + commit tone) for the
+   * solid primary variant, a silent selection tick for soft / ghost. Pass a
+   * kind to override, or `false` for none (e.g. when onPress fires its own).
+   */
+  feedback?: FeedbackKind | false;
 };
 
 const CROSSFADE_MS = 120;
@@ -55,7 +59,9 @@ function PrimaryButton({
   feedback: feedbackKind,
 }: Props) {
   const isDisabled = !!disabled || !!loading || !!success;
-  const feedback = usePressFeedback({ onPress, disabled: isDisabled, kind: feedbackKind });
+  const kind: FeedbackKind | undefined =
+    feedbackKind === false ? undefined : (feedbackKind ?? (variant === 'solid' ? 'commit' : 'selection'));
+  const feedback = usePressFeedback({ onPress, disabled: isDisabled, kind });
   const baseVariant =
     variant === 'soft'
       ? tw`bg-brand-50 border border-brand-200`

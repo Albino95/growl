@@ -755,7 +755,7 @@ export default function InstructorScreen({ navigation }: any) {
           <PressableScale
             key={tab.key}
             onPress={() => setActiveTab(tab.key)}
-            feedback="select"
+            feedback={activeTab === tab.key ? 'selection' : 'chip'}
             style={tw`mr-5 pb-2.5 border-b-2 ${
               activeTab === tab.key ? 'border-emerald-600' : 'border-transparent'
             }`}

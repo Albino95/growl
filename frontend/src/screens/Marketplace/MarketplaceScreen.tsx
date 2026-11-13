@@ -32,7 +32,7 @@ import { horizontalScrollProps, feedListPerformanceProps } from '../../constants
 import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import CATEGORIES from '../../data/categories';
 import { getCategoryLabel } from '../../utils/categoryLabels';
-import { feedback } from '../../utils/interactionFeedback';
+import { feedback, toggleFeedback } from '../../utils/interactionFeedback';
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
@@ -537,7 +537,7 @@ export default function MarketplaceScreen() {
                 <Switch
                   value={inStockOnly}
                   onValueChange={(v) => {
-                    feedback.toggle();
+                    toggleFeedback(v);
                     setInStockOnly(v);
                   }}
                   trackColor={{ false: theme.colors.line, true: tw.color('emerald-200') }}
@@ -553,7 +553,7 @@ export default function MarketplaceScreen() {
                 <Switch
                   value={onMyPathsOnly}
                   onValueChange={(v) => {
-                    feedback.toggle();
+                    toggleFeedback(v);
                     setOnMyPathsOnly(v);
                   }}
                   trackColor={{ false: theme.colors.line, true: tw.color('emerald-200') }}

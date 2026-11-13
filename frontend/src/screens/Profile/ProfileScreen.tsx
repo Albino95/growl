@@ -1006,6 +1006,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               return (
                 <PressableScale
                   key={tab.key}
+                  feedback={active ? 'selection' : 'chip'}
                   onPress={() => {
                     if (tab.key === 'progress') setProgressOpened(true);
                     setActiveTab(tab.key);

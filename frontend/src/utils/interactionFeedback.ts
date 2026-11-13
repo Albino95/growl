@@ -3,23 +3,38 @@ import type { AudioPlayer } from 'expo-audio';
 import { uiPrefsReadiness, useUiPrefsStore } from '../state/useUiPrefsStore';
 import {
   createHapticGate,
+  createTapSoundLimiter,
+  createVariantPicker,
   feedbackConfig,
+  isTapSound,
   playHapticChannel,
+  runHapticSequence,
   runWhenReady,
+  soundAllowed,
+  tapGainJitter,
+  webLowpassHz,
+  HAPTIC_SEQUENCES,
   PREFS_HYDRATION_WAIT_MS,
   SOUND_KEYS,
+  TAP_SOUND_KEYS,
+  TAP_SOUND_VARIANTS,
+  WEB_SOUND_CLICK,
   WEB_SOUND_NOTES,
   type FeedbackKind,
   type HapticChannel,
+  type HapticSequenceName,
   type HapticsModule,
   type ReadinessSource,
   type SoundKey,
+  type SoundLevel,
+  type TapSoundKey,
+  type UiSoundKey,
 } from '../theme/hapticsCore';
 
-export type { FeedbackKind, SoundKey } from '../theme/hapticsCore';
+export type { FeedbackKind, SoundKey, SoundLevel, TapSoundKey, UiSoundKey } from '../theme/hapticsCore';
 
 /** Resolved channel + sound for a kind (exported for tests / debugging). */
-export function describeFeedback(kind: FeedbackKind): { haptic: HapticChannel; sound: SoundKey | null } {
+export function describeFeedback(kind: FeedbackKind): { haptic: HapticChannel; sound: UiSoundKey | null } {
   const cfg = feedbackConfig(kind);
   return { haptic: cfg.haptic, sound: cfg.sound ?? null };
 }
@@ -42,8 +57,73 @@ const SOUND_MODULES: Record<SoundKey, number> = {
   softError: require('../../assets/sounds/soft-error.wav'),
 };
 
-/** Files are mastered at -6 dBFS peak (send -12, soft-error -14); this is the master UI level. */
+/* eslint-disable @typescript-eslint/no-require-imports */
+/** Tap tier: three rendered variants per sound (tap-<name>-1..3.wav). */
+const TAP_SOUND_MODULES: Record<TapSoundKey, readonly number[]> = {
+  tapToggleOn: [
+    require('../../assets/sounds/tap-toggle-on-1.wav'),
+    require('../../assets/sounds/tap-toggle-on-2.wav'),
+    require('../../assets/sounds/tap-toggle-on-3.wav'),
+  ],
+  tapToggleOff: [
+    require('../../assets/sounds/tap-toggle-off-1.wav'),
+    require('../../assets/sounds/tap-toggle-off-2.wav'),
+    require('../../assets/sounds/tap-toggle-off-3.wav'),
+  ],
+  tapTab: [
+    require('../../assets/sounds/tap-tab-1.wav'),
+    require('../../assets/sounds/tap-tab-2.wav'),
+    require('../../assets/sounds/tap-tab-3.wav'),
+  ],
+  tapChip: [
+    require('../../assets/sounds/tap-chip-1.wav'),
+    require('../../assets/sounds/tap-chip-2.wav'),
+    require('../../assets/sounds/tap-chip-3.wav'),
+  ],
+  tapCommit: [
+    require('../../assets/sounds/tap-commit-1.wav'),
+    require('../../assets/sounds/tap-commit-2.wav'),
+    require('../../assets/sounds/tap-commit-3.wav'),
+  ],
+  tapLike: [
+    require('../../assets/sounds/tap-like-1.wav'),
+    require('../../assets/sounds/tap-like-2.wav'),
+    require('../../assets/sounds/tap-like-3.wav'),
+  ],
+  tapRefresh: [
+    require('../../assets/sounds/tap-refresh-1.wav'),
+    require('../../assets/sounds/tap-refresh-2.wav'),
+    require('../../assets/sounds/tap-refresh-3.wav'),
+  ],
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+/**
+ * Files are mastered at -6 dBFS peak (send -12, soft-error -14; taps -16 to
+ * -26); this is the master UI level, applied to both tiers.
+ */
 const UI_SOUND_VOLUME = 0.45;
+
+/** A native player id: a signature key, or `<tapKey>#<variant>`. */
+type PlayerId = string;
+
+function playerModule(id: PlayerId): number {
+  const hash = id.indexOf('#');
+  if (hash < 0) return SOUND_MODULES[id as SoundKey];
+  const key = id.slice(0, hash) as TapSoundKey;
+  return TAP_SOUND_MODULES[key][Number(id.slice(hash + 1))];
+}
+
+function tapPlayerId(key: TapSoundKey, variant: number): PlayerId {
+  return `${key}#${variant}`;
+}
+
+function currentSoundLevel(): SoundLevel {
+  return useUiPrefsStore.getState().soundLevel;
+}
+
+const tapLimiter = createTapSoundLimiter();
+const variantPicker = createVariantPicker(TAP_SOUND_VARIANTS);
 
 let webAudioCtx: AudioContext | null = null;
 let audioModeReady = false;
@@ -57,12 +137,14 @@ function getAudio(): typeof import('expo-audio') {
   }
   return audioModule;
 }
-const nativeSounds = new Map<string, AudioPlayer>();
-const nativeLoading = new Map<string, Promise<AudioPlayer | null>>();
+const nativeSounds = new Map<PlayerId, AudioPlayer>();
+const nativeLoading = new Map<PlayerId, Promise<AudioPlayer | null>>();
 /** Camera / ImagePicker hand the audio session back in a bad state on iOS — skip sounds briefly. */
 let hushNativeUntil = 0;
-/** Set once the lazy preload has been queued (reset when UI audio is released). */
+/** Set while a lazy preload is queued / running (reset when UI audio is released). */
 let preloadScheduled = false;
+/** Sound level the warm-up last covered (Full warms more players than Subtle). */
+let preloadedLevel: SoundLevel | null = null;
 
 function disposePlayer(player: AudioPlayer): void {
   try {
@@ -82,6 +164,7 @@ function disposeAllNativeSounds(): void {
   nativeSounds.clear();
   nativeLoading.clear();
   preloadScheduled = false;
+  preloadedLevel = null;
 }
 
 /** Mute UI sounds for a moment (e.g. right after camera). Haptics still fire. */
@@ -118,7 +201,7 @@ try {
 }
 
 /** Web fallback: soft sine plucks (plus a lowpass) approximating the WAV notes. */
-function playWebSound(key: SoundKey) {
+function playWebSound(key: UiSoundKey) {
   if (typeof window === 'undefined') return;
   const AudioCtx =
     window.AudioContext ||
@@ -128,23 +211,28 @@ function playWebSound(key: SoundKey) {
     webAudioCtx = webAudioCtx || new AudioCtx();
     const ctx = webAudioCtx;
     if (ctx.state === 'suspended') void ctx.resume();
+    const tap = isTapSound(key);
+    // Taps: ±12 cents and ±1.5 dB per play, like the rendered native variants.
+    const detune = tap ? Math.pow(2, ((Math.random() * 2 - 1) * 12) / 1200) : 1;
+    const gainScale = tap ? tapGainJitter() : 1;
     const out = ctx.createBiquadFilter();
     out.type = 'lowpass';
-    out.frequency.value = key === 'softError' ? 1500 : 6000;
+    out.frequency.value = webLowpassHz(key);
     out.connect(ctx.destination);
     const base = ctx.currentTime;
-    if (key === 'seedpop') {
-      // 15 ms filtered-noise pop before the pluck.
-      const len = Math.floor(ctx.sampleRate * 0.015);
+    const click = WEB_SOUND_CLICK[key];
+    if (click) {
+      // Short band-passed noise click before the pluck.
+      const len = Math.max(8, Math.floor(ctx.sampleRate * (click.ms / 1000)));
       const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len / 4));
       const src = ctx.createBufferSource();
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.value = 1800;
+      bp.frequency.value = click.hz;
       const g = ctx.createGain();
-      g.gain.value = 0.02;
+      g.gain.value = click.vol * gainScale;
       src.buffer = buffer;
       src.connect(bp);
       bp.connect(g);
@@ -157,9 +245,9 @@ function playWebSound(key: SoundKey) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(note.f, t0);
+      osc.frequency.setValueAtTime(note.f * detune, t0);
       gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.linearRampToValueAtTime(note.vol ?? 0.03, t0 + 0.003);
+      gain.gain.linearRampToValueAtTime((note.vol ?? 0.03) * gainScale, t0 + (tap ? 0.0015 : 0.003));
       gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       osc.connect(gain);
       gain.connect(out);
@@ -209,7 +297,7 @@ function whenPlayerLoaded(player: AudioPlayer): Promise<AudioPlayer> {
   });
 }
 
-async function getNativeSound(key: SoundKey): Promise<AudioPlayer | null> {
+async function getNativeSound(key: PlayerId): Promise<AudioPlayer | null> {
   const cached = nativeSounds.get(key);
   if (cached) return cached;
   const inflight = nativeLoading.get(key);
@@ -220,7 +308,7 @@ async function getNativeSound(key: SoundKey): Promise<AudioPlayer | null> {
       await ensureAudioMode();
       // Reels/stories may have locked UI audio while the mode was applied.
       if (Date.now() < hushNativeUntil) return null;
-      const player = getAudio().createAudioPlayer(SOUND_MODULES[key]);
+      const player = getAudio().createAudioPlayer(playerModule(key));
       player.volume = UI_SOUND_VOLUME;
       // Rewind as soon as a play ends, so the next play() starts instantly
       // without waiting on a seek.
@@ -277,17 +365,23 @@ function startPlayer(player: AudioPlayer): void {
   }
 }
 
-function playNativeSound(key: SoundKey): void {
+function playNativeSound(id: PlayerId, volume = UI_SOUND_VOLUME): void {
   if (Date.now() < hushNativeUntil) return;
-  const cached = nativeSounds.get(key);
+  const cached = nativeSounds.get(id);
   if (cached) {
+    try {
+      if (cached.volume !== volume) cached.volume = volume;
+    } catch {
+      /* released player */
+    }
     startPlayer(cached);
     return;
   }
   void (async () => {
     try {
-      const player = await withTimeout(getNativeSound(key), 400);
+      const player = await withTimeout(getNativeSound(id), 400);
       if (!player || Date.now() < hushNativeUntil) return;
+      player.volume = volume;
       // play() before the file is buffered is fine: playback starts when ready.
       startPlayer(player);
     } catch {
@@ -297,28 +391,64 @@ function playNativeSound(key: SoundKey): void {
 }
 
 /**
- * Warm the five UI sounds after the first interaction settles (never at cold
- * start). Skipped on web, when sounds are off, or while UI audio is hushed.
+ * Route a UI sound to its player. Tap sounds pick a random variant (never the
+ * same one twice in a row) with ±1.5 dB gain jitter; signature sounds play
+ * their single file at the master level.
+ */
+function playUiSound(key: UiSoundKey): void {
+  if (Platform.OS === 'web') {
+    playWebSound(key);
+    return;
+  }
+  if (isTapSound(key)) {
+    const variant = variantPicker.next(key);
+    playNativeSound(tapPlayerId(key, variant), UI_SOUND_VOLUME * tapGainJitter());
+    return;
+  }
+  playNativeSound(key);
+}
+
+/** Player ids worth warming for a level: signature five, then that level's taps. */
+function preloadIds(level: SoundLevel): PlayerId[] {
+  const ids: PlayerId[] = [...SOUND_KEYS];
+  for (const key of TAP_SOUND_KEYS) {
+    if (!soundAllowed(level, key)) continue;
+    for (let v = 0; v < TAP_SOUND_VARIANTS; v++) ids.push(tapPlayerId(key, v));
+  }
+  return ids;
+}
+
+/**
+ * Warm the UI sounds after the first interaction settles (never at cold
+ * start): signature sounds first, then the tap variants the current Sounds
+ * level can play. Skipped on web, when sounds are off, or while hushed.
+ * Runs again if the level is raised (Subtle → Full) later.
  */
 function schedulePreload(): void {
   if (preloadScheduled || Platform.OS === 'web') return;
+  const level = currentSoundLevel();
+  if (level === 'off' || preloadedLevel === 'full' || preloadedLevel === level) return;
   preloadScheduled = true;
   const run = () => {
-    if (!useUiPrefsStore.getState().soundEnabled) {
+    const lvl = currentSoundLevel();
+    if (lvl === 'off' || Date.now() < hushNativeUntil) {
       preloadScheduled = false; // try again on a later interaction
       return;
     }
-    if (Date.now() < hushNativeUntil) {
-      preloadScheduled = false;
-      return;
-    }
     void (async () => {
-      for (const key of SOUND_KEYS) {
-        if (Date.now() < hushNativeUntil) break;
-        const player = await withTimeout(getNativeSound(key), 1500);
+      let complete = true;
+      for (const id of preloadIds(lvl)) {
+        if (Date.now() < hushNativeUntil) {
+          complete = false;
+          break;
+        }
+        if (nativeSounds.has(id)) continue;
+        const player = await withTimeout(getNativeSound(id), 1500);
         // Pace the warm-up: let each file buffer before opening the next.
         if (player) await withTimeout(whenPlayerLoaded(player), 1500);
       }
+      if (complete) preloadedLevel = lvl;
+      preloadScheduled = false;
     })();
   };
   try {
@@ -359,39 +489,82 @@ export function whenFeedbackReady(cb: (ready: boolean) => void, timeoutMs = PREF
   runWhenReady(prefsReadiness, () => cb(true), timeoutMs);
 }
 
+/** One running pattern per sequence name; a re-fire cancels the old one. */
+const activeSequences = new Map<HapticSequenceName, () => void>();
+
+function startHapticSequence(name: HapticSequenceName, vibrate?: number | number[]): void {
+  if (Platform.OS === 'web') return;
+  if (!Haptics) {
+    if (vibrate != null) Vibration.vibrate(vibrate);
+    return;
+  }
+  activeSequences.get(name)?.();
+  const cancel = runHapticSequence(HAPTIC_SEQUENCES[name], (channel) => void fireHaptic(channel), {
+    enabled: () => useUiPrefsStore.getState().hapticsEnabled,
+  });
+  activeSequences.set(name, cancel);
+}
+
+/** Stop any multi-step haptic still pending (e.g. on screen blur). */
+export function cancelHapticSequences(): void {
+  for (const cancel of activeSequences.values()) cancel();
+  activeSequences.clear();
+}
+
 function fireNow(kind: FeedbackKind, opts: { sound?: boolean }) {
-  const { hapticsEnabled, soundEnabled } = useUiPrefsStore.getState();
+  const { hapticsEnabled, soundLevel } = useUiPrefsStore.getState();
   const cfg = feedbackConfig(kind);
 
   // Haptic first, then the sound in the same tick (neither is awaited).
   if (hapticsEnabled && cfg.haptic !== 'none' && gate.allow(cfg.haptic)) {
-    void fireHaptic(cfg.haptic, cfg.vibrate);
+    if (cfg.sequence) startHapticSequence(cfg.sequence, cfg.vibrate);
+    else void fireHaptic(cfg.haptic, cfg.vibrate);
   }
 
-  if (!soundEnabled || !cfg.sound || opts.sound === false) return;
-
-  if (Platform.OS === 'web') {
-    playWebSound(cfg.sound);
-    return;
-  }
-  playNativeSound(cfg.sound);
-}
-
-/** Play a UI sound directly (e.g. the Settings preview). Respects hush, not the sound pref. */
-export function previewSound(key: SoundKey): void {
-  if (Platform.OS === 'web') playWebSound(key);
-  else playNativeSound(key);
+  const sound = cfg.sound;
+  if (!sound || opts.sound === false || !soundAllowed(soundLevel, sound)) return;
+  // Tap sounds: 90 ms per class / 50 ms across taps — dropped, never queued.
+  if (isTapSound(sound) && !tapLimiter.allow(sound)) return;
+  playUiSound(sound);
 }
 
 /**
- * Unified tactile + audio feedback. Respects Settings toggles (and waits for
- * them to load at app start), debounces per haptic group, and plays sounds
- * only for check-in, celebrate, shared, send and error. Never call from scroll.
+ * Play a UI sound directly (e.g. the Settings preview). Respects hush, not the
+ * sound pref or the tap rate limit.
+ */
+export function previewSound(key: UiSoundKey): void {
+  playUiSound(key);
+}
+
+/**
+ * Unified tactile + audio feedback. Respects Settings (haptics on/off, Sounds
+ * Off / Subtle / Full — and waits for them to load at app start), debounces
+ * per haptic group and rate-limits tap sounds. Never call from scroll.
  */
 export function triggerFeedback(kind: FeedbackKind = 'tap', opts: { sound?: boolean } = {}) {
   const cfg = feedbackConfig(kind);
   if (cfg.haptic === 'none' && !cfg.sound) return;
   whenFeedbackReady(() => fireNow(kind, opts));
+  schedulePreload();
+}
+
+/** Switch feedback: selection tick + toggle-on / toggle-off tap sound. */
+export function toggleFeedback(value: boolean): void {
+  triggerFeedback(value ? 'toggleOn' : 'toggleOff');
+}
+
+/**
+ * Long-press peek: soft on press-in, medium when the peek / reaction tray
+ * actually opens. Wire `pressIn` to onPressIn / long-press start and `open`
+ * to the moment the preview appears.
+ */
+export const longPressPeek = {
+  pressIn: () => triggerFeedback('longPressIn'),
+  open: () => triggerFeedback('peekOpen'),
+};
+
+/** Kick off the sound warm-up once the first screen has settled. */
+export function warmUiSoundsAfterMount(): void {
   schedulePreload();
 }
 
@@ -407,7 +580,18 @@ export const feedback = {
   tap: () => triggerFeedback('tap'),
   select: () => triggerFeedback('select'),
   tab: () => triggerFeedback('tab'),
+  chip: () => triggerFeedback('chip'),
+  toggleOn: () => triggerFeedback('toggleOn'),
+  toggleOff: () => triggerFeedback('toggleOff'),
+  switch: (value: boolean) => toggleFeedback(value),
   like: (on = true) => triggerFeedback(on ? 'like' : 'unlike'),
+  likeDoubleTap: () => triggerFeedback('likeDoubleTap'),
+  refreshThreshold: () => triggerFeedback('refreshThreshold'),
+  refreshDone: () => triggerFeedback('refreshDone'),
+  longPressIn: () => triggerFeedback('longPressIn'),
+  peekOpen: () => triggerFeedback('peekOpen'),
+  destructive: () => triggerFeedback('destructive'),
+  sheetSnap: () => triggerFeedback('sheetSnap'),
   open: () => triggerFeedback('open'),
   close: () => triggerFeedback('close'),
   success: () => triggerFeedback('success'),

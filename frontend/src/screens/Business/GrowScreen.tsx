@@ -642,6 +642,7 @@ export default function GrowScreen() {
         {(['posts', 'campaigns', 'promos', 'create'] as const).map((tab) => (
           <PressableScale
             key={tab}
+            feedback={communityTab === tab ? 'selection' : 'chip'}
             onPress={() => setCommunityTab(tab)}
             style={tw`flex-1 py-2 rounded-control ${communityTab === tab ? 'bg-card' : ''}`}
           >
@@ -1066,6 +1067,7 @@ export default function GrowScreen() {
           {(['partners', 'community'] as const).map((seg) => (
             <PressableScale
               key={seg}
+              feedback={mainSegment === seg ? 'selection' : 'chip'}
               onPress={() => setMainSegment(seg)}
               style={tw`flex-1 py-2.5 rounded-chip ${mainSegment === seg ? 'bg-card' : ''}`}
             >

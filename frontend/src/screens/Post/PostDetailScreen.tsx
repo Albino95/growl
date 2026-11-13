@@ -144,7 +144,8 @@ export default function PostDetailScreen() {
     const before = postRef.current;
     const wasLiked = !!before.hasLiked || before.reaction != null;
     const nextLiked = !wasLiked;
-    if (nextLiked) haptic('tapLight');
+    // Like = soft + like tone; unlike = light, silent.
+    haptic(nextLiked ? 'like' : 'unlike');
     setPost((prev) => ({
       ...prev,
       hasLiked: nextLiked,

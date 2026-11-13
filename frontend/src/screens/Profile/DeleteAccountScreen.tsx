@@ -137,6 +137,7 @@ export default function DeleteAccountScreen() {
               <View style={tw`flex-1`}>
                 <PrimaryButton
                   label="Delete"
+                  feedback="destructive"
                   onPress={() => void performDelete()}
                   disabled={confirmText.trim() !== 'DELETE' || deleting}
                   loading={deleting}

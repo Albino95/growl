@@ -199,7 +199,8 @@ export function ReactionPickerBar({
         <Pressable
           key={item.key}
           onPress={() => {
-            haptic('tapLight');
+            // Picking a reaction is a like: soft + like tone.
+            haptic('like');
             onPick(item.key);
           }}
           style={({ pressed }) => [

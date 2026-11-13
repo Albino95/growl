@@ -2,7 +2,10 @@ import React, { memo, useCallback } from 'react';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
-import { feedback } from '../../../utils/interactionFeedback';
+import { triggerFeedback } from '../../../utils/interactionFeedback';
+
+/** Media editors may hold a video/camera audio session: haptics only, no tap tones. */
+const SILENT = { sound: false } as const;
 
 export type EditorToolTab<T extends string = string> = {
   id: T;
@@ -74,7 +77,7 @@ function EditorToolTabsBase<T extends string>({
   const onSelect = useCallback(
     (id: string) => {
       if (id === value) return;
-      feedback.tab();
+      triggerFeedback('tab', SILENT);
       onChange(id as T);
     },
     [onChange, value]

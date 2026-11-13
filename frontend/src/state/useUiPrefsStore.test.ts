@@ -14,7 +14,7 @@ describe('useUiPrefsStore', () => {
   it('marks itself ready with defaults when rehydration fails', async () => {
     await vi.waitFor(() => expect(uiPrefsReadiness.isReady()).toBe(true));
     const s = useUiPrefsStore.getState();
-    expect(s.soundEnabled).toBe(true);
+    expect(s.soundLevel).toBe('subtle');
     expect(s.hapticsEnabled).toBe(true);
     // Light until phase 2 migrates screens and flips the default to 'system'.
     expect(s.appearance).toBe('system');

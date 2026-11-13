@@ -249,7 +249,7 @@ export default function CircleDetailScreen() {
               <PressableScale
                 onPress={() => void onJoin()}
                 disabled={busy}
-                feedback="success"
+                feedback="commit"
                 style={tw`flex-1 py-3.5 rounded-card bg-emerald-600 items-center`}
               >
                 <Text style={tw`text-white font-bold`}>Take a seat</Text>

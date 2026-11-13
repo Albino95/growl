@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import tw, { theme } from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
 import { toast } from '../../state/useToastStore';
-import { haptic } from '../../theme/haptics';
+import { toggleFeedback } from '../../theme/haptics';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import { featureFlags } from '../../constants/featureFlags';
 import {
@@ -183,8 +183,8 @@ function PrefRow({
       </View>
       <Switch
         value={value}
-        onValueChange={() => {
-          haptic('selection');
+        onValueChange={(v) => {
+          toggleFeedback(v);
           onToggle();
         }}
         disabled={disabled}

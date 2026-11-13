@@ -128,6 +128,7 @@ export default function JournalComposeModal({
           <PressableScale
             onPress={submit}
             disabled={!content.trim() || isSaving}
+            feedback="commit"
             accessibilityRole="button"
             accessibilityLabel="Save journal entry"
             style={tw`min-w-[72px] h-11 px-4 rounded-full bg-ink items-center justify-center ${

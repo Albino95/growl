@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../../components/ui/PressableScale';
-import { haptic } from '../../theme/haptics';
+import { toggleFeedback } from '../../theme/haptics';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import {
   KeyboardDoneAccessory,
@@ -278,7 +278,7 @@ export default function BizSettings() {
             <Switch
               value={inAppAlerts}
               onValueChange={(v) => {
-                haptic('selection');
+                toggleFeedback(v);
                 setInAppAlerts(v);
               }}
               trackColor={{ false: theme.colors.iconMuted, true: EMERALD }}

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { haptic } from '../theme/haptics';
+import { triggerFeedback } from '../utils/interactionFeedback';
 
 /** Grow! emerald for RefreshControl spinners. */
 export const REFRESH_TINT = '#059669';
 
 /**
- * Pull-to-refresh with the house feel: a selection tick when the refresh
- * starts (threshold crossed), a light tap when fresh content lands.
+ * Pull-to-refresh with the house feel: a rigid tap + refresh tone (Full) when
+ * the refresh starts (RefreshControl only reports the threshold via
+ * onRefresh), a light tap when fresh content lands.
  * Spread the result into <RefreshControl {...refresh} />.
  *
  *   const refresh = useRefresh(loadFeed);
@@ -35,7 +36,7 @@ export function useRefresh(fn: () => Promise<unknown> | unknown) {
     busy.current = true;
     const withHaptics = opts?.haptics !== false;
     setRefreshing(true);
-    if (withHaptics) haptic('selection');
+    if (withHaptics) triggerFeedback('refreshThreshold');
     let ok = true;
     try {
       await fnRef.current();
@@ -45,7 +46,7 @@ export function useRefresh(fn: () => Promise<unknown> | unknown) {
       busy.current = false;
       if (mounted.current) {
         setRefreshing(false);
-        if (ok && withHaptics) haptic('tapLight');
+        if (ok && withHaptics) triggerFeedback('refreshDone');
       }
     }
   }, []);

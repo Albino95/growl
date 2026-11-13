@@ -14,7 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
 import { alertMessage } from '../../../utils/confirmDialog';
-import { feedback } from '../../../utils/interactionFeedback';
+import { feedback, triggerFeedback } from '../../../utils/interactionFeedback';
+
+/** Media editors may hold a video/camera audio session: haptics only, no tap tones. */
+const SILENT = { sound: false } as const;
 import type {
   CropAspect,
   EditAdjustments,
@@ -467,13 +470,13 @@ export default function PhotoEditor({
     const needsPixel = !isAdjustmentsNeutral(effective) || liveOverlays.length > 0;
 
     if (!needsStraighten && !needsCrop && !needsPixel) {
-      feedback.commit();
+      triggerFeedback('commit', SILENT);
       // Untouched → hand back the original, not our downscaled working copy.
       onSave(workingUri === baseUri ? originalUri : workingUri);
       return;
     }
 
-    feedback.commit();
+    triggerFeedback('commit', SILENT);
     setBusy({ label: 'Applying edits…', detail: 'Keep the app open', saving: true });
     // Let the overlay paint before native / JS work starts.
     await nextFrame();
@@ -567,7 +570,7 @@ export default function PhotoEditor({
   const applyCropNow = useCallback(async () => {
     if (selectedCrop === 'free') return;
     pushHistory();
-    feedback.commit();
+    triggerFeedback('commit', SILENT);
     setBusy({ label: 'Cropping…' });
     try {
       let uri = workingUri;
@@ -892,7 +895,7 @@ export default function PhotoEditor({
               <FilterCategoryBar
                 active={activeCategory}
                 onSelect={(id) => {
-                  feedback.tab();
+                  triggerFeedback('tab', SILENT);
                   setActiveCategory(id);
                 }}
               />

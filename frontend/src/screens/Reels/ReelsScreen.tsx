@@ -32,10 +32,11 @@ import FeedLikeButton, {
 } from '../../components/feed/FeedLikeButton';
 import {
   lockNativeUiAudio,
+  longPressPeek,
+  triggerFeedback,
   triggerPressFeedback,
   unlockNativeUiAudio,
 } from '../../utils/interactionFeedback';
-import { haptic } from '../../theme/haptics';
 import GrowLoader from '../../components/ui/GrowLoader';
 import tw from '../../lib/tw';
 import PressableScale from '../../components/ui/PressableScale';
@@ -345,7 +346,8 @@ export default function ReelsScreen() {
     const wasLiked = !!current?.liked;
 
     if (opts?.fromDoubleTap && wasLiked) {
-      haptic('tapLight');
+      // Already liked: the burst replays with the double-tap pattern.
+      triggerFeedback('likeDoubleTap');
       playHeartBurst(postId);
       return;
     }
@@ -355,8 +357,8 @@ export default function ReelsScreen() {
       ? (current?.metadata?.likes ?? 0) + 1
       : Math.max(0, (current?.metadata?.likes ?? 0) - 1);
 
-    // Light tap on like only — unliking is silent.
-    if (nextLiked) haptic('tapLight');
+    // Like = soft + like tone (double-tap: rigid → soft); unlike = light, silent.
+    triggerFeedback(nextLiked ? (opts?.fromDoubleTap ? 'likeDoubleTap' : 'like') : 'unlike');
 
     setItems((prev) =>
       prev.map((row) => {
@@ -663,7 +665,7 @@ export default function ReelsScreen() {
                     compact
                     onPress={() => void onToggleLike(item.id)}
                     onLongPress={() => {
-                      if (showReactionPicker !== item.id) haptic('impactMedium');
+                      if (showReactionPicker !== item.id) longPressPeek.open();
                       setShowReactionPicker((prev) => (prev === item.id ? null : item.id));
                     }}
                   />

@@ -21,6 +21,7 @@ const {
   HAPTIC_MOMENT_KIND,
   PREFS_HYDRATION_WAIT_MS,
   SOUND_KEYS,
+  TAP_SOUND_KEYS,
   WEB_SOUND_NOTES,
 } = await import('./hapticsCore');
 type HapticsModule = import('./hapticsCore').HapticsModule;
@@ -101,24 +102,31 @@ describe('playHapticChannel', () => {
     await playHapticChannel(H, 'impactLight');
     await playHapticChannel(H, 'impactMedium');
     await playHapticChannel(H, 'warning');
+    await playHapticChannel(H, 'impactHeavy');
+    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('heavy');
     expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
     expect(Haptics.impactAsync).toHaveBeenNthCalledWith(1, 'light');
     expect(Haptics.impactAsync).toHaveBeenNthCalledWith(2, 'medium');
     expect(Haptics.notificationAsync).toHaveBeenCalledWith('warning');
   });
 
-  it('celebrate = success, rigid at +140ms, soft at +280ms', async () => {
+  it('celebrate = light, light@80, medium@160, heavy@260, success@420', async () => {
     vi.useFakeTimers();
     await playHapticChannel(H, 'celebrate');
-    expect(Haptics.notificationAsync).toHaveBeenCalledWith('success');
-    expect(Haptics.impactAsync).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(139);
-    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('light');
+    expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(79);
+    expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('rigid');
-    await vi.advanceTimersByTimeAsync(140);
-    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('soft');
-    expect(Haptics.impactAsync).toHaveBeenCalledTimes(2);
+    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('light');
+    await vi.advanceTimersByTimeAsync(80);
+    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('medium');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(Haptics.impactAsync).toHaveBeenLastCalledWith('heavy');
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(160);
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith('success');
+    expect(Haptics.impactAsync).toHaveBeenCalledTimes(4);
   });
 
   it('reports failure so callers can fall back to Vibration', async () => {
@@ -171,7 +179,7 @@ describe('celebrate once registry', () => {
 describe('feedback kinds → haptic + sound', () => {
   const sounds = (kind: Parameters<typeof feedbackConfig>[0]) => feedbackConfig(kind).sound ?? null;
 
-  it('plays sounds only for the five signature moments', () => {
+  it('plays signature sounds for the five signature moments, tap sounds for the tap tier', () => {
     expect(sounds('checkin')).toBe('bloom');
     expect(sounds('celebrate')).toBe('rise');
     expect(sounds('shared')).toBe('seedpop');
@@ -181,7 +189,48 @@ describe('feedback kinds → haptic + sound', () => {
       .filter(([, cfg]) => cfg.sound)
       .map(([k]) => k)
       .sort();
-    expect(withSound).toEqual(['celebrate', 'checkin', 'error', 'send', 'shared']);
+    expect(withSound).toEqual(
+      [
+        'celebrate',
+        'checkin',
+        'error',
+        'send',
+        'shared',
+        'toggleOn',
+        'toggleOff',
+        'tab',
+        'chip',
+        'commit',
+        'like',
+        'likeDoubleTap',
+        'refreshThreshold',
+      ].sort()
+    );
+    expect(sounds('unlike')).toBeNull();
+    expect(sounds('refreshDone')).toBeNull();
+    expect(sounds('sheetSnap')).toBeNull();
+    expect(sounds('destructive')).toBeNull();
+    expect(sounds('selection')).toBeNull();
+  });
+
+  it('maps the tap tier onto the specified haptics', () => {
+    const h = (kind: Parameters<typeof feedbackConfig>[0]) => feedbackConfig(kind).haptic;
+    expect(h('toggleOn')).toBe('selection');
+    expect(h('toggleOff')).toBe('selection');
+    expect(h('chip')).toBe('selection');
+    expect(h('tab')).toBe('selection');
+    expect(h('commit')).toBe('impactLight');
+    expect(h('like')).toBe('soft');
+    expect(h('unlike')).toBe('impactLight');
+    expect(h('sheetSnap')).toBe('soft');
+    expect(h('refreshThreshold')).toBe('rigid');
+    expect(h('refreshDone')).toBe('impactLight');
+    expect(h('destructive')).toBe('impactHeavy');
+    expect(h('longPressIn')).toBe('soft');
+    expect(h('peekOpen')).toBe('impactMedium');
+    expect(feedbackConfig('checkin').sequence).toBe('checkin');
+    expect(feedbackConfig('celebrate').sequence).toBe('celebrate');
+    expect(feedbackConfig('likeDoubleTap').sequence).toBe('likeDoubleTap');
   });
 
   it('keeps plain success calm: success haptic, no sound', () => {
@@ -212,7 +261,9 @@ describe('feedback kinds → haptic + sound', () => {
   });
 
   it('has a web fallback for every sound', () => {
-    for (const key of SOUND_KEYS) expect(WEB_SOUND_NOTES[key].length).toBeGreaterThan(0);
+    for (const key of [...SOUND_KEYS, ...TAP_SOUND_KEYS]) {
+      expect(WEB_SOUND_NOTES[key].length).toBeGreaterThan(0);
+    }
   });
 });
 

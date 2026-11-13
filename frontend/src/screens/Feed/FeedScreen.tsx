@@ -45,8 +45,12 @@ import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavi
 import { reelCoverUri } from '../../utils/reelCover';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
-import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
-import { haptic } from '../../theme/haptics';
+import {
+  feedback,
+  longPressPeek,
+  triggerFeedback,
+  triggerPressFeedback,
+} from '../../utils/interactionFeedback';
 import { useRefresh } from '../../hooks/useRefresh';
 import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
 import { getCategoryLabel } from '../../utils/categoryLabels';
@@ -457,7 +461,8 @@ export default function FeedScreen({ navigation, route }: any) {
 
     // Optimistic Redux patch so SectionList re-renders with a filled heart.
     if (opts?.fromDoubleTap && wasLiked) {
-      haptic('tapLight');
+      // Already liked: the burst replays with the double-tap pattern.
+      triggerFeedback('likeDoubleTap');
       playHeartBurst(postId);
       return;
     }
@@ -471,8 +476,8 @@ export default function FeedScreen({ navigation, route }: any) {
       ? (current?.likes ?? 0) + 1
       : Math.max(0, (current?.likes ?? 0) - 1);
 
-    // Light tap on like only — unliking is silent.
-    if (nextLiked) haptic('tapLight');
+    // Like = soft + like tone (double-tap: rigid → soft); unlike = light, silent.
+    triggerFeedback(nextLiked ? (opts?.fromDoubleTap ? 'likeDoubleTap' : 'like') : 'unlike');
 
     dispatch(
       patchFeedPostEngagement({
@@ -732,7 +737,7 @@ export default function FeedScreen({ navigation, route }: any) {
   });
   const onCardLikeLongPress = useStableCallback((postId: string) => {
     const opening = showReactionPicker !== postId;
-    if (opening) haptic('impactMedium');
+    if (opening) longPressPeek.open();
     setShowReactionPicker(opening ? postId : null);
   });
   const onCardOpenComments = useStableCallback((post: Post) => openComments(post));

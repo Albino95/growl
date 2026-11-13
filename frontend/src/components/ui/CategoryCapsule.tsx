@@ -33,7 +33,8 @@ export function CategoryCapsule({
   return (
     <PressableScale
       onPress={onPress}
-      feedback="select"
+      // Picking a new capsule = chip tone; re-pressing the active one = tick only.
+      feedback={selected ? 'selection' : 'chip'}
       pressedScale={0.96}
       accessibilityRole="button"
       accessibilityState={{ selected }}

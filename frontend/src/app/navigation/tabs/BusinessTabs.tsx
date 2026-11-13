@@ -28,9 +28,9 @@ export default function BusinessTabs() {
     <Tab.Navigator
       detachInactiveScreens={false}
       screenListeners={({ navigation }) => ({
-        // Selection tick only when switching tabs (re-tapping the active tab is silent).
+        // Switching tabs = tab tick + tock (Full); re-tap (scroll to top) = tick only.
         tabPress: () => {
-          if (!navigation.isFocused()) haptic('selection');
+          haptic(navigation.isFocused() ? 'selection' : 'tab');
         },
       })}
       screenOptions={({ route }) => ({

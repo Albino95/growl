@@ -80,7 +80,8 @@ export default function JournalModeSwitcher({
       ) : null}
 
       <PressableScale
-        feedback="select"
+        // Chip tone only when the mode actually changes; re-press = tick.
+        feedback={mode === 'pages' ? 'selection' : 'chip'}
         onPress={() => onChange('pages')}
         style={tw`flex-1 flex-row items-center justify-center py-2.5 px-2 z-10`}
         accessibilityRole="tab"
@@ -108,7 +109,7 @@ export default function JournalModeSwitcher({
       </PressableScale>
 
       <PressableScale
-        feedback="select"
+        feedback={mode === 'voices' ? 'selection' : 'chip'}
         onPress={() => onChange('voices')}
         style={tw`flex-1 flex-row items-center justify-center py-2.5 px-2 z-10`}
         accessibilityRole="tab"

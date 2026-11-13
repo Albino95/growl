@@ -1410,6 +1410,7 @@ export default function PublicProfileScreen() {
               return (
                 <PressableScale
                   key={tab.key}
+                  feedback={active ? 'selection' : 'chip'}
                   onPress={() => setActiveTab(tab.key)}
                   style={tw`pb-2.5 border-b-2 ${
                     active ? 'border-emerald-600' : 'border-transparent'

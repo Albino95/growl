@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
 import PrimaryButton from './PrimaryButton';
 import { type } from '../../theme/tokens';
+import { triggerFeedback } from '../../utils/interactionFeedback';
 
 export type DialogButton = {
   label: string;
@@ -111,6 +112,13 @@ export default function AppDialogHost() {
 
   useEffect(() => subscribeDialog(setRequest), []);
 
+  // A destructive confirm announces itself with the warning haptic (silent).
+  const requestId = request?.id;
+  const warns = !!request?.buttons.some((b) => b.style === 'destructive');
+  useEffect(() => {
+    if (requestId != null && warns) triggerFeedback('warn');
+  }, [requestId, warns]);
+
   const closeWith = (btn?: DialogButton) => {
     btn?.onPress?.();
     dismiss();
@@ -187,6 +195,8 @@ export default function AppDialogHost() {
                     label={btn.label || (isCancel ? 'Cancel' : 'Got it')}
                     onPress={() => closeWith(btn)}
                     variant={isCancel ? 'ghost' : 'solid'}
+                    // Destructive → heavy; plain confirm / "Got it" → light, no tone.
+                    feedback={isDestructive ? 'destructive' : isCancel ? 'selection' : 'impactLight'}
                     style={
                       isDestructive
                         ? // Fill stays red-600 in both schemes so the white label keeps contrast.

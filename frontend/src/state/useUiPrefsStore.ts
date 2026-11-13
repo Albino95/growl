@@ -5,6 +5,14 @@ import {
   setSecureItem,
   deleteSecureItem,
 } from '../services/storage/secureStore';
+import {
+  DEFAULT_SOUND_LEVEL,
+  migrateUiPrefs,
+  type SoundLevel,
+} from '../theme/hapticsCore';
+
+export type { SoundLevel } from '../theme/hapticsCore';
+export { DEFAULT_SOUND_LEVEL } from '../theme/hapticsCore';
 
 const STORAGE_KEY = 'grow.uiPrefs.v1';
 
@@ -18,9 +26,12 @@ export type AppearancePref = 'system' | 'light' | 'dark';
 export const DEFAULT_APPEARANCE: AppearancePref = 'system';
 
 type UiPrefsState = {
-  soundEnabled: boolean;
+  /** Settings → Sounds: Off / Subtle (signature + like/toggle/commit) / Full (+ tab/chip/refresh). */
+  soundLevel: SoundLevel;
   hapticsEnabled: boolean;
   appearance: AppearancePref;
+  setSoundLevel: (level: SoundLevel) => void;
+  /** Legacy on/off: false → 'off', true → 'subtle' (keeps 'full' if already full). */
   setSoundEnabled: (enabled: boolean) => void;
   setHapticsEnabled: (enabled: boolean) => void;
   setAppearance: (appearance: AppearancePref) => void;
@@ -79,21 +90,27 @@ export const uiPrefsReadiness = {
 export const useUiPrefsStore = create<UiPrefsState>()(
   persist(
     (set) => ({
-      soundEnabled: true,
+      soundLevel: DEFAULT_SOUND_LEVEL,
       hapticsEnabled: true,
       appearance: DEFAULT_APPEARANCE,
-      setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
+      setSoundLevel: (level) => set({ soundLevel: level }),
+      setSoundEnabled: (enabled) =>
+        set((s) => ({
+          soundLevel: enabled ? (s.soundLevel === 'off' ? DEFAULT_SOUND_LEVEL : s.soundLevel) : 'off',
+        })),
       setHapticsEnabled: (enabled) => set({ hapticsEnabled: enabled }),
       setAppearance: (appearance) => set({ appearance }),
     }),
     {
       name: STORAGE_KEY,
-      version: 1,
+      // v2: `soundEnabled: boolean` → `soundLevel` (false → 'off', true → 'subtle').
+      version: 2,
+      migrate: (persisted, version) => migrateUiPrefs(persisted, version) as unknown as UiPrefsState,
       storage: createJSONStorage(() => secureStateStorage),
       // `appearance` was added without a version bump: older blobs simply lack
       // it and the default above stays in force (persist merges shallowly).
       partialize: (s) => ({
-        soundEnabled: s.soundEnabled,
+        soundLevel: s.soundLevel,
         hapticsEnabled: s.hapticsEnabled,
         appearance: s.appearance,
       }),
@@ -105,3 +122,6 @@ export const useUiPrefsStore = create<UiPrefsState>()(
     }
   )
 );
+
+/** Derived: any UI sound at all (Sounds level is not Off). */
+export const selectSoundEnabled = (s: Pick<UiPrefsState, 'soundLevel'>): boolean => s.soundLevel !== 'off';

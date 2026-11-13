@@ -54,7 +54,7 @@ export default function AuthModeSwitch({ isSignUp, onChange, reducedMotion, disa
 
   const select = (next: boolean) => {
     if (disabled || next === isSignUp) return;
-    triggerFeedback('select');
+    triggerFeedback('chip');
     onChange(next);
   };
 

@@ -15,7 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
 import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
-import { feedback } from '../../../utils/interactionFeedback';
+import { feedback, triggerFeedback } from '../../../utils/interactionFeedback';
+
+/** Media editors may hold a video/camera audio session: haptics only, no tap tones. */
+const SILENT = { sound: false } as const;
 import type { TextOverlay, TextOverlayStyle, EditAdjustments } from '../photoEditor/types';
 import {
   TEXT_QUICK_PHRASES,
@@ -577,7 +580,7 @@ export default function VideoEditor({
     if (doneBusyRef.current) return;
     doneBusyRef.current = true;
     setDoneBusy(true);
-    feedback.commit();
+    triggerFeedback('commit', SILENT);
     try {
       if (Platform.OS === 'web') {
         htmlVideoRef.current?.pause();

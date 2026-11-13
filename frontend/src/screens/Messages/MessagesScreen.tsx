@@ -49,7 +49,7 @@ import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import SearchField from '../../components/ui/SearchField';
 import SkeletonCard, { SkeletonList } from '../../components/ui/SkeletonCard';
-import { feedback } from '../../utils/interactionFeedback';
+import { feedback, triggerFeedback } from '../../utils/interactionFeedback';
 import { useRefresh } from '../../hooks/useRefresh';
 import { isAppActive } from '../../utils/appActive';
 import { alertMessage } from '../../utils/confirmDialog';
@@ -1079,7 +1079,7 @@ export default function MessagesScreen() {
               <PressableScale
                 key={tab.key}
                 onPress={() => {
-                  feedback.select();
+                  triggerFeedback(active ? 'selection' : 'chip');
                   setInboxTab(tab.key);
                 }}
                 style={tw`pb-2.5 border-b-2 flex-row items-center ${

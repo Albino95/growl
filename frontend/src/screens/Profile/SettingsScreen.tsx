@@ -6,9 +6,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw, { theme } from '../../lib/tw';
 import { haptic } from '../../theme/haptics';
-import { previewSound } from '../../utils/interactionFeedback';
+import { previewSound, toggleFeedback } from '../../utils/interactionFeedback';
 import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
-import { useUiPrefsStore, type AppearancePref } from '../../state/useUiPrefsStore';
+import { useUiPrefsStore, type AppearancePref, type SoundLevel } from '../../state/useUiPrefsStore';
 import { DARK_MODE_READY } from '../../theme/appearance';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -49,36 +49,41 @@ function Row({
   );
 }
 
-const APPEARANCE_OPTIONS: { value: AppearancePref; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
-
-/** System / Light / Dark segmented control. Hidden until DARK_MODE_READY. */
-function AppearanceRow() {
-  const appearance = useUiPrefsStore((s) => s.appearance);
-  const setAppearance = useUiPrefsStore((s) => s.setAppearance);
+/** Settings segmented control (System / Light / Dark, Off / Subtle / Full). */
+function SegmentedPrefRow<T extends string>({
+  label,
+  subtitle,
+  hint,
+  options,
+  value,
+  onChange,
+  border = 'top',
+}: {
+  label: string;
+  subtitle: string;
+  hint?: string;
+  options: { value: T; label: string }[];
+  value: T;
+  /** Called only when the selection actually changes (re-press is a no-op). */
+  onChange: (value: T) => void;
+  border?: 'top' | 'bottom';
+}) {
   return (
-    <View style={tw`py-3.5 border-t border-line`}>
-      <Text style={tw`font-semibold text-ink`}>Appearance</Text>
-      <Text style={tw`text-xs text-ink-3 mt-0.5 mb-2.5`}>
-        System follows your phone's light or dark setting.
-      </Text>
+    <View style={tw`py-3.5 ${border === 'top' ? 'border-t border-line' : 'border-b border-line/80'}`}>
+      <Text style={tw`font-semibold text-ink`}>{label}</Text>
+      <Text style={tw`text-xs text-ink-3 mt-0.5 mb-2.5`}>{subtitle}</Text>
       <View accessibilityRole="radiogroup" style={tw`flex-row bg-raised rounded-control p-1`}>
-        {APPEARANCE_OPTIONS.map((opt) => {
-          const selected = appearance === opt.value;
+        {options.map((opt) => {
+          const selected = value === opt.value;
           return (
             <Pressable
               key={opt.value}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
-              accessibilityLabel={`Appearance: ${opt.label}`}
+              accessibilityLabel={`${label}: ${opt.label}`}
               onPress={() => {
                 if (selected) return;
-                haptic('selection');
-                // Switching remounts the app tree (see App.tsx) — instant.
-                setAppearance(opt.value);
+                onChange(opt.value);
               }}
               style={tw`flex-1 items-center py-2 rounded-[9px] ${selected ? 'bg-card' : ''}`}
             >
@@ -91,7 +96,68 @@ function AppearanceRow() {
           );
         })}
       </View>
+      {hint ? <Text style={tw`text-xs text-ink-3 mt-2`}>{hint}</Text> : null}
     </View>
+  );
+}
+
+const APPEARANCE_OPTIONS: { value: AppearancePref; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+/** System / Light / Dark segmented control. Hidden until DARK_MODE_READY. */
+function AppearanceRow() {
+  const appearance = useUiPrefsStore((s) => s.appearance);
+  const setAppearance = useUiPrefsStore((s) => s.setAppearance);
+  return (
+    <SegmentedPrefRow
+      label="Appearance"
+      subtitle="System follows your phone's light or dark setting."
+      options={APPEARANCE_OPTIONS}
+      value={appearance}
+      onChange={(v) => {
+        haptic('chip');
+        // Switching remounts the app tree (see App.tsx) — instant.
+        setAppearance(v);
+      }}
+    />
+  );
+}
+
+const SOUND_OPTIONS: { value: SoundLevel; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'subtle', label: 'Subtle' },
+  { value: 'full', label: 'Full' },
+];
+
+const SOUND_HINT: Record<SoundLevel, string> = {
+  off: 'Haptics only.',
+  subtle: 'Check-ins, milestones and a few gentle taps.',
+  full: 'A quiet tone on every choice you make.',
+};
+
+/** Sounds: Off / Subtle / Full. Picking a level previews one of its taps. */
+function SoundsRow() {
+  const soundLevel = useUiPrefsStore((s) => s.soundLevel);
+  const setSoundLevel = useUiPrefsStore((s) => s.setSoundLevel);
+  return (
+    <SegmentedPrefRow
+      label="Sounds"
+      subtitle="Soft wooden tones for the moments that matter. Your silent switch always wins."
+      hint={SOUND_HINT[soundLevel]}
+      options={SOUND_OPTIONS}
+      value={soundLevel}
+      border="bottom"
+      onChange={(v) => {
+        // Haptic only here — the preview below is the sound.
+        haptic('selection');
+        setSoundLevel(v);
+        if (v === 'subtle') previewSound('tapToggleOn');
+        else if (v === 'full') previewSound('tapChip');
+      }}
+    />
   );
 }
 
@@ -101,8 +167,6 @@ export default function SettingsScreen() {
   const replayTutorial = useDemoTutorialStore((s) => s.replay);
   const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
-  const soundEnabled = useUiPrefsStore((s) => s.soundEnabled);
-  const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
@@ -157,26 +221,7 @@ export default function SettingsScreen() {
           Feedback
         </Text>
         <View style={tw`bg-card border border-line/80 rounded-card px-4 mb-5`}>
-          <View style={tw`flex-row items-center justify-between py-3.5 border-b border-line/80`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`font-semibold text-ink`}>Sounds</Text>
-              <Text style={tw`text-xs text-ink-3 mt-0.5`}>
-                Gentle chimes for check-ins, milestones and sharing. Follows your silent switch.
-              </Text>
-            </View>
-            <Switch
-              accessibilityLabel="Sounds"
-              value={soundEnabled}
-              onValueChange={(v) => {
-                haptic('selection');
-                setSoundEnabled(v);
-                // Turning sounds on previews the check-in chime.
-                if (v) previewSound('bloom');
-              }}
-              trackColor={{ false: tw.color('stone-300'), true: tw.color('emerald-200') }}
-              thumbColor={soundEnabled ? '#059669' : '#F5F5F4'}
-            />
-          </View>
+          <SoundsRow />
           <View style={tw`flex-row items-center justify-between py-3.5`}>
             <View style={tw`flex-1 pr-3`}>
               <Text style={tw`font-semibold text-ink`}>Haptics</Text>
@@ -187,8 +232,8 @@ export default function SettingsScreen() {
               value={hapticsEnabled}
               onValueChange={(v) => {
                 setHapticsEnabled(v);
-                // Confirm "on" with the tick itself; turning haptics off stays silent.
-                if (v) haptic('selection');
+                // Confirm "on" with the tick itself; off plays only the toggle-off tone.
+                toggleFeedback(v);
               }}
               trackColor={{ false: tw.color('stone-300'), true: tw.color('emerald-200') }}
               thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}

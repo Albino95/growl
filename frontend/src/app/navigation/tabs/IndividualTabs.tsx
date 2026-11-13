@@ -101,8 +101,8 @@ function DockTabButton({
         spring(scale, 1, 'snappy', reduced).start();
       }}
       onPress={() => {
-        // Selection tick only when the tab actually changes (re-tap is silent).
-        if (!isActive) haptic('selection');
+        // Switching tabs = tab tick + tock (Full); re-tap (scroll to top) = tick only.
+        haptic(isActive ? 'selection' : 'tab');
         onPress();
       }}
       style={[tw`flex-1 items-center justify-center min-w-0`, { height: TAB_HEIGHT }]}

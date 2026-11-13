@@ -22,7 +22,7 @@ import { useAuth } from '../../store/hooks';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { feedback } from '../../utils/interactionFeedback';
-import { celebrateOnce, haptic } from '../../theme/haptics';
+import { celebrateOnce } from '../../theme/haptics';
 import { pop } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useRefresh } from '../../hooks/useRefresh';
@@ -139,7 +139,7 @@ export default function ChallengeDetailScreen() {
   const onJoin = async () => {
     if (!detail || busy) return;
     setBusy(true);
-    haptic('tapLight');
+    // The Join button's 'commit' (light tap + tone) is the press feedback.
     try {
       const d = await joinChallenge(detail.id);
       setDetail(d);

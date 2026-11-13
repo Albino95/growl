@@ -145,7 +145,7 @@ function CircleCard({
           <PressableScale
             onPress={onJoin}
             disabled={joining}
-            feedback="success"
+            feedback="commit"
             style={tw`ml-2 px-3 py-2 rounded-control bg-emerald-600 ${joining ? 'opacity-60' : ''}`}
           >
             <Text style={tw`text-white text-xs font-bold`}>Sit</Text>

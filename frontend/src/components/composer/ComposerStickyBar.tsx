@@ -110,6 +110,8 @@ export default function ComposerStickyBar({
         label={publishing ? COMPOSER_COPY.sharing : COMPOSER_COPY.share}
         onPress={onSubmit}
         onLongPress={onLongSubmit}
+        // Press = light tap only; the seedpop 'shared' sound lands on success.
+        feedback="impactLight"
         disabled={!canPublish && !publishing}
         loading={publishing}
       />
