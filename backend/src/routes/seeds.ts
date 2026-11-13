@@ -5,6 +5,44 @@ import { generateId } from '../utils/id';
 import { createUserNotification, resolveUsername } from '../utils/notifications';
 import { resolveUserCategories } from '../utils/instructorEligibility';
 
+/**
+ * Seeds/Garden is hidden in the app (frontend SHOW_SEEDS=false). While false:
+ * plant/invite/accept/mature/water/get return 404 FEATURE_DISABLED for seeds that are
+ * not coaching homework, and no `growth_seed` notifications are created.
+ * Flip when the Goals redesign ships.
+ */
+export const SEEDS_ENABLED = false;
+
+function featureDisabled(): Response {
+  return error('FEATURE_DISABLED', 'This feature is not available', 404);
+}
+
+/** Seeds linked from a coaching assignment are homework and stay usable while Seeds is hidden. */
+async function isHomeworkSeed(env: Env, seedId: string): Promise<boolean> {
+  try {
+    const row = await env.DB.prepare(`SELECT 1 AS x FROM coaching_assignments WHERE seed_id = ? LIMIT 1`)
+      .bind(seedId)
+      .first();
+    return !!row;
+  } catch {
+    return false; // coaching tables not migrated yet
+  }
+}
+
+/** True when the request may proceed for this seed under the current feature flag. */
+async function seedFeatureAllowed(env: Env, seedId: string): Promise<boolean> {
+  return SEEDS_ENABLED || (await isHomeworkSeed(env, seedId));
+}
+
+/** Seed notifications (`growth_seed` ref) are suppressed while the feature is hidden. */
+async function notifySeed(
+  env: Env,
+  input: Parameters<typeof createUserNotification>[1]
+): Promise<void> {
+  if (!SEEDS_ENABLED) return;
+  await createUserNotification(env, input);
+}
+
 type SeedRow = {
   id: string;
   category_key: string;
@@ -46,6 +84,8 @@ const STAGE_THRESHOLDS: { stage: string; min: number }[] = [
 ];
 
 const MAX_ACTIVE = 3;
+/** Actions an owner can't self-award: they only count when someone else (instructor) tends. */
+const OWNER_ZERO_ACTIONS = new Set(['journal', 'instructor_tend', 'breathe']);
 const ACTION_DELTA: Record<string, number> = {
   check_in: 3,
   journal: 5,
@@ -106,17 +146,41 @@ async function getMember(
     .first<MemberRow>();
 }
 
+/** Growing seeds the user owns, excluding coaching homework (which never uses up the cap). */
 async function countActiveGrowing(env: Env, userId: string): Promise<number> {
-  const row = await env.DB.prepare(
-    `SELECT COUNT(*) as c
+  const base = `SELECT COUNT(*) as c
      FROM growth_seed_members m
      JOIN growth_seeds s ON s.id = m.seed_id
      WHERE m.user_id = ? AND m.status = 'active' AND m.role = 'owner'
-       AND s.status IN ('growing', 'resting')`
-  )
-    .bind(userId)
-    .first<{ c: number }>();
+       AND s.status IN ('growing', 'resting')`;
+  let row: { c: number } | null;
+  try {
+    row = await env.DB.prepare(
+      `${base} AND NOT EXISTS (SELECT 1 FROM coaching_assignments a WHERE a.seed_id = s.id)`
+    )
+      .bind(userId)
+      .first<{ c: number }>();
+  } catch {
+    // coaching_assignments not migrated yet — nothing to exclude
+    row = await env.DB.prepare(base).bind(userId).first<{ c: number }>();
+  }
   return Number(row?.c) || 0;
+}
+
+/** SQL CASE giving the non-mature stage for `growth_score + ?` (bind the delta once per threshold). */
+const STAGE_CASE_SQL = `CASE ${STAGE_THRESHOLDS.filter((t) => t.stage !== 'mature' && t.min > 0)
+  .map((t) => `WHEN growth_score + ? >= ${t.min} THEN '${t.stage}'`)
+  .join(' ')} ELSE 'seed' END`;
+const STAGE_CASE_BINDS = STAGE_THRESHOLDS.filter((t) => t.stage !== 'mature' && t.min > 0).length;
+
+/** Numeric goal reached? Direction follows start→target (losing weight counts down). */
+function metricTargetMet(row: SeedRow): boolean {
+  if (row.metric_target == null) return true;
+  const current = row.metric_current;
+  if (current == null) return false;
+  const start = row.metric_start;
+  if (start != null && row.metric_target < start) return current <= row.metric_target;
+  return current >= row.metric_target;
 }
 
 type MemberJoinRow = MemberRow & { metadata: string; is_instructor: number };
@@ -345,6 +409,8 @@ export async function createSeed(request: Request, env: Env): Promise<Response> 
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
+  // Planting is never homework (coaches assign via the coaching routes).
+  if (!SEEDS_ENABLED) return featureDisabled();
 
   let body: {
     category_key?: string;
@@ -424,7 +490,8 @@ export async function createSeed(request: Request, env: Env): Promise<Response> 
   if (inviteUserId && inviteUserId !== ctx.userId && !(await canInviteToSeed(env, ctx.userId, inviteUserId))) {
     return error('FORBIDDEN', 'You can only invite friends or people you coach with', 403);
   }
-  const ownership = inviteUserId && inviteRole === 'owner' ? 'shared' : 'solo';
+  // Becomes 'shared' only when a co-owner accepts (acceptSeedInvite).
+  const ownership = 'solo';
 
   const seedId = generateId('seed');
   const now = new Date().toISOString();
@@ -476,7 +543,7 @@ export async function createSeed(request: Request, env: Env): Promise<Response> 
             .bind(seedId, inviteUserId, now)
             .run();
           const actorName = await resolveUsername(env, ctx.userId);
-          await createUserNotification(env, {
+          await notifySeed(env, {
             userId: inviteUserId,
             actorId: ctx.userId,
             type: 'system',
@@ -494,7 +561,7 @@ export async function createSeed(request: Request, env: Env): Promise<Response> 
           .bind(seedId, inviteUserId, inviteRole === 'instructor' ? 'instructor' : 'witness', now)
           .run();
         const actorName = await resolveUsername(env, ctx.userId);
-        await createUserNotification(env, {
+        await notifySeed(env, {
           userId: inviteUserId,
           actorId: ctx.userId,
           type: 'system',
@@ -532,6 +599,7 @@ export async function getSeed(
   }
 
   try {
+    if (!(await seedFeatureAllowed(env, seedId))) return featureDisabled();
     const member = await getMember(env, seedId, ctx.userId);
     if (!member || (member.status !== 'active' && member.status !== 'pending')) {
       return error('FORBIDDEN', 'Not a member of this seed', 403);
@@ -615,6 +683,7 @@ export async function waterSeed(
     note?: string;
     photo_url?: string;
     metric_value?: number;
+    assignment_id?: string;
   } = {};
   try {
     body = parseBody(await request.json());
@@ -637,8 +706,11 @@ export async function waterSeed(
     typeof body.metric_value === 'number' && Number.isFinite(body.metric_value)
       ? body.metric_value
       : null;
+  const assignmentId =
+    (typeof body.assignment_id === 'string' ? body.assignment_id : '').trim() || null;
 
   try {
+    if (!(await seedFeatureAllowed(env, seedId))) return featureDisabled();
     const member = await getMember(env, seedId, ctx.userId);
     if (!member || member.status !== 'active') {
       return error('FORBIDDEN', 'You cannot water this seed', 403);
@@ -663,12 +735,41 @@ export async function waterSeed(
       }
     }
 
+    // A targeted check-in must name an assignment on this seed, and only the
+    // contract's client (who owns the seed) may complete it.
+    if (assignmentId) {
+      let target: { id: string; client_id: string } | null = null;
+      try {
+        target = await env.DB.prepare(
+          `SELECT a.id, c.client_id
+           FROM coaching_assignments a
+           JOIN coaching_contracts c ON c.id = a.contract_id
+           WHERE a.id = ? AND a.seed_id = ?`
+        )
+          .bind(assignmentId, seedId)
+          .first<{ id: string; client_id: string }>();
+      } catch {
+        target = null;
+      }
+      if (!target) return error('NOT_FOUND', 'Homework assignment not found on this seed', 404);
+      if (action === 'check_in') {
+        if (member.role !== 'owner' || target.client_id !== ctx.userId) {
+          return error('FORBIDDEN', 'Only the client can complete this homework', 403);
+        }
+        if (!photoUrl && !note) {
+          return error('VALIDATION_ERROR', 'Add a note or a photo to finish this homework', 400);
+        }
+      }
+    }
+
     const evidenceBonus =
       action === 'check_in' && photoUrl && member.role !== 'witness' ? EVIDENCE_BONUS : 0;
-    const applyDelta = member.role === 'witness' ? 0 : delta + evidenceBonus;
-    const newScore = row.growth_score + applyDelta;
-    const newStage = stageForScore(newScore, row.status);
-    const stagedUp = newStage !== row.stage;
+    // Witnesses never add growth; owners can't farm points with self-reported
+    // journal/breathe/tend actions (they still log, at 0).
+    const applyDelta =
+      member.role === 'witness' || (member.role === 'owner' && OWNER_ZERO_ACTIONS.has(action))
+        ? 0
+        : delta + evidenceBonus;
     const days = daysSincePlanted(row.planted_at);
 
     await env.DB.prepare(
@@ -689,34 +790,44 @@ export async function waterSeed(
       )
       .run();
 
-    if (metricValue != null && member.role === 'owner') {
-      await env.DB.prepare(
-        `UPDATE growth_seeds
-         SET growth_score = ?, stage = ?, status = 'growing', resting_at = NULL,
-             metric_current = ?, updated_at = datetime('now')
-         WHERE id = ?`
-      )
-        .bind(newScore, newStage, metricValue, seedId)
-        .run();
-    } else {
-      await env.DB.prepare(
-        `UPDATE growth_seeds
-         SET growth_score = ?, stage = ?, status = 'growing', resting_at = NULL, updated_at = datetime('now')
-         WHERE id = ?`
-      )
-        .bind(newScore, newStage, seedId)
-        .run();
-    }
+    // Atomic increment: concurrent waterings must not overwrite each other's points.
+    const setMetric = metricValue != null && member.role === 'owner';
+    const stageBinds = Array<number>(STAGE_CASE_BINDS).fill(applyDelta);
+    const after = await env.DB.prepare(
+      `UPDATE growth_seeds
+       SET stage = ${STAGE_CASE_SQL},
+           growth_score = growth_score + ?,
+           status = 'growing', resting_at = NULL,
+           ${setMetric ? 'metric_current = ?,' : ''}
+           updated_at = datetime('now')
+       WHERE id = ?
+       RETURNING growth_score, stage`
+    )
+      .bind(...stageBinds, applyDelta, ...(setMetric ? [metricValue] : []), seedId)
+      .first<{ growth_score: number; stage: string }>();
+    const newScore = Number(after?.growth_score ?? row.growth_score + applyDelta);
+    const newStage = after?.stage ?? stageForScore(newScore, row.status);
+    const stagedUp = newStage !== row.stage;
 
-    if (action === 'check_in' && photoUrl && member.role === 'owner') {
+    // A check-in completes one homework assignment: the one it targets (note or photo is
+    // enough), else — photo check-ins only — the oldest open one.
+    let completedAssignmentId: string | null = null;
+    if (action === 'check_in' && member.role === 'owner' && (assignmentId || photoUrl)) {
       try {
-        await env.DB.prepare(
+        const done = await env.DB.prepare(
           `UPDATE coaching_assignments
            SET status = 'done', completed_at = datetime('now')
-           WHERE seed_id = ? AND status = 'assigned'`
+           WHERE id = (
+             SELECT id FROM coaching_assignments
+             WHERE seed_id = ? AND status = 'assigned' ${assignmentId ? 'AND id = ?' : ''}
+             ORDER BY created_at ASC, id ASC
+             LIMIT 1
+           )
+           RETURNING id`
         )
-          .bind(seedId)
-          .run();
+          .bind(...(assignmentId ? [seedId, assignmentId] : [seedId]))
+          .first<{ id: string }>();
+        completedAssignmentId = done?.id ?? null;
       } catch {
         /* homework tables may not exist yet */
       }
@@ -727,7 +838,7 @@ export async function waterSeed(
       const actorName = await resolveUsername(env, ctx.userId);
       for (const m of members) {
         if (m.user_id === ctx.userId || m.status !== 'active') continue;
-        await createUserNotification(env, {
+        await notifySeed(env, {
           userId: m.user_id,
           actorId: ctx.userId,
           type: 'system',
@@ -744,7 +855,8 @@ export async function waterSeed(
     return json({
       seed: formatSeed(updated!, members),
       staged_up: stagedUp,
-      can_mature: newScore >= 50 && updated!.status !== 'mature',
+      can_mature: newScore >= 50 && updated!.status !== 'mature' && metricTargetMet(updated!),
+      completed_assignment_id: completedAssignmentId,
     });
   } catch (err) {
     console.error('[waterSeed]', err);
@@ -766,6 +878,7 @@ export async function acceptSeedInvite(
   }
 
   try {
+    if (!(await seedFeatureAllowed(env, seedId))) return featureDisabled();
     const member = await getMember(env, seedId, ctx.userId);
     if (!member || member.status !== 'pending') {
       return error('NOT_FOUND', 'No pending invite', 404);
@@ -797,7 +910,7 @@ export async function acceptSeedInvite(
     const planter = row?.planted_by_user_id;
     if (planter && planter !== ctx.userId) {
       const name = await resolveUsername(env, ctx.userId);
-      await createUserNotification(env, {
+      await notifySeed(env, {
         userId: planter,
         actorId: ctx.userId,
         type: 'system',
@@ -830,6 +943,7 @@ export async function matureSeed(
   }
 
   try {
+    if (!(await seedFeatureAllowed(env, seedId))) return featureDisabled();
     const member = await getMember(env, seedId, ctx.userId);
     if (!member || member.status !== 'active' || member.role !== 'owner') {
       return error('FORBIDDEN', 'Only owners can call a seed into the Garden', 403);
@@ -842,6 +956,9 @@ export async function matureSeed(
     }
     if (row.growth_score < 50) {
       return error('NOT_READY', 'Keep watering until this seed is ready', 400);
+    }
+    if (!metricTargetMet(row)) {
+      return error('NOT_READY', 'Reach your goal number before calling this seed into the Garden', 400);
     }
 
     await env.DB.prepare(
@@ -863,7 +980,7 @@ export async function matureSeed(
     const actorName = await resolveUsername(env, ctx.userId);
     for (const m of members) {
       if (m.user_id === ctx.userId || m.status !== 'active') continue;
-      await createUserNotification(env, {
+      await notifySeed(env, {
         userId: m.user_id,
         actorId: ctx.userId,
         type: 'system',
@@ -911,6 +1028,7 @@ export async function inviteToSeed(
   }
 
   try {
+    if (!(await seedFeatureAllowed(env, seedId))) return featureDisabled();
     const me = await getMember(env, seedId, ctx.userId);
     if (!me || me.status !== 'active' || me.role !== 'owner') {
       return error('FORBIDDEN', 'Only owners can invite', 403);
@@ -925,11 +1043,13 @@ export async function inviteToSeed(
     }
 
     const now = new Date().toISOString();
+    // Already invited: update the role if it changed, but don't notify again.
+    const alreadyPending = existing?.status === 'pending';
     if (existing) {
       await env.DB.prepare(
         `UPDATE growth_seed_members SET role = ?, status = 'pending', joined_at = ? WHERE seed_id = ? AND user_id = ?`
       )
-        .bind(role, now, seedId, targetId)
+        .bind(role, alreadyPending ? existing.joined_at : now, seedId, targetId)
         .run();
     } else {
       await env.DB.prepare(
@@ -940,17 +1060,14 @@ export async function inviteToSeed(
         .run();
     }
 
-    if (role === 'owner') {
-      await env.DB.prepare(
-        `UPDATE growth_seeds SET ownership = 'shared', updated_at = datetime('now') WHERE id = ?`
-      )
-        .bind(seedId)
-        .run();
-    }
-
+    // ownership flips to 'shared' only when the co-owner accepts (acceptSeedInvite).
     const row = await getSeedOr404(env, seedId);
+    if (alreadyPending) {
+      const members = await loadMembers(env, seedId);
+      return json({ seed: formatSeed(row!, members) });
+    }
     const actorName = await resolveUsername(env, ctx.userId);
-    await createUserNotification(env, {
+    await notifySeed(env, {
       userId: targetId,
       actorId: ctx.userId,
       type: 'system',

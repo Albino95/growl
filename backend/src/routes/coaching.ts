@@ -933,6 +933,64 @@ export async function completeContract(
   }
 }
 
+/** Split a stored path ("parent" or "parent:sub"). */
+function splitPath(raw: string): { cat: string; sub: string } {
+  const c = String(raw || '').trim();
+  const i = c.indexOf(':');
+  return i < 0 ? { cat: c, sub: '' } : { cat: c.slice(0, i).trim(), sub: c.slice(i + 1).trim() };
+}
+
+function slugify(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+/**
+ * Category/sub-path for a new homework seed, chosen from `pathCats` (the client's
+ * paths, or the coach's when the client has none). A requested category is used
+ * only if it is one of those paths. The sub-path prefers: requested sub → the
+ * path's own sub → a slug of the title → 'practice'.
+ */
+export function pickHomeworkPath(
+  pathCats: string[],
+  requestedCat: string,
+  requestedSub: string,
+  title: string
+): { categoryKey: string; subcategoryKey: string } | null {
+  const paths = pathCats.map(splitPath).filter((p) => p.cat);
+  let categoryKey = '';
+  let subcategoryKey = '';
+
+  if (paths.length) {
+    const wanted = requestedCat.toLowerCase();
+    const match = wanted ? paths.filter((p) => p.cat.toLowerCase() === wanted) : [];
+    if (match.length) {
+      categoryKey = match[0].cat;
+      const subs = match.map((p) => p.sub).filter(Boolean);
+      subcategoryKey =
+        (requestedSub && (subs.length === 0 || subs.includes(requestedSub)) ? requestedSub : '') ||
+        subs[0] ||
+        requestedSub;
+    } else {
+      categoryKey = paths[0].cat;
+      subcategoryKey = paths.find((p) => p.cat === categoryKey && p.sub)?.sub || '';
+    }
+  } else if (requestedCat) {
+    categoryKey = requestedCat;
+    subcategoryKey = requestedSub;
+  }
+
+  if (!categoryKey) return null;
+  return {
+    categoryKey,
+    subcategoryKey: subcategoryKey || slugify(title) || 'practice',
+  };
+}
+
 /**
  * POST /api/v1/instructor/contracts/:id/assignments
  * Instructor plants or attaches a Garden seed as homework.
@@ -975,59 +1033,58 @@ export async function assignHomework(
     const now = new Date().toISOString();
     let seedId = (body.seed_id || '').trim();
     const title = (body.title || '').trim().slice(0, 120);
+    const assignmentId = generateId('casm');
+    const dueAt = (body.due_at || '').trim() || null;
+    // Seed rows + assignment go in one batch so a failure can't leave an orphan seed.
+    const writes: D1PreparedStatement[] = [];
 
     if (!seedId) {
-      const cats = await resolveUserCategories(env, ctx.userId!, ctx.user?.metadata);
-      let categoryKey = (body.category_key || '').trim();
-      let subcategoryKey = (body.subcategory_key || '').trim();
-      if (!categoryKey && cats.length) {
-        const first = cats[0];
-        if (first.includes(':')) {
-          const [p, s] = first.split(':');
-          categoryKey = p;
-          subcategoryKey = subcategoryKey || s;
-        } else {
-          categoryKey = first;
-        }
-      }
-      if (!subcategoryKey) subcategoryKey = 'practice';
-      if (!categoryKey) {
+      // Homework grows on the CLIENT's paths; the coach's own paths are only a
+      // fallback when the client has none yet.
+      const clientCats = await resolveUserCategories(env, contract.client_id);
+      const pathCats = clientCats.length
+        ? clientCats
+        : await resolveUserCategories(env, ctx.userId!, ctx.user?.metadata);
+      const path = pickHomeworkPath(
+        pathCats,
+        (body.category_key || '').trim(),
+        (body.subcategory_key || '').trim(),
+        title
+      );
+      if (!path) {
         return error('VALIDATION_ERROR', 'Pick a path for this homework', 400);
       }
 
       seedId = generateId('seed');
       const seedTitle = title || 'Homework';
-      await env.DB.prepare(
-        `INSERT INTO growth_seeds
-          (id, category_key, subcategory_key, title, stage, growth_score, status, ownership,
-           visibility, planted_by_user_id, planted_at, created_at, updated_at, goal_detail)
-         VALUES (?, ?, ?, ?, 'seed', 0, 'growing', 'shared', 'private', ?, ?, ?, ?, ?)`
-      )
-        .bind(
+      // One owner (the client) plus the coach as instructor → 'solo' ownership.
+      // No metric columns: homework has no numeric target, so check-ins never demand a number/photo.
+      writes.push(
+        env.DB.prepare(
+          `INSERT INTO growth_seeds
+            (id, category_key, subcategory_key, title, stage, growth_score, status, ownership,
+             visibility, planted_by_user_id, planted_at, created_at, updated_at, goal_detail)
+           VALUES (?, ?, ?, ?, 'seed', 0, 'growing', 'solo', 'private', ?, ?, ?, ?, ?)`
+        ).bind(
           seedId,
-          categoryKey,
-          subcategoryKey,
+          path.categoryKey,
+          path.subcategoryKey,
           seedTitle,
           ctx.userId,
           now,
           now,
           now,
           (body.goal_detail || '').trim().slice(0, 800) || 'Homework from your coach'
-        )
-        .run();
-
-      await env.DB.prepare(
-        `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
-         VALUES (?, ?, 'owner', 'active', ?)`
-      )
-        .bind(seedId, contract.client_id, now)
-        .run();
-      await env.DB.prepare(
-        `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
-         VALUES (?, ?, 'instructor', 'active', ?)`
-      )
-        .bind(seedId, ctx.userId, now)
-        .run();
+        ),
+        env.DB.prepare(
+          `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
+           VALUES (?, ?, 'owner', 'active', ?)`
+        ).bind(seedId, contract.client_id, now),
+        env.DB.prepare(
+          `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
+           VALUES (?, ?, 'instructor', 'active', ?)`
+        ).bind(seedId, ctx.userId, now)
+      );
     } else {
       const seed = await env.DB.prepare(`SELECT id, title FROM growth_seeds WHERE id = ?`)
         .bind(seedId)
@@ -1050,24 +1107,23 @@ export async function assignHomework(
         .bind(seedId, ctx.userId)
         .first();
       if (!coachMember) {
-        await env.DB.prepare(
-          `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
-           VALUES (?, ?, 'instructor', 'active', ?)`
-        )
-          .bind(seedId, ctx.userId, now)
-          .run();
+        writes.push(
+          env.DB.prepare(
+            `INSERT INTO growth_seed_members (seed_id, user_id, role, status, joined_at)
+             VALUES (?, ?, 'instructor', 'active', ?)`
+          ).bind(seedId, ctx.userId, now)
+        );
       }
     }
 
-    const assignmentId = generateId('casm');
-    const dueAt = (body.due_at || '').trim() || null;
-    await env.DB.prepare(
-      `INSERT INTO coaching_assignments
-        (id, contract_id, seed_id, title, due_at, status, created_at)
-       VALUES (?, ?, ?, ?, ?, 'assigned', ?)`
-    )
-      .bind(assignmentId, contractId, seedId, title || null, dueAt, now)
-      .run();
+    writes.push(
+      env.DB.prepare(
+        `INSERT INTO coaching_assignments
+          (id, contract_id, seed_id, title, due_at, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'assigned', ?)`
+      ).bind(assignmentId, contractId, seedId, title || null, dueAt, now)
+    );
+    await env.DB.batch(writes);
 
     const coachName = await resolveUsername(env, ctx.userId!);
     await createUserNotification(env, {
@@ -1076,8 +1132,9 @@ export async function assignHomework(
       type: 'coaching_homework',
       title: `${coachName} assigned homework`,
       body: title || 'Check in with a photo when you finish.',
-      refType: 'growth_seed',
-      refId: seedId,
+      // Seeds/Garden is hidden in the app — open the coaching plan, not the seed.
+      refType: 'coaching_contract',
+      refId: contractId,
     });
 
     const assignments = await loadAssignments(env, contractId);

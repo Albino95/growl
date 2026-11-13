@@ -46,7 +46,13 @@ function mockDb(routes: Route[]) {
     all: async () => ({ results: exec(sql, args)?.all?.(args) ?? [] }),
     run: async () => exec(sql, args)?.run?.(args) ?? { success: true, meta: { changes: 1 } },
   });
-  return { db: { prepare: (sql: string) => stmt(sql) }, calls };
+  return {
+    db: {
+      prepare: (sql: string) => stmt(sql),
+      batch: async (stmts: any[]) => Promise.all(stmts.map((s) => s.run())),
+    },
+    calls,
+  };
 }
 
 const has = (...parts: string[]) => (sql: string) => parts.every((p) => sql.includes(p));
