@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import EmptyState from '../ui/EmptyState';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { gridTileImageUri } from '../../utils/reelCover';
 
 export type ProfileGridPost = {
   id: string;
@@ -14,7 +15,48 @@ export type ProfileGridPost = {
   subcategory?: string;
   likes?: number;
   isReel?: boolean;
+  /** Main media is a video file — never hand it to expo-image. */
+  isVideo?: boolean;
+  /** Poster image for reels/videos (metadata.cover_url), resolved. */
+  cover?: string;
 };
+
+/** Branded stand-in for reels with no poster (older reels): dark tile, play mark, caption. */
+function ReelFallbackTile({ caption }: { caption?: string }) {
+  const text = (caption || '').trim();
+  return (
+    <View style={tw`w-full h-full bg-[#1F2A24] items-center justify-center px-2`}>
+      <View style={tw`w-9 h-9 rounded-full bg-white/15 items-center justify-center`}>
+        <Ionicons name="play" size={18} color="#FFFFFF" style={{ marginLeft: 2 }} />
+      </View>
+      {text ? (
+        <Text style={tw`text-[10px] leading-3 text-white/80 text-center mt-2`} numberOfLines={2}>
+          {text}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function TileMedia({ post }: { post: ProfileGridPost }) {
+  const uri = gridTileImageUri(post);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [uri]);
+  const videoLike = post.isReel || post.isVideo;
+  if (!uri || failed) {
+    return videoLike ? <ReelFallbackTile caption={post.caption} /> : null;
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={{ width: '100%', height: '100%' }}
+      contentFit="cover"
+      transition={180}
+      recyclingKey={post.id}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 type Props = {
   posts: ProfileGridPost[];
@@ -81,12 +123,7 @@ export default function ProfilePostsGrid({
                 backgroundColor: '#EAE4D6',
               }}
             >
-              <Image
-                source={{ uri: post.image }}
-                style={{ width: '100%', height: '100%' }}
-                contentFit="cover"
-                transition={180}
-              />
+              <TileMedia post={post} />
               <View
                 style={tw`absolute inset-0`}
                 pointerEvents="none"

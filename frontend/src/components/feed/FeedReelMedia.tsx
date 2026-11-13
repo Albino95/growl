@@ -15,6 +15,8 @@ type Props = {
   mediaType?: string | null;
   contentType?: string | null;
   videoEdit?: Partial<VideoEditSettings> | null;
+  /** Poster image shown in place of the video when it isn't playing. */
+  posterUri?: string;
   failed?: boolean;
   isActive?: boolean;
   /** Feed cards must stay muted; full audio only in Reels viewer */
@@ -49,6 +51,7 @@ function FeedReelMedia({
   mediaType,
   contentType,
   videoEdit,
+  posterUri,
   failed,
   isActive = false,
   muted = true,
@@ -128,6 +131,16 @@ function FeedReelMedia({
             />
           ) : (
             <View style={tw`w-full h-full bg-black items-center justify-center`}>
+              {posterUri ? (
+                <Image
+                  source={{ uri: posterUri }}
+                  style={tw`absolute inset-0 w-full h-full`}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  recyclingKey={`${postId}-poster`}
+                  transition={80}
+                />
+              ) : null}
               <Ionicons name="play" size={36} color="#FFFFFF" />
             </View>
           )}

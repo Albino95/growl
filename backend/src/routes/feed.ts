@@ -1,7 +1,7 @@
 import { Env, RequestContext, Post } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createPostSchema, isPublishableMediaUrl } from '../utils/validation';
+import { validateRequest, createPostSchema, isPublishableMediaUrl, sanitizeCoverUrl } from '../utils/validation';
 import { generateId } from '../utils/id';
 import { alignPostTaxonomy, categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
@@ -299,8 +299,16 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       : undefined;
 
   try {
+    const clientMeta: Record<string, unknown> =
+      metadata && typeof metadata === 'object' ? { ...metadata } : {};
+    // Reel poster: keep only our hosted media URLs (profile grid / feed poster).
+    if ('cover_url' in clientMeta) {
+      const cover = sanitizeCoverUrl(clientMeta.cover_url);
+      if (cover) clientMeta.cover_url = cover;
+      else delete clientMeta.cover_url;
+    }
     const postMetadata = {
-      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+      ...clientMeta,
       ...(username ? { username } : {}),
       ...(avatar ? { avatar } : {}),
       isInstructor: !!userRow?.is_instructor,

@@ -32,6 +32,7 @@ import {
 } from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { isVideoPostMedia, reelCoverUri } from '../../utils/reelCover';
 import { getUserStories, type StoryItem } from '../../services/api/stories';
 import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
@@ -68,6 +69,8 @@ type Post = {
   category: string;
   subcategory?: string;
   isReel?: boolean;
+  isVideo?: boolean;
+  cover?: string;
   hasLiked?: boolean;
 };
 
@@ -111,6 +114,8 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
     category: p.category,
     subcategory: p.subcategory || undefined,
     isReel: isReelPost(p),
+    isVideo: isVideoPostMedia(p),
+    cover: reelCoverUri(p.metadata as Record<string, unknown> | null | undefined) || undefined,
     hasLiked: !!p.metadata?.has_liked,
   };
 }

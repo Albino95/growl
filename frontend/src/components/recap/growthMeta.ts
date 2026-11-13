@@ -7,10 +7,13 @@ import type { Mood, StreakDayStatus, WeeklyRecap } from '../../services/api/grow
 export type CheckinMoodMeta = { mood: Mood; glyph: string; label: string };
 
 /** Today card mood scale, 1 (heavy) … 5 (bright). */
+// Glyphs must be real emoji with emoji presentation: a plain text symbol (the old
+// '◇' for Okay) renders as a hairline/tofu on iOS and the chip reads as broken.
+// 🌧 (U+1F327) defaults to text presentation, so it carries VS16 (U+FE0F).
 export const CHECKIN_MOODS: CheckinMoodMeta[] = [
-  { mood: 1, glyph: '🌧', label: 'Heavy' },
+  { mood: 1, glyph: '\u{1F327}\u{FE0F}', label: 'Heavy' },
   { mood: 2, glyph: '🌙', label: 'Tired' },
-  { mood: 3, glyph: '◇', label: 'Okay' },
+  { mood: 3, glyph: '🙂', label: 'Okay' },
   { mood: 4, glyph: '😊', label: 'Good' },
   { mood: 5, glyph: '⚡', label: 'Bright' },
 ];

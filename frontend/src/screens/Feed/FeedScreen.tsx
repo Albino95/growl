@@ -40,6 +40,7 @@ import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
 import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
+import { reelCoverUri } from '../../utils/reelCover';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
@@ -139,6 +140,7 @@ function toLocalPost(post: FeedPost, viewerId?: string): Post {
     contentType:
       typeof post.metadata?.content_type === 'string' ? post.metadata.content_type : undefined,
     videoEdit,
+    posterUri: reelCoverUri(post.metadata as Record<string, unknown> | null | undefined) || undefined,
   };
 }
 

@@ -6,14 +6,14 @@ export const MOOD_META: Record<
 > = {
   happy: { label: 'Happy', glyph: '😊', color: '#CA8A04', wash: '#FEF9C3' },
   excited: { label: 'Excited', glyph: '⚡', color: '#EA580C', wash: '#FFEDD5' },
-  calm: { label: 'Calm', glyph: '◇', color: '#059669', wash: '#D1FAE5' },
+  calm: { label: 'Calm', glyph: '😌', color: '#059669', wash: '#D1FAE5' },
   grateful: { label: 'Grateful', glyph: '💚', color: '#0D9488', wash: '#CCFBF1' },
   proud: { label: 'Proud', glyph: '🏆', color: '#B45309', wash: '#FEF3C7' },
   motivated: { label: 'Motivated', glyph: '🔥', color: '#DC2626', wash: '#FEE2E2' },
   peaceful: { label: 'Peaceful', glyph: '🌊', color: '#0284C7', wash: '#E0F2FE' },
   determined: { label: 'Determined', glyph: '💪', color: '#7C2D12', wash: '#FFEDD5' },
   tired: { label: 'Tired', glyph: '🌙', color: '#6366F1', wash: '#E0E7FF' },
-  sad: { label: 'Sad', glyph: '🌧', color: '#64748B', wash: '#F1F5F9' },
+  sad: { label: 'Sad', glyph: '\u{1F327}\u{FE0F}', color: '#64748B', wash: '#F1F5F9' },
   anxious: { label: 'Anxious', glyph: '💭', color: '#9333EA', wash: '#F3E8FF' },
 };
 

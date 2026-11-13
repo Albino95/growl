@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WeeklyRecap } from '../../services/api/growth';
 import {
+  CHECKIN_MOODS,
+  checkinMoodMeta,
   firstNameOf,
   followupReply,
   isEvening,
@@ -13,6 +15,7 @@ import {
   topLevelPaths,
   welcomeBackLine,
 } from './growthMeta';
+import { journalMoodFromCheckin } from '../journal/journalMeta';
 
 // 2026-11-16 is a Monday.
 const day = (d: number, h = 10) => new Date(2026, 10, d, h, 0, 0);
@@ -124,5 +127,24 @@ describe('helpers', () => {
         { day: 'c', active: false, rest: false },
       ]).map((d) => d.status)
     ).toEqual(['active', 'rest', 'missed']);
+  });
+});
+
+describe('CHECKIN_MOODS', () => {
+  it('covers moods 1–5, each with an emoji glyph, label, reply and journal mood', () => {
+    expect(CHECKIN_MOODS.map((m) => m.mood)).toEqual([1, 2, 3, 4, 5]);
+    for (const m of CHECKIN_MOODS) {
+      // Emoji presentation (not a plain text symbol like the old '◇').
+      expect(m.glyph).toMatch(/\p{Extended_Pictographic}/u);
+      expect(m.glyph).not.toMatch(/[\u25A0-\u25FF]/);
+      expect(m.label.length).toBeGreaterThan(0);
+      expect(checkinMoodMeta(m.mood)).toBe(m);
+      expect(moodReply(m.mood)).not.toBe('Thanks for checking in.');
+      expect(journalMoodFromCheckin(m.mood)).not.toBeNull();
+    }
+  });
+
+  it('Okay (3) is a real emoji', () => {
+    expect(checkinMoodMeta(3)?.glyph).toBe('🙂');
   });
 });

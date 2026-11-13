@@ -26,6 +26,7 @@ import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
 import tw from '../../lib/tw';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { isVideoPostMedia, reelCoverUri } from '../../utils/reelCover';
 import { getUserStories, type StoryItem } from '../../services/api/stories';
 import { getConnections, syncCohortFriends, type FriendSummary } from '../../services/api/friends';
 import { updateProfileOnServer, fetchCurrentProfile } from '../../services/api/profile';
@@ -80,6 +81,8 @@ type Post = {
   category: string;
   subcategory?: string;
   isReel?: boolean;
+  isVideo?: boolean;
+  cover?: string;
   mediaType?: string;
   contentType?: string;
   videoEdit?: ReturnType<typeof reelPlaybackSettingsFromMetadata>;
@@ -122,6 +125,8 @@ function mapFeedPostToProfilePost(p: FeedPost, decayDays: number): Post {
     category: p.category,
     subcategory: p.subcategory || undefined,
     isReel: isReelPost(p),
+    isVideo: isVideoPostMedia(p),
+    cover: reelCoverUri(p.metadata as Record<string, unknown> | null | undefined) || undefined,
     mediaType: typeof p.metadata?.media_type === 'string' ? p.metadata.media_type : undefined,
     contentType: typeof p.metadata?.content_type === 'string' ? p.metadata.content_type : undefined,
     videoEdit: reelPlaybackSettingsFromMetadata(p.metadata ?? undefined),

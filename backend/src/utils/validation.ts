@@ -120,6 +120,20 @@ export function isPublishableMediaUrl(raw: unknown): raw is string {
   }
 }
 
+/**
+ * Reel cover / poster image URL kept in post metadata (`metadata.cover_url`).
+ * Accepts our hosted media only: an https URL whose path is `/api/{v}/media/…`,
+ * or the same path relative (`/api/v1/media/…`). Anything else → undefined
+ * (dropped, never blocks publishing).
+ */
+export function sanitizeCoverUrl(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const s = raw.trim();
+  if (!s || s.length > 2048) return undefined;
+  if (/^\/api\/v\d+\/media\/[^\s?#]+/i.test(s) && !s.includes('..')) return s;
+  return isPublishableMediaUrl(s) ? s : undefined;
+}
+
 export const createPostSchema = z.object({
   image_url: z
     .string({ required_error: 'Image is required' })

@@ -35,6 +35,8 @@ export type FeedCardPost = {
   mediaType?: string;
   contentType?: string;
   videoEdit?: VideoEditSettings | null;
+  /** Reel poster image (metadata.cover_url). */
+  posterUri?: string;
 };
 
 export type FeedPostCardProps = {
@@ -157,6 +159,7 @@ function FeedPostCard({
           mediaType={item.mediaType}
           contentType={item.contentType}
           videoEdit={item.videoEdit}
+          posterUri={item.posterUri}
           failed={mediaFailed}
           isActive={isActive}
           muted
