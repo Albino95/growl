@@ -54,7 +54,7 @@ import FadeInUp from '../../components/ui/FadeInUp';
 import NotificationBellButton from '../../components/navigation/NotificationBellButton';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import GrowingNowStrip from '../../components/garden/GrowingNowStrip';
-import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
+import { SHOW_SEEDS } from '../../constants/featureFlags';
 import { COACHING_ACTIVE_STATUS } from '../../constants/coaching';
 import {
   claimInstructor,
@@ -63,11 +63,11 @@ import {
   type CoachingContract,
   type InstructorEligibility,
 } from '../../services/api/instructor';
-import {
-  evaluateAchievements,
-  TIER_LABELS,
-  type AchievementTier,
-} from '../../data/achievements';
+import BadgeRow from '../../components/badges/BadgeRow';
+import LevelPill from '../../components/badges/LevelPill';
+import ProgressTab from '../../components/progress/ProgressTab';
+import { getMyBadges, getStreak, type MyBadges, type Streak } from '../../services/api/growth';
+import { useGrowthStore } from '../../state/useGrowthStore';
 
 type Post = {
   id: string;
@@ -229,8 +229,13 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const isInstructor = user?.isInstructor || false;
   const isBusinessAccount = shouldShowBusinessShell(user);
 
-  const [activeTab, setActiveTab] = useState<'posts' | 'stories'>('posts');
-  const [journeyOpen, setJourneyOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'progress'>('posts');
+  const [progressOpened, setProgressOpened] = useState(false);
+  const [progressRefreshKey, setProgressRefreshKey] = useState(0);
+  const [myBadges, setMyBadges] = useState<MyBadges | null>(null);
+  const [fallbackStreak, setFallbackStreak] = useState<Streak | null>(null);
+  const storeStreak = useGrowthStore((s) => s.streak);
+  const streak = storeStreak ?? fallbackStreak;
   const [showDecaySettings, setShowDecaySettings] = useState(false);
   const [showCategorySettings, setShowCategorySettings] = useState(false);
   const [pathSyncVisible, setPathSyncVisible] = useState(false);
@@ -269,7 +274,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     try {
       // Lightweight GET connections — avoid POST sync-cohort on every focus (that walks all users).
       // Each request fails on its own so one error doesn't skip the rest of the profile.
-      const [postList, storyList, connections, elig, me, plans] = await Promise.all([
+      const [postList, storyList, connections, elig, me, plans, badges] = await Promise.all([
         getUserPosts(user.id).catch((e) => {
           console.warn('[ProfileScreen] load posts', e);
           return null;
@@ -287,7 +292,15 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         getInstructorEligibility().catch(() => null),
         fetchCurrentProfile({ stats: true }).catch(() => null),
         listCoachingContracts().catch(() => [] as CoachingContract[]),
+        // Growth endpoints may not be deployed yet — hide those sections quietly.
+        getMyBadges().catch(() => null),
+        useGrowthStore.getState().refresh().catch(() => undefined),
       ]);
+      if (badges && Array.isArray(badges.earned)) setMyBadges(badges);
+      if (!useGrowthStore.getState().streak) {
+        const s = await getStreak().catch(() => null);
+        if (s && typeof s.current === 'number') setFallbackStreak(s);
+      }
       setMyPlans(plans.filter((p) => p.role === 'client' && p.status === 'active'));
       if (elig) setEligibility(elig);
       const decay =
@@ -439,19 +452,6 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     }
   };
 
-  const achievementStats = {
-    postCount: user?.postCount ?? posts.length,
-    categoriesCount: user?.categories?.length ?? 0,
-    hasBio: !!(profileMeta.bio && String(profileMeta.bio).trim()),
-    streakDays: user?.streakDays ?? 0,
-    endorsementsReceived: eligibility?.endorsementsReceived ?? user?.endorsementsReceived ?? 0,
-    endorsementsGiven: user?.endorsementsGiven ?? 0,
-    points,
-    canClaimInstructor: !!eligibility?.canClaim,
-    isInstructor,
-  };
-  const achievements = evaluateAchievements(achievementStats);
-  const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const visiblePosts = showDecayedPosts
     ? posts
     : posts.filter((p) => p.daysUntilDecay > 0);
@@ -599,6 +599,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             onRefresh={async () => {
               setRefreshing(true);
               try {
+                if (progressOpened) setProgressRefreshKey((k) => k + 1);
                 await loadProfileContent();
               } finally {
                 setRefreshing(false);
@@ -638,8 +639,39 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     <Text style={tw`text-xs text-emerald-800 font-semibold ml-1`}>Instructor</Text>
                   </View>
                 ) : null}
+                {myBadges?.level ? (
+                  <View style={tw`mt-1.5`}>
+                    <LevelPill level={myBadges.level} />
+                  </View>
+                ) : null}
               </View>
             </View>
+
+            {streak ? (
+              <View
+                style={tw`flex-row mb-3 rounded-2xl bg-[#FFF1F0] border border-[#FECACA]/70 px-3 py-2.5`}
+                accessible
+                accessibilityLabel={`Streak: ${streak.current} days now, longest ${streak.longest}, ${streak.total_days} days in total`}
+              >
+                {(
+                  [
+                    { label: 'Streak', value: streak.current, icon: '🔥' },
+                    { label: 'Longest', value: streak.longest, icon: '🌿' },
+                    { label: 'Total days', value: streak.total_days, icon: '🌱' },
+                  ] as const
+                ).map((it, i) => (
+                  <View
+                    key={it.label}
+                    style={tw`flex-1 items-center ${i > 0 ? 'border-l border-[#FECACA]/70' : ''}`}
+                  >
+                    <Text style={tw`text-base font-bold text-stone-900`}>
+                      {it.icon} {it.value}
+                    </Text>
+                    <Text style={tw`text-[10px] text-stone-500 mt-0.5`}>{it.label}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             {profileMeta.status ? (
               <View style={tw`mb-2 px-3 py-2 rounded-2xl bg-[#EAE4D6] border border-stone-200/60`}>
@@ -714,6 +746,28 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               Posts & endorsements earn points
             </Text>
           </View>
+
+          {myBadges ? (
+            <View style={tw`mt-3`}>
+              <BadgeRow earned={myBadges.earned} catalog={myBadges.catalog} next={myBadges.next} />
+            </View>
+          ) : null}
+
+          <PressableScale
+            onPress={() => navigateFromRoot(navigation, 'Invite')}
+            feedback="open"
+            style={tw`mt-3 flex-row items-center px-4 py-3.5 bg-[#ECFDF5] border border-emerald-100 rounded-2xl`}
+            accessibilityRole="button"
+          >
+            <View style={tw`w-9 h-9 rounded-full bg-emerald-600 items-center justify-center mr-3`}>
+              <Ionicons name="person-add-outline" size={17} color="#fff" />
+            </View>
+            <View style={tw`flex-1`}>
+              <Text style={tw`font-semibold text-stone-900`}>Invite friends</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Growing is easier together</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+          </PressableScale>
 
           {!isInstructor && eligibility ? (
             <View style={tw`mt-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4`}>
@@ -851,7 +905,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           ) : null}
         </FadeInUp>
 
-        {SHOW_SEEDS || SHOW_CIRCLES ? (
+        {SHOW_SEEDS ? (
           <View style={tw`px-4 pt-2`}>
             <GrowingNowStrip />
           </View>
@@ -936,13 +990,19 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               [
                 { key: 'posts' as const, label: 'Posts' },
                 { key: 'stories' as const, label: 'Stories' },
+                { key: 'progress' as const, label: 'Progress' },
               ] as const
             ).map((tab) => {
               const active = activeTab === tab.key;
               return (
                 <TouchableOpacity
                   key={tab.key}
-                  onPress={() => setActiveTab(tab.key)}
+                  onPress={() => {
+                    if (tab.key === 'progress') setProgressOpened(true);
+                    setActiveTab(tab.key);
+                  }}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
                   style={tw`pb-2.5 border-b-2 ${
                     active ? 'border-emerald-600' : 'border-transparent'
                   }`}
@@ -1037,6 +1097,20 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           </View>
         )}
 
+        {/* Progress — mounted on first open (lazy fetch), kept mounted afterwards. */}
+        {progressOpened ? (
+          <View style={activeTab === 'progress' ? undefined : { display: 'none' }}>
+            <ProgressTab
+              username={displayName}
+              userId={user?.id}
+              avatar={profileMeta.avatar || user?.avatar}
+              currentStreak={streak?.current ?? null}
+              refreshKey={progressRefreshKey}
+              onShare={setSharePayload}
+            />
+          </View>
+        ) : null}
+
         {activeTab === 'stories' && (
           <View style={tw`p-4`}>
             {stories.length === 0 ? (
@@ -1079,107 +1153,6 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             )}
           </View>
         )}
-
-        {/* Growth journey — collapsed by default for cleaner hierarchy */}
-        <View style={tw`px-4 py-4`}>
-          <TouchableOpacity
-            onPress={() => setJourneyOpen((v) => !v)}
-            activeOpacity={0.85}
-            style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}
-          >
-            <View style={tw`flex-row items-center justify-between`}>
-              <View style={tw`flex-1 pr-3`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
-                  Grow!
-                </Text>
-                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Growth journey</Text>
-                <Text style={tw`text-xs text-stone-500 mt-1`}>
-                  {unlockedCount} of {achievements.length} unlocked
-                </Text>
-              </View>
-              <View style={tw`flex-row items-center`}>
-                <View style={tw`w-11 h-11 rounded-full bg-emerald-600/15 items-center justify-center mr-2`}>
-                  <Ionicons name="ribbon-outline" size={22} color="#059669" />
-                </View>
-                <Ionicons
-                  name={journeyOpen ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color="#78716C"
-                />
-              </View>
-            </View>
-          </TouchableOpacity>
-
-          {journeyOpen ? (
-          <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4 mt-2`}>
-            {(Object.keys(TIER_LABELS) as AchievementTier[]).map((tier) => {
-              const tierItems = achievements.filter((a) => a.tier === tier);
-              if (tierItems.length === 0) return null;
-              return (
-                <View key={tier} style={tw`mb-3`}>
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
-                    {TIER_LABELS[tier]}
-                  </Text>
-                  {tierItems.map((award) => (
-                    <View
-                      key={award.id}
-                      style={tw`flex-row items-center bg-white/90 border border-stone-200/70 rounded-2xl px-3 py-3 mb-2 ${
-                        award.unlocked ? '' : 'opacity-75'
-                      }`}
-                    >
-                      <View
-                        style={tw`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${
-                          award.unlocked ? 'bg-energy-600' : 'bg-stone-200'
-                        }`}
-                      >
-                        <Ionicons
-                          name={award.icon}
-                          size={22}
-                          color={award.unlocked ? '#FFFFFF' : '#78716C'}
-                        />
-                      </View>
-                      <View style={tw`flex-1 pr-2`}>
-                        <Text
-                          style={tw`text-[15px] font-bold ${
-                            award.unlocked ? 'text-stone-900' : 'text-stone-600'
-                          }`}
-                        >
-                          {award.name}
-                        </Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5 leading-4`}>
-                          {award.description}
-                        </Text>
-                        {!award.unlocked && award.target > 1 ? (
-                          <View style={tw`mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden`}>
-                            <View
-                              style={[
-                                tw`h-full bg-energy-600 rounded-full`,
-                                { width: `${Math.min(100, (award.progress / award.target) * 100)}%` },
-                              ]}
-                            />
-                          </View>
-                        ) : null}
-                        {!award.unlocked && award.target > 1 ? (
-                          <Text style={tw`text-[10px] text-stone-400 mt-1`}>
-                            {award.progress}/{award.target}
-                          </Text>
-                        ) : null}
-                      </View>
-                      {award.unlocked ? (
-                        <View style={tw`px-2 py-1 rounded-full bg-energy-50`}>
-                          <Text style={tw`text-[10px] font-bold text-energy-700 uppercase`}>Earned</Text>
-                        </View>
-                      ) : (
-                        <Ionicons name="lock-closed-outline" size={16} color="#A8A29E" />
-                      )}
-                    </View>
-                  ))}
-                </View>
-              );
-            })}
-          </View>
-          ) : null}
-        </View>
 
         {isInstructor && (
           <View style={tw`px-5 py-4 border-b border-stone-200/80`}>

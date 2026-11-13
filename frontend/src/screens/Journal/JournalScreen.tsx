@@ -31,7 +31,6 @@ import JournalReflectionsSheet from '../../components/journal/JournalReflections
 import {
   ALL_MOODS,
   MOOD_META,
-  computeStreak,
   dateKeyFromIso,
   formatHeroDate,
   formatSectionTitle,
@@ -47,6 +46,7 @@ import {
 } from '../../services/api/journal';
 import { createConversation } from '../../services/api/messages';
 import { useActivationStore } from '../../state/useActivationStore';
+import { useGrowthStore, type ComposeDraft } from '../../state/useGrowthStore';
 import {
   verticalScrollProps,
   feedListPerformanceProps,
@@ -165,6 +165,8 @@ export default function JournalScreen() {
   const [mode, setMode] = useState<JournalMode>('pages');
   const [viewTab, setViewTab] = useState<ViewTab>('today');
   const [composeOpen, setComposeOpen] = useState(false);
+  /** Prefill handed over by the Home Today card ("Write more"). */
+  const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -238,6 +240,7 @@ export default function JournalScreen() {
 
   useEffect(() => {
     if (route.params?.openCompose) {
+      setComposeDraft(useGrowthStore.getState().takeComposeDraft());
       setComposeOpen(true);
       setViewTab('today');
       navigation.setParams({ openCompose: undefined });
@@ -281,13 +284,11 @@ export default function JournalScreen() {
     [mode, contentOpacity, contentSlide]
   );
 
-  const dateKeys = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of entries) set.add(dateKeyFromIso(e.created_at));
-    return set;
-  }, [entries]);
-
-  const streak = useMemo(() => computeStreak(dateKeys), [dateKeys]);
+  // Server growth streak (posts, stories, journal, check-ins; rest days keep it alive).
+  const streak = useGrowthStore((s) => s.streak?.current ?? 0);
+  useEffect(() => {
+    void useGrowthStore.getState().refresh({ userId: user?.id ?? null });
+  }, [user?.id]);
 
   const todayKey = localDateKey();
   const todayEntries = useMemo(
@@ -406,8 +407,11 @@ export default function JournalScreen() {
     try {
       await dispatch(addJournalEntry(payload)).unwrap();
       useActivationStore.getState().markJournaled();
+      // Activity changed — today now counts toward the streak.
+      void useGrowthStore.getState().refresh({ force: true });
       feedback.success();
       setComposeOpen(false);
+      setComposeDraft(null);
       setViewTab('today');
     } catch (e) {
       feedback.error();
@@ -432,6 +436,7 @@ export default function JournalScreen() {
 
   const openCompose = () => {
     feedback.open();
+    setComposeDraft(null);
     setComposeOpen(true);
   };
 
@@ -952,10 +957,13 @@ export default function JournalScreen() {
         visible={composeOpen}
         isSaving={isSaving}
         initialPrompt={todayPrompt}
-        preferredPath={userPath}
+        preferredPath={composeDraft?.path ?? userPath}
+        initialMood={composeDraft?.mood ?? null}
+        initialContent={composeDraft?.intention ?? null}
         onClose={() => {
           feedback.close();
           setComposeOpen(false);
+          setComposeDraft(null);
         }}
         onSave={(payload) => void handleSave(payload)}
       />

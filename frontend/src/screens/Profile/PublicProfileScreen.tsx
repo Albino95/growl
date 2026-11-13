@@ -54,6 +54,9 @@ import { alertMessage } from '../../utils/confirmDialog';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
 import PressableScale from '../../components/ui/PressableScale';
+import BadgeRow from '../../components/badges/BadgeRow';
+import LevelPill from '../../components/badges/LevelPill';
+import { getUserBadges, type GrowthLevel } from '../../services/api/growth';
 
 type Post = {
   id: string;
@@ -180,6 +183,10 @@ export default function PublicProfileScreen() {
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [profileError, setProfileError] = useState<'not_found' | 'error' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [publicBadges, setPublicBadges] = useState<{
+    earned: { id: string; earned_at: string }[];
+    level: GrowthLevel | null;
+  } | null>(null);
   // Latest route userId; responses for a previous user are ignored.
   const currentUserIdRef = useRef(userId);
   currentUserIdRef.current = userId;
@@ -193,6 +200,24 @@ export default function PublicProfileScreen() {
     setJournalEntries([]);
     void loadProfile();
     void prefetchPrimaryContent();
+  }, [userId]);
+
+  // Level + earned badges (public). Endpoint may 404 until deployed — hide quietly.
+  useEffect(() => {
+    let alive = true;
+    setPublicBadges(null);
+    getUserBadges(userId)
+      .then((res) => {
+        if (!alive || !res) return;
+        setPublicBadges({
+          earned: Array.isArray(res.earned) ? res.earned : [],
+          level: res.level && typeof res.level.points === 'number' ? res.level : null,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
   }, [userId]);
 
   // Relationship status drives follow button and moderation toggle labels.
@@ -808,8 +833,19 @@ export default function PublicProfileScreen() {
                     ) : null}
                   </View>
                 ) : null}
+                {publicBadges?.level && !isBlocked ? (
+                  <View style={tw`mt-1.5`}>
+                    <LevelPill level={publicBadges.level} />
+                  </View>
+                ) : null}
               </View>
             </View>
+
+            {publicBadges && publicBadges.earned.length > 0 && !isBlocked ? (
+              <View style={tw`mb-3`}>
+                <BadgeRow earned={publicBadges.earned} showLocked={false} onPress={null} />
+              </View>
+            ) : null}
 
             {profileUser.isInstructor && profileUser.teachingHeadline ? (
               <View style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-emerald-50 border border-emerald-100`}>

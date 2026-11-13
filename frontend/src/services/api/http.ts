@@ -248,6 +248,23 @@ export function getApiBaseUrl(): string {
 
 const getInflight = new Map<string, Promise<unknown>>();
 
+/** IANA timezone of the device, e.g. "Europe/Luxembourg" (null if unavailable). */
+export const DEVICE_TIMEZONE: string | null = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+})();
+
+/** The device's local calendar day as YYYY-MM-DD. */
+export function localDayKey(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const method = String(options.method || 'GET').toUpperCase();
@@ -281,6 +298,8 @@ async function requestOnce<T>(
 
   const headers: Record<string, string> = {
     ...(method !== 'GET' && method !== 'HEAD' ? { 'Content-Type': 'application/json' } : {}),
+    // Lets the API count streaks / check-ins on the user's own calendar day.
+    ...(DEVICE_TIMEZONE ? { 'X-Timezone': DEVICE_TIMEZONE } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 
@@ -337,5 +356,27 @@ async function requestOnce<T>(
   }
 
   if (res.status === 204) return undefined as unknown as T;
+  // Any write that earned badges (post, story, journal, check-in…) hands them
+  // to the celebration queue without each screen having to know about badges.
+  if (method !== 'GET' && onBadgesEarned) {
+    const earned = data?.data?.new_badges ?? data?.new_badges;
+    if (Array.isArray(earned) && earned.length > 0) {
+      try {
+        onBadgesEarned(earned);
+      } catch {
+        /* never break the request path */
+      }
+    }
+  }
   return data as T;
+}
+
+let onBadgesEarned: ((badges: { id: string; name: string; description: string; points: number }[]) => void) | null =
+  null;
+
+/** Register the app-wide handler for `new_badges` returned by write requests. */
+export function setBadgesEarnedHandler(
+  handler: ((badges: { id: string; name: string; description: string; points: number }[]) => void) | null
+): void {
+  onBadgesEarned = handler;
 }

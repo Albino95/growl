@@ -4,6 +4,7 @@ import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // Side effect: global Dynamic Type cap for Text / TextInput.
 import OfflineBanner from '../../components/common/OfflineBanner';
+import BadgeCelebrationHost from '../../components/badges/BadgeCelebrationHost';
 import AuthScreen from '../../screens/Auth/AuthScreen';
 import CategoryPickScreen from '../../screens/Onboarding/CategoryPickScreen';
 import IndividualTabs from './tabs/IndividualTabs';
@@ -102,6 +103,11 @@ export type RootStackParamList = {
   };
   CreateStory: undefined;
   CreateReel: undefined;
+  // Growth system (docs/GROWTH_SYSTEM.md)
+  ChallengeDetail: { challengeId: string };
+  Invite: undefined;
+  InviteRedeem: { code: string };
+  Badges: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -263,8 +269,28 @@ export default function RootNavigator() {
                 gestureEnabled: false,
               }}
             />
+            <Stack.Screen
+              name="ChallengeDetail"
+              getComponent={() => require('../../screens/Challenges/ChallengeDetailScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Badges"
+              getComponent={() => require('../../screens/Badges/BadgesScreen').default}
+              options={{ headerShown: false }}
+            />
           </>
         )}
+        <Stack.Screen
+          name="Invite"
+          getComponent={() => require('../../screens/Invite/InviteScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="InviteRedeem"
+          getComponent={() => require('../../screens/Invite/InviteRedeemScreen').default}
+          options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
         <Stack.Screen name="PublicProfile" getComponent={() => require('../../screens/Profile/PublicProfileScreen').default} />
         <Stack.Screen
           name="AppReviews"
@@ -285,6 +311,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Business" component={BusinessRootStack} />
       </Stack.Navigator>
       <OfflineBanner />
+      <BadgeCelebrationHost />
     </View>
   );
 }

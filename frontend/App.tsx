@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { store } from './src/store/store';
+import linking from './src/app/navigation/linking';
 import RootNavigator from './src/app/navigation/RootNavigator';
 import { useAppDispatch, useAppSelector } from './src/store/store';
 import { hydrateAuth, signOut } from './src/store/slices/authSlice';
@@ -16,17 +17,26 @@ import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
 import { KeyboardDoneAccessory } from './src/components/ui/KeyboardDoneAccessory';
 import { initMonitoring } from './src/services/monitoring';
+import { prewarmFirstOpenRead } from './src/utils/firstLaunch';
 import {
   navigationRef,
   handleCheckoutDeepLink,
   resetToAuth,
 } from './src/app/navigation/navigationRef';
-import { setSessionExpiredHandler } from './src/services/api/http';
+import { setBadgesEarnedHandler, setSessionExpiredHandler } from './src/services/api/http';
+import { useGrowthStore } from './src/state/useGrowthStore';
 
 initMonitoring();
 
 // Refresh token rejected (expired, revoked, banned): clear every slice and go
 // back to sign-in instead of showing a logged-in UI whose requests all fail.
+// Badges earned by any write → celebration queue; streak/check-in state refreshes.
+setBadgesEarnedHandler((badges) => {
+  const growth = useGrowthStore.getState();
+  growth.pushBadges(badges);
+  void growth.refresh({ force: true });
+});
+
 setSessionExpiredHandler(() => {
   if (!store.getState().auth.token) return;
   void store.dispatch(signOut()).finally(() => resetToAuth());
@@ -34,6 +44,10 @@ setSessionExpiredHandler(() => {
 
 // Keep native splash (solid emerald) up until BrandLoadingScreen is painted.
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+// Start reading `grow.firstOpenSeen` now (non-blocking) so the splash can pick
+// daily vs first-launch within its 100ms budget.
+prewarmFirstOpenRead();
 
 function AppContent() {
   const dispatch = useAppDispatch();
@@ -76,7 +90,7 @@ function AppContent() {
   return (
     <View style={styles.root}>
       {hydrated ? (
-        <NavigationContainer key={token || 'no-token'} ref={navigationRef}>
+        <NavigationContainer key={token || 'no-token'} ref={navigationRef} linking={linking}>
           <StatusBar style="auto" />
           <RootNavigator />
         </NavigationContainer>
@@ -87,6 +101,7 @@ function AppContent() {
         <View style={styles.splash} pointerEvents="auto">
           <BrandLoadingScreen
             variant="splash"
+            mode="auto"
             showWordmark
             message="Still growing."
             ready={hydrated}

@@ -30,6 +30,22 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import { alertMessage } from '../../utils/confirmDialog';
 import { copyToClipboard } from '../../utils/csvDownload';
 import FadeInUp from '../ui/FadeInUp';
+import GrowthShareCard, {
+  growthShareKindLabel,
+  growthShareMessage,
+  isGrowthSharePayload,
+  type GrowthShareFormat,
+  type GrowthSharePayload,
+} from '../recap/GrowthShareCard';
+
+export type {
+  GrowthSharePayload,
+  GrowthShareFormat,
+  RecapSharePayload,
+  BadgeSharePayload,
+  ChallengeSharePayload,
+  ProgressSharePayload,
+} from '../recap/GrowthShareCard';
 
 export type ShareCardPayload =
   | {
@@ -75,7 +91,9 @@ export type ShareCardPayload =
       content: string;
       moodLabel?: string | null;
       pathLabel?: string | null;
-    };
+    }
+  /** Growth system kinds: recap (9:16 / 1:1), badge, challenge, progress. */
+  | GrowthSharePayload;
 
 type Props = {
   visible: boolean;
@@ -93,6 +111,14 @@ function sheetTitle(kind: ShareCardPayload['kind']): string {
       return 'Share this voice';
     case 'milestone':
       return 'Pride moment';
+    case 'recap':
+      return 'Your week in growth';
+    case 'badge':
+      return 'Share your badge';
+    case 'challenge':
+      return 'Share your challenge';
+    case 'progress':
+      return 'Share your progress';
   }
 }
 
@@ -106,6 +132,11 @@ function sheetKicker(kind: ShareCardPayload['kind']): string {
       return 'Journal voice';
     case 'milestone':
       return 'Pride moment';
+    case 'recap':
+    case 'badge':
+    case 'challenge':
+    case 'progress':
+      return growthShareKindLabel(kind);
   }
 }
 
@@ -124,10 +155,12 @@ function buildLink(payload: ShareCardPayload): string {
   if (payload.kind === 'voice') {
     return `https://letsgrow.lu/j/${encodeURIComponent(payload.entryId)}`;
   }
+  if (!payload.username) return 'https://letsgrow.lu';
   return `https://letsgrow.lu/u/${encodeURIComponent(payload.username)}`;
 }
 
 function buildMessage(payload: ShareCardPayload, link: string): string {
+  if (isGrowthSharePayload(payload)) return growthShareMessage(payload, link);
   if (payload.kind === 'profile') {
     return [
       `Meet ${payload.username} on Grow!`,
@@ -211,8 +244,15 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
   const [heroFailed, setHeroFailed] = useState(false);
   const [liveAvatar, setLiveAvatar] = useState('');
   const [liveName, setLiveName] = useState('');
+  const [format, setFormat] = useState<GrowthShareFormat>('story');
+  const growth = isGrowthSharePayload(payload);
 
-  const link = useMemo(() => (payload ? buildLink(payload) : ''), [payload]);
+  /** Growth payloads default to the signed-in user. */
+  const payloadName = payload?.username || (growth ? user?.username : '') || '';
+  const link = useMemo(
+    () => (payload ? buildLink(growth && !payload.username ? { ...payload, username: payloadName } : payload) : ''),
+    [payload, growth, payloadName]
+  );
   const message = useMemo(
     () => (payload ? buildMessage(payload, link) : ''),
     [payload, link]
@@ -221,11 +261,16 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
   const previewWidth = Math.min(Dimensions.get('window').width - 40, 360);
   /** Instagram portrait 4:5 */
   const previewHeight = Math.round((previewWidth * 5) / 4);
+  /** Growth cards: 9:16 story (1080×1920) or 1:1 square (1080×1080). */
+  const growthWidth = format === 'story' ? Math.min(previewWidth, 280) : previewWidth;
+  const growthHeight = format === 'story' ? Math.round((growthWidth * 16) / 9) : growthWidth;
+  const cardWidth = growth ? growthWidth : previewWidth;
+  const cardHeight = growth ? growthHeight : previewHeight;
 
   const subjectId = useMemo(() => {
     if (!payload) return '';
-    return payload.kind === 'milestone' ? payload.userId || '' : payload.userId;
-  }, [payload]);
+    return payload.userId || (growth ? user?.id : '') || '';
+  }, [payload, growth, user?.id]);
 
   const avatarUri = useMemo(() => {
     if (!payload) return '';
@@ -234,8 +279,8 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
       (user && subjectId && user.id === subjectId ? user.avatar : '') ||
       payload.avatar ||
       '';
-    return resolveAvatarUri(subjectId || payload.username, payload.username, raw);
-  }, [payload, liveAvatar, user, subjectId]);
+    return resolveAvatarUri(subjectId || payloadName, payloadName, raw);
+  }, [payload, liveAvatar, user, subjectId, payloadName]);
 
   const postImage = useMemo(() => {
     if (!payload || payload.kind !== 'post') return '';
@@ -255,7 +300,7 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
   const avatarSrc = avatarUri ? { uri: avatarUri } : DEFAULT_AVATAR_ASSET;
 
   useEffect(() => {
-    if (!visible || !payload || !subjectId) return;
+    if (!visible || !payload || !subjectId || growth) return;
     let cancelled = false;
     setLiveAvatar('');
     setLiveName('');
@@ -274,16 +319,17 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [visible, payload, subjectId, user]);
+  }, [visible, payload, subjectId, user, growth]);
 
   useEffect(() => {
     if (!visible || !payload) return;
     setHeroFailed(false);
     const needHero = payload.kind === 'post' && !!postImage && !videoHero;
-    loadedRef.current = { hero: !needHero, avatar: !avatarUri };
-    if (avatarUri) void prefetchRemote(avatarUri);
+    // Growth cards draw no remote images — don't wait on an avatar that isn't rendered.
+    loadedRef.current = { hero: !needHero, avatar: !avatarUri || growth };
+    if (avatarUri && !growth) void prefetchRemote(avatarUri);
     if (needHero) void prefetchRemote(postImage);
-  }, [visible, payload, avatarUri, postImage, videoHero]);
+  }, [visible, payload, avatarUri, postImage, videoHero, growth]);
 
   const shareLink = async () => {
     if (!payload || sharing.current) return;
@@ -318,7 +364,7 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
         quality: 0.92,
         result: 'tmpfile',
         width: 1080,
-        height: 1350,
+        height: growth ? (format === 'story' ? 1920 : 1080) : 1350,
       });
       const canShare = await Sharing.isAvailableAsync();
       if (canShare && uri) {
@@ -356,7 +402,7 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
 
   if (!payload) return null;
 
-  const username = liveName || payload.username;
+  const username = liveName || payloadName;
   const brandBarH = 56;
   const footerH = payload.kind === 'profile' ? 78 : 96;
   const heroH = Math.max(180, previewHeight - brandBarH - footerH);
@@ -392,7 +438,9 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
         ? payload.content.trim()
         : payload.kind === 'profile'
           ? payload.teachingHeadline || 'Unlock skills. Share your growth.'
-          : payload.subtitle;
+          : payload.kind === 'milestone'
+            ? payload.subtitle
+            : '';
 
   return (
     <AnimatedBottomSheet visible={visible} onClose={onClose} maxHeightRatio={0.94}>
@@ -414,6 +462,36 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
             Drag the bar down to close · tap Share to Stories when it looks right.
           </Text>
 
+          {growth ? (
+            <View style={tw`flex-row self-center mb-4 p-1 rounded-full bg-[#EAE4D6]`}>
+              {(
+                [
+                  ['story', 'Story 9:16'],
+                  ['square', 'Square 1:1'],
+                ] as const
+              ).map(([value, label]) => (
+                <PressableScale
+                  key={value}
+                  feedback={false}
+                  onPress={() => {
+                    if (format === value) return;
+                    feedback.select();
+                    setFormat(value);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: format === value }}
+                  style={tw`px-4 py-1.5 rounded-full ${format === value ? 'bg-white' : ''}`}
+                >
+                  <Text
+                    style={tw`text-xs font-semibold ${format === value ? 'text-stone-900' : 'text-stone-500'}`}
+                  >
+                    {label}
+                  </Text>
+                </PressableScale>
+              ))}
+            </View>
+          ) : null}
+
           {/* Instagram 4:5 postcard — captured as JPEG */}
           <View {...cardPan.panHandlers}>
           <FadeInUp distance={16}>
@@ -421,13 +499,21 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
             <ViewShot
               ref={shotRef}
               style={{
-                width: previewWidth,
-                height: previewHeight,
+                width: cardWidth,
+                height: cardHeight,
                 borderRadius: 28,
                 overflow: 'hidden',
                 backgroundColor: '#FFFcf7',
               }}
             >
+              {isGrowthSharePayload(payload) ? (
+                <GrowthShareCard
+                  payload={payload}
+                  width={cardWidth}
+                  height={cardHeight}
+                  username={username}
+                />
+              ) : (
               <View
                 collapsable={false}
                 style={{
@@ -798,6 +884,7 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
                   ) : null}
                 </View>
               </View>
+              )}
             </ViewShot>
           </View>
           </FadeInUp>

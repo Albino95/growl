@@ -55,6 +55,10 @@ import LiveHalo from '../../components/circles/LiveHalo';
 import { isAppActive } from '../../utils/appActive';
 import HomeEmptyCanvas from '../../components/feed/HomeEmptyCanvas';
 import HomeSitCue from '../../components/feed/HomeSitCue';
+import TodayCard from '../../components/feed/TodayCard';
+import WeeklyRecapCard from '../../components/recap/WeeklyRecapCard';
+import { isRecapWindow } from '../../components/recap/growthMeta';
+import { useGrowthStore } from '../../state/useGrowthStore';
 import { useActivationStore } from '../../state/useActivationStore';
 import { getJournalEntries } from '../../services/api/journal';
 import { localDateKey } from '../../components/journal/journalMeta';
@@ -154,6 +158,8 @@ export default function FeedScreen({ navigation, route }: any) {
   const lastJournalDateKey = useActivationStore((s) => s.lastJournalDateKey);
   const journaledToday = lastJournalDateKey === localDateKey();
   const sundaySit = useActivationStore((s) => s.showSundaySit());
+  /** Growth API answered — the Today card owns the journal nudge ("Write more" after check-in). */
+  const growthAvailable = useGrowthStore((s) => s.loaded && s.available && !!s.streak);
   const [retryingFeed, setRetryingFeed] = useState(false);
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(() => new Set());
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -261,6 +267,9 @@ export default function FeedScreen({ navigation, route }: any) {
       void dispatch(fetchFeedPosts({ silent: true }));
       void loadStoriesOnly();
       void useActivationStore.getState().hydrate();
+      // Cheap (throttled) — also picks up activity from a post/story made since last focus.
+      void useGrowthStore.getState().refresh({ userId: user?.id ?? null });
+      if (isRecapWindow()) void useGrowthStore.getState().refreshRecap();
 
       const pollId = setInterval(() => {
         if (!isAppActive()) return;
@@ -268,7 +277,7 @@ export default function FeedScreen({ navigation, route }: any) {
       }, 90_000);
 
       return () => clearInterval(pollId);
-    }, [dispatch])
+    }, [dispatch, user?.id])
   );
 
   useEffect(() => {
@@ -406,6 +415,8 @@ export default function FeedScreen({ navigation, route }: any) {
       // Keep existing posts; Redux records error state.
     }
     await loadStoriesOnly();
+    void useGrowthStore.getState().refresh({ force: true, userId: user?.id ?? null });
+    if (isRecapWindow()) void useGrowthStore.getState().refreshRecap({ force: true });
     setRefreshing(false);
   };
 
@@ -773,6 +784,10 @@ export default function FeedScreen({ navigation, route }: any) {
   // Memoized so scroll-driven state (primaryVisiblePostId) doesn't rebuild the header.
   const feedListHeader = useMemo(() => (
     <View style={tw`pb-2`}>
+      {/* Self-contained (read useGrowthStore) — no header memo deps. */}
+      <TodayCard />
+      <WeeklyRecapCard />
+
       <View style={tw`mx-4 mb-3 px-4 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/70`}>
         <Text style={tw`text-[11px] tracking-[2px] uppercase text-stone-500 font-semibold`}>
           Your circle
@@ -1049,7 +1064,8 @@ export default function FeedScreen({ navigation, route }: any) {
         </View>
       ) : null}
 
-      {!journaledToday && hasPosts ? (
+      {/* Fallback only: when the Today card is live it shows this nudge after the check-in. */}
+      {!journaledToday && hasPosts && !growthAvailable ? (
         <HomeSitCue
           sunday={sundaySit}
           onWrite={openTodayJournal}
@@ -1107,6 +1123,7 @@ export default function FeedScreen({ navigation, route }: any) {
     hasPosts,
     journaledToday,
     sundaySit,
+    growthAvailable,
     openTodayJournal,
     hasPostedToday,
     feedStatus,

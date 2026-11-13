@@ -37,6 +37,9 @@ type Props = {
   isSaving: boolean;
   initialPrompt?: string;
   preferredPath?: string | null;
+  /** Prefill from the Today check-in ("Write more"). Applied each time the modal opens. */
+  initialMood?: JournalMood | null;
+  initialContent?: string | null;
   onClose: () => void;
   onSave: (payload: {
     content: string;
@@ -52,6 +55,8 @@ export default function JournalComposeModal({
   isSaving,
   initialPrompt,
   preferredPath,
+  initialMood,
+  initialContent,
   onClose,
   onSave,
 }: Props) {
@@ -69,13 +74,13 @@ export default function JournalComposeModal({
 
   useEffect(() => {
     if (!visible) return;
-    setContent('');
-    setMood(null);
+    setContent(initialContent ?? '');
+    setMood(initialMood ?? null);
     setPath(preferredPath ?? null);
     setIsPublic(false);
     setPublicConfirmOpen(false);
-    setShowAllMoods(false);
-  }, [visible, preferredPath]);
+    setShowAllMoods(!!initialMood && !PRIMARY_MOODS.includes(initialMood));
+  }, [visible, preferredPath, initialMood, initialContent]);
 
   const insets = useSafeAreaInsets();
   // Modals often report 0 safe-area insets, which parks the header under the status bar / battery.

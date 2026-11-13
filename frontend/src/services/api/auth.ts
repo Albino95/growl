@@ -27,6 +27,8 @@ export async function signUpApi(payload: {
   email: string;
   password: string;
   username?: string;
+  /** Optional friend invite code (growth system); redeemed after verification. */
+  invite_code?: string;
 }): Promise<SignUpResponse> {
   const passwordHash = await sha256Hex(payload.password);
   const res = await request<{ success: boolean; data: SignUpResponse }>('/auth/sign-up', {
@@ -35,6 +37,7 @@ export async function signUpApi(payload: {
       email: payload.email,
       username: payload.username,
       passwordHash,
+      ...(payload.invite_code ? { invite_code: payload.invite_code } : {}),
     }),
   });
   return res.data;

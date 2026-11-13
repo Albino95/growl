@@ -92,6 +92,12 @@ export default function SettingsScreen() {
             subtitle="Push and email preferences"
             onPress={() => navigateFromRoot(navigation, 'NotificationPrefs')}
           />
+          <Row
+            icon="gift-outline"
+            label="Invite friends"
+            subtitle="Share your code and grow together"
+            onPress={() => navigateFromRoot(navigation, 'Invite')}
+          />
         </View>
 
         <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>

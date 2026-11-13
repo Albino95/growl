@@ -45,6 +45,12 @@ import {
   loadPendingVerification,
   clearPendingVerification,
 } from '../../services/storage/pendingVerification';
+import {
+  clearPendingInviteCode,
+  loadPendingInviteCode,
+  normalizeInviteCode,
+  subscribePendingInviteCode,
+} from '../../services/storage/pendingInvite';
 import tw from '../../lib/tw';
 
 // LayoutAnimation is opt-in on Android's legacy renderer; Fabric ignores (and warns on) this.
@@ -308,6 +314,8 @@ export default function AuthScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [step, setStep] = useState<Step>('auth');
   const [cooldown, setCooldown] = useState(0);
+  const [inviteCode, setInviteCode] = useState('');
+  const [showInvite, setShowInvite] = useState(false);
   const {
     signIn,
     signUp,
@@ -554,6 +562,23 @@ export default function AuthScreen() {
     [password]
   );
 
+  // Invite code captured from a deep link while signed out → prefill sign-up.
+  useEffect(() => {
+    let alive = true;
+    const apply = (code: string | null) => {
+      if (!alive || !code) return;
+      setInviteCode(code);
+      setShowInvite(true);
+      setIsSignUp(true);
+    };
+    void loadPendingInviteCode().then(apply);
+    const unsubscribe = subscribePendingInviteCode(apply);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
+
   /** Mode switch with sign-up-only rows animating in/out. */
   const setMode = (next: boolean) => {
     if (next === isSignUp) return;
@@ -607,7 +632,9 @@ export default function AuthScreen() {
     setLocalLoading(true);
     try {
       if (isSignUp) {
-        const result = await signUp(trimmedEmail, password).unwrap();
+        const invite = normalizeInviteCode(inviteCode);
+        const result = await signUp(trimmedEmail, password, undefined, invite || undefined).unwrap();
+        if (invite) void clearPendingInviteCode();
         markSignupOnboardingRequired();
         setDevCodeHint(result.devVerificationCode ?? null);
         await savePendingVerification({
@@ -1187,6 +1214,50 @@ export default function AuthScreen() {
           <Text style={tw`text-sm font-semibold text-emerald-700`}>Forgot password?</Text>
         </TouchableOpacity>
       )}
+
+      {isSignUp ? (
+        showInvite ? (
+          <View style={tw`mb-4`}>
+            <FieldLabel>Invite code (optional)</FieldLabel>
+            <View style={tw`relative`}>
+              <TextInput
+                inputAccessoryViewID={accessoryId}
+                placeholder="e.g. 7K3Q9M2X"
+                value={inviteCode}
+                onChangeText={(v) => setInviteCode(v.toUpperCase())}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={16}
+                returnKeyType="done"
+                style={tw`border border-stone-200/80 bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-4 text-base text-stone-900 tracking-widest`}
+                placeholderTextColor="#A8A29E"
+                accessibilityLabel="Invite code, optional"
+              />
+              <Ionicons
+                name="gift-outline"
+                size={20}
+                color="#78716C"
+                style={tw`absolute left-4 top-4`}
+              />
+            </View>
+            <Text style={tw`text-xs text-stone-500 mt-1.5`}>
+              You’ll be friends with whoever invited you.
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={() => {
+              animateNextLayout(reducedRef.current);
+              setShowInvite(true);
+            }}
+            style={tw`self-start mb-3 py-1`}
+            accessibilityRole="button"
+            accessibilityLabel="Have an invite code?"
+          >
+            <Text style={tw`text-sm font-semibold text-emerald-700`}>Have an invite code?</Text>
+          </TouchableOpacity>
+        )
+      ) : null}
 
       <PrimaryButton
         label={isSignUp ? 'Create account' : 'Sign in'}

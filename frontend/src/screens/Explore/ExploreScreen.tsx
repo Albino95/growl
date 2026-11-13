@@ -63,6 +63,7 @@ import PressableScale from '../../components/ui/PressableScale';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import MessagesInboxButton from '../../components/navigation/MessagesInboxButton';
 import { alertMessage } from '../../utils/confirmDialog';
+import ChallengesStrip from '../../components/challenges/ChallengesStrip';
 
 function SectionTitle({
   title,
@@ -316,9 +317,16 @@ export default function ExploreScreen() {
     void runSearch(q);
   };
 
+  const [challengesRefreshKey, setChallengesRefreshKey] = useState(0);
+  const openChallenge = useCallback(
+    (challengeId: string) => navigateFromRoot(navigation, 'ChallengeDetail', { challengeId }),
+    [navigation]
+  );
+
   const onRefresh = () => {
     feedback.refresh();
     setRefreshing(true);
+    setChallengesRefreshKey((k) => k + 1);
     void load();
   };
 
@@ -823,6 +831,12 @@ export default function ExploreScreen() {
           feedback.open();
           navigateFromRoot(navigation, 'Instructors');
         }}
+      />
+
+      <ChallengesStrip
+        path={selectedCategory}
+        refreshKey={challengesRefreshKey}
+        onOpen={openChallenge}
       />
 
       {/* Stories */}

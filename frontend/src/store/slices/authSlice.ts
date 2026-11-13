@@ -264,7 +264,7 @@ export const hydrateAuth = createAsyncThunk(
 export const signUp = createAsyncThunk(
   'auth/signUp',
   async (
-    payload: { email: string; password: string; username?: string },
+    payload: { email: string; password: string; username?: string; invite_code?: string },
     { rejectWithValue }
   ) => {
     try {

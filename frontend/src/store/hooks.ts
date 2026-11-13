@@ -34,8 +34,15 @@ export const useAuth = () => {
   // Stable action helpers: same function identities across renders.
   const actions = useMemo(
     () => ({
-      signUp: (email: string, password: string, username?: string) =>
-        dispatch(signUp({ email, password, username })),
+      signUp: (email: string, password: string, username?: string, inviteCode?: string) =>
+        dispatch(
+          signUp({
+            email,
+            password,
+            username,
+            ...(inviteCode ? { invite_code: inviteCode } : {}),
+          })
+        ),
       verifyEmail: (email: string, code: string) => dispatch(verifyEmail({ email, code })),
       signIn: (email: string, password: string) => dispatch(signIn({ email, password })),
       signInWithSSO: (payload: {
