@@ -14,6 +14,7 @@ import { useToastStore, type ToastItem } from '../../state/useToastStore';
 import { duration, easing, spring, timing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { haptic } from '../../theme/haptics';
+import { useColorSchemeName } from '../../theme/scheme';
 
 /** Distance the pill sits above the bottom safe-area inset — clears the floating dock. */
 const TOAST_DOCK_CLEARANCE = 84;
@@ -31,6 +32,9 @@ export default function ToastHost() {
   const current = useToastStore((s) => s.current);
   const hide = useToastStore((s) => s.hide);
   const insets = useSafeAreaInsets();
+  // Light: inverse ink pill on cream. Dark: a lifted night-soil pill with a
+  // hairline so it separates from the page (an ink pill would glare).
+  const dark = useColorSchemeName() === 'dark';
   const reduced = useReducedMotion();
 
   // `shown` lags `current` so the exit animation can play with the old content.
@@ -105,6 +109,7 @@ export default function ToastHost() {
         accessibilityLiveRegion="polite"
         style={[
           styles.pill,
+          dark ? styles.pillDark : null,
           { opacity, transform: [{ translateY: Animated.add(translateY, drag) }] },
         ]}
       >
@@ -163,6 +168,12 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
+  },
+  pillDark: {
+    backgroundColor: '#2E2A26',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowOpacity: 0.4,
   },
   body: {
     flexDirection: 'row',

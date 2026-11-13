@@ -23,6 +23,11 @@ const defineConfig = (): ExpoConfig => ({
   orientation: 'portrait',
   icon: './assets/icon.png',
   scheme: 'growl',
+  // Stays 'light' while DARK_MODE_READY (src/theme/appearance.ts) is false.
+  // When phase 2 flips it, switch to 'automatic' so iOS reports the system
+  // scheme to Appearance and native chrome (alerts, pickers, keyboard) follows.
+  // Android: 'automatic' needs expo-system-ui (NOT installed yet — adding it is
+  // a native change that requires a new build).
   userInterfaceStyle: 'light',
   // Native cold-start: the brand mark (cream leaf + smile, transparent) centred
   // at 128pt on emerald. BrandLoadingScreen draws the same mark at the same rect

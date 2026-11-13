@@ -1,9 +1,45 @@
+/**
+ * LIGHT ("Cream") Tailwind config — also the base of the dark config.
+ *
+ * src/lib/tw.ts builds two twrnc instances: this file as-is (light) and this
+ * file with `theme.extend.colors` overridden by DARK_TW_COLORS from
+ * src/theme/palette.ts (dark, "Night soil"). Edit colours in BOTH places:
+ * semantic light values here must match SEMANTIC.light in palette.ts
+ * (palette.test.ts enforces it). Radius / type / spacing utilities mirror
+ * src/theme/tokens.ts (tokens.test.ts enforces it).
+ */
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./App.{ts,tsx}', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      // Design tokens (src/theme/tokens.ts): rounded-card, px-gutter, text-body …
+      spacing: {
+        gutter: '16px',
+        'gutter-wide': '20px',
+      },
+      borderRadius: {
+        chip: '9999px',
+        control: '12px',
+        card: '16px',
+        sheet: '24px',
+        hero: '28px',
+      },
+      fontSize: {
+        caption: ['11px', { lineHeight: '14px' }],
+        footnote: ['13px', { lineHeight: '18px' }],
+        body: ['15px', { lineHeight: '22px' }],
+        callout: ['17px', { lineHeight: '24px' }],
+        title: ['22px', { lineHeight: '28px' }],
+        display: ['28px', { lineHeight: '34px' }],
+      },
       colors: {
+        // Semantic roles — prefer these in new code (dark values: palette.ts).
+        page: '#F3EEE4',
+        card: '#FFFCF7',
+        raised: '#EAE4D6',
+        ink: { DEFAULT: '#1C1917', 2: '#57534E', 3: '#6B645E' },
+        line: '#E7E5E4',
         brand: {
           50: '#ecfdf5',
           100: '#d1fae5',

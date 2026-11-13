@@ -8,11 +8,22 @@ import {
 
 const STORAGE_KEY = 'grow.uiPrefs.v1';
 
+/** User's appearance choice; resolved to 'light' | 'dark' in src/theme/appearance.ts. */
+export type AppearancePref = 'system' | 'light' | 'dark';
+
+/**
+ * 'light' while screens are still being migrated to semantic colour tokens.
+ * Phase 2 flips this to 'system' together with DARK_MODE_READY.
+ */
+export const DEFAULT_APPEARANCE: AppearancePref = 'light';
+
 type UiPrefsState = {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
+  appearance: AppearancePref;
   setSoundEnabled: (enabled: boolean) => void;
   setHapticsEnabled: (enabled: boolean) => void;
+  setAppearance: (appearance: AppearancePref) => void;
 };
 
 /** Same storage the other app stores use (SecureStore on native, localStorage on web). */
@@ -70,14 +81,22 @@ export const useUiPrefsStore = create<UiPrefsState>()(
     (set) => ({
       soundEnabled: true,
       hapticsEnabled: true,
+      appearance: DEFAULT_APPEARANCE,
       setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
       setHapticsEnabled: (enabled) => set({ hapticsEnabled: enabled }),
+      setAppearance: (appearance) => set({ appearance }),
     }),
     {
       name: STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => secureStateStorage),
-      partialize: (s) => ({ soundEnabled: s.soundEnabled, hapticsEnabled: s.hapticsEnabled }),
+      // `appearance` was added without a version bump: older blobs simply lack
+      // it and the default above stays in force (persist merges shallowly).
+      partialize: (s) => ({
+        soundEnabled: s.soundEnabled,
+        hapticsEnabled: s.hapticsEnabled,
+        appearance: s.appearance,
+      }),
       // Called after rehydration; `error` is set when storage/parse failed —
       // the store keeps its defaults and is marked ready either way.
       onRehydrateStorage: () => () => {

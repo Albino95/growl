@@ -1,16 +1,42 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { Animated, Easing, Linking, StyleSheet, View } from 'react-native';
-import { DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  type NavigationState,
+  type Theme,
+} from '@react-navigation/native';
+import { THEME_COLORS, type ColorSchemeName } from './src/theme/palette';
+import { useAppearanceSync } from './src/theme/appearance';
 
-/** Cream scene behind every screen so pushes, modals and bounces never flash grey. */
-const NAV_THEME: Theme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: '#F3EEE4',
-    card: '#FFFCF7',
-    primary: '#059669',
-    border: 'rgba(231,229,228,0.9)',
+/**
+ * Page colour behind every screen so pushes, modals and bounces never flash
+ * grey (cream in light, night-soil in dark). Built once per scheme.
+ */
+const NAV_THEMES: Record<ColorSchemeName, Theme> = {
+  light: {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: THEME_COLORS.light.page,
+      card: THEME_COLORS.light.card,
+      text: THEME_COLORS.light.ink,
+      primary: '#059669',
+      border: 'rgba(231,229,228,0.9)',
+    },
+  },
+  dark: {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: THEME_COLORS.dark.page,
+      card: THEME_COLORS.dark.card,
+      text: THEME_COLORS.dark.ink,
+      primary: THEME_COLORS.dark.leafInk,
+      border: THEME_COLORS.dark.line,
+      notification: THEME_COLORS.dark.energy,
+    },
   },
 };
 import { Provider } from 'react-redux';
@@ -70,11 +96,28 @@ setSessionExpiredHandler(() => {
 // daily vs first-launch within its 100ms budget.
 prewarmFirstOpenRead();
 
-function AppContent() {
+function AppContent({ scheme }: { scheme: ColorSchemeName }) {
   const dispatch = useAppDispatch();
   const token = useAppSelector((state) => state.auth.token);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
   const [bootDone, setBootDone] = useState(false);
+
+  // The navigation tree is keyed on the colour scheme so a switch remounts it
+  // and every tw`...` call re-runs against the new instance. Capture the nav
+  // state so the remount lands on the same screen (scheme switches only — a
+  // token change still starts fresh, as before).
+  const navKey = token || 'no-token';
+  const savedNav = useRef<{ key: string; state: NavigationState | undefined }>({
+    key: navKey,
+    state: undefined,
+  });
+  if (savedNav.current.key !== navKey) savedNav.current = { key: navKey, state: undefined };
+  const onNavStateChange = useCallback(
+    (state: NavigationState | undefined) => {
+      if (savedNav.current.key === navKey) savedNav.current.state = state;
+    },
+    [navKey],
+  );
 
   useEffect(() => {
     if (!hydrated) {
@@ -134,8 +177,18 @@ function AppContent() {
         <Animated.View
           style={[styles.nav, navSettled ? null : { transform: [{ scale: navScale }] }]}
         >
-          <NavigationContainer key={token || 'no-token'} ref={navigationRef} linking={linking} theme={NAV_THEME}>
-            <StatusBar style="auto" />
+          <NavigationContainer
+            key={`${navKey}:${scheme}`}
+            ref={navigationRef}
+            linking={linking}
+            theme={NAV_THEMES[scheme]}
+            // Only set after a scheme remount; first mount still honours the
+            // linking initial URL (initialState would suppress it).
+            initialState={savedNav.current.state}
+            onStateChange={onNavStateChange}
+          >
+            {/* Dark icons on cream, light icons on night soil. */}
+            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
             <RootNavigator />
           </NavigationContainer>
         </Animated.View>
@@ -176,6 +229,9 @@ const styles = StyleSheet.create({
 });
 
 export default function App() {
+  // Resolves appearance pref + OS scheme and switches tw / theme.colors.
+  const scheme = useAppearanceSync();
+
   useEffect(() => {
     // Safety: if the mark never reports loaded, still drop the native splash.
     const t = setTimeout(() => {
@@ -187,10 +243,11 @@ export default function App() {
   return (
     <Provider store={store}>
       <SafeAreaProvider>
-        <AppContent />
-        {/* Success / info toasts: above navigation, below AppDialog modals */}
-        <ToastHost />
-        <AppDialogHost />
+        <AppContent scheme={scheme} />
+        {/* Success / info toasts: above navigation, below AppDialog modals.
+            Keyed on scheme so their tw styles re-evaluate on a switch. */}
+        <ToastHost key={`toast:${scheme}`} />
+        <AppDialogHost key={`dialog:${scheme}`} />
         {/* Shared iOS Done bar for FormTextInput / formInputAccessoryProps fields */}
         <KeyboardDoneAccessory />
       </SafeAreaProvider>

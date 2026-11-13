@@ -7,7 +7,8 @@ import tw from '../../lib/tw';
 import { haptic } from '../../theme/haptics';
 import { previewSound } from '../../utils/interactionFeedback';
 import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
-import { useUiPrefsStore } from '../../state/useUiPrefsStore';
+import { useUiPrefsStore, type AppearancePref } from '../../state/useUiPrefsStore';
+import { DARK_MODE_READY } from '../../theme/appearance';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { useAuth } from '../../store/hooks';
@@ -44,6 +45,52 @@ function Row({
       </View>
       <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
     </TouchableOpacity>
+  );
+}
+
+const APPEARANCE_OPTIONS: { value: AppearancePref; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+/** System / Light / Dark segmented control. Hidden until DARK_MODE_READY. */
+function AppearanceRow() {
+  const appearance = useUiPrefsStore((s) => s.appearance);
+  const setAppearance = useUiPrefsStore((s) => s.setAppearance);
+  return (
+    <View style={tw`py-3.5 border-t border-line`}>
+      <Text style={tw`font-semibold text-ink`}>Appearance</Text>
+      <Text style={tw`text-xs text-ink-3 mt-0.5 mb-2.5`}>
+        System follows your phone's light or dark setting.
+      </Text>
+      <View accessibilityRole="radiogroup" style={tw`flex-row bg-raised rounded-control p-1`}>
+        {APPEARANCE_OPTIONS.map((opt) => {
+          const selected = appearance === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`Appearance: ${opt.label}`}
+              onPress={() => {
+                if (selected) return;
+                haptic('selection');
+                // Switching remounts the app tree (see App.tsx) — instant.
+                setAppearance(opt.value);
+              }}
+              style={tw`flex-1 items-center py-2 rounded-[9px] ${selected ? 'bg-card' : ''}`}
+            >
+              <Text
+                style={tw`text-footnote ${selected ? 'font-semibold text-ink' : 'text-ink-2'}`}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -143,6 +190,7 @@ export default function SettingsScreen() {
               thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
             />
           </View>
+          {DARK_MODE_READY ? <AppearanceRow /> : null}
         </View>
 
         <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>

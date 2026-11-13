@@ -6,6 +6,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     globals: false,
+    // twrnc imports `react-native`; inline it so the alias below applies.
+    server: { deps: { inline: ['twrnc'] } },
   },
   resolve: {
     alias: {
