@@ -460,7 +460,7 @@ export default function CheckoutScreen() {
                       <Text style={tw`text-sm text-stone-600 mb-2`}>
                         Quantity: {item.quantity}
                       </Text>
-                      <Text style={tw`text-base font-bold text-brand-600`}>
+                      <Text style={tw`text-base font-bold text-brand-700`}>
                         ${(item.product.price * item.quantity).toFixed(2)}
                       </Text>
                     </View>
@@ -518,7 +518,7 @@ export default function CheckoutScreen() {
                 !geoReady ? 'opacity-60' : ''
               }`}
             >
-              <Text style={tw`text-[15px] ${shipping.country ? 'text-stone-900' : 'text-stone-400'}`}>
+              <Text style={tw`text-[15px] ${shipping.country ? 'text-stone-900' : 'text-stone-500'}`}>
                 {!geoReady
                   ? 'Loading countries…'
                   : shipping.country
@@ -549,7 +549,7 @@ export default function CheckoutScreen() {
                     !countryCode ? 'opacity-50' : ''
                   }`}
                 >
-                  <Text style={tw`text-[15px] ${shipping.state ? 'text-stone-900' : 'text-stone-400'}`}>
+                  <Text style={tw`text-[15px] ${shipping.state ? 'text-stone-900' : 'text-stone-500'}`}>
                     {shipping.state || `Select ${regionLabel.toLowerCase()}`}
                   </Text>
                   <Ionicons name="chevron-down" size={18} color="#78716C" />
@@ -591,7 +591,7 @@ export default function CheckoutScreen() {
                     needsState && !stateCode ? 'opacity-50' : ''
                   }`}
                 >
-                  <Text style={tw`text-[15px] ${shipping.city ? 'text-stone-900' : 'text-stone-400'}`}>
+                  <Text style={tw`text-[15px] ${shipping.city ? 'text-stone-900' : 'text-stone-500'}`}>
                     {shipping.city || 'Select city'}
                   </Text>
                   <Ionicons name="chevron-down" size={18} color="#78716C" />
@@ -675,14 +675,14 @@ export default function CheckoutScreen() {
               </Text>
             </View>
             {shippingCost === 0 && (
-              <Text style={tw`text-sm text-brand-600 mb-2`}>
+              <Text style={tw`text-sm text-brand-700 mb-2`}>
                 Free shipping on orders over $50!
               </Text>
             )}
             <View style={tw`border-t border-stone-200/80 pt-3 mt-2`}>
               <View style={tw`flex-row justify-between`}>
                 <Text style={tw`text-lg font-bold text-stone-900`}>Total</Text>
-                <Text style={tw`text-lg font-bold text-brand-600`}>${total.toFixed(2)}</Text>
+                <Text style={tw`text-lg font-bold text-brand-700`}>${total.toFixed(2)}</Text>
               </View>
             </View>
           </View>

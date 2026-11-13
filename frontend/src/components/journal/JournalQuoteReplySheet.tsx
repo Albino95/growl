@@ -196,7 +196,7 @@ export default function JournalQuoteReplySheet({
                   value={body}
                   onChangeText={setBody}
                   placeholder="Write something kind…"
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   multiline
                   style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3 min-h-[88px] text-stone-900 text-[15px]`}
                   textAlignVertical="top"

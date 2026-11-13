@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
 import { useRefresh } from '../../hooks/useRefresh';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
 import EmptyState from '../../components/ui/EmptyState';
+import ErrorState from '../../components/ui/ErrorState';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
 import { StarRow } from '../../components/instructor/StarRating';
 import {
@@ -81,7 +83,7 @@ export default function InstructorsScreen() {
             hitSlop={8}
             style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
           </PressableScale>
         }
         right={
@@ -128,7 +130,7 @@ export default function InstructorsScreen() {
                   <Text style={tw`font-bold text-stone-900`}>Your Instructor Hub</Text>
                   <Text style={tw`text-xs text-stone-500 mt-0.5`}>Students, offer, homework</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                <Ionicons name="chevron-forward" size={iconSize.sm} color="#A8A29E" />
               </PressableScale>
             ) : null}
           </FadeInUp>
@@ -137,12 +139,10 @@ export default function InstructorsScreen() {
           loading ? (
             <SkeletonList variant="inbox" count={4} />
           ) : loadError ? (
-            <EmptyState
-              icon="cloud-offline-outline"
+            <ErrorState
               title="Couldn’t load instructors"
-              description={loadError}
-              actionLabel="Try again"
-              onAction={() => {
+              message={loadError}
+              onRetry={() => {
                 setLoading(true);
                 void load();
               }}
@@ -190,7 +190,7 @@ export default function InstructorsScreen() {
                         </Text>
                       </View>
                     ) : (
-                      <Text style={tw`text-[11px] text-stone-400 mt-1`}>
+                      <Text style={tw`text-[11px] text-stone-500 mt-1`}>
                         Reviews after 4 completed weeks
                       </Text>
                     )}

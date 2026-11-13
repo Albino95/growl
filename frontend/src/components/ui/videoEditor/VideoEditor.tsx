@@ -814,7 +814,7 @@ export default function VideoEditor({
 
           {coverMs > 0 && Math.abs(positionMs - coverMs) < 120 ? (
             <View style={tw`absolute top-3 left-3 bg-brand-600/90 px-2.5 py-1 rounded-full z-10`}>
-              <Text style={tw`text-white text-[10px] font-bold`}>COVER</Text>
+              <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-[11px] font-bold`}>COVER</Text>
             </View>
           ) : null}
 

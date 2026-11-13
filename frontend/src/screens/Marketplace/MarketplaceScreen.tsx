@@ -14,6 +14,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
 import { resolveProductImageUri } from '../../utils/images';
@@ -362,7 +364,7 @@ export default function MarketplaceScreen() {
                             />
                           ) : (
                             <View style={tw`w-full h-48 bg-stone-100 items-center justify-center`}>
-                              <Ionicons name="image-outline" size={28} color="#A8A29E" />
+                              <Ionicons name="image-outline" size={iconSize.lg} color="#A8A29E" />
                             </View>
                           )}
                           <View style={tw`p-2.5`}>
@@ -373,11 +375,11 @@ export default function MarketplaceScreen() {
                               ${item.price.toFixed(2)}
                             </Text>
                             {item.matchLabel ? (
-                              <Text style={tw`text-[10px] text-brand-600 mt-0.5`} numberOfLines={1}>
+                              <Text style={tw`text-[11px] text-brand-700 mt-0.5`} numberOfLines={1}>
                                 {item.matchLabel}
                               </Text>
                             ) : item.isNew ? (
-                              <Text style={tw`text-[10px] text-violet-600 mt-0.5`}>New</Text>
+                              <Text style={tw`text-[11px] text-violet-600 mt-0.5`}>New</Text>
                             ) : null}
                           </View>
                         </PressableScale>
@@ -461,7 +463,7 @@ export default function MarketplaceScreen() {
                       <Text style={tw`text-lg font-bold text-emerald-700`}>${item.price.toFixed(2)}</Text>
                     </View>
                     {item.matchLabel ? (
-                      <Text style={tw`text-xs text-brand-600 mt-1`} numberOfLines={1}>
+                      <Text style={tw`text-xs text-brand-700 mt-1`} numberOfLines={1}>
                         {item.matchLabel}
                       </Text>
                     ) : null}
@@ -478,12 +480,10 @@ export default function MarketplaceScreen() {
                 <SkeletonCard variant="product" />
               </View>
             ) : error ? (
-              <EmptyState
-                icon="cloud-offline-outline"
+              <ErrorState
                 title="Couldn’t load products"
-                description={error}
-                actionLabel="Try again"
-                onAction={() => dispatch(fetchProducts(fetchParams))}
+                message={error}
+                onRetry={() => dispatch(fetchProducts(fetchParams))}
               />
             ) : searchQuery.trim() ? (
               <EmptyState

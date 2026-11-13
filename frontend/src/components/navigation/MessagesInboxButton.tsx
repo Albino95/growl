@@ -61,7 +61,7 @@ export default function MessagesInboxButton() {
         <View
           style={tw`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-energy-600 items-center justify-center border-2 border-[#F3EEE4]`}
         >
-          <Text style={tw`text-[9px] font-bold text-white`}>{count > 9 ? '9+' : count}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>{count > 9 ? '9+' : count}</Text>
         </View>
       ) : null}
     </PressableScale>

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import {
@@ -29,7 +30,7 @@ import PrimaryButton from '../../components/ui/PrimaryButton';
 import PressableScale from '../../components/ui/PressableScale';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import GrowLoader from '../../components/ui/GrowLoader';
-import EmptyState from '../../components/ui/EmptyState';
+import ErrorState from '../../components/ui/ErrorState';
 import FadeInUp from '../../components/ui/FadeInUp';
 import ShareCardSheet from '../../components/share/ShareCardSheet';
 import ChallengeProgressBar from '../../components/challenges/ChallengeProgressBar';
@@ -60,9 +61,9 @@ function DayGrid({ days, today }: { days: ChallengeDetail['days']; today: string
             }`}
           >
             {d.done ? (
-              <Ionicons name="leaf" size={14} color="#FFFFFF" />
+              <Ionicons name="leaf" size={iconSize.xs} color="#FFFFFF" />
             ) : (
-              <Text style={tw`text-[10px] font-semibold ${future ? 'text-stone-300' : 'text-stone-500'}`}>
+              <Text style={tw`text-[11px] font-semibold ${future ? 'text-stone-300' : 'text-stone-500'}`}>
                 {i + 1}
               </Text>
             )}
@@ -182,7 +183,7 @@ export default function ChallengeDetailScreen() {
         accessibilityRole="button"
         accessibilityLabel="Go back"
       >
-        <Ionicons name="arrow-back" size={18} color="#1C1917" />
+        <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
       </Pressable>
       <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>Challenge</Text>
       {detail?.joined ? (
@@ -195,7 +196,7 @@ export default function ChallengeDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Share challenge"
         >
-          <Ionicons name="share-outline" size={18} color="#1C1917" />
+          <Ionicons name="share-outline" size={iconSize.sm} color="#1C1917" />
         </Pressable>
       ) : (
         <View style={tw`w-9`} />
@@ -219,12 +220,11 @@ export default function ChallengeDetailScreen() {
       <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
         {header}
         <View style={tw`flex-1 justify-center px-6`}>
-          <EmptyState
+          <ErrorState
             icon="leaf-outline"
             title="Challenge unavailable"
-            description={error || 'We couldn’t load this challenge.'}
-            actionLabel="Try again"
-            onAction={() => {
+            message={error || 'We couldn’t load this challenge.'}
+            onRetry={() => {
               setLoading(true);
               void load();
             }}
@@ -300,7 +300,7 @@ export default function ChallengeDetailScreen() {
               <View>
                 <Text style={tw`text-4xl font-bold text-stone-900`}>
                   {shown}
-                  <Text style={tw`text-lg font-semibold text-stone-400`}> / {c.target_days}</Text>
+                  <Text style={tw`text-lg font-semibold text-stone-500`}> / {c.target_days}</Text>
                 </Text>
                 <Text style={tw`text-xs text-stone-500 mt-0.5`}>days on this path</Text>
               </View>
@@ -355,7 +355,7 @@ export default function ChallengeDetailScreen() {
                   style={tw`flex-row items-center py-3 ${i < others.length - 1 ? 'border-b border-stone-200/70' : ''}`}
                   accessibilityLabel={`${p.is_me ? 'You' : p.username}, ${p.progress} of ${c.target_days} days`}
                 >
-                  <Text style={tw`w-6 text-xs font-bold text-stone-400`}>{i + 1}</Text>
+                  <Text style={tw`w-6 text-xs font-bold text-stone-500`}>{i + 1}</Text>
                   <GrowAvatar userId={p.user_id} username={p.username} uri={p.avatar} size={36} />
                   <View style={tw`flex-1 ml-3`}>
                     <Text

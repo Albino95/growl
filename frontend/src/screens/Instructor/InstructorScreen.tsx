@@ -648,7 +648,7 @@ export default function InstructorScreen({ navigation }: any) {
                                     key={`${person.id}-${key}`}
                                     style={tw`px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100`}
                                   >
-                                    <Text style={tw`text-[10px] font-semibold text-emerald-800`}>
+                                    <Text style={tw`text-[11px] font-semibold text-emerald-800`}>
                                       {getCategoryLabel(key)}
                                     </Text>
                                   </View>

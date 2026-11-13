@@ -373,7 +373,7 @@ export default function CommentsScreen({
                   maxLength={COMMENT_MAX_LENGTH}
                   multiline
                   style={tw`text-sm text-stone-900`}
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   editable={!sending}
                 />
               </View>

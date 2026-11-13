@@ -84,7 +84,7 @@ export default function LocationPickerSheet({
               value={query}
               onChangeText={setQuery}
               placeholder={placeholder}
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               style={tw`flex-1 ml-2 text-[15px] text-stone-900 py-0`}
               returnKeyType="done"
               blurOnSubmit

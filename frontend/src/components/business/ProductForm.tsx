@@ -238,7 +238,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 onChangeText={setName}
                 placeholder="Product name"
                 style={inputStyle}
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                 returnKeyType="next"
                 blurOnSubmit={false}
@@ -254,7 +254,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 placeholder="Optional description"
                 multiline
                 style={[inputStyle, tw`min-h-24`]}
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 textAlignVertical="top"
                 returnKeyType="done"
                 blurOnSubmit
@@ -321,7 +321,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   placeholder="0.00"
                   keyboardType="decimal-pad"
                   style={inputStyle}
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   returnKeyType="done"
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => stockRef.current?.focus()}
@@ -342,7 +342,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   placeholder="0"
                   keyboardType="number-pad"
                   style={inputStyle}
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   returnKeyType="done"
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => Keyboard.dismiss()}

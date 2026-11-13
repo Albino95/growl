@@ -14,6 +14,7 @@ import CreateActionSheet, {
   type CreateAction,
 } from '../../../components/navigation/CreateActionSheet';
 import tw, { theme } from '../../../lib/tw';
+import { iconSize } from '../../../theme/icons';
 import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
 import { feedback } from '../../../utils/interactionFeedback';
@@ -119,7 +120,7 @@ function DockTabButton({
         >
           <Ionicons
             name={isActive ? tab.activeIcon : tab.inactiveIcon}
-            size={22}
+            size={iconSize.md}
             color={isActive ? theme.colors.brand : theme.colors.textSubtle}
           />
         </Animated.View>
@@ -128,12 +129,13 @@ function DockTabButton({
         >
           <Text
             style={{
-              fontSize: 10,
-              lineHeight: 12,
+              fontSize: 11,
+              lineHeight: 13,
               fontWeight: isActive ? '600' : '400',
-              color: isActive ? theme.colors.brand : theme.colors.textSubtle,
+              color: isActive ? theme.colors.brand : theme.colors.textMuted,
             }}
             numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
           >
             {tab.label}
           </Text>

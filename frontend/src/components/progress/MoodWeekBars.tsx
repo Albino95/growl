@@ -26,9 +26,9 @@ export default function MoodWeekBars({ data, height = 88, limit = 12 }: Props) {
   return (
     <View style={tw`flex-row`}>
       <View style={{ height, justifyContent: 'space-between', marginRight: 6 }}>
-        <Text style={tw`text-[10px]`}>{MOOD_FACES[4]}</Text>
-        <Text style={tw`text-[10px]`}>{MOOD_FACES[2]}</Text>
-        <Text style={tw`text-[10px]`}>{MOOD_FACES[0]}</Text>
+        <Text style={tw`text-[11px]`}>{MOOD_FACES[4]}</Text>
+        <Text style={tw`text-[11px]`}>{MOOD_FACES[2]}</Text>
+        <Text style={tw`text-[11px]`}>{MOOD_FACES[0]}</Text>
       </View>
       <View style={tw`flex-1 flex-row items-end justify-between`}>
         {weeks.map((w) => {
@@ -54,7 +54,7 @@ export default function MoodWeekBars({ data, height = 88, limit = 12 }: Props) {
                   }}
                 />
               </View>
-              <Text style={tw`text-[9px] text-stone-400 mt-1`}>{shortWeek(w.week)}</Text>
+              <Text style={tw`text-[11px] text-stone-500 mt-1`}>{shortWeek(w.week)}</Text>
             </View>
           );
         })}

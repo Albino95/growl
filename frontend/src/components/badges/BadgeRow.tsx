@@ -100,7 +100,7 @@ export default function BadgeRow({
         {sortedEarned.map((b) => (
           <View key={b.id} style={tw`items-center w-16`}>
             <BadgeIcon id={b.id} size={52} tier={tierOf(b.id)} />
-            <Text style={tw`text-[10px] text-stone-700 font-semibold mt-1 text-center`} numberOfLines={1}>
+            <Text style={tw`text-[11px] text-stone-700 font-semibold mt-1 text-center`} numberOfLines={1}>
               {nameOf(b.id)}
             </Text>
           </View>
@@ -108,7 +108,7 @@ export default function BadgeRow({
         {locked.map((b) => (
           <View key={b.id} style={tw`items-center w-16`}>
             <BadgeIcon id={b.id} size={52} locked />
-            <Text style={tw`text-[10px] text-stone-400 mt-1 text-center`} numberOfLines={1}>
+            <Text style={tw`text-[11px] text-stone-500 mt-1 text-center`} numberOfLines={1}>
               {b.name}
             </Text>
           </View>

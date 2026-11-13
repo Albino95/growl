@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
 import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import PrimaryButton from '../../components/ui/PrimaryButton';
@@ -132,7 +134,7 @@ export default function InventoryScreen() {
             <Image source={{ uri: product.image_url }} style={tw`w-14 h-14 rounded-xl mr-3`} contentFit="cover" />
           ) : (
             <View style={tw`w-14 h-14 rounded-xl mr-3 bg-[#EAE4D6] items-center justify-center`}>
-              <Ionicons name="image-outline" size={22} color="#A8A29E" />
+              <Ionicons name="image-outline" size={iconSize.md} color="#A8A29E" />
             </View>
           )}
           <View style={tw`flex-1`}>
@@ -161,7 +163,7 @@ export default function InventoryScreen() {
             style={tw`px-4 py-2.5 bg-red-50 rounded-xl items-center justify-center`}
             onPress={() => void handleDeleteProduct(product)}
           >
-            <Ionicons name="trash-outline" size={18} color="#DC2626" />
+            <Ionicons name="trash-outline" size={iconSize.sm} color="#DC2626" />
           </TouchableOpacity>
         </View>
       </View>
@@ -189,14 +191,14 @@ export default function InventoryScreen() {
     >
       <View style={tw`px-5 pb-3`}>
         <View style={tw`relative mb-3`}>
-          <Ionicons name="search" size={18} color="#A8A29E" style={tw`absolute left-3.5 top-3.5 z-10`} />
+          <Ionicons name="search" size={iconSize.sm} color="#A8A29E" style={tw`absolute left-3.5 top-3.5 z-10`} />
           <TextInput
             {...formInputAccessoryProps()}
             placeholder="Search name or SKU…"
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl pl-10 pr-4 py-3 text-base text-stone-900`}
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
           />
         </View>
         <BusinessStatStrip
@@ -247,12 +249,9 @@ export default function InventoryScreen() {
               <SkeletonCard variant="product" />
             </View>
           ) : loadFailed ? (
-            <BusinessEmptyState
-              icon="cloud-offline-outline"
-              title="Couldn't load products"
-              description="Check your connection and try again."
-              actionLabel="Retry"
-              onAction={() => void dispatch(fetchBusinessProducts())}
+            <ErrorState
+              title="Couldn’t load products"
+              onRetry={() => void dispatch(fetchBusinessProducts())}
             />
           ) : (
             <BusinessEmptyState

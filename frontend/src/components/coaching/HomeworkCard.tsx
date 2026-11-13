@@ -97,7 +97,7 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
 
       {extra?.lastNote ? (
         <View style={tw`mt-2 px-3 py-2 rounded-xl bg-[#F3EEE4]`}>
-          <Text style={tw`text-[10px] font-bold tracking-widest text-stone-400 uppercase`}>
+          <Text style={tw`text-[11px] font-bold tracking-widest text-stone-500 uppercase`}>
             {isCoach ? 'Client note' : 'Your note'}
           </Text>
           <Text style={tw`text-sm text-stone-700 mt-0.5 leading-5`}>{extra.lastNote}</Text>
@@ -117,7 +117,7 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
       ) : null}
 
       {isCoach && !done ? (
-        <Text style={tw`text-xs text-stone-400 mt-1.5`}>
+        <Text style={tw`text-xs text-stone-500 mt-1.5`}>
           Waiting for your client to mark this done.
         </Text>
       ) : null}

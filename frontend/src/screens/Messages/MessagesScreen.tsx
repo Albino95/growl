@@ -867,7 +867,7 @@ export default function MessagesScreen() {
                         <View style={tw`flex-row items-center justify-end mt-1`}>
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: 11,
                               marginRight: 4,
                               color: item.is_own ? 'rgba(255,255,255,0.75)' : wall.meta,
                             }}
@@ -1050,7 +1050,7 @@ export default function MessagesScreen() {
               >
                 <Text
                   style={tw`text-[15px] ${
-                    active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                    active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
                   }`}
                 >
                   {tab.label}
@@ -1061,7 +1061,7 @@ export default function MessagesScreen() {
                       active ? 'bg-emerald-600' : 'bg-[#F97066]'
                     }`}
                   >
-                    <Text style={tw`text-[10px] font-bold text-white`}>
+                    <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>
                       {unread}
                     </Text>
                   </View>
@@ -1116,18 +1116,18 @@ export default function MessagesScreen() {
                   >
                     {item.peer.username}
                   </Text>
-                  <Text style={tw`text-xs text-stone-400 ml-2`}>
+                  <Text style={tw`text-xs text-stone-500 ml-2`}>
                     {formatRelativeTime(item.last_message_at)}
                   </Text>
                 </View>
                 <View style={tw`flex-row items-center`}>
                   {item.coaching || item.peer.is_instructor ? (
                     <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-emerald-50`}>
-                      <Text style={tw`text-[10px] font-bold text-emerald-800`}>Coach</Text>
+                      <Text style={tw`text-[11px] font-bold text-emerald-800`}>Coach</Text>
                     </View>
                   ) : item.peer.is_business ? (
                     <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-[#EAE4D6]`}>
-                      <Text style={tw`text-[10px] font-bold text-stone-700`}>Shop</Text>
+                      <Text style={tw`text-[11px] font-bold text-stone-700`}>Shop</Text>
                     </View>
                   ) : null}
                   <Text

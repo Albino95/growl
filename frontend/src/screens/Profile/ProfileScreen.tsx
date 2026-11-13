@@ -669,7 +669,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       prefix={`${it.icon} `}
                       value={it.value}
                     />
-                    <Text style={tw`text-[10px] text-stone-500 mt-0.5`}>{it.label}</Text>
+                    <Text style={tw`text-[11px] text-stone-500 mt-0.5`}>{it.label}</Text>
                   </View>
                 ))}
               </View>
@@ -683,7 +683,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
             {profileMeta.bio ? (
               <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileMeta.bio}</Text>
             ) : (
-              <Text style={tw`text-sm text-stone-400 mb-3 leading-5`}>
+              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
                 Add a short bio so people know what you’re growing toward.
               </Text>
             )}
@@ -1011,7 +1011,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 >
                   <Text
                     style={tw`text-[15px] ${
-                      active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                      active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
                     }`}
                   >
                     {tab.label}
@@ -1145,7 +1145,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                         <ProfileStoryThumb story={story} userId={user?.id} />
                       </View>
                       <Text style={tw`text-xs text-stone-500`}>{story.views} views</Text>
-                      <Text style={tw`text-xs text-stone-400 mt-1`}>
+                      <Text style={tw`text-xs text-stone-500 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
                     </TouchableOpacity>

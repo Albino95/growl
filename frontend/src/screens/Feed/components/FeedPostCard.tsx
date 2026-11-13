@@ -105,7 +105,7 @@ function FeedPostCard({
             <View style={tw`flex-row items-center flex-wrap gap-1 mt-0.5`}>
               <Text style={tw`text-xs text-stone-500`}>{item.timestamp}</Text>
               <View style={tw`px-2 py-0.5 rounded-full bg-brand-50`}>
-                <Text style={tw`text-[10px] font-semibold text-brand-800`}>
+                <Text style={tw`text-[11px] font-semibold text-brand-800`}>
                   {item.subcategory
                     ? `${item.category} · ${item.subcategory}`
                     : item.category}
@@ -114,7 +114,7 @@ function FeedPostCard({
               {item.isInstructor ? (
                 <View style={tw`px-2 py-0.5 rounded-full bg-emerald-100 flex-row items-center`}>
                   <Ionicons name="school" size={10} color="#047857" />
-                  <Text style={tw`text-[10px] font-semibold text-emerald-800 ml-0.5`}>
+                  <Text style={tw`text-[11px] font-semibold text-emerald-800 ml-0.5`}>
                     Instructor
                   </Text>
                 </View>
@@ -282,7 +282,7 @@ function FeedPostCard({
         )}
         {item.comments === 0 ? (
           <TouchableOpacity onPress={() => onOpenComments(item)}>
-            <Text style={tw`text-stone-400 text-xs mb-1`}>No comments yet</Text>
+            <Text style={tw`text-stone-500 text-xs mb-1`}>No comments yet</Text>
           </TouchableOpacity>
         ) : null}
 

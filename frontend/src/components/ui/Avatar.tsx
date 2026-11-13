@@ -6,7 +6,7 @@ import tw from '../../lib/tw';
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 const SIZE_MAP: Record<Size, { box: string; text: string }> = {
-  xs: { box: 'w-7 h-7', text: 'text-[10px]' },
+  xs: { box: 'w-7 h-7', text: 'text-[11px]' },
   sm: { box: 'w-9 h-9', text: 'text-xs' },
   md: { box: 'w-11 h-11', text: 'text-sm' },
   lg: { box: 'w-16 h-16', text: 'text-lg' },
@@ -43,7 +43,7 @@ export default function Avatar({ uri, name, size = 'md', style, ring = false }: 
       {uri ? (
         <Image source={{ uri }} style={tw`w-full h-full`} contentFit="cover" transition={150} />
       ) : (
-        <Text style={tw`${text} font-semibold text-brand-700`}>{getInitials(name)}</Text>
+        <Text maxFontSizeMultiplier={1.3} style={tw`${text} font-semibold text-brand-700`}>{getInitials(name)}</Text>
       )}
     </View>
   );

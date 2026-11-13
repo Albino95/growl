@@ -5,14 +5,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
-  ActivityIndicator,
+ActivityIndicator,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { alertMessage } from '../../utils/confirmDialog';
 import { haptic } from '../../theme/haptics';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import { featureFlags } from '../../constants/featureFlags';
@@ -50,7 +50,7 @@ export default function NotificationPrefsScreen() {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Could not load preferences';
         if (Platform.OS === 'web') alert(msg);
-        else Alert.alert('Error', msg);
+        else void alertMessage('Error', msg);
       } finally {
         setLoading(false);
       }
@@ -65,12 +65,12 @@ export default function NotificationPrefsScreen() {
         metadata: { notifications_prefs: prefs },
       });
       if (Platform.OS === 'web') alert('Notification preferences saved');
-      else Alert.alert('Saved', 'Your notification preferences have been updated');
+      else void alertMessage('Saved', 'Your notification preferences have been updated');
       navigation.goBack();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not save preferences';
       if (Platform.OS === 'web') alert(msg);
-      else Alert.alert('Error', msg);
+      else void alertMessage('Error', msg);
     } finally {
       setSaving(false);
     }

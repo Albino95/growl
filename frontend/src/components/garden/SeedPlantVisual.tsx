@@ -124,13 +124,13 @@ export default function SeedPlantVisual({
           <View
             style={tw`absolute -bottom-1 px-1.5 py-0.5 rounded-full bg-emerald-600 border border-white`}
           >
-            <Text style={tw`text-[8px] font-bold text-white`}>Shared</Text>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>Shared</Text>
           </View>
         ) : null}
       </Animated.View>
       <Text
         style={[
-          tw`absolute -bottom-5 text-[10px] font-semibold`,
+          tw`absolute -bottom-5 text-[11px] font-semibold`,
           { color: resting ? '#A8A29E' : '#57534E' },
         ]}
       >

@@ -340,7 +340,7 @@ export default function PlantSeedScreen() {
           {subKey && schema ? (
             <FadeInUp key={`meta-${subKey}`}>
               <View style={tw`rounded-2xl bg-[#FFFcf7] border border-stone-200/80 p-4 mb-4`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-energy-600 uppercase`}>
+                <Text style={tw`text-[11px] font-semibold tracking-widest text-bloom-ink uppercase`}>
                   Goal essence
                 </Text>
                 <Text style={tw`text-sm text-stone-600 mt-1 leading-5 mb-4`}>{schema.hint}</Text>
@@ -354,7 +354,7 @@ export default function PlantSeedScreen() {
                   onChangeText={setStartText}
                   keyboardType="decimal-pad"
                   placeholder="e.g. 82"
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   style={tw`bg-[#EAE4D6] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[16px] font-semibold mb-3`}
                 />
 
@@ -367,7 +367,7 @@ export default function PlantSeedScreen() {
                   onChangeText={setTargetText}
                   keyboardType="decimal-pad"
                   placeholder="e.g. 74"
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   style={tw`bg-[#EAE4D6] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[16px] font-semibold mb-1`}
                 />
               </View>
@@ -379,7 +379,7 @@ export default function PlantSeedScreen() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="e.g. Summer shape-up"
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 text-[16px] mb-4`}
               />
 
@@ -393,7 +393,7 @@ export default function PlantSeedScreen() {
                 value={detail}
                 onChangeText={setDetail}
                 placeholder="e.g. Drop to 74kg by June for my sister’s wedding — weigh-ins every Monday"
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 multiline
                 style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 text-[15px] min-h-[96px] mb-6`}
               />

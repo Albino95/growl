@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import ErrorState from '../ui/ErrorState';
 import PressableScale from '../ui/PressableScale';
 import CountUpText from '../ui/CountUpText';
 import { getProgress, type Progress } from '../../services/api/growth';
@@ -52,22 +53,17 @@ export default function ProgressTab({ username, userId, avatar, currentStreak, o
 
   if (!data) {
     return (
-      <View style={tw`items-center py-10 px-6`}>
-        <Text style={tw`text-3xl`}>🌿</Text>
-        <Text style={tw`text-sm text-stone-600 mt-2 text-center`}>
-          Your progress view isn’t ready just yet.
-        </Text>
-        <PressableScale
-          onPress={() => {
-            setState('loading');
-            void load();
-          }}
-          feedback="refresh"
-          style={tw`mt-3 px-4 py-2 rounded-full bg-[#EAE4D6] border border-stone-200`}
-        >
-          <Text style={tw`text-xs font-semibold text-emerald-700`}>Try again</Text>
-        </PressableScale>
-      </View>
+      <ErrorState
+        compact
+        icon="leaf-outline"
+        title="Progress isn’t ready yet"
+        message="Your progress view isn’t ready just yet."
+        onRetry={() => {
+          setState('loading');
+          void load();
+        }}
+        style={tw`py-10 px-6`}
+      />
     );
   }
 
@@ -128,11 +124,11 @@ function Stat({ label, value, hint }: { label: string; value: number; hint: stri
       accessible
       accessibilityLabel={`${label}: ${value} ${hint}`}
     >
-      <Text style={tw`text-[10px] font-semibold tracking-wider text-stone-500 uppercase`} numberOfLines={1}>
+      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase`} numberOfLines={1}>
         {label}
       </Text>
       <CountUpText style={tw`text-2xl font-bold text-stone-900 mt-0.5`} value={value} />
-      <Text style={tw`text-[10px] text-stone-400`}>{hint}</Text>
+      <Text style={tw`text-[11px] text-stone-500`}>{hint}</Text>
     </View>
   );
 }

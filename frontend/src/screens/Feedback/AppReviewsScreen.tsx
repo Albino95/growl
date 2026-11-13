@@ -72,12 +72,12 @@ function ReviewCard({
     <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 py-3.5 mb-3`}>
       <View style={tw`flex-row items-center justify-between mb-1.5`}>
         <Text style={tw`font-semibold text-stone-900`}>{review.author.username}</Text>
-        <Text style={tw`text-[11px] text-stone-400`}>{timeAgo(review.created_at)}</Text>
+        <Text style={tw`text-[11px] text-stone-500`}>{timeAgo(review.created_at)}</Text>
       </View>
       <StarRow value={review.stars} size={14} />
       <Text style={tw`text-stone-700 leading-5 mt-2`}>{review.body}</Text>
       {review.email ? (
-        <Text style={tw`text-[11px] text-stone-400 mt-1`}>{review.email}</Text>
+        <Text style={tw`text-[11px] text-stone-500 mt-1`}>{review.email}</Text>
       ) : null}
 
       {review.reply ? (
@@ -93,7 +93,7 @@ function ReviewCard({
             value={draft}
             onChangeText={setDraft}
             placeholder="Thanks for the feedback — we’ll look at this…"
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
             multiline
             style={tw`min-h-[72px] bg-[#F3EEE4] rounded-xl px-3 py-2.5 text-stone-800`}
           />
@@ -241,7 +241,7 @@ export default function AppReviewsScreen() {
                 value={body}
                 onChangeText={setBody}
                 placeholder="The journal felt calm, but I couldn’t find instructors…"
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 multiline
                 style={tw`min-h-[110px] bg-[#F3EEE4] rounded-xl px-3 py-3 text-stone-800`}
               />

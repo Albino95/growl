@@ -59,7 +59,7 @@ function WeekDots({ days, size = 10, showLabels = false, tone = 'default' }: Pro
           <View key={d.day} style={tw`items-center`}>
             <View style={[base, style]} />
             {showLabels ? (
-              <Text style={tw`text-[9px] mt-1 ${tone === 'onBrand' ? 'text-white/70' : 'text-stone-400'}`}>
+              <Text style={tw`text-[11px] mt-1 ${tone === 'onBrand' ? 'text-white/70' : 'text-stone-500'}`}>
                 {weekdayLetter(d.day)}
               </Text>
             ) : null}

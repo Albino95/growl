@@ -6,8 +6,7 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  Alert,
-  ScrollView,
+ScrollView,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import SearchField from '../../components/ui/SearchField';
 import EmptyState from '../../components/ui/EmptyState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -123,7 +124,7 @@ function EntryCard({
         <View style={tw`flex-row items-center gap-3`}>
           <Ionicons
             name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
-            size={14}
+            size={iconSize.xs}
             color="#78716C"
           />
           {isPublic && onShare ? (
@@ -381,7 +382,7 @@ export default function JournalScreen() {
       });
     } catch (e) {
       feedback.error();
-      Alert.alert(
+      void alertMessage(
         'Cannot message',
         e instanceof Error ? e.message : 'You can only message mutual friends.'
       );
@@ -407,22 +408,19 @@ export default function JournalScreen() {
     } catch (e) {
       feedback.error();
       const msg = e instanceof Error ? e.message : 'Could not save entry';
-      Alert.alert('Error', msg);
+      void alertMessage('Error', msg);
     }
   };
 
   const handleDelete = (entryId: string) => {
-    Alert.alert('Delete entry', 'Remove this journal entry?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          feedback.delete();
-          void dispatch(removeJournalEntry(entryId));
-        },
-      },
-    ]);
+    void confirmAsync('Delete entry', 'Remove this journal entry?', {
+      confirmLabel: 'Delete',
+      destructive: true,
+    }).then((ok) => {
+      if (!ok) return;
+      feedback.delete();
+      void dispatch(removeJournalEntry(entryId));
+    });
   };
 
   const openCompose = () => {
@@ -476,7 +474,7 @@ export default function JournalScreen() {
               onPress={() => setReflectionsOpen(true)}
               style={tw`px-3 py-2 rounded-full bg-[#FFF1F0] border border-[#FECACA] flex-row items-center`}
             >
-              <Ionicons name="chatbubbles-outline" size={14} color="#E11D48" />
+              <Ionicons name="chatbubbles-outline" size={iconSize.xs} color="#E11D48" />
               <Text style={tw`text-xs font-bold text-[#E11D48] ml-1`}>{reflections.length}</Text>
             </PressableScale>
           ) : null}
@@ -512,7 +510,7 @@ export default function JournalScreen() {
                 >
                   <Text
                     style={tw`text-[15px] ${
-                      active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                      active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
                     }`}
                   >
                     {tab.label}
@@ -670,9 +668,9 @@ export default function JournalScreen() {
                     <View
                       style={tw`w-14 h-14 rounded-full border-2 border-energy-600 items-center justify-center bg-energy-50`}
                     >
-                      <Text style={tw`text-lg font-bold text-energy-700`}>{streak}</Text>
+                      <Text style={tw`text-lg font-bold text-bloom-ink`}>{streak}</Text>
                     </View>
-                    <Text style={tw`text-[10px] text-energy-700 mt-1 font-medium`}>day streak</Text>
+                    <Text style={tw`text-[11px] text-bloom-ink mt-1 font-medium`}>day streak</Text>
                   </View>
                 ) : null}
               </View>
@@ -691,7 +689,7 @@ export default function JournalScreen() {
                 onPress={openCompose}
                 style={tw`mt-5 bg-stone-900 rounded-2xl py-3.5 items-center flex-row justify-center`}
               >
-                <Ionicons name="create-outline" size={18} color="#fff" />
+                <Ionicons name="create-outline" size={iconSize.sm} color="#fff" />
                 <Text style={tw`text-white font-semibold ml-2`}>
                   {todayEntries.length > 0 ? 'Write another entry' : "Write today's entry"}
                 </Text>
@@ -707,7 +705,7 @@ export default function JournalScreen() {
                 <View
                   style={tw`w-10 h-10 rounded-full bg-[#FFF1F0] items-center justify-center mr-3`}
                 >
-                  <Ionicons name="chatbubbles" size={18} color="#E11D48" />
+                  <Ionicons name="chatbubbles" size={iconSize.sm} color="#E11D48" />
                 </View>
                 <View style={tw`flex-1 pr-2`}>
                   <Text style={tw`text-[15px] font-bold text-stone-900`}>Reflections</Text>
@@ -721,7 +719,7 @@ export default function JournalScreen() {
                         } · replies will land here`}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                <Ionicons name="chevron-forward" size={iconSize.sm} color="#A8A29E" />
               </PressableScale>
             )}
 
@@ -734,7 +732,7 @@ export default function JournalScreen() {
                 <View
                   style={tw`w-10 h-10 rounded-full bg-emerald-600 items-center justify-center mr-3`}
                 >
-                  <Ionicons name="radio" size={18} color="#fff" />
+                  <Ionicons name="radio" size={iconSize.sm} color="#fff" />
                 </View>
                 <View style={tw`flex-1 pr-2`}>
                   <Text style={tw`text-[15px] font-bold text-emerald-900`}>New voices nearby</Text>
@@ -743,7 +741,7 @@ export default function JournalScreen() {
                     {circleEntries.length === 1 ? 'note' : 'notes'} from your circle
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#059669" />
+                <Ionicons name="chevron-forward" size={iconSize.sm} color="#059669" />
               </PressableScale>
             ) : null}
 
@@ -870,7 +868,7 @@ export default function JournalScreen() {
                       <Text style={tw`text-sm text-amber-900 mr-1`}>
                         {formatSectionTitle(focusDateKey)}
                       </Text>
-                      <Ionicons name="close" size={14} color="#92400E" />
+                      <Ionicons name="close" size={iconSize.xs} color="#92400E" />
                     </PressableScale>
                   ) : null}
                 </View>

@@ -331,7 +331,7 @@ export default function BizDashboard() {
                 return (
                   <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
                     <View style={[tw`w-full rounded-t-md bg-emerald-600/80`, { height: h }]} />
-                    <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
+                    <Text style={tw`text-[11px] text-stone-500 mt-1`} numberOfLines={1}>
                       {label}
                     </Text>
                   </View>
@@ -361,7 +361,7 @@ export default function BizDashboard() {
                     <Text style={tw`font-semibold text-stone-900`}>
                       {shipping?.name || 'Customer'}
                     </Text>
-                    <Text style={tw`text-xs text-stone-400 mt-0.5`}>
+                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>
                       {formatTimeAgo(order.created_at)}
                     </Text>
                   </View>
@@ -402,7 +402,7 @@ export default function BizDashboard() {
         </View>
 
         {status === 'loading' && kpis ? (
-          <Text style={tw`text-center text-xs text-stone-400 mb-4`}>Refreshing…</Text>
+          <Text style={tw`text-center text-xs text-stone-500 mb-4`}>Refreshing…</Text>
         ) : null}
       </ScrollView>
     </BusinessScreen>

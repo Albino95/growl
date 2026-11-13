@@ -15,6 +15,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import {
@@ -170,7 +172,7 @@ export default function CoachingContractScreen() {
             hitSlop={8}
             style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
           </PressableScale>
         }
       />
@@ -336,23 +338,14 @@ export default function CoachingContractScreen() {
         </ScrollView>
       ) : (
         <View style={tw`flex-1 items-center justify-center px-8`}>
-          <Ionicons name="cloud-offline-outline" size={28} color="#78716C" />
-          <Text style={tw`text-[15px] font-semibold text-stone-800 mt-3 text-center`}>
-            Couldn’t load this plan
-          </Text>
-          {loadError ? (
-            <Text style={tw`text-sm text-stone-500 mt-1 text-center leading-5`}>{loadError}</Text>
-          ) : null}
-          <PressableScale
-            onPress={() => {
+          <ErrorState
+            title="Couldn’t load this plan"
+            message={loadError || ''}
+            onRetry={() => {
               setLoading(true);
               void load();
             }}
-            accessibilityRole="button"
-            style={tw`mt-4 px-5 py-2.5 rounded-2xl bg-emerald-600`}
-          >
-            <Text style={tw`text-white font-bold`}>Try again</Text>
-          </PressableScale>
+          />
         </View>
       )}
 
@@ -370,14 +363,14 @@ export default function CoachingContractScreen() {
               value={title}
               onChangeText={setTitle}
               placeholder="This week’s practice"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 mb-2`}
             />
             <TextInput
               value={detail}
               onChangeText={setDetail}
               placeholder="What good looks like"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               multiline
               style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[72px] mb-4`}
             />

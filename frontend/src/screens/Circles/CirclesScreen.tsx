@@ -115,7 +115,7 @@ function CircleCard({
                   }`}
                 >
                   <Text
-                    style={tw`text-[9px] font-bold uppercase ${
+                    style={tw`text-[11px] font-bold uppercase ${
                       full ? 'text-[#E11D48]' : group.member_count <= 1 ? 'text-stone-600' : 'text-emerald-800'
                     }`}
                   >
@@ -123,7 +123,7 @@ function CircleCard({
                   </Text>
                 </View>
                 {where ? (
-                  <Text style={tw`text-[11px] text-stone-400 flex-1`} numberOfLines={1}>
+                  <Text style={tw`text-[11px] text-stone-500 flex-1`} numberOfLines={1}>
                     {where}
                   </Text>
                 ) : null}
@@ -445,10 +445,10 @@ export default function CirclesScreen() {
                   feedback="select"
                   style={tw`flex-1 bg-white border border-stone-200 rounded-2xl px-3 py-3.5`}
                 >
-                  <Text style={tw`text-[10px] font-bold text-stone-400 uppercase`}>Country</Text>
+                  <Text style={tw`text-[11px] font-bold text-stone-500 uppercase`}>Country</Text>
                   <Text
                     style={tw`text-sm font-semibold mt-0.5 ${
-                      prefs.country ? 'text-stone-900' : 'text-stone-400'
+                      prefs.country ? 'text-stone-900' : 'text-stone-500'
                     }`}
                     numberOfLines={1}
                   >
@@ -456,7 +456,7 @@ export default function CirclesScreen() {
                   </Text>
                 </PressableScale>
                 <View style={tw`flex-1 bg-white border border-stone-200 rounded-2xl px-3 py-2.5`}>
-                  <Text style={tw`text-[10px] font-bold text-stone-400 uppercase`}>City</Text>
+                  <Text style={tw`text-[11px] font-bold text-stone-500 uppercase`}>City</Text>
                   <TextInput
                     value={cityDraft}
                     onChangeText={setCityDraft}
@@ -466,7 +466,7 @@ export default function CirclesScreen() {
                       void savePrefs({ city: next || null });
                     }}
                     placeholder="Optional"
-                    placeholderTextColor="#A8A29E"
+                    placeholderTextColor="#78716C"
                     style={tw`text-sm font-semibold text-stone-900 py-0.5`}
                   />
                 </View>
@@ -617,14 +617,14 @@ export default function CirclesScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Circle name"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 mb-3`}
             />
             <TextInput
               value={desc}
               onChangeText={setDesc}
               placeholder="What do you practice here?"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               multiline
               style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 mb-3 min-h-[72px]`}
             />

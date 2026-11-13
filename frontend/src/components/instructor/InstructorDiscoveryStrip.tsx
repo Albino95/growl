@@ -128,10 +128,10 @@ export default function InstructorDiscoveryStrip({
                     {formatOfferLine(person)}
                   </Text>
                 ) : (
-                  <Text style={tw`text-[11px] text-stone-400 mb-1.5`}>{pathLabel}</Text>
+                  <Text style={tw`text-[11px] text-stone-500 mb-1.5`}>{pathLabel}</Text>
                 )}
                 <View style={tw`flex-row items-center justify-between`}>
-                  <Text style={tw`text-[11px] text-stone-400`}>
+                  <Text style={tw`text-[11px] text-stone-500`}>
                     {person.vote_count} endorse{person.vote_count === 1 ? '' : 's'}
                   </Text>
                   {onMessage ? (

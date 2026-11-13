@@ -56,7 +56,7 @@ export default function MoodWeekStrip({ entries, onSelectDay }: Props) {
             accessibilityLabel={`${day.key}${day.mood ? `, ${day.mood}` : ''}`}
           >
             <Text
-              style={tw`text-[11px] mb-2 ${day.isToday ? 'text-stone-900 font-semibold' : 'text-stone-400'}`}
+              style={tw`text-[11px] mb-2 ${day.isToday ? 'text-stone-900 font-semibold' : 'text-stone-500'}`}
             >
               {day.label}
             </Text>

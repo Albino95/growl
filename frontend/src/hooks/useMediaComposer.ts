@@ -307,8 +307,8 @@ export function useMediaComposer({
   // --- publish -----------------------------------------------------------------
   const finishSuccess = useCallback(
     (post: FeedPost | null) => {
-      // One success haptic (+ sound) per publish; the overlay blooms the check.
-      haptic('success');
+      // One success haptic + seedpop per publish; the overlay blooms the check.
+      haptic('shared');
       setPublished(post);
       dispatch({ type: 'PUBLISH_SUCCESS' });
       // Reel stays on its success sheet ("View in Reels"); others close.

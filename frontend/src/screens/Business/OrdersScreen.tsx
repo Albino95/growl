@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } fr
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
 import {
   feedListPerformanceProps,
@@ -141,7 +142,7 @@ export default function OrdersScreen() {
         >
           <View style={tw`flex-row items-start justify-between mb-2`}>
             <View style={tw`flex-1 pr-2`}>
-              <Text style={tw`text-xs text-stone-400 font-semibold`}>
+              <Text style={tw`text-xs text-stone-500 font-semibold`}>
                 ORD-{order.id.slice(-8).toUpperCase()}
               </Text>
               <Text style={tw`text-base font-bold text-stone-900 mt-0.5`}>{customer}</Text>
@@ -254,12 +255,9 @@ export default function OrdersScreen() {
               <SkeletonCard variant="product" />
             </View>
           ) : loadFailed ? (
-            <BusinessEmptyState
-              icon="cloud-offline-outline"
-              title="Couldn't load orders"
-              description="Check your connection and try again."
-              actionLabel="Retry"
-              onAction={() => void dispatch(fetchBusinessOrders())}
+            <ErrorState
+              title="Couldn’t load orders"
+              onRetry={() => void dispatch(fetchBusinessOrders())}
             />
           ) : (
             <BusinessEmptyState

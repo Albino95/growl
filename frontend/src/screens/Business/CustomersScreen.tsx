@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import SkeletonCard from '../../components/ui/SkeletonCard';
@@ -67,7 +69,7 @@ export default function CustomersScreen() {
           <Text style={tw`text-base font-bold text-stone-900`}>{item.username}</Text>
           <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.email}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+        <Ionicons name="chevron-forward" size={iconSize.sm} color="#A8A29E" />
       </View>
       <View style={tw`flex-row mt-3`}>
         <View style={tw`flex-1`}>
@@ -111,12 +113,10 @@ export default function CustomersScreen() {
               <SkeletonCard variant="product" />
             </View>
           ) : customersStatus === 'failed' ? (
-            <BusinessEmptyState
-              icon="cloud-offline-outline"
-              title="Couldn't load customers"
-              description={customersError || 'Check your connection and try again.'}
-              actionLabel="Retry"
-              onAction={() => {
+            <ErrorState
+              title="Couldn’t load customers"
+              message={customersError || 'Check your connection and try again.'}
+              onRetry={() => {
                 setLoading(true);
                 void load();
               }}

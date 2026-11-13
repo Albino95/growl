@@ -19,7 +19,14 @@ export const theme = {
     textPrimary: '#1C1917',
     textSecondary: '#57534E',
     textMuted: '#78716C',
+    /** Decorative only (icons, dividers) — fails AA as text on cream. */
     textSubtle: '#A8A29E',
+    /** Text inputs placeholder — stone-500, readable on card/page. */
+    placeholder: '#78716C',
+    /** Emerald text on cream (emerald-700). */
+    leafInk: '#047857',
+    /** Coral text on cream; keep `energy` for fills. */
+    bloomInk: '#C2410C',
     border: '#E7E5E4',
     page: '#F3EEE4',
     card: '#FFFcf7',

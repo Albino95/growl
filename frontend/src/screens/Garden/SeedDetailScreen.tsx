@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
@@ -116,7 +118,7 @@ export default function SeedDetailScreen() {
               feedback="close"
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
             >
-              <Ionicons name="arrow-back" size={18} color="#1C1917" />
+              <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
             </PressableScale>
           }
         />
@@ -137,22 +139,19 @@ export default function SeedDetailScreen() {
               feedback="close"
               style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
             >
-              <Ionicons name="arrow-back" size={18} color="#1C1917" />
+              <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
             </PressableScale>
           }
         />
         <View style={tw`flex-1 items-center justify-center px-8`}>
-          <Text style={tw`text-lg font-bold text-stone-900 text-center`}>Couldn’t open this seed</Text>
-          <PressableScale
-            onPress={() => {
+          <ErrorState
+            title="Couldn’t open this seed"
+            message=""
+            onRetry={() => {
               setLoading(true);
               void load();
             }}
-            feedback="impactLight"
-            style={tw`mt-4 px-5 py-3 rounded-xl bg-emerald-600`}
-          >
-            <Text style={tw`text-white font-bold`}>Try again</Text>
-          </PressableScale>
+          />
         </View>
       </SafeAreaView>
     );
@@ -179,7 +178,7 @@ export default function SeedDetailScreen() {
             feedback="close"
             style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
           </PressableScale>
         }
         right={
@@ -232,7 +231,7 @@ export default function SeedDetailScreen() {
             <Text style={tw`text-lg font-bold text-stone-900`}>
               {seed.metric_current ?? seed.metric_start}
               {seed.metric_unit ? ` ${seed.metric_unit}` : ''}
-              <Text style={tw`text-sm font-semibold text-stone-400`}>
+              <Text style={tw`text-sm font-semibold text-stone-500`}>
                 {' '}
                 / {seed.metric_target}
                 {seed.metric_unit ? ` ${seed.metric_unit}` : ''}
@@ -271,13 +270,13 @@ export default function SeedDetailScreen() {
                           ? 'eye-outline'
                           : 'person'
                     }
-                    size={14}
+                    size={iconSize.xs}
                     color="#059669"
                   />
                 </View>
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-sm font-semibold text-stone-900`}>{m.username}</Text>
-                  <Text style={tw`text-[11px] text-stone-400`}>
+                  <Text style={tw`text-[11px] text-stone-500`}>
                     {m.role}
                     {m.status === 'pending' ? ' · pending' : ''}
                   </Text>
@@ -308,7 +307,7 @@ export default function SeedDetailScreen() {
                   />
                 ) : (
                   <View style={tw`w-10 h-10 rounded-xl bg-emerald-50 items-center justify-center mr-3`}>
-                    <Ionicons name="water-outline" size={18} color="#059669" />
+                    <Ionicons name="water-outline" size={iconSize.sm} color="#059669" />
                   </View>
                 )}
                 <View style={tw`flex-1`}>
@@ -362,7 +361,7 @@ export default function SeedDetailScreen() {
                 busy ? 'opacity-60' : ''
               }`}
             >
-              <Ionicons name="camera-outline" size={18} color="#fff" />
+              <Ionicons name="camera-outline" size={iconSize.sm} color="#fff" />
               <Text style={tw`text-white font-bold text-[16px]`}>Check in with evidence</Text>
             </PressableScale>
             {canMature ? (

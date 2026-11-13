@@ -296,7 +296,7 @@ function TodayCard() {
             new Promise<boolean>((r) => setTimeout(() => r(false), CELEBRATE_LOOKUP_MS)),
           ])
         : false;
-      if (!fresh) haptic('success');
+      if (!fresh) haptic('checkin');
       if (!mounted.current) return;
       const reached = fresh ? nextStreak : null;
       setPointsAwarded(awarded);
@@ -653,7 +653,7 @@ function TodayCard() {
         <View style={tw`items-end pt-1`}>
           <WeekDots days={streak.week} size={8} />
           {current > 0 ? (
-            <Text style={tw`text-[10px] font-semibold text-[#E0584E] mt-1`}>{streakLabel(current)}</Text>
+            <Text style={tw`text-[11px] font-semibold text-[#E0584E] mt-1`}>{streakLabel(current)}</Text>
           ) : null}
         </View>
       </View>
@@ -724,7 +724,7 @@ function TodayCard() {
             value={intention}
             onChangeText={(t) => setIntention(t.replace(/\n/g, ' ').slice(0, INTENTION_MAX))}
             placeholder="One small step (optional)"
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
             maxLength={INTENTION_MAX}
             returnKeyType="done"
             blurOnSubmit
@@ -775,7 +775,7 @@ function TodayCard() {
             accessibilityState={{ disabled: restLeft <= 0 }}
             accessibilityLabel={`Rest today, ${restLeft} rest ${restLeft === 1 ? 'day' : 'days'} left`}
           >
-            <Text style={tw`text-xs font-semibold ${restLeft > 0 ? 'text-emerald-700' : 'text-stone-400'}`}>
+            <Text style={tw`text-xs font-semibold ${restLeft > 0 ? 'text-emerald-700' : 'text-stone-500'}`}>
               🌿 Rest today · {restLeft} left
             </Text>
           </PressableScale>

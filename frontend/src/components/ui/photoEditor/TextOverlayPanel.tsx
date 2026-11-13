@@ -291,7 +291,7 @@ export default function TextOverlayPanel({
                   >
                     {s.label}
                   </Text>
-                  <Text style={tw`text-[10px] text-stone-500 mt-0.5`}>{s.hint}</Text>
+                  <Text style={tw`text-[11px] text-stone-500 mt-0.5`}>{s.hint}</Text>
                 </Pressable>
               );
             })}

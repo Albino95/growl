@@ -83,7 +83,7 @@ export default function ReviewSheet({
             value={body}
             onChangeText={setBody}
             placeholder={isCoach ? 'What they did well — or what to keep practicing' : 'What changed for you'}
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
             multiline
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[88px] mb-4`}
           />

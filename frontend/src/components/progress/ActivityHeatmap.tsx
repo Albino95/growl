@@ -52,7 +52,7 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
           <View style={{ width: LABEL_W }}>
             {ROW_LABELS.map((l, i) => (
               <View key={i} style={{ height: cell, marginBottom: i < 6 ? GAP : 0, justifyContent: 'center' }}>
-                <Text style={tw`text-[9px] text-stone-400`}>{l}</Text>
+                <Text style={tw`text-[11px] text-stone-500`}>{l}</Text>
               </View>
             ))}
           </View>
@@ -118,15 +118,15 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
               marginRight: 3,
             }}
           />
-          <Text style={tw`text-[9px] text-stone-400 mr-2`}>rest</Text>
-          <Text style={tw`text-[9px] text-stone-400 mr-1`}>less</Text>
+          <Text style={tw`text-[11px] text-stone-500 mr-2`}>rest</Text>
+          <Text style={tw`text-[11px] text-stone-500 mr-1`}>less</Text>
           {legend.map((s) => (
             <View
               key={s}
               style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: HEAT_COLORS[s], marginRight: 2 }}
             />
           ))}
-          <Text style={tw`text-[9px] text-stone-400 ml-0.5`}>more</Text>
+          <Text style={tw`text-[11px] text-stone-500 ml-0.5`}>more</Text>
         </View>
       </View>
     </View>

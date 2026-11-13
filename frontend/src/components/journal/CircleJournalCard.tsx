@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Alert, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import { alertMessage } from '../../utils/confirmDialog';
 import GrowAvatar from '../ui/GrowAvatar';
 import { MOOD_META, growthPathFromTags } from './journalMeta';
 import type { CircleJournalEntry, JournalMood } from '../../services/api/journal';
@@ -70,7 +72,7 @@ export default function CircleJournalCard({
       await feelJournalEntry(entry.id);
       setFelt(true);
     } catch (e) {
-      Alert.alert('Could not react', e instanceof Error ? e.message : 'Try again');
+      void alertMessage('Could not react', e instanceof Error ? e.message : 'Try again');
     } finally {
       setFeeling(false);
     }
@@ -102,7 +104,7 @@ export default function CircleJournalCard({
               await muteJournalAuthor(entry.user_id, true);
               onMuted?.(entry.user_id);
             } catch (e) {
-              Alert.alert('Error', e instanceof Error ? e.message : 'Could not mute');
+              void alertMessage('Error', e instanceof Error ? e.message : 'Could not mute');
             }
           })();
         },
@@ -151,7 +153,7 @@ export default function CircleJournalCard({
           </View>
         </Pressable>
         <Pressable onPress={onMore} hitSlop={10} style={tw`p-1`}>
-          <Ionicons name="ellipsis-horizontal" size={18} color="#78716C" />
+          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color="#78716C" />
         </Pressable>
       </View>
 
@@ -174,7 +176,7 @@ export default function CircleJournalCard({
           <Animated.View style={{ transform: [{ scale: heartScale }] }}>
             <Ionicons
               name={felt ? 'heart' : 'heart-outline'}
-              size={14}
+              size={iconSize.xs}
               color={felt ? '#E11D48' : '#57534E'}
             />
           </Animated.View>
@@ -189,7 +191,7 @@ export default function CircleJournalCard({
           }}
           style={tw`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-white border border-stone-200`}
         >
-          <Ionicons name="chatbubble-ellipses-outline" size={14} color="#1C1917" />
+          <Ionicons name="chatbubble-ellipses-outline" size={iconSize.xs} color="#1C1917" />
           <Text style={tw`text-xs font-bold text-stone-800`}>Reply</Text>
         </Pressable>
         {onShare ? (

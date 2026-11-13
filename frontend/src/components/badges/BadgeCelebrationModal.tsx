@@ -198,7 +198,7 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
               ) : null}
               {badge.points > 0 ? (
                 <View style={tw`mt-3 px-3 py-1 rounded-full bg-[#FFF1F0]`}>
-                  <Text style={tw`text-sm font-bold text-[#E85D55]`}>+{badge.points} growth points</Text>
+                  <Text style={tw`text-sm font-bold text-bloom-ink`}>+{badge.points} growth points</Text>
                 </View>
               ) : null}
 

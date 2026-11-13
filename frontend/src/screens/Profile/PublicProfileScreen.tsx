@@ -20,6 +20,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getCategoryLabel, groupGrowthPaths } from '../../utils/categoryLabels';
 import tw from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import {
   addFriend,
@@ -368,7 +370,7 @@ export default function PublicProfileScreen() {
   const onToggleFriend = async () => {
     if (friendBusy || isOwnProfile) return;
     if (isBlocked) {
-      Alert.alert('Blocked user', 'Unblock this user before connecting.');
+      void alertMessage('Blocked user', 'Unblock this user before connecting.');
       return;
     }
     setFriendBusy(true);
@@ -381,7 +383,7 @@ export default function PublicProfileScreen() {
         if (Platform.OS === 'web') {
           window.alert('Removed from friends.');
         } else {
-          Alert.alert('Removed', 'Friend connection removed.');
+          void alertMessage('Removed', 'Friend connection removed.');
         }
       } else if (friendRequestSent) {
         await removeFriend(userId);
@@ -389,7 +391,7 @@ export default function PublicProfileScreen() {
         if (Platform.OS === 'web') {
           window.alert('Friend request cancelled.');
         } else {
-          Alert.alert('Cancelled', 'Friend request cancelled.');
+          void alertMessage('Cancelled', 'Friend request cancelled.');
         }
       } else {
         haptic('tapLight');
@@ -406,7 +408,7 @@ export default function PublicProfileScreen() {
         if (Platform.OS === 'web') {
           window.alert(result.connected ? 'Friend request accepted.' : 'Friend request sent.');
         } else {
-          Alert.alert(
+          void alertMessage(
             result.connected ? 'Friends' : 'Request sent',
             result.connected
               ? 'You are now friends.'
@@ -419,7 +421,7 @@ export default function PublicProfileScreen() {
       if (Platform.OS === 'web') {
         window.alert(msg);
       } else {
-        Alert.alert('Error', msg);
+        void alertMessage('Error', msg);
       }
     } finally {
       setFriendBusy(false);
@@ -583,7 +585,7 @@ export default function PublicProfileScreen() {
       globalThis.alert(`${title}\n\n${message}`);
       return;
     }
-    Alert.alert(title, message);
+    void alertMessage(title, message);
   };
 
   const handleBlockMenuPress = async () => {
@@ -625,10 +627,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'spam');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            void alertMessage('Reported', 'Thank you for your report. We will review it.');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -637,10 +639,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'harassment');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            void alertMessage('Reported', 'Thank you for your report. We will review it.');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -649,10 +651,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'inappropriate_content');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            void alertMessage('Reported', 'Thank you for your report. We will review it.');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -661,10 +663,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'other');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            void alertMessage('Reported', 'Thank you for your report. We will review it.');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -681,15 +683,15 @@ export default function PublicProfileScreen() {
           try {
             if (isMuted) {
               await unmuteUser(userId);
-              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+              void alertMessage('Unmuted', `${profileUser?.username} is now visible in your feed.`);
             } else {
               await muteUser(userId);
-              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+              void alertMessage('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
             }
             await refreshFriendshipState();
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not update mute status';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -748,26 +750,21 @@ export default function PublicProfileScreen() {
     return (
       <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
-          <Ionicons
-            name={failed ? 'cloud-offline-outline' : 'person-outline'}
-            size={64}
-            color="#A8A29E"
-          />
-          <Text style={tw`text-stone-500 mt-4 text-center text-lg`}>
-            {failed ? 'Couldn’t load this profile' : 'User not found'}
-          </Text>
           {failed ? (
-            <TouchableOpacity
-              onPress={() => {
+            <ErrorState
+              title="Couldn’t load this profile"
+              onRetry={() => {
                 void loadProfile();
                 void prefetchPrimaryContent();
               }}
-              accessibilityRole="button"
-              style={tw`mt-4 bg-emerald-600 px-6 py-3 rounded-xl`}
-            >
-              <Text style={tw`text-white font-semibold`}>Try again</Text>
-            </TouchableOpacity>
-          ) : null}
+              style={tw`py-0`}
+            />
+          ) : (
+            <>
+              <Ionicons name="person-outline" size={64} color="#A8A29E" />
+              <Text style={tw`text-stone-600 mt-4 text-center text-lg`}>User not found</Text>
+            </>
+          )}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             accessibilityRole="button"
@@ -913,7 +910,7 @@ export default function PublicProfileScreen() {
                 ))}
               </View>
             ) : profileUser.isInstructor ? (
-              <Text style={tw`text-xs text-stone-400 mb-3`}>
+              <Text style={tw`text-xs text-stone-500 mb-3`}>
                 Client reviews appear after 4 completed weeks together.
               </Text>
             ) : null}
@@ -982,7 +979,7 @@ export default function PublicProfileScreen() {
                                   ? 'mail-open'
                                   : 'person-add'
                           }
-                          size={18}
+                          size={iconSize.sm}
                           color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
                         />
                       )}
@@ -1011,7 +1008,7 @@ export default function PublicProfileScreen() {
                       accessibilityState={{ disabled: true }}
                       style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-[#EAE4D6] border border-stone-200/80`}
                     >
-                      <Ionicons name="pause-circle-outline" size={18} color="#78716C" />
+                      <Ionicons name="pause-circle-outline" size={iconSize.sm} color="#78716C" />
                       <Text style={tw`font-bold text-sm text-stone-500`}>Not taking plans</Text>
                     </View>
                   ) : profileUser.isInstructor && profileUser.offering?.accepting !== false ? (
@@ -1025,7 +1022,7 @@ export default function PublicProfileScreen() {
                       {messageBusy ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                        <Ionicons name="chatbubble-ellipses" size={iconSize.sm} color="#fff" />
                       )}
                       <Text style={tw`font-bold text-sm text-white`}>Reach out</Text>
                     </PressableScale>
@@ -1040,7 +1037,7 @@ export default function PublicProfileScreen() {
                       {messageBusy ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                        <Ionicons name="chatbubble-ellipses" size={iconSize.sm} color="#fff" />
                       )}
                       <Text style={tw`font-bold text-sm text-white`}>Message</Text>
                     </TouchableOpacity>
@@ -1054,7 +1051,7 @@ export default function PublicProfileScreen() {
                     <View style={tw`h-1.5 bg-energy-600`} />
                     <View style={tw`px-4 py-3.5`}>
                       <View style={tw`flex-row items-center mb-1`}>
-                        <Ionicons name="ribbon" size={14} color="#E11D48" />
+                        <Ionicons name="ribbon" size={iconSize.xs} color="#E11D48" />
                         <Text
                           style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase ml-1.5`}
                         >
@@ -1093,7 +1090,7 @@ export default function PublicProfileScreen() {
                           {endorseBusy ? (
                             <ActivityIndicator color="#fff" />
                           ) : (
-                            <Ionicons name="ribbon" size={18} color="#fff" />
+                            <Ionicons name="ribbon" size={iconSize.sm} color="#fff" />
                           )}
                           <Text style={tw`font-bold text-sm text-white`}>Endorse</Text>
                         </PressableScale>
@@ -1163,7 +1160,7 @@ export default function PublicProfileScreen() {
                         ) : (
                           <Ionicons
                             name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
-                            size={18}
+                            size={iconSize.sm}
                             color={
                               endorseStatus.alreadyEndorsed
                                 ? '#059669'
@@ -1212,7 +1209,7 @@ export default function PublicProfileScreen() {
                       <View style={tw`flex-row items-center mb-1`}>
                         <Ionicons
                           name={endorseStatus.pendingOutgoing ? 'time-outline' : 'ribbon-outline'}
-                          size={14}
+                          size={iconSize.xs}
                           color="#059669"
                         />
                         <Text
@@ -1266,7 +1263,7 @@ export default function PublicProfileScreen() {
                             name={
                               endorseStatus.pendingOutgoing ? 'time-outline' : 'paper-plane-outline'
                             }
-                            size={18}
+                            size={iconSize.sm}
                             color={endorseStatus.pendingOutgoing ? '#059669' : '#fff'}
                           />
                         )}
@@ -1406,7 +1403,7 @@ export default function PublicProfileScreen() {
                 >
                   <Text
                     style={tw`text-[15px] ${
-                      active ? 'text-stone-900 font-bold' : 'text-stone-400 font-medium'
+                      active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
                     }`}
                   >
                     {tab.label}
@@ -1498,7 +1495,7 @@ export default function PublicProfileScreen() {
                       <Text style={tw`text-xs text-stone-500`}>
                         {story.views} views
                       </Text>
-                      <Text style={tw`text-xs text-stone-400 mt-1`}>
+                      <Text style={tw`text-xs text-stone-500 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
                     </TouchableOpacity>

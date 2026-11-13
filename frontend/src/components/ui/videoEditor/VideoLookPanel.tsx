@@ -104,7 +104,7 @@ export default function VideoLookPanel({
             >
               <Ionicons name={s.icon} size={14} color={active ? '#34D399' : '#78716C'} />
               <Text
-                style={tw`text-[10px] font-bold ml-1 ${active ? 'text-brand-300' : 'text-stone-500'}`}
+                style={tw`text-[11px] font-bold ml-1 ${active ? 'text-brand-300' : 'text-stone-500'}`}
               >
                 {s.label}
               </Text>
@@ -181,7 +181,7 @@ export default function VideoLookPanel({
                     ) : null}
                   </View>
                   <Text
-                    style={tw`text-[10px] font-bold mt-1.5 max-w-[68px] text-center ${
+                    style={tw`text-[11px] font-bold mt-1.5 max-w-[68px] text-center ${
                       selected ? 'text-brand-300' : 'text-stone-300'
                     }`}
                     numberOfLines={1}
@@ -263,7 +263,7 @@ export default function VideoLookPanel({
                   >
                     {l.label}
                   </Text>
-                  <Text style={tw`text-[10px] text-stone-500`}>{l.hint}</Text>
+                  <Text style={tw`text-[11px] text-stone-500`}>{l.hint}</Text>
                 </Pressable>
               );
             })}

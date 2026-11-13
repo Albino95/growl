@@ -280,7 +280,7 @@ export default function BusinessOrderDetailScreen() {
                 >
                   <Ionicons name={done ? 'checkmark' : 'ellipse'} size={14} color={done ? '#fff' : '#A8A29E'} />
                 </View>
-                <Text style={tw`capitalize font-medium ${done ? 'text-stone-900' : 'text-stone-400'}`}>
+                <Text style={tw`capitalize font-medium ${done ? 'text-stone-900' : 'text-stone-500'}`}>
                   {step}
                 </Text>
               </View>

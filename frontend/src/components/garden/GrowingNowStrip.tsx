@@ -126,7 +126,7 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
                 >
                   {seed.title}
                 </Text>
-                <Text style={tw`text-[10px] text-stone-400 mt-0.5`} numberOfLines={1}>
+                <Text style={tw`text-[11px] text-stone-500 mt-0.5`} numberOfLines={1}>
                   {getCategoryLabel(`${seed.category_key}:${seed.subcategory_key}`)}
                 </Text>
               </PressableScale>

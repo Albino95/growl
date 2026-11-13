@@ -516,11 +516,11 @@ export default function NotificationsScreen() {
                       <View style={tw`flex-1`}>
                         <View style={tw`flex-row items-center justify-between mb-1.5`}>
                           <View style={tw`px-2 py-0.5 rounded-full ${meta.chipBg}`}>
-                            <Text style={tw`text-[10px] font-bold ${meta.chipText}`}>
+                            <Text style={tw`text-[11px] font-bold ${meta.chipText}`}>
                               {meta.label}
                             </Text>
                           </View>
-                          <Text style={tw`text-[11px] text-stone-400`}>
+                          <Text style={tw`text-[11px] text-stone-500`}>
                             {timeAgo(item.created_at)}
                           </Text>
                         </View>
@@ -564,7 +564,7 @@ export default function NotificationsScreen() {
                               </View>
                             )}
                             <View style={tw`flex-1 px-3 py-2.5`}>
-                              <Text style={tw`text-[10px] font-bold tracking-widest text-stone-400 uppercase`}>
+                              <Text style={tw`text-[11px] font-bold tracking-widest text-stone-500 uppercase`}>
                                 {preview.kind === 'post'
                                   ? 'Post'
                                   : preview.kind === 'seed'

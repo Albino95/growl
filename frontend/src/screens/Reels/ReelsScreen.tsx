@@ -103,7 +103,7 @@ function ReelsHeader({
         </TouchableOpacity>
         <View style={tw`items-center flex-1 px-2`}>
           <Text
-            style={tw`text-[10px] tracking-[3px] uppercase text-emerald-400 font-extrabold`}
+            style={tw`text-[11px] tracking-[3px] uppercase text-emerald-400 font-extrabold`}
           >
             Grow!
           </Text>
@@ -577,7 +577,7 @@ export default function ReelsScreen() {
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-white font-semibold`}>{username}</Text>
                   <View style={tw`self-start mt-0.5 px-2 py-0.5 rounded-full bg-brand-600/30 border border-brand-500/40`}>
-                    <Text style={tw`text-emerald-200 text-[10px] font-semibold capitalize`}>
+                    <Text style={tw`text-emerald-200 text-[11px] font-semibold capitalize`}>
                       {item.category}
                     </Text>
                   </View>

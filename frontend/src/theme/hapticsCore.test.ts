@@ -14,7 +14,14 @@ const {
   createOnceRegistry,
   debounceGroupFor,
   playHapticChannel,
+  feedbackConfig,
+  runWhenReady,
+  FEEDBACK_KINDS,
   HAPTIC_DEBOUNCE_MS,
+  HAPTIC_MOMENT_KIND,
+  PREFS_HYDRATION_WAIT_MS,
+  SOUND_KEYS,
+  WEB_SOUND_NOTES,
 } = await import('./hapticsCore');
 type HapticsModule = import('./hapticsCore').HapticsModule;
 const H = Haptics as unknown as HapticsModule;
@@ -48,7 +55,14 @@ describe('haptic gate (per-group debounce)', () => {
   });
 
   it('uses the specified windows', () => {
-    expect(HAPTIC_DEBOUNCE_MS).toEqual({ selection: 50, light: 120, medium: 120, notification: 800, celebrate: 4000 });
+    expect(HAPTIC_DEBOUNCE_MS).toEqual({
+      selection: 50,
+      light: 120,
+      medium: 120,
+      notification: 800,
+      warning: 800,
+      celebrate: 4000,
+    });
     let t = 0;
     const gate = createHapticGate(() => t);
     expect(gate.allow('celebrate')).toBe(true);
@@ -56,6 +70,19 @@ describe('haptic gate (per-group debounce)', () => {
     expect(gate.allow('celebrate')).toBe(false);
     t = 4000;
     expect(gate.allow('celebrate')).toBe(true);
+  });
+
+  it('a warning never swallows the success right after it', () => {
+    let t = 0;
+    const gate = createHapticGate(() => t);
+    expect(debounceGroupFor('warning')).toBe('warning');
+    expect(gate.allow('warning')).toBe(true);
+    t = 10;
+    expect(gate.allow('success')).toBe(true);
+    t = 20;
+    expect(gate.allow('warning')).toBe(false);
+    t = 800;
+    expect(gate.allow('warning')).toBe(true);
   });
 
   it('never fires the none channel', () => {
@@ -138,5 +165,119 @@ describe('celebrate once registry', () => {
     for (const id of ['a', 'b', 'c', 'd']) expect(await reg.claim(id)).toBe(true);
     expect(JSON.parse(storage.data.get('k')!)).toEqual(['b', 'c', 'd']);
     expect(await reg.claim('')).toBe(false);
+  });
+});
+
+describe('feedback kinds → haptic + sound', () => {
+  const sounds = (kind: Parameters<typeof feedbackConfig>[0]) => feedbackConfig(kind).sound ?? null;
+
+  it('plays sounds only for the five signature moments', () => {
+    expect(sounds('checkin')).toBe('bloom');
+    expect(sounds('celebrate')).toBe('rise');
+    expect(sounds('shared')).toBe('seedpop');
+    expect(sounds('send')).toBe('send');
+    expect(sounds('error')).toBe('softError');
+    const withSound = Object.entries(FEEDBACK_KINDS)
+      .filter(([, cfg]) => cfg.sound)
+      .map(([k]) => k)
+      .sort();
+    expect(withSound).toEqual(['celebrate', 'checkin', 'error', 'send', 'shared']);
+  });
+
+  it('keeps plain success calm: success haptic, no sound', () => {
+    expect(feedbackConfig('success')).toMatchObject({ haptic: 'success' });
+    expect(sounds('success')).toBeNull();
+    expect(feedbackConfig('checkin').haptic).toBe('success');
+    expect(feedbackConfig('shared').haptic).toBe('success');
+  });
+
+  it('maps legacy kinds onto the calm system', () => {
+    expect(feedbackConfig('tap').haptic).toBe('none');
+    expect(feedbackConfig('close').haptic).toBe('selection');
+    expect(feedbackConfig('warn')).toMatchObject({ haptic: 'warning' });
+    expect(sounds('warn')).toBeNull();
+    expect(feedbackConfig('celebrate').haptic).toBe('celebrate');
+    expect(feedbackConfig('error').haptic).toBe('error');
+    expect(feedbackConfig('bloom')).toMatchObject({ haptic: 'soft' });
+    expect(sounds('bloom')).toBeNull();
+    // Unknown kinds fall back to the silent tap.
+    expect(feedbackConfig('nope' as never).haptic).toBe('none');
+  });
+
+  it('routes the public moments', () => {
+    expect(HAPTIC_MOMENT_KIND.checkin).toBe('checkin');
+    expect(HAPTIC_MOMENT_KIND.shared).toBe('shared');
+    expect(HAPTIC_MOMENT_KIND.success).toBe('success');
+    expect(HAPTIC_MOMENT_KIND.warning).toBe('warn');
+  });
+
+  it('has a web fallback for every sound', () => {
+    for (const key of SOUND_KEYS) expect(WEB_SOUND_NOTES[key].length).toBeGreaterThan(0);
+  });
+});
+
+describe('runWhenReady (prefs hydration guard)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  function source(ready = false) {
+    const listeners = new Set<() => void>();
+    let isReady = ready;
+    return {
+      isReady: () => isReady,
+      onReady: (cb: () => void) => {
+        listeners.add(cb);
+        return () => listeners.delete(cb);
+      },
+      finish() {
+        isReady = true;
+        for (const l of [...listeners]) l();
+      },
+      listeners,
+    };
+  }
+
+  it('fires immediately when prefs are already loaded', () => {
+    const cb = vi.fn();
+    runWhenReady(source(true), cb);
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires once hydration finishes', () => {
+    vi.useFakeTimers();
+    const src = source();
+    const cb = vi.fn();
+    runWhenReady(src, cb);
+    expect(cb).not.toHaveBeenCalled();
+    src.finish();
+    expect(cb).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(PREFS_HYDRATION_WAIT_MS * 2);
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(src.listeners.size).toBe(0);
+  });
+
+  it('fires with defaults after the 400ms timeout instead of dropping', () => {
+    vi.useFakeTimers();
+    expect(PREFS_HYDRATION_WAIT_MS).toBe(400);
+    const src = source();
+    const cb = vi.fn();
+    runWhenReady(src, cb);
+    vi.advanceTimersByTime(399);
+    expect(cb).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(src.listeners.size).toBe(0);
+    src.finish();
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles a source that becomes ready during subscribe', () => {
+    vi.useFakeTimers();
+    const cb = vi.fn();
+    runWhenReady(
+      { isReady: () => false, onReady: (fn) => (fn(), () => undefined) },
+      cb
+    );
+    vi.advanceTimersByTime(1000);
+    expect(cb).toHaveBeenCalledTimes(1);
   });
 });

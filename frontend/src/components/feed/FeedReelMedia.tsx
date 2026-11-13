@@ -149,7 +149,7 @@ function FeedReelMedia({
             pointerEvents="none"
           >
             <Ionicons name="play" size={12} color="#fff" />
-            <Text style={tw`text-white text-[10px] font-bold ml-1`}>Reel</Text>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-[11px] font-bold ml-1`}>Reel</Text>
           </View>
         </View>
       </View>
@@ -177,7 +177,7 @@ function FeedReelMedia({
               pointerEvents="none"
             >
               <Ionicons name="play" size={12} color="#fff" />
-              <Text style={tw`text-white text-[10px] font-bold ml-1`}>Reel</Text>
+              <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-[11px] font-bold ml-1`}>Reel</Text>
             </View>
           ) : null}
         </View>

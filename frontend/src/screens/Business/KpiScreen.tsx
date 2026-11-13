@@ -177,7 +177,7 @@ export default function KpiScreen() {
             <Text style={tw`text-sm text-stone-500`}>No revenue data in this period yet.</Text>
           ) : (
             <>
-              <Text style={tw`text-xs text-stone-400 mb-3`}>Daily revenue ({period})</Text>
+              <Text style={tw`text-xs text-stone-500 mb-3`}>Daily revenue ({period})</Text>
               <View style={tw`flex-row items-end justify-between h-32`}>
                 {timeseries.map((p) => {
                   const h = Math.max(6, Math.round(((p.revenue || 0) / maxSeries) * 112));
@@ -185,10 +185,10 @@ export default function KpiScreen() {
                   return (
                     <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
                       <View style={[tw`w-full rounded-t-md bg-emerald-500`, { height: h }]} />
-                      <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
+                      <Text style={tw`text-[11px] text-stone-500 mt-1`} numberOfLines={1}>
                         {label}
                       </Text>
-                      <Text style={tw`text-[10px] font-semibold text-stone-600`}>
+                      <Text style={tw`text-[11px] font-semibold text-stone-600`}>
                         {formatCurrency(Math.round(p.revenue || 0))}
                       </Text>
                     </View>
@@ -237,7 +237,7 @@ export default function KpiScreen() {
                 key={p.id}
                 style={tw`flex-row items-center py-2.5 ${idx < topProducts.length - 1 ? 'border-b border-stone-100' : ''}`}
               >
-                <Text style={tw`w-6 text-sm font-bold text-stone-400`}>{idx + 1}</Text>
+                <Text style={tw`w-6 text-sm font-bold text-stone-500`}>{idx + 1}</Text>
                 <View style={tw`flex-1 pr-2`}>
                   <Text style={tw`text-sm font-medium text-stone-900`} numberOfLines={1}>
                     {p.name}
@@ -305,7 +305,7 @@ export default function KpiScreen() {
         </View>
 
         {status === 'loading' && kpis ? (
-          <Text style={tw`text-center text-xs text-stone-400`}>Refreshing…</Text>
+          <Text style={tw`text-center text-xs text-stone-500`}>Refreshing…</Text>
         ) : null}
       </ScrollView>
     </SafeAreaView>

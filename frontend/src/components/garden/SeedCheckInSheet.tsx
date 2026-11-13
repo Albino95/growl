@@ -165,7 +165,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
                       ? `Last: ${seed.metric_current}${schema?.unitLabel ? ` ${schema.unitLabel}` : ''}`
                       : 'e.g. 72.4'
                   }
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   style={tw`bg-[#EAE4D6] px-4 py-3.5 rounded-2xl text-stone-900 text-[18px] font-semibold border border-stone-200`}
                 />
                 {seed.metric_start != null && seed.metric_target != null ? (
@@ -224,7 +224,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
               value={note}
               onChangeText={setNote}
               placeholder="How did it feel?"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               multiline
               style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[15px] min-h-[72px] mb-5`}
             />

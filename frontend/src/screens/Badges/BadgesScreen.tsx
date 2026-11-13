@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, ActivityIndicator, useWindowDim
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import ErrorState from '../../components/ui/ErrorState';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
@@ -85,25 +86,17 @@ export default function BadgesScreen() {
       {loading ? (
         <ActivityIndicator color="#059669" style={tw`mt-16`} />
       ) : failed && !data ? (
-        <View style={tw`items-center px-8 mt-16`}>
-          <Text style={tw`text-4xl`}>🌱</Text>
-          <Text style={tw`text-base font-semibold text-stone-800 mt-3 text-center`}>
-            Your badges are still sprouting
-          </Text>
-          <Text style={tw`text-sm text-stone-500 mt-1 text-center`}>
-            We couldn’t load them just now.
-          </Text>
-          <PressableScale
-            onPress={() => {
-              setLoading(true);
-              void load();
-            }}
-            feedback="refresh"
-            style={tw`mt-4 px-5 py-2.5 rounded-full bg-[#EAE4D6] border border-stone-200`}
-          >
-            <Text style={tw`text-sm font-semibold text-emerald-700`}>Try again</Text>
-          </PressableScale>
-        </View>
+        <ErrorState
+          compact
+          icon="leaf-outline"
+          title="Your badges are still sprouting"
+          message="We couldn’t load them just now."
+          onRetry={() => {
+            setLoading(true);
+            void load();
+          }}
+          style={tw`px-8 mt-16`}
+        />
       ) : data ? (
         <ScrollView
           contentContainerStyle={tw`px-4 pb-16 pt-2`}
@@ -144,7 +137,7 @@ export default function BadgesScreen() {
             <BadgeIcon id={selected.id} size={96} tier={selected.tier} locked={!selected.earnedAt} />
             <Text style={tw`text-xl font-bold text-stone-900 mt-3 text-center`}>{selected.name}</Text>
             <Text style={tw`text-sm text-stone-600 mt-1 text-center leading-5`}>{selected.description}</Text>
-            <Text style={tw`text-xs font-semibold text-[#E85D55] mt-2`}>
+            <Text style={tw`text-xs font-semibold text-bloom-ink mt-2`}>
               +{selected.points} growth points{selected.tier === 'rare' ? ' · rare' : ''}
             </Text>
             {selected.earnedAt ? (
@@ -184,7 +177,7 @@ function ProgressLine({ p }: { p: { current: number; target: number } }) {
       <View style={tw`h-1.5 bg-[#EAE4D6] rounded-full overflow-hidden`}>
         <View style={[tw`h-full rounded-full bg-[#F97066]`, { width: `${Math.max(frac > 0 ? 6 : 0, frac * 100)}%` }]} />
       </View>
-      <Text style={tw`text-[10px] text-stone-500 mt-1 text-center`}>
+      <Text style={tw`text-[11px] text-stone-500 mt-1 text-center`}>
         {Math.min(p.current, p.target)}/{p.target}
       </Text>
     </View>
@@ -215,7 +208,7 @@ function BadgeTile({ tile, width, onPress }: { tile: Tile; width: number; onPres
         {tile.name}
       </Text>
       {earned ? (
-        <Text style={tw`text-[10px] text-emerald-700 mt-0.5`} numberOfLines={1}>
+        <Text style={tw`text-[11px] text-emerald-700 mt-0.5`} numberOfLines={1}>
           {formatEarnedDate(tile.earnedAt)}
         </Text>
       ) : (

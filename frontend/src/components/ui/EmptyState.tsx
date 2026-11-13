@@ -23,7 +23,7 @@ export default function EmptyState({ icon, title, description, actionLabel, onAc
       </View>
       <Text style={tw`text-stone-900 font-semibold text-lg text-center`}>{title}</Text>
       {description ? (
-        <Text style={tw`text-stone-500 mt-2 text-center text-sm leading-5 max-w-sm`}>
+        <Text style={tw`text-muted mt-2 text-center text-sm leading-5 max-w-sm`}>
           {description}
         </Text>
       ) : null}

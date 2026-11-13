@@ -346,7 +346,7 @@ export default function CircleDetailScreen() {
             </ScrollView>
           )}
           {!group.is_full ? (
-            <Text style={tw`text-xs text-stone-400 mb-2`}>
+            <Text style={tw`text-xs text-stone-500 mb-2`}>
               {Math.max(0, (group.max_members || 10) - group.member_count)} open chair
               {(group.max_members || 10) - group.member_count === 1 ? '' : 's'} in this room — not other circles.
             </Text>

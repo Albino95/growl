@@ -109,17 +109,17 @@ export default function OrderConfirmationScreen() {
           <Text style={tw`text-sm text-stone-500 text-center leading-5 mb-4`}>{subtitle}</Text>
 
           {orderId ? (
-            <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-400 uppercase mb-1`}>
+            <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase mb-1`}>
               Order · {orderId.slice(-8).toUpperCase()}
             </Text>
           ) : null}
           {sessionId ? (
-            <Text style={tw`text-[10px] text-stone-400 mb-3`} numberOfLines={1}>
+            <Text style={tw`text-[11px] text-stone-500 mb-3`} numberOfLines={1}>
               Session {sessionId.slice(0, 18)}…
             </Text>
           ) : null}
           {order ? (
-            <Text style={tw`text-lg font-bold text-brand-600 mb-2`}>
+            <Text style={tw`text-lg font-bold text-brand-700 mb-2`}>
               ${Number(order.total).toFixed(2)}
             </Text>
           ) : null}

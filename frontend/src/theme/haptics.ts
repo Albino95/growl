@@ -1,46 +1,32 @@
-import { triggerFeedback, type FeedbackKind } from '../utils/interactionFeedback';
+import { triggerFeedback } from '../utils/interactionFeedback';
 import { getSecureItem, setSecureItem } from '../services/storage/secureStore';
-import { createOnceRegistry } from './hapticsCore';
+import { createOnceRegistry, HAPTIC_MOMENT_KIND, type HapticMoment } from './hapticsCore';
 
-export { HAPTIC_DEBOUNCE_MS, CELEBRATE_SIGNATURE } from './hapticsCore';
+export { HAPTIC_DEBOUNCE_MS, CELEBRATE_SIGNATURE, HAPTIC_MOMENT_KIND } from './hapticsCore';
+export type { HapticMoment } from './hapticsCore';
 export { whenFeedbackReady } from '../utils/interactionFeedback';
 
 /**
  * Grow! haptic vocabulary. Pick the *moment*, not the motor:
  *
- * - `selection`    tab, chip, segment, switch, picker, scrub tick
- * - `tapLight`     state-changing taps: like on, follow, join, send, sheet open, refresh threshold
+ * - `selection`    tab, chip, segment, switch, picker, scrub tick, sheet dismiss
+ * - `tapLight`     state-changing taps: like on, follow, join, sheet open, refresh threshold
  * - `impactMedium` record start, long-press tray, drag past a threshold
- * - `success`      check-in saved, shared, signed in, request accepted   (+ sound)
+ * - `success`      signed in, saved, request accepted — haptic only (calm, no sound)
+ * - `checkin`      daily / seed check-in done                     (+ bloom)
+ * - `shared`       post / reel / story published                  (+ seedpop)
+ * - `send`         message / comment sent                         (+ send tick)
  * - `warning`      destructive confirm
- * - `error`        failed action                                         (+ sound)
- * - `celebrate`    milestones — success, rigid +140ms, soft +280ms       (+ sound)
+ * - `error`        failed action                                  (+ soft-error)
+ * - `celebrate`    milestones — success, rigid +140ms, soft +280ms (+ rise)
  *                  prefer `celebrateOnce(id)` so a milestone fires once ever
  *
  * Rules: fire on `onPress` (never on press-in or scroll), plain navigation taps
  * are silent, repeats are debounced per group (selection 50ms, light 120ms,
- * success/warning/error 800ms, celebrate 4s). Respects Settings prefs.
+ * success/error 800ms, warning 800ms (own group), celebrate 4s). Respects
+ * Settings prefs; sounds follow the iOS silent switch.
  */
-export type HapticMoment =
-  | 'selection'
-  | 'tapLight'
-  | 'impactMedium'
-  | 'success'
-  | 'warning'
-  | 'error'
-  | 'celebrate';
-
-export const HAPTIC_MOMENT_KIND: Record<HapticMoment, FeedbackKind> = {
-  selection: 'selection',
-  tapLight: 'impactLight',
-  impactMedium: 'impactMedium',
-  success: 'success',
-  warning: 'warn',
-  error: 'error',
-  celebrate: 'celebrate',
-};
-
-/** Fire the haptic (and, for success/error/celebrate, the UI sound) for a moment. */
+/** Fire the haptic (and, for signature moments, the UI sound) for a moment. */
 export function haptic(moment: HapticMoment, opts: { sound?: boolean } = {}): void {
   triggerFeedback(HAPTIC_MOMENT_KIND[moment], opts);
 }

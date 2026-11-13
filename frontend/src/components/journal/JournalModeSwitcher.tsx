@@ -97,7 +97,7 @@ export default function JournalModeSwitcher({
         </Text>
         {reflectionsCount > 0 ? (
           <View style={tw`ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-energy-600 items-center justify-center`}>
-            <Text style={tw`text-[10px] font-bold text-white`}>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>
               {reflectionsCount > 99 ? '99+' : reflectionsCount}
             </Text>
           </View>
@@ -129,7 +129,7 @@ export default function JournalModeSwitcher({
               mode === 'voices' ? 'bg-emerald-700' : 'bg-stone-400'
             }`}
           >
-            <Text style={tw`text-[10px] font-bold text-white`}>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>
               {voicesCount > 99 ? '99+' : voicesCount}
             </Text>
           </View>

@@ -926,7 +926,7 @@ export default function ExploreScreen() {
                   ${product.price.toFixed(2)}
                 </Text>
                 {product.matchLabel ? (
-                  <Text style={tw`text-[10px] text-emerald-600 mt-0.5`} numberOfLines={1}>
+                  <Text style={tw`text-[11px] text-emerald-700 mt-0.5`} numberOfLines={1}>
                     {product.matchLabel}
                   </Text>
                 ) : null}
@@ -1085,7 +1085,7 @@ export default function ExploreScreen() {
           <Text style={tw`text-lg font-bold text-stone-900`}>Explore</Text>
           {isQaEnv ? (
             <View style={tw`ml-2 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300`}>
-              <Text style={tw`text-[10px] font-bold text-amber-800 tracking-wide`}>QA</Text>
+              <Text style={tw`text-[11px] font-bold text-amber-800 tracking-wide`}>QA</Text>
             </View>
           ) : null}
         </View>

@@ -237,7 +237,7 @@ export default function InviteScreen() {
                     if (redeemError) setRedeemError(null);
                   }}
                   placeholder="e.g. 7K3Q9M2X"
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                   autoCapitalize="characters"
                   autoCorrect={false}
                   maxLength={16}

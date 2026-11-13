@@ -270,7 +270,7 @@ function FilterThumb({
         )}
       </View>
       <Text
-        style={tw`text-[10px] mt-2 text-center max-w-[76px] ${
+        style={tw`text-[11px] mt-2 text-center max-w-[76px] ${
           active ? 'text-brand-300 font-bold' : 'text-stone-400 font-medium'
         }`}
         numberOfLines={1}

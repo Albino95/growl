@@ -448,8 +448,8 @@ export default function GardenScreen() {
                   />
                 </Pressable>
                 <View style={tw`flex-row justify-between mt-1.5`}>
-                  <Text style={tw`text-[10px] text-stone-500`}>{formatClock(voicePos)}</Text>
-                  <Text style={tw`text-[10px] text-stone-500`}>
+                  <Text style={tw`text-[11px] text-stone-500`}>{formatClock(voicePos)}</Text>
+                  <Text style={tw`text-[11px] text-stone-500`}>
                     {voiceDur > 0 ? formatClock(voiceDur) : `${activeMeditation.minutes} min`}
                   </Text>
                 </View>
@@ -492,7 +492,7 @@ export default function GardenScreen() {
                     <Text style={tw`text-white font-semibold`}>End</Text>
                   </PressableScale>
                 </View>
-                <Text style={tw`text-[10px] text-stone-600 mt-3 text-center`}>
+                <Text style={tw`text-[11px] text-stone-600 mt-3 text-center`}>
                   {activeMeditation.teacher} · {activeMeditation.license}
                 </Text>
               </View>
@@ -569,7 +569,7 @@ export default function GardenScreen() {
                       {s.label}
                     </Text>
                   </View>
-                  <Text style={tw`text-[10px] text-stone-500`}>
+                  <Text style={tw`text-[11px] text-stone-500`}>
                     {locked ? `Need ${s.treesRequired} trees` : s.hint}
                   </Text>
                 </PressableScale>
@@ -783,7 +783,7 @@ export default function GardenScreen() {
                         {s.title}
                       </Text>
                       {s.metric_current != null && s.metric_target != null ? (
-                        <Text style={tw`text-[10px] text-energy-600 font-bold mt-0.5`}>
+                        <Text style={tw`text-[11px] text-bloom-ink font-bold mt-0.5`}>
                           {s.metric_current}/{s.metric_target}
                           {s.metric_unit ? ` ${s.metric_unit}` : ''}
                         </Text>

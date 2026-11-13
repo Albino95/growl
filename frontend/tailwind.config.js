@@ -29,6 +29,14 @@ module.exports = {
           600: '#F97066',
           700: '#e85d55',
         },
+        // Accessible text inks for cream surfaces (WCAG AA on page/card/subtle).
+        // muted = stone-600 (small text on page), subtle = stone-500 (on cards).
+        muted: '#57534E',
+        subtle: '#78716C',
+        // Leaf (emerald) text on cream — emerald-600 fails AA on #F3EEE4.
+        leaf: { ink: '#047857' },
+        // Bloom (coral) text — coral fills stay #F97066; text uses this darker ink.
+        bloom: { ink: '#C2410C' },
         surface: {
           page: '#F3EEE4',
           card: '#FFFcf7',

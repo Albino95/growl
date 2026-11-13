@@ -213,7 +213,7 @@ export default function BizSettings() {
             onChangeText={setBusinessName}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
             placeholder="My Business"
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
           />
           <Text style={tw`text-sm text-stone-600 mb-2`}>Logo</Text>
           <View style={tw`flex-row items-center mb-3`}>
@@ -249,7 +249,7 @@ export default function BizSettings() {
             keyboardType="numeric"
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
             placeholder="10"
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
           />
           <Text style={tw`text-sm text-stone-600 mb-1`}>Default shipping note</Text>
           <TextInput
@@ -260,7 +260,7 @@ export default function BizSettings() {
             numberOfLines={3}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 text-stone-900 min-h-[80px]`}
             placeholder="Ships within 2 business days…"
-            placeholderTextColor="#A8A29E"
+            placeholderTextColor="#78716C"
             textAlignVertical="top"
           />
         </View>

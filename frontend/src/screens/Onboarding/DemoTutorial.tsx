@@ -398,7 +398,7 @@ export default function DemoTutorial({ onFinished }: Props) {
           >
             <Text style={tw`text-sm font-semibold text-stone-500`}>Skip</Text>
           </Pressable>
-          <Text style={tw`text-xs font-semibold text-stone-400`}>
+          <Text style={tw`text-xs font-semibold text-stone-500`}>
             {index + 1} / {STEPS.length}
           </Text>
         </View>

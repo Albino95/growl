@@ -171,7 +171,7 @@ export default function HomeEmptyCanvas({
                   <Text numberOfLines={1} style={tw`text-xs font-semibold text-stone-800 mt-1.5`}>
                     {person.username}
                   </Text>
-                  <Text numberOfLines={1} style={tw`text-[10px] text-stone-500 mt-0.5`}>
+                  <Text numberOfLines={1} style={tw`text-[11px] text-stone-500 mt-0.5`}>
                     {person.categories?.[0]
                       ? getCategoryLabel(person.categories[0])
                       : person.is_instructor

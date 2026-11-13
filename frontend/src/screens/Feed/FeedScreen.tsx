@@ -38,7 +38,8 @@ import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } f
 import { getStories, type StoryItem } from '../../services/api/stories';
 import { blockUser, reportContent } from '../../services/api/friends';
 import tw from '../../lib/tw';
-import { alertMessage } from '../../utils/confirmDialog';
+import { iconSize } from '../../theme/icons';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
 import { reelCoverUri } from '../../utils/reelCover';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
@@ -593,14 +594,14 @@ export default function FeedScreen({ navigation, route }: any) {
       if (Platform.OS === 'web') {
         alert(`${post.username} has been blocked.`);
       } else {
-        Alert.alert('Blocked', `${post.username} has been blocked.`);
+        void alertMessage('Blocked', `${post.username} has been blocked.`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not block user';
       if (Platform.OS === 'web') {
         alert(msg);
       } else {
-        Alert.alert('Error', msg);
+        void alertMessage('Error', msg);
       }
     }
   };
@@ -613,9 +614,9 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Spam',
         onPress: () => {
           void reportContent(post.id, 'post', 'spam')
-            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
             .catch((e: unknown) =>
-              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+              alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
         },
       },
@@ -623,9 +624,9 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Harassment',
         onPress: () => {
           void reportContent(post.id, 'post', 'harassment')
-            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
             .catch((e: unknown) =>
-              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+              alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
         },
       },
@@ -633,9 +634,9 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Inappropriate',
         onPress: () => {
           void reportContent(post.id, 'post', 'inappropriate_content')
-            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
             .catch((e: unknown) =>
-              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+              alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
         },
       },
@@ -643,9 +644,9 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Other',
         onPress: () => {
           void reportContent(post.id, 'post', 'other')
-            .then(() => Alert.alert('Reported', 'Thank you. We will review this post.'))
+            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
             .catch((e: unknown) =>
-              Alert.alert('Error', e instanceof Error ? e.message : 'Could not submit report')
+              alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
         },
       },
@@ -854,7 +855,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   contentFit="cover"
                 />
               ) : (
-                <Ionicons name="add" size={22} color="#78716C" />
+                <Ionicons name="add" size={iconSize.md} color="#78716C" />
               )}
             </View>
             {myStories.length > 0 ? (
@@ -1029,7 +1030,7 @@ export default function FeedScreen({ navigation, route }: any) {
                 );
                 feedback.send();
               } catch (e) {
-                Alert.alert(
+                void alertMessage(
                   'Cannot reach out',
                   e instanceof Error ? e.message : 'Try again in a moment.'
                 );
@@ -1078,7 +1079,7 @@ export default function FeedScreen({ navigation, route }: any) {
       ) : !hasPostedToday && hasPosts && journaledToday ? (
         <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
           <View style={tw`flex-row items-center gap-2`}>
-            <Ionicons name="book-outline" size={18} color="#059669" />
+            <Ionicons name="book-outline" size={iconSize.sm} color="#059669" />
             <Text style={tw`text-xs text-emerald-900 flex-1`}>
               Share today’s progress with people on your path.
             </Text>
@@ -1099,7 +1100,7 @@ export default function FeedScreen({ navigation, route }: any) {
       {feedStatus === 'failed' && (
         <View style={tw`mx-4 mt-2 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50`}>
           <View style={tw`flex-row items-center`}>
-            <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+            <Ionicons name="alert-circle-outline" size={iconSize.sm} color="#DC2626" />
             <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>
               {feedError || 'Could not load your feed right now.'}
             </Text>
@@ -1274,7 +1275,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   accessibilityLabel="Close likes"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="close" size={22} color="#78716C" />
+                  <Ionicons name="close" size={iconSize.md} color="#78716C" />
                 </TouchableOpacity>
               </View>
               {likesModal?.subtitle ? (
@@ -1299,7 +1300,7 @@ export default function FeedScreen({ navigation, route }: any) {
                       <View style={tw`flex-1`}>
                         <Text style={tw`font-semibold text-stone-900`}>{item.username}</Text>
                         {item.isFriend ? (
-                          <Text style={tw`text-xs text-emerald-600`}>Friend</Text>
+                          <Text style={tw`text-xs text-emerald-700`}>Friend</Text>
                         ) : null}
                       </View>
                     </View>
@@ -1405,16 +1406,12 @@ export default function FeedScreen({ navigation, route }: any) {
                       onPress={() => {
                         close();
                         setTimeout(() => {
-                          Alert.alert('Block User', `Block ${target.username}?`, [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Block',
-                              style: 'destructive',
-                              onPress: () => {
-                                void blockPostUser(target);
-                              },
-                            },
-                          ]);
+                          void confirmAsync('Block User', `Block ${target.username}?`, {
+                            confirmLabel: 'Block',
+                            destructive: true,
+                          }).then((ok) => {
+                            if (ok) void blockPostUser(target);
+                          });
                         }, 220);
                       }}
                       feedback={false}

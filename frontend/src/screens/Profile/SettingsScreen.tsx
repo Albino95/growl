@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { haptic } from '../../theme/haptics';
+import { previewSound } from '../../utils/interactionFeedback';
 import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
@@ -102,17 +103,36 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
-          Preferences
+          Feedback
         </Text>
         <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
           <View style={tw`flex-row items-center justify-between py-3.5 border-b border-stone-200/80`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`font-semibold text-stone-900`}>Haptics</Text>
+              <Text style={tw`font-semibold text-stone-900`}>Sounds</Text>
               <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                Distinct vibration for likes, tabs, and menus
+                Gentle chimes for check-ins, milestones and sharing. Follows your silent switch.
               </Text>
             </View>
             <Switch
+              accessibilityLabel="Sounds"
+              value={soundEnabled}
+              onValueChange={(v) => {
+                haptic('selection');
+                setSoundEnabled(v);
+                // Turning sounds on previews the check-in chime.
+                if (v) previewSound('bloom');
+              }}
+              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
+              thumbColor={soundEnabled ? '#059669' : '#F5F5F4'}
+            />
+          </View>
+          <View style={tw`flex-row items-center justify-between py-3.5`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`font-semibold text-stone-900`}>Haptics</Text>
+              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Subtle taps you can feel.</Text>
+            </View>
+            <Switch
+              accessibilityLabel="Haptics"
               value={hapticsEnabled}
               onValueChange={(v) => {
                 setHapticsEnabled(v);
@@ -121,23 +141,6 @@ export default function SettingsScreen() {
               }}
               trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
               thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
-            />
-          </View>
-          <View style={tw`flex-row items-center justify-between py-3.5`}>
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`font-semibold text-stone-900`}>UI sounds</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
-                Soft tones for taps, likes, send, and transitions
-              </Text>
-            </View>
-            <Switch
-              value={soundEnabled}
-              onValueChange={(v) => {
-                haptic('selection');
-                setSoundEnabled(v);
-              }}
-              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
-              thumbColor={soundEnabled ? '#059669' : '#F5F5F4'}
             />
           </View>
         </View>

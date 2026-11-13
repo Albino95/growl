@@ -265,7 +265,7 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
               {isExpanded ? (
                 <View style={tw`px-3 pb-3 pt-0`}>
                   <View style={tw`h-px bg-stone-100 mb-3`} />
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-400 uppercase mb-2 px-0.5`}>
+                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 px-0.5`}>
                     Choose focuses
                   </Text>
 

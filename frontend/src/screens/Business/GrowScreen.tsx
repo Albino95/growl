@@ -686,7 +686,7 @@ export default function GrowScreen() {
                     key={post.id}
                     style={tw`bg-white rounded-2xl p-4 mb-3 border border-stone-100`}
                   >
-                    <Text style={tw`text-xs text-stone-400 mb-2`}>
+                    <Text style={tw`text-xs text-stone-500 mb-2`}>
                       {formatTimeAgo(post.created_at)} · {post.category}
                     </Text>
                     {post.image_url ? (
@@ -771,7 +771,7 @@ export default function GrowScreen() {
                     Budget {formatCurrency(Number(campaign.budget || 0))}
                   </Text>
                   {campaign.end_date ? (
-                    <Text style={tw`text-xs text-stone-400 mb-3`}>
+                    <Text style={tw`text-xs text-stone-500 mb-3`}>
                       Ends {new Date(campaign.end_date).toLocaleDateString()}
                     </Text>
                   ) : null}
@@ -828,7 +828,7 @@ export default function GrowScreen() {
                 value={promoForm.code}
                 onChangeText={(code) => setPromoForm((p) => ({ ...p, code }))}
                 placeholder="SUMMER20"
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 autoCapitalize="characters"
                 style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
               />
@@ -863,7 +863,7 @@ export default function GrowScreen() {
                   clearFieldError('promoValue');
                 }}
                 placeholder={promoForm.type === 'percent' ? '20' : '10'}
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 keyboardType="decimal-pad"
                 style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.promoValue ? 'mb-1' : 'mb-3'} text-stone-900`}
               />
@@ -879,7 +879,7 @@ export default function GrowScreen() {
                   clearFieldError('promoMaxUses');
                 }}
                 placeholder="100"
-                placeholderTextColor="#A8A29E"
+                placeholderTextColor="#78716C"
                 keyboardType="number-pad"
                 style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.promoMaxUses ? 'mb-1' : 'mb-4'} text-stone-900`}
               />
@@ -914,7 +914,7 @@ export default function GrowScreen() {
                         {promo.type === 'percent' ? `${promo.value}% off` : `${formatCurrency(promo.value)} off`}
                         {promo.max_uses != null ? ` · max ${promo.max_uses} uses` : ''}
                       </Text>
-                      <Text style={tw`text-xs text-stone-400 mt-1`}>
+                      <Text style={tw`text-xs text-stone-500 mt-1`}>
                         Used {promo.uses} time{promo.uses === 1 ? '' : 's'}
                       </Text>
                     </View>
@@ -972,7 +972,7 @@ export default function GrowScreen() {
               value={campaignForm.name}
               onChangeText={(name) => setCampaignForm((p) => ({ ...p, name }))}
               placeholder="e.g. Summer Strength Bundle"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
             />
 
@@ -1006,7 +1006,7 @@ export default function GrowScreen() {
                 clearFieldError('budget');
               }}
               placeholder="1500"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               keyboardType="decimal-pad"
               style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.budget ? 'mb-1' : 'mb-3'} text-stone-900`}
             />
@@ -1020,7 +1020,7 @@ export default function GrowScreen() {
               value={campaignForm.endDate}
               onChangeText={(endDate) => setCampaignForm((p) => ({ ...p, endDate }))}
               placeholder="2026-08-01"
-              placeholderTextColor="#A8A29E"
+              placeholderTextColor="#78716C"
               style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-4 text-stone-900`}
             />
 
@@ -1217,7 +1217,7 @@ export default function GrowScreen() {
                     }}
                     keyboardType="decimal-pad"
                     placeholder="12"
-                    placeholderTextColor="#A8A29E"
+                    placeholderTextColor="#78716C"
                     style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.commission ? 'mb-1' : 'mb-3'} text-stone-900`}
                   />
                   {fieldErrors.commission ? (
@@ -1229,7 +1229,7 @@ export default function GrowScreen() {
                     value={requestMessage}
                     onChangeText={setRequestMessage}
                     placeholder="Tell them why you'd like to partner…"
-                    placeholderTextColor="#A8A29E"
+                    placeholderTextColor="#78716C"
                     multiline
                     numberOfLines={3}
                     style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-4 text-stone-900 min-h-[80px]`}

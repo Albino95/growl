@@ -1,119 +1,49 @@
-import { Platform, Vibration } from 'react-native';
+import { InteractionManager, Platform, Vibration } from 'react-native';
 import type { Audio } from 'expo-av';
-import { useUiPrefsStore } from '../state/useUiPrefsStore';
+import { uiPrefsReadiness, useUiPrefsStore } from '../state/useUiPrefsStore';
 import {
   createHapticGate,
+  feedbackConfig,
   playHapticChannel,
+  runWhenReady,
+  PREFS_HYDRATION_WAIT_MS,
+  SOUND_KEYS,
+  WEB_SOUND_NOTES,
+  type FeedbackKind,
   type HapticChannel,
   type HapticsModule,
+  type ReadinessSource,
+  type SoundKey,
 } from '../theme/hapticsCore';
 
-export type FeedbackKind =
-  // Channel kinds (preferred; see src/theme/haptics.ts for the moment API)
-  | 'selection'
-  | 'impactLight'
-  | 'impactMedium'
-  // Legacy kinds — still accepted, remapped to the calmer system below
-  | 'tap'
-  | 'select'
-  | 'tab'
-  | 'like'
-  | 'unlike'
-  | 'open'
-  | 'close'
-  | 'success'
-  | 'send'
-  | 'toggle'
-  | 'warn'
-  | 'error'
-  | 'delete'
-  | 'refresh'
-  | 'transition'
-  | 'egg'
-  | 'celebrate'
-  | 'filter'
-  | 'autoLook'
-  | 'commit'
-  | 'bloom';
-
-type SoundKey = 'success' | 'send' | 'error';
-
-type KindConfig = {
-  haptic: HapticChannel;
-  /** Vibration pattern (ms) used only when expo-haptics is unavailable. */
-  vibrate?: number | number[];
-  /** UI sounds are reserved for send, success, celebrate and error. */
-  sound?: SoundKey;
-  /** Web Audio synthesis profile. */
-  web?: { f0: number; f1?: number; ms: number; type?: OscillatorType; vol?: number };
-};
-
-const SUCCESS_WEB = { f0: 660, f1: 880, ms: 110, type: 'sine' as const, vol: 0.034 };
-
-/**
- * Frequency rules: the more often something happens, the quieter it is.
- * selection → tabs/chips/segments/switches; impactLight → state-changing taps;
- * impactMedium → record/long-press/drag thresholds; notification types → outcomes.
- * Generic `tap` is deliberately silent.
- */
-const KIND: Record<FeedbackKind, KindConfig> = {
-  selection: { haptic: 'selection', vibrate: 8 },
-  impactLight: { haptic: 'impactLight', vibrate: 10 },
-  impactMedium: { haptic: 'impactMedium', vibrate: 16 },
-
-  tap: { haptic: 'none' },
-  select: { haptic: 'selection', vibrate: 8 },
-  tab: { haptic: 'selection', vibrate: 8 },
-  toggle: { haptic: 'selection', vibrate: 8 },
-  filter: { haptic: 'selection', vibrate: 8 },
-  transition: { haptic: 'selection', vibrate: 8 },
-  unlike: { haptic: 'selection', vibrate: 8 },
-  close: { haptic: 'none' },
-  like: { haptic: 'impactLight', vibrate: 10 },
-  open: { haptic: 'impactLight', vibrate: 10 },
-  refresh: { haptic: 'impactLight', vibrate: 10 },
-  commit: { haptic: 'impactLight', vibrate: 10 },
-  autoLook: { haptic: 'impactLight', vibrate: 10 },
-  egg: { haptic: 'rigid', vibrate: [0, 8, 36, 12] },
-  send: {
-    haptic: 'impactLight',
-    vibrate: 10,
-    sound: 'send',
-    web: { f0: 700, f1: 900, ms: 70, type: 'sine', vol: 0.03 },
-  },
-  success: { haptic: 'success', vibrate: [0, 10, 30, 16], sound: 'success', web: SUCCESS_WEB },
-  warn: { haptic: 'warning', vibrate: [0, 20, 40, 20] },
-  delete: { haptic: 'warning', vibrate: [0, 18, 35, 22] },
-  error: {
-    haptic: 'error',
-    vibrate: [0, 28, 50, 28],
-    sound: 'error',
-    web: { f0: 280, f1: 220, ms: 140, type: 'square', vol: 0.032 },
-  },
-  celebrate: {
-    haptic: 'celebrate',
-    vibrate: [0, 12, 128, 16, 124, 10],
-    sound: 'success',
-    web: { f0: 660, f1: 990, ms: 170, type: 'sine', vol: 0.036 },
-  },
-  /** App-open splash — the seed smiles. One soft tap, deliberately silent. */
-  bloom: { haptic: 'soft', vibrate: 6 },
-};
+export type { FeedbackKind, SoundKey } from '../theme/hapticsCore';
 
 /** Resolved channel + sound for a kind (exported for tests / debugging). */
 export function describeFeedback(kind: FeedbackKind): { haptic: HapticChannel; sound: SoundKey | null } {
-  const cfg = KIND[kind] || KIND.tap;
+  const cfg = feedbackConfig(kind);
   return { haptic: cfg.haptic, sound: cfg.sound ?? null };
 }
 
+/*
+ * Playback uses expo-av for now. TODO(SDK 55): migrate to expo-audio
+ * (createAudioPlayer + setAudioModeAsync({ playsInSilentMode: false,
+ * interruptionMode: 'mixWithOthers' })) together with the SDK upgrade.
+ */
 const SOUND_MODULES: Record<SoundKey, number> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  success: require('../../assets/sounds/success.wav'),
+  bloom: require('../../assets/sounds/bloom.wav'),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  rise: require('../../assets/sounds/rise.wav'),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  seedpop: require('../../assets/sounds/seedpop.wav'),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   send: require('../../assets/sounds/send.wav'),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  error: require('../../assets/sounds/error.wav'),
+  softError: require('../../assets/sounds/soft-error.wav'),
 };
+
+/** Files are mastered at -6 dBFS peak (send -12, soft-error -14); this is the master UI level. */
+const UI_SOUND_VOLUME = 0.45;
 
 let webAudioCtx: AudioContext | null = null;
 let audioModeReady = false;
@@ -134,6 +64,8 @@ const nativeSounds = new Map<string, Audio.Sound>();
 const nativeLoading = new Map<string, Promise<Audio.Sound | null>>();
 /** Camera / ImagePicker leaves expo-av in a bad state on iOS — skip sounds briefly. */
 let hushNativeUntil = 0;
+/** Set once the lazy preload has been queued (reset when UI audio is released). */
+let preloadScheduled = false;
 
 /** Mute UI sounds for a moment (e.g. right after camera). Haptics still fire. */
 export function hushNativeAudio(ms = 2500) {
@@ -149,6 +81,7 @@ export function releaseNativeAudio(hushMs = 4000): void {
   }
   nativeSounds.clear();
   nativeLoading.clear();
+  preloadScheduled = false;
 }
 
 /** Reels / stories: never create expo-av UI sounds while a clip may load. */
@@ -159,6 +92,7 @@ export function lockNativeUiAudio(): void {
   }
   nativeSounds.clear();
   nativeLoading.clear();
+  preloadScheduled = false;
   hushNativeUntil = Number.MAX_SAFE_INTEGER;
 }
 
@@ -178,33 +112,58 @@ try {
   Haptics = null;
 }
 
-function playWebTone(cfg: NonNullable<KindConfig['web']>) {
+/** Web fallback: soft sine plucks (plus a lowpass) approximating the WAV notes. */
+function playWebSound(key: SoundKey) {
   if (typeof window === 'undefined') return;
   const AudioCtx =
     window.AudioContext ||
     (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioCtx) return;
-  webAudioCtx = webAudioCtx || new AudioCtx();
-  const ctx = webAudioCtx;
-  if (ctx.state === 'suspended') void ctx.resume();
-
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = cfg.type || 'triangle';
-  const t0 = ctx.currentTime;
-  const dur = Math.max(0.03, cfg.ms / 1000);
-  osc.frequency.setValueAtTime(cfg.f0, t0);
-  if (typeof cfg.f1 === 'number') {
-    osc.frequency.exponentialRampToValueAtTime(Math.max(40, cfg.f1), t0 + dur);
+  try {
+    webAudioCtx = webAudioCtx || new AudioCtx();
+    const ctx = webAudioCtx;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const out = ctx.createBiquadFilter();
+    out.type = 'lowpass';
+    out.frequency.value = key === 'softError' ? 1500 : 6000;
+    out.connect(ctx.destination);
+    const base = ctx.currentTime;
+    if (key === 'seedpop') {
+      // 15 ms filtered-noise pop before the pluck.
+      const len = Math.floor(ctx.sampleRate * 0.015);
+      const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len / 4));
+      const src = ctx.createBufferSource();
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1800;
+      const g = ctx.createGain();
+      g.gain.value = 0.02;
+      src.buffer = buffer;
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(out);
+      src.start(base);
+    }
+    for (const note of WEB_SOUND_NOTES[key]) {
+      const t0 = base + note.at / 1000;
+      const dur = Math.max(0.03, note.ms / 1000);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.f, t0);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(note.vol ?? 0.03, t0 + 0.003);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.01);
+    }
+  } catch {
+    /* ignore */
   }
-  const vol = cfg.vol ?? 0.03;
-  gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.006);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(t0);
-  osc.stop(t0 + dur + 0.01);
 }
 
 async function ensureAudioMode() {
@@ -237,8 +196,13 @@ async function getNativeSound(key: SoundKey): Promise<Audio.Sound | null> {
       await ensureAudioMode();
       const { sound } = await getAudio().Sound.createAsync(SOUND_MODULES[key], {
         shouldPlay: false,
-        volume: 0.38,
+        volume: UI_SOUND_VOLUME,
       });
+      // Reels/stories may have locked UI audio while this was loading.
+      if (Date.now() < hushNativeUntil) {
+        void sound.unloadAsync().catch(() => undefined);
+        return null;
+      }
       nativeSounds.set(key, sound);
       return sound;
     } catch {
@@ -266,15 +230,55 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
-async function playNativeSound(key: SoundKey) {
+/**
+ * Plays without awaiting anything when the sound is already preloaded, so the
+ * sound lands in the same tick as the haptic. `replayAsync` = seek 0 + play.
+ */
+function playNativeSound(key: SoundKey): void {
   if (Date.now() < hushNativeUntil) return;
+  const cached = nativeSounds.get(key);
+  if (cached) {
+    void cached.replayAsync().catch(() => undefined);
+    return;
+  }
+  void (async () => {
+    try {
+      const sound = await withTimeout(getNativeSound(key), 400);
+      if (!sound || Date.now() < hushNativeUntil) return;
+      await withTimeout(sound.replayAsync(), 250);
+    } catch {
+      /* ignore — never block the UI after camera / check-in */
+    }
+  })();
+}
+
+/**
+ * Warm the five UI sounds after the first interaction settles (never at cold
+ * start). Skipped on web, when sounds are off, or while UI audio is hushed.
+ */
+function schedulePreload(): void {
+  if (preloadScheduled || Platform.OS === 'web') return;
+  preloadScheduled = true;
+  const run = () => {
+    if (!useUiPrefsStore.getState().soundEnabled) {
+      preloadScheduled = false; // try again on a later interaction
+      return;
+    }
+    if (Date.now() < hushNativeUntil) {
+      preloadScheduled = false;
+      return;
+    }
+    void (async () => {
+      for (const key of SOUND_KEYS) {
+        if (Date.now() < hushNativeUntil) break;
+        await withTimeout(getNativeSound(key), 1500);
+      }
+    })();
+  };
   try {
-    const sound = await withTimeout(getNativeSound(key), 400);
-    if (!sound) return;
-    await withTimeout(sound.setPositionAsync(0), 250);
-    await withTimeout(sound.playAsync(), 250);
+    InteractionManager.runAfterInteractions(run);
   } catch {
-    /* ignore — never block the UI after camera / check-in */
+    setTimeout(run, 0);
   }
 }
 
@@ -289,37 +293,31 @@ async function fireHaptic(channel: HapticChannel, vibrate?: number | number[]) {
   if (vibrate != null) Vibration.vibrate(vibrate);
 }
 
-/** How long an early haptic waits for persisted prefs before it is dropped. */
-const PREFS_HYDRATION_WAIT_MS = 120;
+const prefsReadiness: ReadinessSource = {
+  isReady: () => {
+    if (uiPrefsReadiness.isReady()) return true;
+    const p = (useUiPrefsStore as { persist?: typeof useUiPrefsStore.persist }).persist;
+    return !p || p.hasHydrated();
+  },
+  onReady: (cb) => uiPrefsReadiness.onReady(cb),
+};
 
 /**
- * Runs `cb(true)` once the persisted sound/haptics prefs are loaded, so a
- * haptic at app start (e.g. the boot 'bloom') never buzzes a user who turned
- * haptics off. Waits up to `timeoutMs`; if prefs still are not hydrated by
- * then, calls `cb(false)` and callers should skip.
+ * Runs `cb` once the persisted sound/haptics prefs are loaded, so a haptic at
+ * app start (e.g. the boot 'bloom') respects a user who turned haptics off.
+ * Waits up to `timeoutMs`; if rehydration is slow or failed, it still fires
+ * with the defaults (never silently dropped). `cb` always receives `true`
+ * (kept for backward compatibility with the old signature).
  */
 export function whenFeedbackReady(cb: (ready: boolean) => void, timeoutMs = PREFS_HYDRATION_WAIT_MS) {
-  const p = (useUiPrefsStore as { persist?: typeof useUiPrefsStore.persist }).persist;
-  if (!p || p.hasHydrated()) {
-    cb(true);
-    return;
-  }
-  let settled = false;
-  const finish = (ready: boolean) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timer);
-    unsub();
-    cb(ready);
-  };
-  const unsub = p.onFinishHydration(() => finish(true));
-  const timer = setTimeout(() => finish(p.hasHydrated()), timeoutMs);
+  runWhenReady(prefsReadiness, () => cb(true), timeoutMs);
 }
 
 function fireNow(kind: FeedbackKind, opts: { sound?: boolean }) {
   const { hapticsEnabled, soundEnabled } = useUiPrefsStore.getState();
-  const cfg = KIND[kind] || KIND.tap;
+  const cfg = feedbackConfig(kind);
 
+  // Haptic first, then the sound in the same tick (neither is awaited).
   if (hapticsEnabled && cfg.haptic !== 'none' && gate.allow(cfg.haptic)) {
     void fireHaptic(cfg.haptic, cfg.vibrate);
   }
@@ -327,28 +325,32 @@ function fireNow(kind: FeedbackKind, opts: { sound?: boolean }) {
   if (!soundEnabled || !cfg.sound || opts.sound === false) return;
 
   if (Platform.OS === 'web') {
-    if (cfg.web) playWebTone(cfg.web);
+    playWebSound(cfg.sound);
     return;
   }
-  void playNativeSound(cfg.sound);
+  playNativeSound(cfg.sound);
+}
+
+/** Play a UI sound directly (e.g. the Settings preview). Respects hush, not the sound pref. */
+export function previewSound(key: SoundKey): void {
+  if (Platform.OS === 'web') playWebSound(key);
+  else playNativeSound(key);
 }
 
 /**
  * Unified tactile + audio feedback. Respects Settings toggles (and waits for
- * them to load at app start), debounces per haptic group, and only plays
- * sounds for send / success / celebrate / error. Never call from scroll.
+ * them to load at app start), debounces per haptic group, and plays sounds
+ * only for check-in, celebrate, shared, send and error. Never call from scroll.
  */
 export function triggerFeedback(kind: FeedbackKind = 'tap', opts: { sound?: boolean } = {}) {
-  const cfg = KIND[kind] || KIND.tap;
+  const cfg = feedbackConfig(kind);
   if (cfg.haptic === 'none' && !cfg.sound) return;
-  whenFeedbackReady((ready) => {
-    if (ready) fireNow(kind, opts);
-  });
+  whenFeedbackReady(() => fireNow(kind, opts));
+  schedulePreload();
 }
 
-/** @deprecated Prefer `haptic(moment)` from src/theme/haptics. */
 export function triggerPressFeedback() {
-  triggerFeedback('tap');
+  triggerFeedback('selection');
 }
 
 /** Convenience helpers for common call sites. */
@@ -376,4 +378,6 @@ export const feedback = {
   autoLook: () => triggerFeedback('autoLook'),
   commit: () => triggerFeedback('commit'),
   bloom: () => triggerFeedback('bloom'),
+  checkin: () => triggerFeedback('checkin'),
+  shared: () => triggerFeedback('shared'),
 };

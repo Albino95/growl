@@ -196,7 +196,7 @@ export default function UserOrdersScreen() {
                 >
                   <View style={tw`flex-row items-start justify-between mb-3`}>
                     <View style={tw`flex-1 pr-3`}>
-                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-400 uppercase`}>
+                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase`}>
                         Order · {order.id.slice(-8).toUpperCase()}
                       </Text>
                       <Text style={tw`text-xl font-bold text-stone-900 mt-1`}>
@@ -255,13 +255,13 @@ export default function UserOrdersScreen() {
                         </View>
                       ))
                     ) : (
-                      <Text style={tw`text-sm text-stone-400`}>No items listed</Text>
+                      <Text style={tw`text-sm text-stone-500`}>No items listed</Text>
                     )}
                   </View>
 
                   {shippingAddress ? (
                     <View style={tw`border-t border-stone-100 pt-3 mt-1`}>
-                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-400 uppercase mb-1`}>
+                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase mb-1`}>
                         Ship to
                       </Text>
                       <Text style={tw`text-sm text-stone-700`}>{shippingAddress.name}</Text>

@@ -30,7 +30,7 @@ function ReelFallbackTile({ caption }: { caption?: string }) {
         <Ionicons name="play" size={18} color="#FFFFFF" style={{ marginLeft: 2 }} />
       </View>
       {text ? (
-        <Text style={tw`text-[10px] leading-3 text-white/80 text-center mt-2`} numberOfLines={2}>
+        <Text style={tw`text-[11px] leading-[14px] text-white/80 text-center mt-2`} numberOfLines={2}>
           {text}
         </Text>
       ) : null}
@@ -145,7 +145,7 @@ export default function ProfilePostsGrid({
                 ) : null}
                 {label ? (
                   <View style={tw`absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded-full bg-[#FFFcf7]/92`}>
-                    <Text style={tw`text-[9px] font-bold text-emerald-800`} numberOfLines={1}>
+                    <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-emerald-800`} numberOfLines={1}>
                       {label}
                     </Text>
                   </View>
@@ -153,7 +153,7 @@ export default function ProfilePostsGrid({
                 {typeof post.likes === 'number' && post.likes > 0 ? (
                   <View style={tw`absolute right-1.5 bottom-1.5 flex-row items-center`}>
                     <Ionicons name="heart" size={10} color="#FFFFFF" />
-                    <Text style={tw`text-[9px] font-bold text-white ml-0.5`}>{post.likes}</Text>
+                    <Text style={tw`text-[11px] font-bold text-white ml-0.5`}>{post.likes}</Text>
                   </View>
                 ) : null}
               </View>

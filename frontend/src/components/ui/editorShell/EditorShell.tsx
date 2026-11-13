@@ -114,7 +114,7 @@ const EditorTopBar = memo(function EditorTopBar({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={tw`${SUBTITLE_TONE[subtitleTone]} text-[10px] mt-0.5`} numberOfLines={1}>
+          <Text style={tw`${SUBTITLE_TONE[subtitleTone]} text-[11px] mt-0.5`} numberOfLines={1}>
             {subtitle}
           </Text>
         ) : null}
