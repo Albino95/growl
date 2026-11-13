@@ -229,14 +229,20 @@ export default function NotificationsScreen() {
       return;
     }
 
-    if (item.ref_type === 'growth_seed' && item.ref_id) {
-      if (SHOW_SEEDS) navigateFromRoot(navigation, 'SeedDetail', { seedId: item.ref_id });
-      else if (item.actor?.id) navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
+    // Homework (and any coaching update) opens the plan it belongs to.
+    if (item.ref_type === 'coaching_contract' && item.ref_id) {
+      navigateFromRoot(navigation, 'CoachingContract', { contractId: item.ref_id });
       return;
     }
 
-    if (item.ref_type === 'coaching_contract' && item.ref_id) {
-      navigateFromRoot(navigation, 'CoachingContract', { contractId: item.ref_id });
+    if (item.ref_type === 'growth_seed' || item.type === 'coaching_homework') {
+      // Older homework notifications point at the seed. While Seeds/Garden is
+      // hidden, fall back to the sender's profile instead of opening the seed.
+      if (SHOW_SEEDS && item.ref_type === 'growth_seed' && item.ref_id) {
+        navigateFromRoot(navigation, 'SeedDetail', { seedId: item.ref_id });
+      } else if (item.actor?.id) {
+        navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
+      }
       return;
     }
 
@@ -443,7 +449,9 @@ export default function NotificationsScreen() {
               ? resolveAvatarUri(item.actor.id, item.actor.username, item.actor.avatar)
               : '';
             const actionable = isActionableEndorseRequest(item);
-            const preview = item.preview;
+            // Seeds/Garden is hidden: no seed preview card (the plain row still shows).
+            const preview =
+              !SHOW_SEEDS && item.preview?.kind === 'seed' ? null : item.preview;
             const previewImage =
               preview?.kind === 'post' && preview.image
                 ? resolvePostMediaUri(preview.image)

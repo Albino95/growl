@@ -37,6 +37,9 @@ import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { resolvePostMediaUri } from '../../utils/images';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import { SHOW_SEEDS } from '../../constants/featureFlags';
+import HomeworkCard from '../../components/coaching/HomeworkCard';
+import HomeworkDoneSheet from '../../components/coaching/HomeworkDoneSheet';
 
 type Route = RouteProp<{ CoachingContract: { contractId: string } }, 'CoachingContract'>;
 
@@ -55,6 +58,7 @@ export default function CoachingContractScreen() {
   const [review, setReview] = useState<ReviewEligibility | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [doneItem, setDoneItem] = useState<CoachingAssignment | null>(null);
   const hasContractRef = useRef(false);
 
   const isCoach = contract?.instructor_id === user?.id;
@@ -273,9 +277,20 @@ export default function CoachingContractScreen() {
           {assignments.length === 0 ? (
             <Text style={tw`text-sm text-stone-500 leading-5`}>
               {isCoach
-                ? 'Plant a seed for this client. They check in with a photo — that is the proof.'
-                : 'Your coach will plant homework here. Check in with a photo when you finish.'}
+                ? 'Assign homework for this client. They mark it done with a photo or a note.'
+                : 'Your coach will add homework here. Mark it done with a photo or a note when you finish.'}
             </Text>
+          ) : !SHOW_SEEDS ? (
+            // Seeds/Garden is hidden: homework lives entirely on this screen.
+            assignments.map((item) => (
+              <HomeworkCard
+                key={item.id}
+                item={item}
+                isCoach={isCoach}
+                canMarkDone={!isCoach && contract.status === 'active'}
+                onMarkDone={setDoneItem}
+              />
+            ))
           ) : (
             assignments.map((item) => (
               <PressableScale
@@ -349,7 +364,7 @@ export default function CoachingContractScreen() {
           <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-4 pb-8`}>
             <Text style={tw`text-lg font-bold text-stone-900 mb-1`}>Assign homework</Text>
             <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
-              Plants a Garden seed they can water with a photo. Proof does not move money.
+              Add a task your client can check off with a photo or note.
             </Text>
             <TextInput
               value={title}
@@ -374,7 +389,7 @@ export default function CoachingContractScreen() {
               {busy ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={tw`text-white font-bold`}>Plant homework</Text>
+                <Text style={tw`text-white font-bold`}>Assign homework</Text>
               )}
             </PressableScale>
             <PressableScale onPress={() => setAssignOpen(false)} style={tw`py-3 items-center mt-1`}>
@@ -383,6 +398,13 @@ export default function CoachingContractScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <HomeworkDoneSheet
+        visible={!!doneItem}
+        assignment={doneItem}
+        onClose={() => setDoneItem(null)}
+        onDone={() => void load()}
+      />
 
       <ReviewSheet
         visible={reviewOpen}

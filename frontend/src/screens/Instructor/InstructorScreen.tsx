@@ -745,7 +745,7 @@ export default function InstructorScreen({ navigation }: any) {
       <View style={tw`px-5 pt-3 pb-1`}>
         <Text style={tw`text-lg font-bold text-stone-900`}>Instructor Hub</Text>
         <Text style={tw`text-sm text-stone-500 mt-0.5 leading-5`}>
-          Talk, send a written plan, then homework on Garden seeds.
+          Talk, send a written plan, then assign homework.
         </Text>
       </View>
 
@@ -1008,7 +1008,7 @@ export default function InstructorScreen({ navigation }: any) {
           {activeTab === 'students' ? (
             <View style={tw`px-5 pt-2`}>
               <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
-                People who reached out. Send a proposal after you talk. Homework lives on their Garden seed.
+                People who reached out. Send a proposal after you talk. Homework lives on their coaching plan.
               </Text>
               {contracts.filter((c) => c.status === 'active').length > 0 ? (
                 <>

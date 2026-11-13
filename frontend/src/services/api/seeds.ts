@@ -106,6 +106,8 @@ export async function waterSeed(
     note?: string;
     photo_url?: string;
     metric_value?: number;
+    /** Coaching homework: complete only this assignment (not every homework on the seed). */
+    assignment_id?: string;
   } = {}
 ) {
   const res = await request<{
@@ -118,6 +120,7 @@ export async function waterSeed(
       note: input.note,
       photo_url: input.photo_url,
       metric_value: input.metric_value,
+      assignment_id: input.assignment_id,
     }),
   });
   return res.data;
