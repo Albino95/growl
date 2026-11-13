@@ -157,7 +157,7 @@ export default function AppDialogHost() {
           {request.message ? (
             <Text
               style={{
-                color: '#78716C',
+                color: '#6B645E',
                 fontSize: 14,
                 lineHeight: 20,
                 marginBottom: 16,

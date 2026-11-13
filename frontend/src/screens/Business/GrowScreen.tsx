@@ -35,6 +35,7 @@ import {
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { resolveAvatarUri, avatarSource } from '../../utils/images';
@@ -263,7 +264,7 @@ export default function GrowScreen() {
     try {
       setBusyId(partnershipId);
       await updatePartnershipStatus(partnershipId, status);
-      alertMessage('Updated', `Partnership ${status}.`);
+      toast.success(`Partnership ${status}`);
       setSelectedPartner(null);
       await dispatch(fetchBusinessGrow()).unwrap();
     } catch (e: unknown) {
@@ -295,7 +296,7 @@ export default function GrowScreen() {
         commissionRate: rate,
         message: requestMessage.trim() || undefined,
       });
-      alertMessage('Request sent', `Partnership request sent to ${discoverTarget.username}.`);
+      toast.success(`Request sent to ${discoverTarget.username}`);
       setDiscoverTarget(null);
       await dispatch(fetchBusinessGrow()).unwrap();
     } catch (e: unknown) {
@@ -322,7 +323,7 @@ export default function GrowScreen() {
     try {
       setCampaignBusy(true);
       await createCampaign({ name, type: campaignForm.type, budget, end_date: endDate });
-      alertMessage('Campaign created', `${name} is now active.`);
+      toast.success(`${name} is live`);
       setCampaignForm({ name: '', type: 'promotion', budget: '', endDate: '' });
       setCommunityTab('campaigns');
       await dispatch(fetchBusinessGrow()).unwrap();
@@ -365,7 +366,7 @@ export default function GrowScreen() {
         max_uses:
           typeof maxUses === 'number' ? Math.floor(maxUses) : undefined,
       });
-      alertMessage('Created', `Promo code ${code.toUpperCase()} is active.`);
+      toast.success(`Promo ${code.toUpperCase()} is active`);
       setPromoForm({ code: '', type: 'percent', value: '', maxUses: '' });
       await dispatch(fetchPromoCodes()).unwrap();
     } catch (e: unknown) {
@@ -707,7 +708,7 @@ export default function GrowScreen() {
                         <Text style={tw`text-sm text-stone-600 ml-1`}>{likes}</Text>
                       </View>
                       <View style={tw`flex-row items-center`}>
-                        <Ionicons name="chatbubble-outline" size={16} color="#78716C" />
+                        <Ionicons name="chatbubble-outline" size={16} color="#6B645E" />
                         <Text style={tw`text-sm text-stone-600 ml-1`}>{comments}</Text>
                       </View>
                     </View>
@@ -828,7 +829,7 @@ export default function GrowScreen() {
                 value={promoForm.code}
                 onChangeText={(code) => setPromoForm((p) => ({ ...p, code }))}
                 placeholder="SUMMER20"
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 autoCapitalize="characters"
                 style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
               />
@@ -863,7 +864,7 @@ export default function GrowScreen() {
                   clearFieldError('promoValue');
                 }}
                 placeholder={promoForm.type === 'percent' ? '20' : '10'}
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 keyboardType="decimal-pad"
                 style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.promoValue ? 'mb-1' : 'mb-3'} text-stone-900`}
               />
@@ -879,7 +880,7 @@ export default function GrowScreen() {
                   clearFieldError('promoMaxUses');
                 }}
                 placeholder="100"
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 keyboardType="number-pad"
                 style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.promoMaxUses ? 'mb-1' : 'mb-4'} text-stone-900`}
               />
@@ -972,7 +973,7 @@ export default function GrowScreen() {
               value={campaignForm.name}
               onChangeText={(name) => setCampaignForm((p) => ({ ...p, name }))}
               placeholder="e.g. Summer Strength Bundle"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-3 text-stone-900`}
             />
 
@@ -1006,7 +1007,7 @@ export default function GrowScreen() {
                 clearFieldError('budget');
               }}
               placeholder="1500"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               keyboardType="decimal-pad"
               style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.budget ? 'mb-1' : 'mb-3'} text-stone-900`}
             />
@@ -1020,7 +1021,7 @@ export default function GrowScreen() {
               value={campaignForm.endDate}
               onChangeText={(endDate) => setCampaignForm((p) => ({ ...p, endDate }))}
               placeholder="2026-08-01"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-4 text-stone-900`}
             />
 
@@ -1105,7 +1106,7 @@ export default function GrowScreen() {
                       </View>
                     </View>
                     <TouchableOpacity onPress={() => setSelectedPartner(null)}>
-                      <Ionicons name="close" size={24} color="#78716C" />
+                      <Ionicons name="close" size={24} color="#6B645E" />
                     </TouchableOpacity>
                   </View>
 
@@ -1204,7 +1205,7 @@ export default function GrowScreen() {
                       Request · {discoverTarget.username}
                     </Text>
                     <TouchableOpacity onPress={() => setDiscoverTarget(null)}>
-                      <Ionicons name="close" size={24} color="#78716C" />
+                      <Ionicons name="close" size={24} color="#6B645E" />
                     </TouchableOpacity>
                   </View>
                   <Text style={tw`text-sm font-semibold text-stone-700 mb-1`}>Commission rate (%)</Text>
@@ -1217,7 +1218,7 @@ export default function GrowScreen() {
                     }}
                     keyboardType="decimal-pad"
                     placeholder="12"
-                    placeholderTextColor="#78716C"
+                    placeholderTextColor="#6B645E"
                     style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 ${fieldErrors.commission ? 'mb-1' : 'mb-3'} text-stone-900`}
                   />
                   {fieldErrors.commission ? (
@@ -1229,7 +1230,7 @@ export default function GrowScreen() {
                     value={requestMessage}
                     onChangeText={setRequestMessage}
                     placeholder="Tell them why you'd like to partner…"
-                    placeholderTextColor="#78716C"
+                    placeholderTextColor="#6B645E"
                     multiline
                     numberOfLines={3}
                     style={tw`bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 mb-4 text-stone-900 min-h-[80px]`}

@@ -32,6 +32,7 @@ import {
 import { uploadMediaFile } from '../../services/api/media';
 import { fetchBusinessSettings } from '../../store/slices/businessSlice';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import { downloadCsv } from '../../utils/csvDownload';
 import { verticalScrollProps } from '../../constants/scroll';
 import { featureFlags } from '../../constants/featureFlags';
@@ -135,7 +136,7 @@ export default function BizSettings() {
       });
       await dispatch(fetchBusinessSettings()).unwrap();
       setLogoLocalUri(null);
-      alertMessage('Saved', 'Business settings updated.');
+      toast.success('Settings saved');
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not save settings');
     } finally {
@@ -213,7 +214,7 @@ export default function BizSettings() {
             onChangeText={setBusinessName}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
             placeholder="My Business"
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
           />
           <Text style={tw`text-sm text-stone-600 mb-2`}>Logo</Text>
           <View style={tw`flex-row items-center mb-3`}>
@@ -232,7 +233,7 @@ export default function BizSettings() {
             </TouchableOpacity>
           </View>
           <View style={tw`flex-row items-center py-2`}>
-            <Ionicons name="mail-outline" size={20} color="#78716C" />
+            <Ionicons name="mail-outline" size={20} color="#6B645E" />
             <Text style={tw`text-stone-600 ml-3`}>{user?.email}</Text>
           </View>
         </View>
@@ -249,7 +250,7 @@ export default function BizSettings() {
             keyboardType="numeric"
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 mb-3 text-stone-900`}
             placeholder="10"
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
           />
           <Text style={tw`text-sm text-stone-600 mb-1`}>Default shipping note</Text>
           <TextInput
@@ -260,7 +261,7 @@ export default function BizSettings() {
             numberOfLines={3}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 text-stone-900 min-h-[80px]`}
             placeholder="Ships within 2 business days…"
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
             textAlignVertical="top"
           />
         </View>
@@ -271,7 +272,7 @@ export default function BizSettings() {
           </Text>
           <View style={tw`flex-row items-center justify-between py-2`}>
             <View style={tw`flex-row items-center flex-1 pr-3`}>
-              <Ionicons name="notifications-outline" size={20} color="#78716C" />
+              <Ionicons name="notifications-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>In-app alerts</Text>
             </View>
             <Switch
@@ -305,7 +306,7 @@ export default function BizSettings() {
             onPress={() => void handleExportOrders()}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="download-outline" size={20} color="#78716C" />
+              <Ionicons name="download-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Export orders (CSV)</Text>
             </View>
             {exportBusy === 'orders' ? (
@@ -320,7 +321,7 @@ export default function BizSettings() {
             onPress={() => void handleExportProducts()}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="download-outline" size={20} color="#78716C" />
+              <Ionicons name="download-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Export products (CSV)</Text>
             </View>
             {exportBusy === 'products' ? (
@@ -359,7 +360,7 @@ export default function BizSettings() {
             onPress={() => stackNav.navigate('BusinessCustomers')}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="people-outline" size={20} color="#78716C" />
+              <Ionicons name="people-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Customers</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
@@ -369,7 +370,7 @@ export default function BizSettings() {
             onPress={() => stackNav.navigate('BusinessMessages')}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="chatbubbles-outline" size={20} color="#78716C" />
+              <Ionicons name="chatbubbles-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Messages</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
@@ -379,7 +380,7 @@ export default function BizSettings() {
             onPress={() => stackNav.navigate('BusinessCreatePost')}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="create-outline" size={20} color="#78716C" />
+              <Ionicons name="create-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Create post</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
@@ -389,7 +390,7 @@ export default function BizSettings() {
             onPress={() => stackNav.navigate('BusinessAnalytics')}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="analytics-outline" size={20} color="#78716C" />
+              <Ionicons name="analytics-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Analytics</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
@@ -400,7 +401,7 @@ export default function BizSettings() {
               onPress={() => stackNav.navigate('BusinessKYC')}
             >
               <View style={tw`flex-row items-center`}>
-                <Ionicons name="shield-checkmark-outline" size={20} color="#78716C" />
+                <Ionicons name="shield-checkmark-outline" size={20} color="#6B645E" />
                 <Text style={tw`text-stone-900 ml-3`}>Identity verification</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
@@ -411,7 +412,7 @@ export default function BizSettings() {
             onPress={() => navigateFromRoot(navigation, 'Legal')}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="document-text-outline" size={20} color="#78716C" />
+              <Ionicons name="document-text-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Terms & policies</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
@@ -427,7 +428,7 @@ export default function BizSettings() {
             style={tw`flex-row items-center justify-between py-3`}
           >
             <View style={tw`flex-row items-center`}>
-              <Ionicons name="mail-outline" size={20} color="#78716C" />
+              <Ionicons name="mail-outline" size={20} color="#6B645E" />
               <Text style={tw`text-stone-900 ml-3`}>Contact support</Text>
             </View>
             <Text style={tw`text-xs text-stone-500`}>{SUPPORT_EMAIL}</Text>

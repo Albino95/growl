@@ -25,6 +25,7 @@ import {
   type AppReview,
 } from '../../services/api/appReviews';
 import { alertMessage } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import { feedback } from '../../utils/interactionFeedback';
 import { openAppStoreReview } from '../../utils/appStoreReview';
 
@@ -93,7 +94,7 @@ function ReviewCard({
             value={draft}
             onChangeText={setDraft}
             placeholder="Thanks for the feedback — we’ll look at this…"
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
             multiline
             style={tw`min-h-[72px] bg-[#F3EEE4] rounded-xl px-3 py-2.5 text-stone-800`}
           />
@@ -166,12 +167,14 @@ export default function AppReviewsScreen() {
         const rest = prev.filter((r) => r.id !== review.id);
         return [review, ...rest];
       });
-      alertMessage(
-        mine ? 'Updated' : 'We hear you',
-        mine
-          ? 'Updated. We’ll keep working on what you wrote and reply here.'
-          : 'Thank you. We read every note. When we’ve sat with what you said, you’ll see a reply here — then we’ll ask if a public App Store note feels fair.'
-      );
+      if (mine) {
+        toast.success('Review updated');
+      } else {
+        alertMessage(
+          'We hear you',
+          'Thank you. We read every note. When we’ve sat with what you said, you’ll see a reply here — then we’ll ask if a public App Store note feels fair.'
+        );
+      }
     } catch (err) {
       alertMessage('Could not save', err instanceof Error ? err.message : 'Try again in a moment.');
     } finally {
@@ -241,7 +244,7 @@ export default function AppReviewsScreen() {
                 value={body}
                 onChangeText={setBody}
                 placeholder="The journal felt calm, but I couldn’t find instructors…"
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 multiline
                 style={tw`min-h-[110px] bg-[#F3EEE4] rounded-xl px-3 py-3 text-stone-800`}
               />

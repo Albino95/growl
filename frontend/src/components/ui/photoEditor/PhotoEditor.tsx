@@ -842,12 +842,12 @@ export default function PhotoEditor({
       </View>
 
       {activeTab === 'crop' && selectedCrop !== 'free' && (
-        <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
+        <Text style={tw`text-center text-stone-400 text-[11px] py-1.5 bg-black`}>
           Drag to reframe · Apply Crop when ready
         </Text>
       )}
       {activeTab === 'overlay' && activeOverlay && (
-        <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
+        <Text style={tw`text-center text-stone-400 text-[11px] py-1.5 bg-black`}>
           Press and drag the text to place it anywhere
         </Text>
       )}
@@ -1061,9 +1061,9 @@ export default function PhotoEditor({
 
               <Text style={tw`text-stone-300 text-sm font-medium mb-1`}>Straighten</Text>
               <View style={tw`flex-row justify-between mb-1`}>
-                <Text style={tw`text-stone-500 text-xs`}>−15°</Text>
+                <Text style={tw`text-stone-400 text-xs`}>−15°</Text>
                 <Text style={tw`text-stone-400 text-sm`}>{straighten.toFixed(0)}°</Text>
-                <Text style={tw`text-stone-500 text-xs`}>+15°</Text>
+                <Text style={tw`text-stone-400 text-xs`}>+15°</Text>
               </View>
               <Slider
                 accessibilityLabel="Straighten"

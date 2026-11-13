@@ -36,7 +36,7 @@ export default function SearchField({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#78716C"
+        placeholderTextColor="#6B645E"
         style={tw`flex-1 ml-2 text-[15px] text-stone-900 py-0`}
         returnKeyType="search"
         clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}

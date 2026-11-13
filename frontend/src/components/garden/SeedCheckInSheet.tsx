@@ -112,7 +112,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
       setPhotoUri(null);
       onClose();
       onDone(res.seed, res.staged_up);
-      // Haptics only — expo-av after Camera/ImagePicker can lock the iOS JS bridge.
+      // Haptics only — no UI sound right after Camera/ImagePicker hands back the audio session.
       feedback.success();
     } catch (e) {
       feedback.error();
@@ -165,7 +165,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
                       ? `Last: ${seed.metric_current}${schema?.unitLabel ? ` ${schema.unitLabel}` : ''}`
                       : 'e.g. 72.4'
                   }
-                  placeholderTextColor="#78716C"
+                  placeholderTextColor="#6B645E"
                   style={tw`bg-[#EAE4D6] px-4 py-3.5 rounded-2xl text-stone-900 text-[18px] font-semibold border border-stone-200`}
                 />
                 {seed.metric_start != null && seed.metric_target != null ? (
@@ -224,7 +224,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
               value={note}
               onChangeText={setNote}
               placeholder="How did it feel?"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               multiline
               style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[15px] min-h-[72px] mb-5`}
             />

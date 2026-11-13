@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { Audio } from 'expo-av';
 import type { TextOverlay } from '../photoEditor/types';
 import type { VideoEditSettings } from './types';
 import { normalizeVideoEdit } from './types';
@@ -44,22 +43,12 @@ export function ReelSoundtrack({
   settings?: Partial<VideoEditSettings> | null;
   shouldPlay?: boolean;
 }) {
-  const soundRef = useRef<Audio.Sound | null>(null);
   const webAudioRef = useRef<HTMLAudioElement | null>(null);
   const edit = normalizeVideoEdit(settings);
   const soundtrackUrl = getMusicPlaybackUrl(edit.audioTrackId, edit.audioUrl);
 
   useEffect(() => {
-    let cancelled = false;
     const load = async () => {
-      if (soundRef.current) {
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {
-          /* ignore */
-        }
-        soundRef.current = null;
-      }
       if (!soundtrackUrl || Platform.OS !== 'web' || typeof window === 'undefined') return;
       if (!webAudioRef.current) webAudioRef.current = new window.Audio();
       const el = webAudioRef.current;
@@ -72,11 +61,6 @@ export function ReelSoundtrack({
     };
     void load();
     return () => {
-      cancelled = true;
-      if (soundRef.current) {
-        void soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
       if (webAudioRef.current) {
         webAudioRef.current.pause();
         webAudioRef.current.removeAttribute?.('src');
@@ -87,16 +71,11 @@ export function ReelSoundtrack({
 
   useEffect(() => {
     if (!shouldPlay || !soundtrackUrl) {
-      void soundRef.current?.pauseAsync();
       webAudioRef.current?.pause();
       return;
     }
     void (async () => {
       try {
-        if (soundRef.current) {
-          await soundRef.current.setPositionAsync(0);
-          await soundRef.current.playAsync();
-        }
         if (webAudioRef.current) {
           webAudioRef.current.currentTime = 0;
           await webAudioRef.current.play();
@@ -123,7 +102,6 @@ export default function ReelVideoPlayer({
   onProgress,
 }: Props) {
   const htmlVideoRef = useRef<HtmlVideoEl | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
   const webAudioRef = useRef<HTMLAudioElement | null>(null);
   const endedRef = useRef(false);
   const onEndedRef = useRef(onEnded);
@@ -174,61 +152,6 @@ export default function ReelVideoPlayer({
   }, [edit.speed]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadNativeSound = async () => {
-      if (soundRef.current) {
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {
-          /* ignore */
-        }
-        soundRef.current = null;
-      }
-      if (!soundtrackUrl || Platform.OS !== 'web') return;
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: false,
-        });
-        let playbackUrl = soundtrackUrl;
-        try {
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: playbackUrl },
-            {
-              shouldPlay: false,
-              isLooping: true,
-              volume: edit.audioVolume ?? 0.85,
-            }
-          );
-          if (cancelled) {
-            await sound.unloadAsync();
-            return;
-          }
-          soundRef.current = sound;
-        } catch {
-          const fallback = edit.audioUrl?.trim();
-          if (fallback && fallback !== playbackUrl) {
-            const { sound } = await Audio.Sound.createAsync(
-              { uri: fallback },
-              {
-                shouldPlay: false,
-                isLooping: true,
-                volume: edit.audioVolume ?? 0.85,
-              }
-            );
-            if (cancelled) {
-              await sound.unloadAsync();
-              return;
-            }
-            soundRef.current = sound;
-          }
-        }
-      } catch {
-        soundRef.current = null;
-      }
-    };
-
     const loadWebSound = () => {
       if (Platform.OS !== 'web' || typeof window === 'undefined' || !soundtrackUrl) return;
       if (!webAudioRef.current) {
@@ -248,11 +171,6 @@ export default function ReelVideoPlayer({
     }
 
     return () => {
-      cancelled = true;
-      if (soundRef.current) {
-        void soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
       if (webAudioRef.current) {
         webAudioRef.current.pause();
         webAudioRef.current.removeAttribute?.('src');
@@ -297,9 +215,6 @@ export default function ReelVideoPlayer({
   // Keep soundtrack volume in sync without remounting the audio element
   useEffect(() => {
     const vol = Math.max(0, Math.min(1, edit.audioVolume ?? 0.85));
-    if (soundRef.current) {
-      void soundRef.current.setVolumeAsync(vol);
-    }
     if (webAudioRef.current) {
       webAudioRef.current.volume = vol;
     }

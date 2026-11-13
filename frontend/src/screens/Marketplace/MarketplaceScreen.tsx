@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
 import tw from '../../lib/tw';
@@ -75,6 +75,8 @@ export default function MarketplaceScreen() {
   }, [dispatch, fetchParams]);
 
   const refresh = useRefresh(() => dispatch(fetchProducts(fetchParams)));
+  const listRef = useRef<FlatList<(typeof searchFiltered)[number]>>(null);
+  useScrollToTop(listRef);
 
   const handleCategoryChange = (category: string | null) => {
     setSelectedSubcategory(null);
@@ -270,6 +272,7 @@ export default function MarketplaceScreen() {
         {/* Keep the FlatList (and the SearchField in its header) mounted while loading so
             typing a search doesn't unmount the input and dismiss the keyboard. */}
         <FlatList
+          ref={listRef}
           data={searchFiltered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={tw`px-4 pt-3 pb-24`}

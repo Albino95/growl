@@ -30,7 +30,7 @@ export const CHAT_WALLS: ChatWallTheme[] = [
     peerText: '#1C1917',
     ownBubble: '#059669',
     ownText: '#FFFFFF',
-    meta: '#78716C',
+    meta: '#6B645E',
     composer: '#FFFcf7',
     header: '#F3EEE4',
     swatch: '#F3EEE4',

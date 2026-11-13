@@ -25,7 +25,7 @@ import {
 import { VIDEO_LOOKS, normalizeVideoEdit } from './types';
 
 describe('native Edit playback policy', () => {
-  it('does not mount expo-av Video until the user taps Play', () => {
+  it('does not mount the expo-video player until the user taps Play', () => {
     expect(nativeEditorMountsPlayerOnOpen()).toBe(false);
     expect(shouldMountNativePlayer(false)).toBe(false);
     expect(shouldMountNativePlayer(true)).toBe(true);

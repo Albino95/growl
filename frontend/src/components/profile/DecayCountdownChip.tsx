@@ -21,7 +21,7 @@ export default function DecayCountdownChip({ daysLeft, compact }: Props) {
 
   const chipBg = decayed ? 'bg-stone-200' : urgent ? 'bg-amber-100' : 'bg-emerald-50';
   const textColor = decayed ? 'text-stone-600' : urgent ? 'text-amber-900' : 'text-emerald-800';
-  const iconColor = decayed ? '#78716C' : urgent ? '#B45309' : '#059669';
+  const iconColor = decayed ? '#6B645E' : urgent ? '#B45309' : '#059669';
 
   return (
     <View

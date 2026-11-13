@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   RefreshControl,
-  ActivityIndicator,
   TextInput,
   Modal,
   KeyboardAvoidingView,
@@ -37,6 +36,7 @@ import { getCategoryLabel, getCategoryMeta } from '../../utils/categoryLabels';
 import { useAppSelector } from '../../store/store';
 import { alertMessage } from '../../utils/confirmDialog';
 import { getAllCountriesSorted } from '../../data/geoLocations';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 const MATCH_OPTIONS: {
   id: CircleMatchMode;
@@ -369,8 +369,8 @@ export default function CirclesScreen() {
       />
 
       {loading ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" />
+        <View style={tw`flex-1 px-5 pt-2`}>
+          <SkeletonList variant="circle" count={5} />
         </View>
       ) : (
         <ScrollView
@@ -466,7 +466,7 @@ export default function CirclesScreen() {
                       void savePrefs({ city: next || null });
                     }}
                     placeholder="Optional"
-                    placeholderTextColor="#78716C"
+                    placeholderTextColor="#6B645E"
                     style={tw`text-sm font-semibold text-stone-900 py-0.5`}
                   />
                 </View>
@@ -617,14 +617,14 @@ export default function CirclesScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Circle name"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 mb-3`}
             />
             <TextInput
               value={desc}
               onChangeText={setDesc}
               placeholder="What do you practice here?"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               multiline
               style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 mb-3 min-h-[72px]`}
             />

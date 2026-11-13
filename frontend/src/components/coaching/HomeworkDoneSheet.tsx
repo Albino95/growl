@@ -196,7 +196,7 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
               value={note}
               onChangeText={setNote}
               placeholder="Note for your coach (optional)"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               multiline
               maxLength={500}
               editable={!busy}

@@ -104,7 +104,7 @@ export default function VideoLookPanel({
             >
               <Ionicons name={s.icon} size={14} color={active ? '#34D399' : '#78716C'} />
               <Text
-                style={tw`text-[11px] font-bold ml-1 ${active ? 'text-brand-300' : 'text-stone-500'}`}
+                style={tw`text-[11px] font-bold ml-1 ${active ? 'text-brand-300' : 'text-stone-400'}`}
               >
                 {s.label}
               </Text>
@@ -212,7 +212,7 @@ export default function VideoLookPanel({
 
       {section === 'grades' && (
         <>
-          <Text style={tw`text-stone-500 text-xs mb-3`}>
+          <Text style={tw`text-stone-400 text-xs mb-3`}>
             Layer cinematic color grades on top of presets & adjustments
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -263,7 +263,7 @@ export default function VideoLookPanel({
                   >
                     {l.label}
                   </Text>
-                  <Text style={tw`text-[11px] text-stone-500`}>{l.hint}</Text>
+                  <Text style={tw`text-[11px] text-stone-400`}>{l.hint}</Text>
                 </Pressable>
               );
             })}

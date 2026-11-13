@@ -30,6 +30,7 @@ import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccesso
 import { SkeletonList } from '../../components/ui/SkeletonCard';
 import FadeInUp from '../../components/ui/FadeInUp';
 import { feedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
 
 function formatCommentTime(iso: string): string {
   const date = new Date(iso);
@@ -63,9 +64,14 @@ function commentTime(raw: string): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+/** A comment row; local (optimistic) rows carry `pending` / `failed`. */
+type CommentRow = FeedComment & { pending?: boolean; failed?: boolean };
+
+const isLocalComment = (c: CommentRow) => c.id.startsWith('tmp-');
+
 /** Dedupes by id and keeps chronological order (oldest first); stable for equal times. */
-function mergeComments(a: FeedComment[], b: FeedComment[]): FeedComment[] {
-  const byId = new Map<string, FeedComment>();
+function mergeComments(a: CommentRow[], b: CommentRow[]): CommentRow[] {
+  const byId = new Map<string, CommentRow>();
   for (const c of [...a, ...b]) byId.set(c.id, c);
   return Array.from(byId.values()).sort((x, y) => commentTime(x.created_at) - commentTime(y.created_at));
 }
@@ -78,15 +84,42 @@ export default function CommentsScreen({
   onCommentsChanged,
   postUserId,
 }: CommentsScreenProps) {
-  const [comments, setComments] = useState<FeedComment[]>([]);
+  const [comments, setComments] = useState<CommentRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [failedCommentDraft, setFailedCommentDraft] = useState('');
   const { user } = useAuth();
   const navigation = useNavigation();
+  const listRef = useRef<FlatList<CommentRow>>(null);
+  /** Temp ids whose send is in flight — guards double retries. */
+  const sendingIdsRef = useRef<Set<string>>(new Set());
+  /** Auto-load of older comments only after the user has actually scrolled. */
+  const userScrolledRef = useRef(false);
+  /**
+   * Comments is always shown inside a pageSheet Modal (Feed, Reels, PostDetail).
+   * KeyboardAvoidingView compares its *local* frame with the keyboard's *screen*
+   * Y, so the offset must be this view's distance from the top of the window
+   * (sheet inset + header). Measured, not hardcoded, so it's right on every device.
+   */
+  const kavWrapRef = useRef<View>(null);
+  const [kbOffset, setKbOffset] = useState(0);
+  const measureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const measureKbOffset = useCallback(() => {
+    const measure = () =>
+      kavWrapRef.current?.measureInWindow((_x, y) => {
+        if (Number.isFinite(y)) setKbOffset(Math.max(0, Math.round(y)));
+      });
+    measure();
+    // First layout can land mid sheet-slide; settle once the presentation finishes.
+    if (measureTimerRef.current) clearTimeout(measureTimerRef.current);
+    measureTimerRef.current = setTimeout(measure, 450);
+  }, []);
+  useEffect(
+    () => () => {
+      if (measureTimerRef.current) clearTimeout(measureTimerRef.current);
+    },
+    []
+  );
 
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -103,7 +136,7 @@ export default function CommentsScreen({
     if (!countDirtyRef.current) return;
     countDirtyRef.current = false;
     // Only report when every comment is loaded, otherwise it would undercount.
-    if (!hasOlder) onCommentsChanged?.(comments.length);
+    if (!hasOlder) onCommentsChanged?.(comments.filter((c) => !isLocalComment(c)).length);
   }, [comments, hasOlder, onCommentsChanged]);
 
   const loadComments = useCallback(async () => {
@@ -111,7 +144,8 @@ export default function CommentsScreen({
     setLoadError(null);
     try {
       const list = await getFeedPostComments(postId);
-      setComments(list);
+      // Keep local (pending / failed) rows across a reload.
+      setComments((prev) => mergeComments(list, prev.filter(isLocalComment)));
       setHasOlder(list.length >= COMMENT_PAGE_SIZE);
     } catch {
       setComments([]);
@@ -126,7 +160,7 @@ export default function CommentsScreen({
   }, [loadComments]);
 
   const loadOlderComments = async () => {
-    const oldest = comments[0];
+    const oldest = comments.find((c) => !isLocalComment(c));
     if (!oldest || loadingOlder || !hasOlder) return;
     setLoadingOlder(true);
     try {
@@ -140,25 +174,50 @@ export default function CommentsScreen({
     }
   };
 
-  const submitComment = async (text: string) => {
-    if (!text || sending) return;
-    setSending(true);
-    setSendError(null);
+  /**
+   * Optimistic send: a `tmp-…` row appears at once (dimmed), then is swapped for
+   * the server row. On failure the row stays, marked "Couldn't send · Tap to retry".
+   */
+  const submitComment = async (text: string, retryId?: string) => {
+    if (!text) return;
+    const tempId = retryId || `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (sendingIdsRef.current.has(tempId)) return;
+    sendingIdsRef.current.add(tempId);
+    if (retryId) {
+      setComments((prev) =>
+        prev.map((c) => (c.id === retryId ? { ...c, pending: true, failed: false } : c))
+      );
+    } else {
+      const temp: CommentRow = {
+        id: tempId,
+        post_id: postId,
+        user_id: user?.id ?? '',
+        content: text,
+        created_at: new Date().toISOString(),
+        user: {
+          id: user?.id ?? '',
+          username: user?.username,
+          avatar: user?.avatar ?? null,
+        },
+        pending: true,
+      };
+      setComments((prev) => mergeComments(prev, [temp]));
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    }
     let created: FeedComment;
     try {
       created = await createFeedPostComment(postId, text);
     } catch {
-      setFailedCommentDraft(text);
-      setSendError('Failed to send comment. Please retry.');
-      setSending(false);
+      sendingIdsRef.current.delete(tempId);
+      feedback.error();
+      setComments((prev) =>
+        prev.map((c) => (c.id === tempId ? { ...c, pending: false, failed: true } : c))
+      );
       return;
     }
-    // Posted: show it right away and clear the draft so a retry can't double-post.
-    setCommentText('');
-    setFailedCommentDraft('');
+    sendingIdsRef.current.delete(tempId);
     countDirtyRef.current = true;
-    setComments((prev) => mergeComments(prev, [created]));
-    setSending(false);
+    setComments((prev) => mergeComments(prev.filter((c) => c.id !== tempId), [created]));
     // Best-effort refresh for other people's new comments; failures are silent.
     try {
       const latest = await getFeedPostComments(postId);
@@ -188,24 +247,29 @@ export default function CommentsScreen({
     }
   };
 
-  const handleSendComment = async () => {
+  const handleSendComment = () => {
     const text = commentText.trim();
-    await submitComment(text);
+    if (!text) return;
+    feedback.send();
+    // Clear instantly — the text lives on in the optimistic row (and its retry).
+    setCommentText('');
+    void submitComment(text);
   };
 
-  const retrySendComment = async () => {
-    if (!failedCommentDraft) return;
-    setCommentText(failedCommentDraft);
-    await submitComment(failedCommentDraft);
+  const retrySendComment = (row: CommentRow) => {
+    if (!row.failed) return;
+    haptic('tapLight');
+    void submitComment(row.content, row.id);
   };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+      <View ref={kavWrapRef} style={tw`flex-1`} onLayout={measureKbOffset} collapsable={false}>
       <FadeInUp distance={10} style={tw`flex-1`}>
         <KeyboardAvoidingView
           style={tw`flex-1`}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? kbOffset : 0}
         >
           <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-[#FFFcf7]`}>
             <TouchableOpacity
@@ -255,11 +319,21 @@ export default function CommentsScreen({
             </View>
           ) : (
             <FlatList
+              ref={listRef}
               data={comments}
               keyExtractor={(item) => item.id}
               contentContainerStyle={tw`px-4 py-3 pb-6`}
               {...verticalScrollProps}
               {...feedListPerformanceProps}
+              // Older pages prepend; keep the reader's place and auto-load near the top.
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              onScrollBeginDrag={() => {
+                userScrolledRef.current = true;
+              }}
+              onStartReachedThreshold={0.5}
+              onStartReached={() => {
+                if (userScrolledRef.current) void loadOlderComments();
+              }}
               ListHeaderComponent={
                 hasOlder ? (
                   <TouchableOpacity
@@ -270,7 +344,7 @@ export default function CommentsScreen({
                     accessibilityLabel="Load earlier comments"
                   >
                     {loadingOlder ? (
-                      <ActivityIndicator size="small" color="#78716C" />
+                      <ActivityIndicator size="small" color="#6B645E" />
                     ) : (
                       <Text style={tw`text-xs font-semibold text-stone-600`}>
                         Load earlier comments
@@ -281,10 +355,14 @@ export default function CommentsScreen({
               }
               renderItem={({ item }) => {
                 const uname = item.user?.username || 'Member';
-                const canDelete = (!!user?.id && item.user_id === user.id) || isPostAuthor;
+                const local = isLocalComment(item);
+                const canDelete = !local && ((!!user?.id && item.user_id === user.id) || isPostAuthor);
                 const avatarUri = resolveAvatarUri(item.user_id, uname, item.user?.avatar ?? '');
                 return (
-                  <View style={tw`flex-row items-start mb-4`}>
+                  <View
+                    style={[tw`flex-row items-start mb-4`, item.pending ? { opacity: 0.6 } : null]}
+                    accessibilityState={{ busy: !!item.pending }}
+                  >
                     <TouchableOpacity
                       onPress={() => {
                         if (item.user_id !== user?.id) {
@@ -313,9 +391,23 @@ export default function CommentsScreen({
                         </TouchableOpacity>
                         <Text style={tw`text-sm text-stone-800`}>{item.content}</Text>
                       </View>
+                      {item.failed ? (
+                        <TouchableOpacity
+                          onPress={() => retrySendComment(item)}
+                          style={tw`flex-row items-center ml-2`}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Couldn't send. Tap to retry"
+                        >
+                          <Ionicons name="alert-circle" size={14} color="#DC2626" />
+                          <Text style={tw`ml-1 text-xs font-semibold text-red-700`}>
+                            Couldn’t send · Tap to retry
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
                       <View style={tw`flex-row items-center ml-2`}>
                         <Text style={tw`text-xs text-stone-500`}>
-                          {formatCommentTime(item.created_at)}
+                          {item.pending ? 'Sending…' : formatCommentTime(item.created_at)}
                         </Text>
                         {canDelete ? (
                           <TouchableOpacity
@@ -334,6 +426,7 @@ export default function CommentsScreen({
                           </TouchableOpacity>
                         ) : null}
                       </View>
+                      )}
                     </View>
                   </View>
                 );
@@ -350,19 +443,6 @@ export default function CommentsScreen({
           )}
 
           <View style={tw`border-t border-stone-200/80 bg-[#FFFcf7] px-4 py-3`}>
-            {sendError && (
-              <View style={tw`mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2`}>
-                <View style={tw`flex-row items-center`}>
-                  <Text style={tw`flex-1 text-xs text-red-700`}>{sendError}</Text>
-                  <TouchableOpacity
-                    onPress={() => void retrySendComment()}
-                    disabled={sending || !failedCommentDraft}
-                  >
-                    <Text style={tw`text-xs font-semibold text-red-800`}>Retry</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
             <View style={tw`flex-row items-end`}>
               <View style={tw`flex-1 bg-[#EAE4D6] rounded-full px-4 py-2 max-h-24 mr-2`}>
                 <TextInput
@@ -372,27 +452,23 @@ export default function CommentsScreen({
                   onChangeText={setCommentText}
                   maxLength={COMMENT_MAX_LENGTH}
                   multiline
+                  // Comments are short: Return sends (and keeps the keyboard up), the
+                  // field still grows/wraps for long text.
+                  returnKeyType="send"
+                  submitBehavior="submit"
+                  onSubmitEditing={handleSendComment}
                   style={tw`text-sm text-stone-900`}
-                  placeholderTextColor="#78716C"
-                  editable={!sending}
+                  placeholderTextColor="#6B645E"
                 />
               </View>
               {commentText.trim() ? (
                 <TouchableOpacity
-                  onPress={() => {
-                    feedback.send();
-                    void handleSendComment();
-                  }}
-                  disabled={sending}
-                  style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center ${
-                    sending ? 'opacity-50' : ''
-                  }`}
+                  onPress={handleSendComment}
+                  style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center`}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send comment"
                 >
-                  {sending ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Ionicons name="send" size={18} color="#FFFFFF" />
-                  )}
+                  <Ionicons name="send" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               ) : (
                 <View style={tw`w-10 h-10 items-center justify-center`}>
@@ -403,6 +479,7 @@ export default function CommentsScreen({
           </View>
         </KeyboardAvoidingView>
       </FadeInUp>
+      </View>
     </SafeAreaView>
   );
 }

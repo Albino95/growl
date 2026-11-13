@@ -960,10 +960,10 @@ export default function AuthScreen() {
           value={email}
           onChangeText={onEmailChange}
           style={tw`border ${inputBorder(!!emailError)} bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-4 text-base text-stone-900`}
-          placeholderTextColor="#78716C"
+          placeholderTextColor="#6B645E"
           accessibilityLabel={opts.label ?? 'Email'}
         />
-        <Ionicons name="mail-outline" size={20} color="#78716C" style={tw`absolute left-4 top-4`} />
+        <Ionicons name="mail-outline" size={20} color="#6B645E" style={tw`absolute left-4 top-4`} />
       </Animated.View>
       <FieldError message={emailError} />
     </View>
@@ -977,7 +977,7 @@ export default function AuthScreen() {
       accessibilityRole="button"
       accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
     >
-      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#78716C" />
+      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#6B645E" />
     </TouchableOpacity>
   );
 
@@ -1045,7 +1045,7 @@ export default function AuthScreen() {
             returnKeyType="go"
             onSubmitEditing={() => void handleResetPassword()}
             style={tw`border ${inputBorder(!!passwordError)} bg-[#FFFcf7] rounded-2xl py-3.5 pl-4 pr-12 text-base text-stone-900`}
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
             accessibilityLabel="New password"
           />
           {eyeToggle}
@@ -1182,13 +1182,13 @@ export default function AuthScreen() {
               returnKeyType="go"
               onSubmitEditing={() => void handleEmailAuth()}
               style={tw`border ${inputBorder(!!passwordError)} bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-12 text-base text-stone-900`}
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               accessibilityLabel="Password"
             />
             <Ionicons
               name="lock-closed-outline"
               size={20}
-              color="#78716C"
+              color="#6B645E"
               style={tw`absolute left-4 top-4`}
             />
             {eyeToggle}
@@ -1230,13 +1230,13 @@ export default function AuthScreen() {
                 maxLength={16}
                 returnKeyType="done"
                 style={tw`border border-stone-200/80 bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-4 text-base text-stone-900 tracking-widest`}
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 accessibilityLabel="Invite code, optional"
               />
               <Ionicons
                 name="gift-outline"
                 size={20}
-                color="#78716C"
+                color="#6B645E"
                 style={tw`absolute left-4 top-4`}
               />
             </View>

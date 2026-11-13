@@ -4,10 +4,9 @@ import {
   Text,
   ScrollView,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
@@ -33,6 +32,7 @@ import { feedback } from '../../utils/interactionFeedback';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 function timeAgo(iso: string): string {
   const t = Date.parse(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
@@ -186,8 +186,9 @@ export default function CircleDetailScreen() {
       />
 
       {loading ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" />
+        <View style={tw`flex-1 px-5 pt-2`}>
+          <SkeletonList variant="circle" count={1} />
+          <SkeletonList variant="journal" count={3} />
         </View>
       ) : !group ? (
         <View style={tw`px-5 pt-10`}>
@@ -332,7 +333,7 @@ export default function CircleDetailScreen() {
                     feedback="open"
                     style={tw`mr-3 items-center w-[64px]`}
                   >
-                    <Image
+                    <GrowImage
                       source={avatarSource(uri)}
                       style={tw`w-14 h-14 rounded-full bg-[#EAE4D6]`}
                       contentFit="cover"
@@ -364,7 +365,7 @@ export default function CircleDetailScreen() {
                 delay={i * 40}
                 style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80 flex-row items-center`}
               >
-                <Image
+                <GrowImage
                   source={avatarSource(resolveAvatarUri(p.user_id, p.username, p.avatar))}
                   style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] mr-3`}
                   contentFit="cover"

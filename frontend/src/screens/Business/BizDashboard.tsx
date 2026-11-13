@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useScrollToTop } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { useRefresh } from '../../hooks/useRefresh';
 import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
@@ -92,6 +92,9 @@ export default function BizDashboard() {
       void dispatch(fetchNotifications());
     }, [dispatch])
   );
+
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
 
   const pull = useRefresh(() =>
     Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()])
@@ -239,6 +242,7 @@ export default function BizDashboard() {
       headerRight={notificationBadge}
     >
       <ScrollView
+        ref={scrollRef}
         style={tw`flex-1`}
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         {...verticalScrollProps}
@@ -353,6 +357,7 @@ export default function BizDashboard() {
               const shipping = parseShippingAddress(order.shipping_address);
               return (
                 <TouchableOpacity
+                  activeOpacity={0.7}
                   key={order.id}
                   style={tw`flex-row items-center py-3 border-b border-stone-200/70`}
                   onPress={() => stackNav.navigate('BusinessOrderDetail', { orderId: order.id })}

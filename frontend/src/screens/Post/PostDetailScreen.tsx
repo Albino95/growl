@@ -20,7 +20,8 @@ import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
 import tw from '../../lib/tw';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
-import { alertMessage } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
+import { haptic } from '../../theme/haptics';
 import { useAppDispatch } from '../../store/hooks';
 import { patchFeedPostEngagement } from '../../store/slices/feedSlice';
 
@@ -131,45 +132,82 @@ export default function PostDetailScreen() {
     dispatch(patchFeedPostEngagement({ id: post.id, likes: post.likes, has_liked: post.hasLiked }));
   }, [dispatch, post.id, post.likes, post.hasLiked]);
 
+  /** True while a like/reaction toggle is in flight; further taps are ignored until it settles. */
+  const likePendingRef = useRef(false);
+  const postRef = useRef(post);
+  postRef.current = post;
+
+  /** Optimistic like: flip heart + count now, reconcile with the server, roll back on failure. */
   const toggleLike = async () => {
+    if (likePendingRef.current) return;
+    likePendingRef.current = true;
+    const before = postRef.current;
+    const wasLiked = !!before.hasLiked || before.reaction != null;
+    const nextLiked = !wasLiked;
+    if (nextLiked) haptic('tapLight');
+    setPost((prev) => ({
+      ...prev,
+      hasLiked: nextLiked,
+      likes: nextLiked ? before.likes + 1 : Math.max(0, before.likes - 1),
+      reaction: nextLiked ? prev.reaction || 'love' : null,
+    }));
     try {
-      const res = await toggleFeedPostLike(post.id);
+      const res = await toggleFeedPostLike(before.id);
       const liked = !!res.data?.liked;
+      if (liked !== nextLiked) {
+        // Server disagrees (e.g. stale state) — trust it.
+        setPost((prev) => ({
+          ...prev,
+          hasLiked: liked,
+          likes: liked
+            ? wasLiked
+              ? before.likes
+              : before.likes + 1
+            : Math.max(0, before.likes - (wasLiked ? 1 : 0)),
+          reaction: liked ? prev.reaction || 'love' : null,
+        }));
+      }
+    } catch {
       setPost((prev) => ({
         ...prev,
-        hasLiked: liked,
-        likes: liked ? prev.likes + (prev.hasLiked ? 0 : 1) : Math.max(0, prev.likes - (prev.hasLiked ? 1 : 0)),
-        reaction: liked ? prev.reaction || 'love' : null,
+        hasLiked: before.hasLiked,
+        likes: before.likes,
+        reaction: before.reaction ?? null,
       }));
-    } catch {
-      // The like didn't reach the server: leave the heart as it was.
-      void alertMessage('Could not update like', 'Check your connection and try again.');
+      toast.info('Couldn’t update like — check your connection', { icon: 'cloud-offline-outline' });
+    } finally {
+      likePendingRef.current = false;
     }
   };
 
+  /** Optimistic reaction pick: only touches the server when liked/unliked actually flips. */
   const setReaction = async (reaction: ReactionType) => {
     setShowReactionPicker(false);
-    const wasLiked = post.hasLiked || post.reaction != null;
+    if (likePendingRef.current) return;
+    const before = postRef.current;
+    const wasLiked = !!before.hasLiked || before.reaction != null;
+    const willLike = reaction !== null;
+    if (willLike && !wasLiked) haptic('tapLight');
+    setPost((prev) => ({
+      ...prev,
+      reaction,
+      hasLiked: willLike,
+      likes: willLike === wasLiked ? before.likes : willLike ? before.likes + 1 : Math.max(0, before.likes - 1),
+    }));
+    if (willLike === wasLiked) return;
+    likePendingRef.current = true;
     try {
-      if (reaction === null) {
-        if (wasLiked) await toggleFeedPostLike(post.id);
-        setPost((prev) => ({
-          ...prev,
-          reaction: null,
-          hasLiked: false,
-          likes: Math.max(0, prev.likes - (wasLiked ? 1 : 0)),
-        }));
-        return;
-      }
-      if (!wasLiked) await toggleFeedPostLike(post.id);
+      await toggleFeedPostLike(before.id);
+    } catch {
       setPost((prev) => ({
         ...prev,
-        reaction,
-        hasLiked: true,
-        likes: prev.likes + (wasLiked ? 0 : 1),
+        reaction: before.reaction ?? null,
+        hasLiked: before.hasLiked,
+        likes: before.likes,
       }));
-    } catch {
-      /* keep local state */
+      toast.info('Couldn’t update reaction — check your connection', { icon: 'cloud-offline-outline' });
+    } finally {
+      likePendingRef.current = false;
     }
   };
 
@@ -227,6 +265,9 @@ export default function PostDetailScreen() {
                   onPress={() => void toggleLike()}
                   onLongPress={() => setShowReactionPicker(!showReactionPicker)}
                   style={tw`mr-3`}
+                  accessibilityRole="button"
+                  accessibilityLabel={post.hasLiked || post.reaction != null ? 'Unlike' : 'Like'}
+                  accessibilityState={{ selected: !!post.hasLiked || post.reaction != null }}
                 >
                   {renderReactionIcon()}
                 </TouchableOpacity>

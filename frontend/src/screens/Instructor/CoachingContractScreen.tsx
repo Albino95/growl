@@ -363,14 +363,14 @@ export default function CoachingContractScreen() {
               value={title}
               onChangeText={setTitle}
               placeholder="This week’s practice"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 mb-2`}
             />
             <TextInput
               value={detail}
               onChangeText={setDetail}
               placeholder="What good looks like"
-              placeholderTextColor="#78716C"
+              placeholderTextColor="#6B645E"
               multiline
               style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[72px] mb-4`}
             />

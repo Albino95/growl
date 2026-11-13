@@ -62,7 +62,7 @@ export function AdjustSlider({
     <View style={tw`mb-4`} {...a11y}>
       <View style={tw`flex-row justify-between mb-1`}>
         <Text style={tw`text-stone-300 text-sm font-medium`}>{label}</Text>
-        <Text style={tw`text-stone-500 text-sm`}>{live}</Text>
+        <Text style={tw`text-stone-400 text-sm`}>{live}</Text>
       </View>
       {Platform.OS === 'web' ? (
         createElement('input', {

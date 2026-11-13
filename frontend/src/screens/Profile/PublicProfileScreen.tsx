@@ -22,7 +22,7 @@ import { getCategoryLabel, groupGrowthPaths } from '../../utils/categoryLabels';
 import tw from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import ErrorState from '../../components/ui/ErrorState';
-import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import ProfileHeaderSkeleton from '../../components/profile/ProfileHeaderSkeleton';
 import {
   addFriend,
   removeFriend,
@@ -55,6 +55,7 @@ import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import EmptyState from '../../components/ui/EmptyState';
 import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { alertMessage } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
 import { useRefresh } from '../../hooks/useRefresh';
@@ -299,7 +300,7 @@ export default function PublicProfileScreen() {
             }
           : prev
       );
-      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement. You earned growth points too.`);
+      toast.success(`Endorsed ${profileUser?.username ?? 'them'} · points earned`);
     } catch (e) {
       feedback.error();
       alertMessage('Could not endorse', e instanceof Error ? e.message : 'Try again later');
@@ -319,10 +320,7 @@ export default function PublicProfileScreen() {
           ? { ...prev, canRequestEndorsement: false, pendingOutgoing: true }
           : prev
       );
-      alertMessage(
-        'Request sent',
-        `${profileUser?.username ?? 'They'} will see it in Notifications — and can endorse you with one tap.`
-      );
+      toast.success('Endorsement request sent');
     } catch (e) {
       feedback.error();
       alertMessage('Could not request', e instanceof Error ? e.message : 'Try again later');
@@ -352,12 +350,8 @@ export default function PublicProfileScreen() {
             }
           : prev
       );
-      alertMessage(
-        status === 'accepted' ? 'Endorsed' : 'Request declined',
-        status === 'accepted'
-          ? `You endorsed ${profileUser?.username ?? 'them'}.`
-          : 'They won’t be notified of the decline.'
-      );
+      if (status === 'accepted') toast.success(`You endorsed ${profileUser?.username ?? 'them'}`);
+      else toast.info('Declined · they won’t be notified');
     } catch (e) {
       feedback.error();
       alertMessage('Could not respond', e instanceof Error ? e.message : 'Try again');
@@ -366,63 +360,67 @@ export default function PublicProfileScreen() {
     }
   };
 
-  /** Handles friend request send/cancel/accept and remove-friend actions. */
+  /**
+   * Handles friend request send/cancel/accept and remove-friend actions.
+   * Optimistic: the button label morphs immediately; the server call runs
+   * behind it and the previous state is restored (with an alert) on failure.
+   */
   const onToggleFriend = async () => {
     if (friendBusy || isOwnProfile) return;
     if (isBlocked) {
       void alertMessage('Blocked user', 'Unblock this user before connecting.');
       return;
     }
+    const prev = {
+      connected: friendConnected,
+      sent: friendRequestSent,
+      received: friendRequestReceived,
+    };
+    const morph = () => {
+      friendMorph.setValue(reducedMotion ? 1 : 0.86);
+      spring(friendMorph, 1, 'snappy', reducedMotion).start();
+    };
+    const rollback = () => {
+      if (currentUserIdRef.current !== userId) return;
+      setFriendConnected(prev.connected);
+      setFriendRequestSent(prev.sent);
+      setFriendRequestReceived(prev.received);
+      morph();
+    };
     setFriendBusy(true);
     try {
-      if (friendConnected) {
-        await removeFriend(userId);
+      if (prev.connected || prev.sent) {
+        // Remove friend / cancel request.
+        haptic('selection');
         setFriendConnected(false);
         setFriendRequestSent(false);
-        setFriendRequestReceived(false);
-        if (Platform.OS === 'web') {
-          window.alert('Removed from friends.');
-        } else {
-          void alertMessage('Removed', 'Friend connection removed.');
-        }
-      } else if (friendRequestSent) {
+        if (prev.connected) setFriendRequestReceived(false);
+        morph();
         await removeFriend(userId);
-        setFriendRequestSent(false);
-        if (Platform.OS === 'web') {
-          window.alert('Friend request cancelled.');
-        } else {
-          void alertMessage('Cancelled', 'Friend request cancelled.');
-        }
+        toast.success(prev.connected ? 'Removed from friends' : 'Request cancelled');
       } else {
         haptic('tapLight');
-        const result = await addFriend(userId);
-        setFriendConnected(result.connected);
-        setFriendRequestSent(result.requestSent);
+        // They'd asked us → accepting connects; otherwise we're now "Requested".
+        setFriendConnected(prev.received);
+        setFriendRequestSent(!prev.received);
         setFriendRequestReceived(false);
-        // Request accepted (they'd asked us) → success; sent → the label morphs to "Requested".
-        if (result.connected) haptic('success');
-        if (result.connected || result.requestSent) {
-          friendMorph.setValue(reducedMotion ? 1 : 0.86);
-          spring(friendMorph, 1, 'snappy', reducedMotion).start();
+        morph();
+        const result = await addFriend(userId);
+        if (currentUserIdRef.current === userId) {
+          setFriendConnected(result.connected);
+          setFriendRequestSent(result.requestSent);
         }
-        if (Platform.OS === 'web') {
-          window.alert(result.connected ? 'Friend request accepted.' : 'Friend request sent.');
+        if (result.connected) {
+          toast.success(`You and ${profileUser?.username ?? 'they'} are friends`);
         } else {
-          void alertMessage(
-            result.connected ? 'Friends' : 'Request sent',
-            result.connected
-              ? 'You are now friends.'
-              : `${profileUser?.username ?? 'User'} can accept your friend request.`
-          );
+          toast.success('Friend request sent');
         }
       }
     } catch (e) {
+      rollback();
+      feedback.error();
       const msg = e instanceof Error ? e.message : 'Could not update connection';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        void alertMessage('Error', msg);
-      }
+      void alertMessage('Couldn’t update', msg);
     } finally {
       setFriendBusy(false);
     }
@@ -603,13 +601,13 @@ export default function PublicProfileScreen() {
     try {
       if (isBlocked) {
         await unblockUser(userId);
-        notify('Unblocked', `${username} has been unblocked.`);
+        toast.success(`${username} unblocked`);
       } else {
         await blockUser(userId);
         setPosts([]);
         setStories([]);
         setJournalEntries([]);
-        notify('Blocked', `${username} has been blocked.`);
+        toast.success(`${username} blocked`);
       }
       await refreshFriendshipState();
     } catch (error: unknown) {
@@ -627,7 +625,7 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'spam');
-            void alertMessage('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
             void alertMessage('Error', msg);
@@ -639,7 +637,7 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'harassment');
-            void alertMessage('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
             void alertMessage('Error', msg);
@@ -651,7 +649,7 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'inappropriate_content');
-            void alertMessage('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
             void alertMessage('Error', msg);
@@ -663,7 +661,7 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'other');
-            void alertMessage('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
             void alertMessage('Error', msg);
@@ -683,10 +681,10 @@ export default function PublicProfileScreen() {
           try {
             if (isMuted) {
               await unmuteUser(userId);
-              void alertMessage('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+              toast.success(`Unmuted ${profileUser?.username ?? ''}`.trim());
             } else {
               await muteUser(userId);
-              void alertMessage('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+              toast.success(`Muted ${profileUser?.username ?? ''}`.trim());
             }
             await refreshFriendshipState();
           } catch (error: unknown) {
@@ -739,8 +737,19 @@ export default function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
-        <BrandLoadingScreen variant="page" message="Loading profile…" manageStatusBar={false} />
+      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+        <ProfileHeaderSkeleton
+          onBack={
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center mr-3`}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <Ionicons name="arrow-back" size={20} color="#1C1917" />
+            </TouchableOpacity>
+          }
+        />
       </SafeAreaView>
     );
   }
@@ -959,38 +968,30 @@ export default function PublicProfileScreen() {
                         : friendRequestReceived
                           ? 'bg-amber-500'
                           : 'bg-emerald-600'
-                    } ${friendBusy ? 'opacity-60' : ''}`}
+                    }`}
                   >
                     <Animated.View
                       style={[tw`flex-row items-center gap-1.5`, { transform: [{ scale: friendMorph }] }]}
                     >
-                      {friendBusy ? (
-                        <ActivityIndicator
-                          color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
-                        />
-                      ) : (
-                        <Ionicons
-                          name={
-                            friendConnected
-                              ? 'checkmark-circle'
-                              : friendRequestSent
-                                ? 'time'
-                                : friendRequestReceived
-                                  ? 'mail-open'
-                                  : 'person-add'
-                          }
-                          size={iconSize.sm}
-                          color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
-                        />
-                      )}
+                      <Ionicons
+                        name={
+                          friendConnected
+                            ? 'checkmark-circle'
+                            : friendRequestSent
+                              ? 'time'
+                              : friendRequestReceived
+                                ? 'mail-open'
+                                : 'person-add'
+                        }
+                        size={iconSize.sm}
+                        color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
+                      />
                       <Text
                         style={tw`font-bold text-sm ${
                           friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
                         }`}
                       >
-                        {friendBusy
-                          ? '…'
-                          : friendConnected
+                        {friendConnected
                             ? 'Friends'
                             : friendRequestSent
                               ? 'Requested'
@@ -1008,7 +1009,7 @@ export default function PublicProfileScreen() {
                       accessibilityState={{ disabled: true }}
                       style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-[#EAE4D6] border border-stone-200/80`}
                     >
-                      <Ionicons name="pause-circle-outline" size={iconSize.sm} color="#78716C" />
+                      <Ionicons name="pause-circle-outline" size={iconSize.sm} color="#6B645E" />
                       <Text style={tw`font-bold text-sm text-stone-500`}>Not taking plans</Text>
                     </View>
                   ) : profileUser.isInstructor && profileUser.offering?.accepting !== false ? (
@@ -1166,7 +1167,7 @@ export default function PublicProfileScreen() {
                                 ? '#059669'
                                 : endorseStatus.canEndorse
                                   ? '#fff'
-                                  : '#78716C'
+                                  : '#6B645E'
                             }
                           />
                         )}
@@ -1532,7 +1533,7 @@ export default function PublicProfileScreen() {
                   <Text style={tw`text-stone-900 leading-6`}>{entry.content}</Text>
                   {entry.mood && (
                     <View style={tw`mt-2 flex-row items-center`}>
-                      <Ionicons name="happy-outline" size={16} color="#78716C" />
+                      <Ionicons name="happy-outline" size={16} color="#6B645E" />
                       <Text style={tw`text-xs text-stone-500 ml-1`}>Mood: {entry.mood}</Text>
                     </View>
                   )}

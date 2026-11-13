@@ -267,7 +267,7 @@ export default function FilmstripTrimmer({
                       opacity: selected ? 1 : 0.45,
                     }}
                   >
-                    <Text style={tw`text-stone-500 text-[11px] font-semibold`}>{sec}s</Text>
+                    <Text style={tw`text-stone-400 text-[11px] font-semibold`}>{sec}s</Text>
                   </Pressable>
                 );
               }
@@ -361,7 +361,7 @@ export default function FilmstripTrimmer({
         </View>
       </View>
 
-      <Text style={tw`text-stone-500 text-[11px] mt-2 text-center`}>
+      <Text style={tw`text-stone-400 text-[11px] mt-2 text-center`}>
         White IN / OUT trim the clip · Yellow playhead scrubs · Gray is outside the cut
       </Text>
     </View>

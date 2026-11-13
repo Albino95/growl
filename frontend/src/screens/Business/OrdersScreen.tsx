@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
@@ -62,6 +62,8 @@ export default function OrdersScreen() {
   }, [route.params?.search]);
 
   const refresh = useRefresh(() => dispatch(fetchBusinessOrders()));
+  const listRef = useRef<FlatList<any>>(null);
+  useScrollToTop(listRef);
 
   const advanceStatus = async (orderId: string, current: string) => {
     const next = NEXT_STATUS[current];
@@ -136,6 +138,7 @@ export default function OrdersScreen() {
     return (
       <View style={tw`py-4 border-b border-stone-200/70`}>
         <TouchableOpacity
+          activeOpacity={0.7}
           onPress={() =>
             navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })
           }
@@ -235,6 +238,7 @@ export default function OrdersScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         style={tw`flex-1`}
         data={filteredOrders}
         keyExtractor={(item) => item.id}

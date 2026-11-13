@@ -156,7 +156,7 @@ export default function JournalComposeModal({
                 value={content}
                 onChangeText={setContent}
                 placeholder="Write freely…"
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 multiline
                 autoFocus
                 style={tw`min-h-48 text-lg text-stone-900 leading-7 mb-8`}

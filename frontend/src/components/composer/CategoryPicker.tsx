@@ -39,7 +39,7 @@ export default function CategoryPicker({
               accessibilityRole="button"
               accessibilityLabel="Close categories"
             >
-              <Ionicons name="close" size={24} color="#78716C" />
+              <Ionicons name="close" size={24} color="#6B645E" />
             </Pressable>
           </View>
 

@@ -53,7 +53,7 @@ const TabButton = memo(function TabButton({
     >
       <Ionicons name={icon} size={18} color={selected ? '#34D399' : '#78716C'} />
       <Text
-        style={tw`text-[11px] mt-0.5 ${selected ? 'text-brand-400 font-semibold' : 'text-stone-500'}`}
+        style={tw`text-[11px] mt-0.5 ${selected ? 'text-brand-400 font-semibold' : 'text-stone-400'}`}
         numberOfLines={1}
       >
         {label}

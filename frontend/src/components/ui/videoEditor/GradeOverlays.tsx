@@ -12,7 +12,7 @@ function n(v: number | undefined): number {
   return Number.isFinite(v) ? (v as number) : 0;
 }
 
-/** Native-visible grade. CSS filters do nothing on expo-av Video. */
+/** Native-visible grade. CSS filters do nothing on a native video view. */
 export function AdjustmentOverlays({ adj }: { adj: EditAdjustments }) {
   const lift = (n(adj.exposure) + n(adj.brightness) + n(adj.highlights) * 0.35) / 90;
   const warmth = n(adj.warmth) / 70;

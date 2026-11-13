@@ -233,11 +233,23 @@ export default function IndividualTabs() {
           tabNavRef.current = props.navigation;
           const currentRoute = props.state.routes[props.state.index]?.name as string;
           const pressTab = (key: DockTabKey) => {
-            if (key === 'Feed' && currentRoute === 'Feed') {
+            const focused = currentRoute === key;
+            const route = props.state.routes.find((r) => r.name === key);
+            // Standard tabPress so screens can opt in with useScrollToTop (re-tap → top).
+            const event = route
+              ? props.navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                })
+              : undefined;
+            if (key === 'Feed' && focused) {
+              // Feed owns its own re-tap behaviour (scroll to top + refresh); no
+              // useScrollToTop on Feed, so this is the single handler.
               useHomeTabStore.getState().requestTopAndRefresh();
               return;
             }
-            props.navigation.navigate(key);
+            if (!focused && !event?.defaultPrevented) props.navigation.navigate(key);
           };
 
           return (

@@ -59,7 +59,7 @@ import {
   KeyboardDoneAccessory,
   formInputAccessoryProps,
 } from '../../components/ui/KeyboardDoneAccessory';
-import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import { TAB_SCREEN_BOTTOM_PADDING, verticalScrollProps } from '../../constants/scroll';
 import ChatWallpaperSheet from '../../components/messages/ChatWallpaperSheet';
 import {
   useChatWallpaperStore,
@@ -209,6 +209,11 @@ export default function MessagesScreen() {
   const wallById = useChatWallpaperStore((s) => s.byId);
   const messageInputRef = useRef<TextInput>(null);
   const threadListRef = useRef<FlatList<ChatMessage>>(null);
+  /** Set on first drag in the open thread; gates onStartReached auto-loading. */
+  const threadUserScrolledRef = useRef(false);
+  useEffect(() => {
+    threadUserScrolledRef.current = false;
+  }, [selectedConversation?.id]);
   const lastRouteBootKey = useRef<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
 
@@ -604,7 +609,7 @@ export default function MessagesScreen() {
     const wall = wallTheme(wallById[selectedConversation.id]);
     const darkWall = wall.id === 'dusk' || wall.id === 'ink';
     const chrome = darkWall ? '#FFFcf7' : '#1C1917';
-    const chromeMuted = darkWall ? '#A8A29E' : '#78716C';
+    const chromeMuted = darkWall ? '#A8A29E' : '#6B645E';
     return (
       <SafeAreaView style={[tw`flex-1`, { backgroundColor: wall.page }]} edges={['top']}>
         <KeyboardAvoidingView
@@ -748,10 +753,19 @@ export default function MessagesScreen() {
               data={selectedConversation.messages}
               keyExtractor={(item) => item.id}
               contentContainerStyle={tw`px-4 py-3 pb-4`}
-              onScrollBeginDrag={() => setPickerId(null)}
-              keyboardShouldPersistTaps="handled"
+              {...verticalScrollProps}
+              onScrollBeginDrag={() => {
+                setPickerId(null);
+                threadUserScrolledRef.current = true;
+              }}
               // Keeps the visible message in place when older history is prepended.
               maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              // Auto-load older history near the top — only once the user has dragged,
+              // so the initial scroll-to-latest can't trigger it. Button stays as fallback.
+              onStartReachedThreshold={0.4}
+              onStartReached={() => {
+                if (threadUserScrolledRef.current) void loadOlderMessages();
+              }}
               ListHeaderComponent={
                 selectedConversation.has_older ? (
                   <TouchableOpacity
@@ -968,7 +982,7 @@ export default function MessagesScreen() {
                 accessibilityLabel="Send message"
               >
                 {sending ? (
-                  <ActivityIndicator color={canSend ? '#fff' : '#78716C'} />
+                  <ActivityIndicator color={canSend ? '#fff' : '#6B645E'} />
                 ) : (
                   <Ionicons
                     name="send"

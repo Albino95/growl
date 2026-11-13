@@ -26,7 +26,7 @@ const FormTextInput = forwardRef<TextInputType, Props>(function FormTextInput(
   return (
     <TextInput
       ref={ref}
-      placeholderTextColor="#78716C"
+      placeholderTextColor="#6B645E"
       {...(accessory ?? {})}
       {...props}
       // Keep accessory id after props so callers can't accidentally strip Done.

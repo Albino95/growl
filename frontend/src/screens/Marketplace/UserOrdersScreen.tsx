@@ -223,7 +223,7 @@ export default function UserOrdersScreen() {
                             <Ionicons
                               name={paid ? 'card' : 'card-outline'}
                               size={12}
-                              color={paid ? '#059669' : '#78716C'}
+                              color={paid ? '#059669' : '#6B645E'}
                               style={tw`mr-1`}
                             />
                             <Text

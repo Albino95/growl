@@ -18,11 +18,11 @@ export const theme = {
     accentSoft: '#FFF1F0',
     textPrimary: '#1C1917',
     textSecondary: '#57534E',
-    textMuted: '#78716C',
+    textMuted: '#6B645E',
     /** Decorative only (icons, dividers) — fails AA as text on cream. */
     textSubtle: '#A8A29E',
     /** Text inputs placeholder — stone-500, readable on card/page. */
-    placeholder: '#78716C',
+    placeholder: '#6B645E',
     /** Emerald text on cream (emerald-700). */
     leafInk: '#047857',
     /** Coral text on cream; keep `energy` for fills. */

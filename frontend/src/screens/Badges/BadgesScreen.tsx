@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
@@ -22,6 +22,7 @@ import {
 import { badgeSharePayload } from '../../components/badges/shareAdapters';
 import { getMyBadges, type BadgeCatalogItem, type MyBadges } from '../../services/api/growth';
 import { useAuth } from '../../store/hooks';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 type Tile = BadgeCatalogItem & { earnedAt: string | null };
 
@@ -84,7 +85,10 @@ export default function BadgesScreen() {
     <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
       <ScreenHeader title="Badges" onBack={() => navigation.goBack()} backIcon="arrow-back" />
       {loading ? (
-        <ActivityIndicator color="#059669" style={tw`mt-16`} />
+        <View style={tw`px-4 pt-2`}>
+          <SkeletonList variant="stats" count={1} />
+          <SkeletonList variant="badges" count={2} />
+        </View>
       ) : failed && !data ? (
         <ErrorState
           compact

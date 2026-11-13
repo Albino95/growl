@@ -34,6 +34,7 @@ import {
 } from '../../store/slices/businessSlice';
 import { formatCurrency } from '../../utils/money';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 import type { BusinessProduct } from '../../services/api/business';
 
@@ -73,7 +74,7 @@ export default function InventoryScreen() {
   const handleCreateProduct = async (productData: Parameters<typeof createProduct>[0]) => {
     await createProduct(productData);
     await refreshAfterCatalogChange();
-    alertMessage('Saved', 'Product created successfully');
+    toast.success('Product created');
   };
 
   const handleUpdateProduct = async (productData: Parameters<typeof updateProduct>[1]) => {
@@ -81,7 +82,7 @@ export default function InventoryScreen() {
     await updateProduct(editingProduct.id, productData);
     await refreshAfterCatalogChange();
     setEditingProduct(null);
-    alertMessage('Saved', 'Product updated successfully');
+    toast.success('Product updated');
   };
 
   const handleDeleteProduct = async (product: (typeof products)[0]) => {
@@ -93,7 +94,7 @@ export default function InventoryScreen() {
     try {
       await deleteProduct(product.id);
       await refreshAfterCatalogChange();
-      alertMessage('Deleted', 'Product removed');
+      toast.success('Product deleted');
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Failed to delete');
     }
@@ -198,7 +199,7 @@ export default function InventoryScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl pl-10 pr-4 py-3 text-base text-stone-900`}
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
           />
         </View>
         <BusinessStatStrip

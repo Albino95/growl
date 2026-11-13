@@ -354,7 +354,7 @@ export default function PlantSeedScreen() {
                   onChangeText={setStartText}
                   keyboardType="decimal-pad"
                   placeholder="e.g. 82"
-                  placeholderTextColor="#78716C"
+                  placeholderTextColor="#6B645E"
                   style={tw`bg-[#EAE4D6] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[16px] font-semibold mb-3`}
                 />
 
@@ -367,7 +367,7 @@ export default function PlantSeedScreen() {
                   onChangeText={setTargetText}
                   keyboardType="decimal-pad"
                   placeholder="e.g. 74"
-                  placeholderTextColor="#78716C"
+                  placeholderTextColor="#6B645E"
                   style={tw`bg-[#EAE4D6] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[16px] font-semibold mb-1`}
                 />
               </View>
@@ -379,7 +379,7 @@ export default function PlantSeedScreen() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="e.g. Summer shape-up"
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 text-[16px] mb-4`}
               />
 
@@ -393,7 +393,7 @@ export default function PlantSeedScreen() {
                 value={detail}
                 onChangeText={setDetail}
                 placeholder="e.g. Drop to 74kg by June for my sister’s wedding — weigh-ins every Monday"
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 multiline
                 style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 text-[15px] min-h-[96px] mb-6`}
               />

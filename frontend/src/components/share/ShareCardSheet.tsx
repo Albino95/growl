@@ -820,7 +820,7 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
                           {captionText}
                         </Text>
                       ) : payload.kind === 'voice' && payload.moodLabel ? (
-                        <Text style={{ fontSize: 12, color: '#78716C', marginTop: 2 }}>
+                        <Text style={{ fontSize: 12, color: '#6B645E', marginTop: 2 }}>
                           {payload.moodLabel}
                         </Text>
                       ) : null}

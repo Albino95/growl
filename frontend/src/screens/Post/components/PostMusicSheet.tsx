@@ -31,7 +31,7 @@ export default function PostMusicSheet({ visible, onClose, selectedTrack, onSele
               accessibilityRole="button"
               accessibilityLabel="Close music"
             >
-              <Ionicons name="close" size={24} color="#78716C" />
+              <Ionicons name="close" size={24} color="#6B645E" />
             </Pressable>
           </View>
 
@@ -47,7 +47,7 @@ export default function PostMusicSheet({ visible, onClose, selectedTrack, onSele
               }}
               style={tw`flex-row items-center py-3 border-b border-stone-100`}
             >
-              <Ionicons name="volume-mute-outline" size={22} color="#78716C" />
+              <Ionicons name="volume-mute-outline" size={22} color="#6B645E" />
               <Text style={tw`ml-3 text-stone-700 font-medium`}>No music</Text>
               {!selectedTrack && <Ionicons name="checkmark" size={20} color="#059669" style={tw`ml-auto`} />}
             </Pressable>

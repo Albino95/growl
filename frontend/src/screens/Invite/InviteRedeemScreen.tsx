@@ -120,7 +120,7 @@ export default function InviteRedeemScreen() {
           <FadeInUp>
             <View style={tw`items-center`}>
               <View style={tw`w-16 h-16 rounded-full bg-[#EAE4D6] items-center justify-center`}>
-                <Ionicons name="leaf-outline" size={28} color="#78716C" />
+                <Ionicons name="leaf-outline" size={28} color="#6B645E" />
               </View>
               <Text style={tw`mt-4 text-xl font-bold text-stone-900 text-center`}>
                 This invite didn’t work

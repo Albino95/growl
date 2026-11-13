@@ -9,7 +9,12 @@ export type SkeletonVariant =
   | 'inbox'
   | 'explore'
   | 'comment'
-  | 'message';
+  | 'message'
+  | 'notification'
+  | 'journal'
+  | 'circle'
+  | 'badges'
+  | 'stats';
 
 type Props = {
   variant?: SkeletonVariant;
@@ -61,6 +66,90 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
           <ShimmerBlock style={tw`h-3 w-full rounded mb-2`} />
           <ShimmerBlock style={tw`h-3 w-2/3 rounded`} />
         </View>
+      </View>
+    );
+  }
+
+  if (variant === 'notification') {
+    return (
+      <View
+        style={tw`mb-3 rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden flex-row`}
+      >
+        <View style={{ width: 5, backgroundColor: '#E7E5E4' }} />
+        <View style={tw`flex-1 px-3.5 py-3.5 flex-row items-start`}>
+          <ShimmerBlock style={tw`w-12 h-12 rounded-full mr-3`} />
+          <View style={tw`flex-1`}>
+            <View style={tw`flex-row items-center justify-between mb-2`}>
+              <ShimmerBlock style={tw`h-4 w-16 rounded-full`} />
+              <ShimmerBlock style={tw`h-2.5 w-8 rounded`} />
+            </View>
+            <ShimmerBlock style={tw`h-3.5 w-4/5 rounded mb-2`} />
+            <ShimmerBlock style={tw`h-3 w-3/5 rounded`} />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (variant === 'journal') {
+    return (
+      <View
+        style={[
+          tw`mb-3 px-4 py-4 rounded-2xl bg-[#FFFcf7]`,
+          { borderWidth: 1, borderColor: 'rgba(28,25,23,0.06)' },
+        ]}
+      >
+        <View style={tw`flex-row items-center justify-between mb-3`}>
+          <ShimmerBlock style={tw`h-3 w-28 rounded`} />
+          <ShimmerBlock style={tw`h-3 w-10 rounded`} />
+        </View>
+        <ShimmerBlock style={tw`h-3.5 w-full rounded mb-2`} />
+        <ShimmerBlock style={tw`h-3.5 w-11/12 rounded mb-2`} />
+        <ShimmerBlock style={tw`h-3.5 w-1/2 rounded`} />
+      </View>
+    );
+  }
+
+  if (variant === 'circle') {
+    return (
+      <View
+        style={tw`mb-2.5 rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden`}
+      >
+        <View style={tw`h-1 bg-stone-200`} />
+        <View style={tw`px-3.5 py-3.5 flex-row items-center`}>
+          <ShimmerBlock style={tw`w-11 h-11 rounded-2xl mr-3`} />
+          <View style={tw`flex-1`}>
+            <ShimmerBlock style={tw`h-3 w-20 rounded-full mb-2`} />
+            <ShimmerBlock style={tw`h-3.5 w-3/5 rounded mb-3`} />
+            <ShimmerBlock style={tw`h-2 w-2/5 rounded-full`} />
+          </View>
+          <ShimmerBlock style={tw`h-8 w-16 rounded-full ml-2`} />
+        </View>
+      </View>
+    );
+  }
+
+  if (variant === 'badges') {
+    return (
+      <View style={tw`mb-5`}>
+        <ShimmerBlock style={tw`h-3 w-24 rounded mb-3 ml-1`} />
+        <View style={tw`flex-row flex-wrap gap-2.5`}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <ShimmerBlock key={i} style={tw`w-[30%] h-28 rounded-2xl`} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (variant === 'stats') {
+    return (
+      <View style={tw`mb-4`}>
+        <View style={tw`flex-row gap-3 mb-3`}>
+          <ShimmerBlock style={tw`flex-1 h-20 rounded-2xl`} />
+          <ShimmerBlock style={tw`flex-1 h-20 rounded-2xl`} />
+        </View>
+        <ShimmerBlock style={tw`h-28 w-full rounded-2xl`} />
       </View>
     );
   }

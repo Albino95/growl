@@ -202,16 +202,16 @@ function FeedPostCard({
         </View>
 
         <View style={tw`flex-row items-center flex-wrap mb-2`}>
-          <TouchableOpacity onPress={() => onOpenLikes(item, 'all')}>
-            <Text style={tw`font-bold text-stone-900 text-[15px]`}>
+          <TouchableOpacity onPress={() => onOpenLikes(item, 'all')} activeOpacity={0.7}>
+            <Text style={[tw`font-bold text-stone-900 text-[15px]`, { fontVariant: ['tabular-nums'] }]}>
               {item.likes} {item.likes === 1 ? 'like' : 'likes'}
             </Text>
           </TouchableOpacity>
           {item.comments > 0 ? (
             <>
               <Text style={tw`text-stone-300 mx-2`}>·</Text>
-              <TouchableOpacity onPress={() => onOpenComments(item)}>
-                <Text style={tw`font-semibold text-stone-600 text-[15px]`}>
+              <TouchableOpacity onPress={() => onOpenComments(item)} activeOpacity={0.7}>
+                <Text style={[tw`font-semibold text-stone-600 text-[15px]`, { fontVariant: ['tabular-nums'] }]}>
                   {item.comments} {item.comments === 1 ? 'comment' : 'comments'}
                 </Text>
               </TouchableOpacity>
@@ -219,8 +219,8 @@ function FeedPostCard({
           ) : null}
         </View>
         {(item.friendLikesCount ?? 0) > 0 ? (
-          <TouchableOpacity onPress={() => onOpenLikes(item, 'friends')}>
-            <Text style={tw`text-emerald-700 font-semibold mb-2 text-sm`}>
+          <TouchableOpacity onPress={() => onOpenLikes(item, 'friends')} activeOpacity={0.7}>
+            <Text style={[tw`text-emerald-700 font-semibold mb-2 text-sm`, { fontVariant: ['tabular-nums'] }]}>
               {item.friendLikesCount} from friends
             </Text>
           </TouchableOpacity>

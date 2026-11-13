@@ -184,7 +184,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
       <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top', 'bottom']}>
         <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-[#FFFcf7]`}>
           <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={28} color="#78716C" />
+            <Ionicons name="close" size={28} color="#6B645E" />
           </TouchableOpacity>
           <Text style={tw`text-lg font-semibold text-stone-900`}>
             {product ? 'Edit product' : 'Add product'}
@@ -238,7 +238,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 onChangeText={setName}
                 placeholder="Product name"
                 style={inputStyle}
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                 returnKeyType="next"
                 blurOnSubmit={false}
@@ -254,7 +254,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 placeholder="Optional description"
                 multiline
                 style={[inputStyle, tw`min-h-24`]}
-                placeholderTextColor="#78716C"
+                placeholderTextColor="#6B645E"
                 textAlignVertical="top"
                 returnKeyType="done"
                 blurOnSubmit
@@ -321,7 +321,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   placeholder="0.00"
                   keyboardType="decimal-pad"
                   style={inputStyle}
-                  placeholderTextColor="#78716C"
+                  placeholderTextColor="#6B645E"
                   returnKeyType="done"
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => stockRef.current?.focus()}
@@ -342,7 +342,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   placeholder="0"
                   keyboardType="number-pad"
                   style={inputStyle}
-                  placeholderTextColor="#78716C"
+                  placeholderTextColor="#6B645E"
                   returnKeyType="done"
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => Keyboard.dismiss()}

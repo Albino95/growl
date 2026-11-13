@@ -26,6 +26,7 @@ import { formatCurrency } from '../../utils/money';
 import { updateOrderStatus } from '../../services/api/marketplace';
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import { copyToClipboard } from '../../utils/csvDownload';
 import { createConversation } from '../../services/api/messages';
 import { useAuth, useAppDispatch } from '../../store/hooks';
@@ -114,7 +115,7 @@ export default function BusinessOrderDetailScreen() {
       });
       if (res.ok) {
         setOrder({ ...order, metadata: { ...safeParseJson(order.metadata, {}), ...res.metadata } });
-        alertMessage('Saved', 'Fulfillment details updated.');
+        toast.success('Fulfillment saved');
       }
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not save fulfillment');
@@ -181,7 +182,7 @@ export default function BusinessOrderDetailScreen() {
       const res = await requestOrderRefund(order.id, { reason });
       if (res.ok) {
         setOrder({ ...order, metadata: { ...safeParseJson(order.metadata, {}), ...res.metadata } });
-        alertMessage('Submitted', 'Refund request sent for review.');
+        toast.success('Refund request sent');
         setRefundReason('');
       }
     } catch (e: unknown) {

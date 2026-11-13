@@ -20,6 +20,7 @@ import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import { uploadMediaApi, uploadMediaFile } from '../../services/api/media';
 import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { alertMessage } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import FormTextInput from '../../components/ui/FormTextInput';
 
 const FETCH_MS = 8000;
@@ -206,7 +207,7 @@ export default function EditProfileScreen() {
         /* non-blocking */
       }
 
-      alertMessage('Saved', 'Your profile has been updated');
+      toast.success('Profile saved');
       navigation.goBack();
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not save profile');

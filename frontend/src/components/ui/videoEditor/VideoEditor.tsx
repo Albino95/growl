@@ -10,7 +10,6 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Audio } from 'expo-av';
 import NativeClipPlayer from './NativeClipPlayer';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -114,7 +113,7 @@ type Props = {
   maxClipMs?: number;
   /** Picker/camera duration so we can sample frames before the player mounts. */
   hintDurationMs?: number;
-  /** Stills sampled before any expo-av player opened the clip. */
+  /** Stills sampled before any native player opened the clip. */
   initialFrames?: FrameThumb[];
   /**
    * 'story' keeps only trim: the story API stores just the media URL (+ trim
@@ -158,7 +157,8 @@ export default function VideoEditor({
     duration: number;
     paused: boolean;
   } | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  /** Web-only soundtrack preview (native Edit never opens a soundtrack player). */
+  const soundRef = useRef<HTMLAudioElement | null>(null);
 
   const [tab, setTab] = useState<Tab>('edit');
   const [durationMs, setDurationMs] = useState(Math.max(0, hintDurationMs));
@@ -384,7 +384,7 @@ export default function VideoEditor({
     const end = trimEndMs > 0 ? trimEndMs / 1000 : 0;
     if (end > 0 && el.currentTime >= end - 0.08) {
       el.currentTime = trimStartMs / 1000;
-      if (soundRef.current) void soundRef.current.setPositionAsync(0);
+      if (soundRef.current) soundRef.current.currentTime = 0;
     }
   }, [applyWebDuration, trimEndMs, trimStartMs]);
 
@@ -411,62 +411,49 @@ export default function VideoEditor({
   }, [speed, playerReady]);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (soundRef.current) {
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {
-          /* ignore */
-        }
-        soundRef.current = null;
-      }
-      if (!selectedTrack?.id && !selectedTrack?.url) return;
-      if (Platform.OS !== 'web') return;
-      try {
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-        let playbackUrl = getMusicPlaybackUrl(selectedTrack.id, selectedTrack.url);
-        if (!playbackUrl) return;
-        let sound: Audio.Sound;
-        try {
-          ({ sound } = await Audio.Sound.createAsync(
-            { uri: playbackUrl },
-            { shouldPlay: playing, isLooping: true, volume: audioVolume }
-          ));
-        } catch {
-          // Proxy may be undeployed — fall back to upstream URL
-          if (selectedTrack.url && selectedTrack.url !== playbackUrl) {
-            ({ sound } = await Audio.Sound.createAsync(
-              { uri: selectedTrack.url },
-              { shouldPlay: playing, isLooping: true, volume: audioVolume }
-            ));
-          } else {
-            throw new Error('soundtrack load failed');
-          }
-        }
-        if (cancelled) {
-          await sound.unloadAsync();
-          return;
-        }
-        soundRef.current = sound;
-      } catch {
-        soundRef.current = null;
-      }
+    const release = () => {
+      const el = soundRef.current;
+      soundRef.current = null;
+      if (!el) return;
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
     };
-    void load();
-    return () => {
-      cancelled = true;
-      if (soundRef.current) {
-        void soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-    };
+    release();
+    if (!selectedTrack?.id && !selectedTrack?.url) return;
+    // Native: no soundtrack player inside Edit (see nativeEditorLoadsAudioOnOpen).
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const playbackUrl = getMusicPlaybackUrl(selectedTrack.id, selectedTrack.url);
+    if (!playbackUrl) return;
+    const el = new window.Audio();
+    el.loop = true;
+    el.volume = Math.max(0, Math.min(1, audioVolume));
+    const fallbackUrl = selectedTrack.url;
+    if (fallbackUrl && fallbackUrl !== playbackUrl) {
+      // Proxy may be undeployed — fall back to the upstream URL once.
+      el.addEventListener(
+        'error',
+        () => {
+          if (soundRef.current !== el) return;
+          el.src = fallbackUrl;
+          el.load();
+          if (playingRef.current) void el.play().catch(() => undefined);
+        },
+        { once: true }
+      );
+    }
+    el.src = playbackUrl;
+    soundRef.current = el;
+    if (playingRef.current) void el.play().catch(() => undefined);
+    return release;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTrack?.id, selectedTrack?.url, audioVolume, playerArmed]);
 
   useEffect(() => {
-    if (!soundRef.current) return;
-    if (playing) void soundRef.current.playAsync();
-    else void soundRef.current.pauseAsync();
+    const el = soundRef.current;
+    if (!el) return;
+    if (playing) void el.play().catch(() => undefined);
+    else el.pause();
   }, [playing]);
 
   const selectTrack = (track: PostMusicTrack | null) => {
@@ -600,17 +587,11 @@ export default function VideoEditor({
         setUserPressedPlay(false);
       }
       if (soundRef.current) {
-        try {
-          await soundRef.current.stopAsync();
-        } catch {
-          /* ignore */
-        }
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {
-          /* ignore */
-        }
+        const el = soundRef.current;
         soundRef.current = null;
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
       }
     } finally {
       try {
@@ -847,11 +828,11 @@ export default function VideoEditor({
 
         {/* Timeline readout */}
         <View style={tw`px-4 pt-2 flex-row justify-between`}>
-          <Text style={tw`text-stone-500 text-[11px] font-semibold`}>
+          <Text style={tw`text-stone-400 text-[11px] font-semibold`}>
             {formatMs(positionMs)}
           </Text>
           <Text style={tw`text-stone-600 text-[11px]`}>9:16 · vertical</Text>
-          <Text style={tw`text-stone-500 text-[11px] font-semibold`}>
+          <Text style={tw`text-stone-400 text-[11px] font-semibold`}>
             {formatMs(effectiveEnd || durationMs)}
           </Text>
         </View>
@@ -876,7 +857,7 @@ export default function VideoEditor({
       tools={
         // Stories only get trim, so no tab bar there.
         isStory ? (
-          <Text style={tw`text-stone-500 text-[11px] text-center px-6 pt-2`}>
+          <Text style={tw`text-stone-400 text-[11px] text-center px-6 pt-2`}>
             Stories keep your trim. Looks, text, sound and speed are for reels.
           </Text>
         ) : (
@@ -986,7 +967,7 @@ export default function VideoEditor({
                   />
                 </>
               ) : (
-                <Text style={tw`text-stone-500 text-xs mb-3`}>
+                <Text style={tw`text-stone-400 text-xs mb-3`}>
                   Drag text on the preview from any tab.
                 </Text>
               )}
@@ -1117,7 +1098,7 @@ export default function VideoEditor({
             {tab === 'audio' && (
               <View style={tw`pt-2`}>
                 <Text style={tw`text-white text-sm font-bold mb-1`}>Mix</Text>
-                <Text style={tw`text-stone-500 text-xs mb-3`}>
+                <Text style={tw`text-stone-400 text-xs mb-3`}>
                   Music overlaps original sound by default — balance both levels
                 </Text>
 
@@ -1153,7 +1134,7 @@ export default function VideoEditor({
                     <Text style={tw`text-stone-300 text-xs font-semibold`}>
                       Music isn't available in the app yet
                     </Text>
-                    <Text style={tw`text-stone-500 text-[11px] mt-1`}>
+                    <Text style={tw`text-stone-400 text-[11px] mt-1`}>
                       The app can't play soundtracks, so adding music is web-only for now.
                     </Text>
                     {selectedTrack ? (
@@ -1175,7 +1156,7 @@ export default function VideoEditor({
                 <Text style={tw`text-stone-400 text-[11px] font-semibold uppercase tracking-wide mb-2`}>
                   Music library
                 </Text>
-                <Text style={tw`text-stone-500 text-[11px] mb-2`}>
+                <Text style={tw`text-stone-400 text-[11px] mb-2`}>
                   Royalty-free tracks styled like popular moods — not licensed chart hits
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
@@ -1253,7 +1234,7 @@ export default function VideoEditor({
                       </View>
                       <View style={tw`ml-3 flex-1`}>
                         <Text style={tw`text-white font-semibold`}>{track.title}</Text>
-                        <Text style={tw`text-stone-500 text-xs mt-0.5`}>
+                        <Text style={tw`text-stone-400 text-xs mt-0.5`}>
                           {track.artist}
                           {track.mood ? ` · ${track.mood}` : ''}
                           {track.genre ? ` · ${track.genre}` : ''}

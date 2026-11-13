@@ -406,7 +406,7 @@ export default function ChallengeDetailScreen() {
               accessibilityRole="button"
             >
               {busy ? (
-                <ActivityIndicator color="#78716C" />
+                <ActivityIndicator color="#6B645E" />
               ) : (
                 <Text style={tw`text-sm font-semibold text-stone-500`}>Leave challenge</Text>
               )}

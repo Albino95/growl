@@ -38,6 +38,7 @@ import {
 } from '../../services/api/instructor';
 import { createConversation } from '../../services/api/messages';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
@@ -47,6 +48,7 @@ import PressableScale from '../../components/ui/PressableScale';
 import tw from '../../lib/tw';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
 import { COACHING_ACTIVE_STATUS, COACHING_LIMITS } from '../../constants/coaching';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 type HubTab = 'overview' | 'students' | 'community' | 'partnerships';
 
@@ -345,10 +347,7 @@ export default function InstructorScreen({ navigation }: any) {
         `Would you endorse me on Grow!? We share a path and it unlocks coaching for peers.`
       );
       feedback.send();
-      alertMessage(
-        'Request sent',
-        `${person.username} will see it under Notifications and can endorse you with one tap.`
-      );
+      toast.success(`Endorsement request sent to ${person.username}`);
       setSuggestions((prev) => prev.filter((p) => p.id !== person.id));
     } catch (e) {
       // Fall back to a friendly DM if the structured request fails (e.g. not friends-only path).
@@ -771,8 +770,8 @@ export default function InstructorScreen({ navigation }: any) {
       </View>
 
       {loading && !hub ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" />
+        <View style={tw`flex-1 px-5 pt-4`}>
+          <SkeletonList variant="stats" count={2} />
         </View>
       ) : (
         <ScrollView
@@ -1119,6 +1118,7 @@ export default function InstructorScreen({ navigation }: any) {
                         <AvatarBubble avatar={person.avatar} name={person.username} />
                       </TouchableOpacity>
                       <TouchableOpacity
+                        activeOpacity={0.7}
                         onPress={() => openProfile(person.id)}
                         style={tw`flex-1 ml-3 pr-2`}
                       >
@@ -1164,6 +1164,7 @@ export default function InstructorScreen({ navigation }: any) {
                       <AvatarBubble avatar={person.avatar} name={person.username} />
                     </TouchableOpacity>
                     <TouchableOpacity
+                      activeOpacity={0.7}
                       onPress={() => openProfile(person.id)}
                       style={tw`flex-1 ml-3 pr-2`}
                     >

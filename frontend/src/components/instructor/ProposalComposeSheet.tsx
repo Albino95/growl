@@ -142,7 +142,7 @@ export default function ProposalComposeSheet({
             value={note}
             onChangeText={setNote}
             placeholder="Note for the client (optional)"
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
             multiline
             style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[72px] mb-4`}
           />

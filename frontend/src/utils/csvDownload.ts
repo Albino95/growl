@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { alertMessage } from './confirmDialog';
+import { toast } from '../state/useToastStore';
 
 function safeFilename(filename: string): string {
   const cleaned = filename.replace(/[^A-Za-z0-9._-]+/g, '_');
@@ -24,7 +25,7 @@ export async function downloadCsv(filename: string, csv: string): Promise<void> 
     anchor.remove();
     // Revoke on the next tick so the browser has started the download.
     setTimeout(() => URL.revokeObjectURL(url), 0);
-    alertMessage('Exported', `${name} download started.`);
+    toast.success('Download started');
     return;
   }
 
@@ -55,7 +56,9 @@ export async function copyToClipboard(text: string, label = 'Copied'): Promise<v
   if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
-      alertMessage(label, 'Copied to clipboard.');
+      toast.success(
+        label === 'Copied' ? 'Copied to clipboard' : /copied/i.test(label) ? label : `${label} copied`
+      );
       return;
     } catch {
       // fall through

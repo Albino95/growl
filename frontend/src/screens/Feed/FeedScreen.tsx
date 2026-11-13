@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { toast } from '../../state/useToastStore';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import {
   View,
@@ -16,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchFeedPosts, patchFeedPostEngagement } from '../../store/slices/feedSlice';
@@ -594,7 +596,7 @@ export default function FeedScreen({ navigation, route }: any) {
       if (Platform.OS === 'web') {
         alert(`${post.username} has been blocked.`);
       } else {
-        void alertMessage('Blocked', `${post.username} has been blocked.`);
+        toast.success(`${post.username} blocked`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not block user';
@@ -614,7 +616,7 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Spam',
         onPress: () => {
           void reportContent(post.id, 'post', 'spam')
-            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
+            .then(() => toast.success('Reported. Thanks, we’ll review it'))
             .catch((e: unknown) =>
               alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
@@ -624,7 +626,7 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Harassment',
         onPress: () => {
           void reportContent(post.id, 'post', 'harassment')
-            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
+            .then(() => toast.success('Reported. Thanks, we’ll review it'))
             .catch((e: unknown) =>
               alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
@@ -634,7 +636,7 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Inappropriate',
         onPress: () => {
           void reportContent(post.id, 'post', 'inappropriate_content')
-            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
+            .then(() => toast.success('Reported. Thanks, we’ll review it'))
             .catch((e: unknown) =>
               alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
@@ -644,7 +646,7 @@ export default function FeedScreen({ navigation, route }: any) {
         text: 'Other',
         onPress: () => {
           void reportContent(post.id, 'post', 'other')
-            .then(() => alertMessage('Reported', 'Thank you. We will review this post.'))
+            .then(() => toast.success('Reported. Thanks, we’ll review it'))
             .catch((e: unknown) =>
               alertMessage('Error', e instanceof Error ? e.message : 'Could not submit report')
             );
@@ -843,7 +845,7 @@ export default function FeedScreen({ navigation, route }: any) {
               } overflow-hidden items-center justify-center bg-white/60`}
             >
               {myStories.length > 0 ? (
-                <Image
+                <GrowImage
                   source={{
                     uri: resolveStoryDisplayUri(
                       myStories[myStories.length - 1]?.image,
@@ -855,7 +857,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   contentFit="cover"
                 />
               ) : (
-                <Ionicons name="add" size={iconSize.md} color="#78716C" />
+                <Ionicons name="add" size={iconSize.md} color="#6B645E" />
               )}
             </View>
             {myStories.length > 0 ? (
@@ -911,7 +913,7 @@ export default function FeedScreen({ navigation, route }: any) {
                     allViewed ? 'border-stone-300' : 'border-emerald-500'
                   } overflow-hidden bg-stone-200`}
                 >
-                  <Image
+                  <GrowImage
                     source={{
                       uri: resolveStoryDisplayUri(
                         userStories[userStories.length - 1]?.image,
@@ -926,7 +928,7 @@ export default function FeedScreen({ navigation, route }: any) {
                 <View
                   style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-[#FFFcf7] overflow-hidden bg-emerald-100`}
                 >
-                  <Image
+                  <GrowImage
                     source={avatarSource(
                       resolveAvatarUri(
                         storyUser.userId,
@@ -1275,7 +1277,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   accessibilityLabel="Close likes"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="close" size={iconSize.md} color="#78716C" />
+                  <Ionicons name="close" size={iconSize.md} color="#6B645E" />
                 </TouchableOpacity>
               </View>
               {likesModal?.subtitle ? (
@@ -1290,7 +1292,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   style={{ maxHeight: 360 }}
                   renderItem={({ item }) => (
                     <View style={tw`flex-row items-center py-2.5 border-b border-stone-100`}>
-                      <Image
+                      <GrowImage
                         source={avatarSource(
                           resolveAvatarUri(item.id, item.username, item.avatar || null)
                         )}

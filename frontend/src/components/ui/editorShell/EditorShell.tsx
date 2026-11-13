@@ -49,7 +49,7 @@ export type EditorShellProps = {
 };
 
 const SUBTITLE_TONE: Record<EditorSubtitleTone, string> = {
-  muted: 'text-stone-500',
+  muted: 'text-stone-400',
   brand: 'text-brand-400',
   amber: 'text-amber-400',
 };
@@ -131,7 +131,7 @@ const EditorTopBar = memo(function EditorTopBar({
         }`}
       >
         {saving ? <ActivityIndicator size="small" color="#FFFFFF" style={tw`mr-1.5`} /> : null}
-        <Text style={tw`font-bold text-sm ${doneDisabled && !saving ? 'text-stone-500' : 'text-white'}`}>
+        <Text style={tw`font-bold text-sm ${doneDisabled && !saving ? 'text-stone-400' : 'text-white'}`}>
           {saving ? 'Saving…' : EDITOR_DONE_LABEL}
         </Text>
       </Pressable>

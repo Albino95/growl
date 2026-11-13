@@ -5,13 +5,12 @@ import {
   SectionList,
   FlatList,
   RefreshControl,
-  ActivityIndicator,
 ScrollView,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import tw from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
@@ -70,6 +69,7 @@ import type { IndividualTabsParamList } from '../../app/navigation/tabs/Individu
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { SHOW_CIRCLES } from '../../constants/featureFlags';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 type ViewTab = 'today' | 'timeline';
 type VisibilityFilter = 'all' | 'private' | 'shared';
@@ -125,7 +125,7 @@ function EntryCard({
           <Ionicons
             name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
             size={iconSize.xs}
-            color="#78716C"
+            color="#6B645E"
           />
           {isPublic && onShare ? (
             <PressableScale
@@ -186,6 +186,13 @@ export default function JournalScreen() {
 
   const contentOpacity = useRef(new Animated.Value(1)).current;
   const contentSlide = useRef(new Animated.Value(0)).current;
+  // Only one of these scrollers is mounted at a time; each listens for tab re-press.
+  const voicesListRef = useRef<FlatList<CircleJournalEntry>>(null);
+  const todayScrollRef = useRef<ScrollView>(null);
+  const pagesListRef = useRef<SectionList<any, any>>(null);
+  useScrollToTop(voicesListRef);
+  useScrollToTop(todayScrollRef);
+  useScrollToTop(pagesListRef);
 
   const userPath = useMemo(() => {
     const cats = Array.isArray(user?.categories) ? user.categories : [];
@@ -546,6 +553,7 @@ export default function JournalScreen() {
       >
         {mode === 'voices' ? (
           <FlatList
+            ref={voicesListRef}
             data={filteredCircleEntries}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[tw`px-5 pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
@@ -607,9 +615,7 @@ export default function JournalScreen() {
             )}
             ListEmptyComponent={
               circleLoading ? (
-                <View style={tw`py-12 items-center`}>
-                  <ActivityIndicator color="#059669" />
-                </View>
+                <SkeletonList variant="journal" count={3} />
               ) : voiceFilterUserId ? (
                 <EmptyState
                   icon="person-outline"
@@ -634,6 +640,7 @@ export default function JournalScreen() {
           />
         ) : viewTab === 'today' ? (
           <ScrollView
+            ref={todayScrollRef}
             style={tw`flex-1`}
             contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
             refreshControl={
@@ -750,7 +757,7 @@ export default function JournalScreen() {
                 Today
               </Text>
               {isLoading && entries.length === 0 ? (
-                <ActivityIndicator color="#1C1917" style={tw`py-8`} />
+                <SkeletonList variant="journal" count={2} />
               ) : todayEntries.length === 0 ? (
                 <View
                   style={tw`py-6 px-4 rounded-2xl bg-white/50 border border-dashed border-stone-300`}
@@ -813,6 +820,7 @@ export default function JournalScreen() {
           </ScrollView>
         ) : (
           <SectionList
+            ref={pagesListRef}
             sections={sections}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
@@ -901,9 +909,7 @@ export default function JournalScreen() {
             )}
             ListEmptyComponent={
               isLoading ? (
-                <View style={tw`py-12 items-center`}>
-                  <ActivityIndicator color="#1C1917" />
-                </View>
+                <SkeletonList variant="journal" count={4} />
               ) : searchQuery.trim() || focusDateKey || visibility !== 'all' ? (
                 <EmptyState
                   icon="search-outline"

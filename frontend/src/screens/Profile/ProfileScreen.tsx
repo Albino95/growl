@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from '../../state/useToastStore';
 import {
   View,
   Text,
@@ -17,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
@@ -269,6 +270,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
   connectionsSheetRef.current = connectionsSheet;
   const cohortBootstrapRef = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   const [eligibility, setEligibility] = useState<InstructorEligibility | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
   const [myPlans, setMyPlans] = useState<CoachingContract[]>([]);
@@ -457,7 +460,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
       setDecayDays(days);
       updateUser({ decayTimer: days });
       setShowDecaySettings(false);
-      alertMessage('Saved', `Posts soft-hide after ${days} day${days === 1 ? '' : 's'}.`);
+      toast.success(`Posts soft-hide after ${days} day${days === 1 ? '' : 's'}`);
       void loadProfileContent();
     } catch (e) {
       alertMessage('Could not save', e instanceof Error ? e.message : 'Try again later');
@@ -529,10 +532,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         setPathSyncPhase('done');
         await new Promise((r) => setTimeout(r, 650));
         setPathSyncVisible(false);
-        alertMessage('Paths updated', 'Your circle now matches your growth areas.');
+        toast.success('Growth paths updated');
       } else {
         setShowCategorySettings(false);
-        alertMessage('Saved', 'Growth paths unchanged.');
+        toast.info('Growth paths unchanged');
       }
     } catch (err: unknown) {
       setPathSyncVisible(false);
@@ -601,6 +604,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         }
       />
       <ScrollView
+        ref={scrollRef}
         style={tw`flex-1`}
         contentContainerStyle={{
           paddingBottom: Platform.OS === 'web' ? 160 : TAB_SCREEN_BOTTOM_PADDING,
@@ -1135,6 +1139,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
                     <TouchableOpacity
+                      activeOpacity={0.7}
                       key={story.id}
                       style={tw`items-center`}
                       onPress={() => openStoriesViewer(story.id)}
@@ -1162,6 +1167,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               Teaching
             </Text>
             <TouchableOpacity
+              activeOpacity={0.7}
               onPress={navigateToInstructor}
               style={tw`flex-row items-center py-3.5`}
             >

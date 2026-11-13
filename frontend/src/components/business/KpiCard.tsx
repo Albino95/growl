@@ -14,7 +14,7 @@ type Props = {
 
 /** Flat metric tile — no heavy card chrome. */
 export default function KpiCard({ label, value, change, trend = 'neutral', icon, onPress }: Props) {
-  const color = trend === 'up' ? '#059669' : trend === 'down' ? '#DC2626' : '#78716C';
+  const color = trend === 'up' ? '#059669' : trend === 'down' ? '#DC2626' : '#6B645E';
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
     <Wrapper
@@ -26,15 +26,18 @@ export default function KpiCard({ label, value, change, trend = 'neutral', icon,
         <Ionicons name={icon} size={18} color={color} />
         {change != null ? (
           <Text
-            style={tw`text-[11px] font-semibold ${
-              trend === 'up' ? 'text-emerald-700' : trend === 'down' ? 'text-red-600' : 'text-stone-500'
-            }`}
+            style={[
+              tw`text-[11px] font-semibold ${
+                trend === 'up' ? 'text-emerald-700' : trend === 'down' ? 'text-red-600' : 'text-stone-500'
+              }`,
+              { fontVariant: ['tabular-nums'] },
+            ]}
           >
             {change}
           </Text>
         ) : null}
       </View>
-      <Text style={tw`text-xl font-bold text-stone-900`} numberOfLines={1}>
+      <Text style={[tw`text-xl font-bold text-stone-900`, { fontVariant: ['tabular-nums'] }]} numberOfLines={1}>
         {value}
       </Text>
       <Text style={tw`text-xs text-stone-500 mt-0.5`}>{label}</Text>

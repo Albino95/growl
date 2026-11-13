@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import { haptic } from '../../theme/haptics';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import { featureFlags } from '../../constants/featureFlags';
@@ -64,8 +65,7 @@ export default function NotificationPrefsScreen() {
       await updateProfileOnServer({
         metadata: { notifications_prefs: prefs },
       });
-      if (Platform.OS === 'web') alert('Notification preferences saved');
-      else void alertMessage('Saved', 'Your notification preferences have been updated');
+      toast.success('Notifications saved');
       navigation.goBack();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not save preferences';

@@ -489,7 +489,7 @@ function TodayCard() {
               <Animated.Text
                 style={[
                   tw`text-[30px] font-extrabold text-[#E0584E]`,
-                  { transform: [{ scale: streakPop }] },
+                  { fontVariant: ['tabular-nums'], transform: [{ scale: streakPop }] },
                 ]}
               >
                 {milestone}
@@ -653,7 +653,9 @@ function TodayCard() {
         <View style={tw`items-end pt-1`}>
           <WeekDots days={streak.week} size={8} />
           {current > 0 ? (
-            <Text style={tw`text-[11px] font-semibold text-[#E0584E] mt-1`}>{streakLabel(current)}</Text>
+            <Text style={[tw`text-[11px] font-semibold text-[#E0584E] mt-1`, { fontVariant: ['tabular-nums'] }]}>
+              {streakLabel(current)}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -724,7 +726,7 @@ function TodayCard() {
             value={intention}
             onChangeText={(t) => setIntention(t.replace(/\n/g, ' ').slice(0, INTENTION_MAX))}
             placeholder="One small step (optional)"
-            placeholderTextColor="#78716C"
+            placeholderTextColor="#6B645E"
             maxLength={INTENTION_MAX}
             returnKeyType="done"
             blurOnSubmit

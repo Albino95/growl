@@ -1,5 +1,5 @@
 import { InteractionManager, Platform, Vibration } from 'react-native';
-import type { Audio } from 'expo-av';
+import type { AudioPlayer } from 'expo-audio';
 import { uiPrefsReadiness, useUiPrefsStore } from '../state/useUiPrefsStore';
 import {
   createHapticGate,
@@ -25,9 +25,9 @@ export function describeFeedback(kind: FeedbackKind): { haptic: HapticChannel; s
 }
 
 /*
- * Playback uses expo-av for now. TODO(SDK 55): migrate to expo-audio
- * (createAudioPlayer + setAudioModeAsync({ playsInSilentMode: false,
- * interruptionMode: 'mixWithOthers' })) together with the SDK upgrade.
+ * Native playback: one expo-audio player per sound (createAudioPlayer), created
+ * lazily after the first feedback, never at cold start. Audio mode is ambient:
+ * respects the silent switch and mixes with the user's music.
  */
 const SOUND_MODULES: Record<SoundKey, number> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -48,58 +48,63 @@ const UI_SOUND_VOLUME = 0.45;
 let webAudioCtx: AudioContext | null = null;
 let audioModeReady = false;
 
-/** expo-av is loaded on the first native UI sound, not at app start. */
-let avModule: typeof import('expo-av') | null = null;
-function getAv(): typeof import('expo-av') {
-  if (!avModule) {
+/** expo-audio is loaded on the first native UI sound, not at app start. */
+let audioModule: typeof import('expo-audio') | null = null;
+function getAudio(): typeof import('expo-audio') {
+  if (!audioModule) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    avModule = require('expo-av') as typeof import('expo-av');
+    audioModule = require('expo-audio') as typeof import('expo-audio');
   }
-  return avModule;
+  return audioModule;
 }
-function getAudio(): typeof Audio {
-  return getAv().Audio;
-}
-const nativeSounds = new Map<string, Audio.Sound>();
-const nativeLoading = new Map<string, Promise<Audio.Sound | null>>();
-/** Camera / ImagePicker leaves expo-av in a bad state on iOS — skip sounds briefly. */
+const nativeSounds = new Map<string, AudioPlayer>();
+const nativeLoading = new Map<string, Promise<AudioPlayer | null>>();
+/** Camera / ImagePicker hand the audio session back in a bad state on iOS — skip sounds briefly. */
 let hushNativeUntil = 0;
 /** Set once the lazy preload has been queued (reset when UI audio is released). */
 let preloadScheduled = false;
+
+function disposePlayer(player: AudioPlayer): void {
+  try {
+    player.pause();
+  } catch {
+    /* ignore */
+  }
+  try {
+    player.remove();
+  } catch {
+    /* ignore */
+  }
+}
+
+function disposeAllNativeSounds(): void {
+  for (const player of nativeSounds.values()) disposePlayer(player);
+  nativeSounds.clear();
+  nativeLoading.clear();
+  preloadScheduled = false;
+}
 
 /** Mute UI sounds for a moment (e.g. right after camera). Haptics still fire. */
 export function hushNativeAudio(ms = 2500) {
   hushNativeUntil = Date.now() + ms;
 }
 
-/** Unload cached UI Sound objects so they cannot sit next to a reel AVPlayer. */
+/** Release cached UI players so they cannot sit next to a reel AVPlayer. */
 export function releaseNativeAudio(hushMs = 4000): void {
   hushNativeAudio(hushMs);
-  for (const sound of nativeSounds.values()) {
-    void sound.stopAsync().catch(() => undefined);
-    void sound.unloadAsync().catch(() => undefined);
-  }
-  nativeSounds.clear();
-  nativeLoading.clear();
-  preloadScheduled = false;
+  disposeAllNativeSounds();
 }
 
-/** Reels / stories: never create expo-av UI sounds while a clip may load. */
+/** Reels / stories: never create UI sound players while a clip may load. */
 export function lockNativeUiAudio(): void {
-  for (const sound of nativeSounds.values()) {
-    void sound.stopAsync().catch(() => undefined);
-    void sound.unloadAsync().catch(() => undefined);
-  }
-  nativeSounds.clear();
-  nativeLoading.clear();
-  preloadScheduled = false;
+  disposeAllNativeSounds();
   hushNativeUntil = Number.MAX_SAFE_INTEGER;
 }
 
 export function unlockNativeUiAudio(): void {
   hushNativeUntil = 0;
-  // Reels set playsInSilentModeIOS: true while playing; re-apply the
-  // silent-switch-respecting mode before the next UI sound.
+  // Reels / Garden may switch to playsInSilentMode: true while playing;
+  // re-apply the silent-switch-respecting mode before the next UI sound.
   audioModeReady = false;
 }
 
@@ -173,11 +178,11 @@ async function ensureAudioMode() {
     // switch is on. (User-started playback — reels, Garden ambience — sets
     // its own mode when it starts.)
     await getAudio().setAudioModeAsync({
-      playsInSilentModeIOS: false,
+      playsInSilentMode: false,
       // Mix with the user's music instead of stopping it for a click.
-      interruptionModeIOS: getAv().InterruptionModeIOS.MixWithOthers,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
+      interruptionMode: 'mixWithOthers',
+      allowsRecording: false,
+      shouldPlayInBackground: false,
     });
     audioModeReady = true;
   } catch {
@@ -185,7 +190,26 @@ async function ensureAudioMode() {
   }
 }
 
-async function getNativeSound(key: SoundKey): Promise<Audio.Sound | null> {
+/** Resolves once the player has buffered its file (or right away if it already has). */
+function whenPlayerLoaded(player: AudioPlayer): Promise<AudioPlayer> {
+  return new Promise((resolve, reject) => {
+    try {
+      if (player.isLoaded) {
+        resolve(player);
+        return;
+      }
+      const sub = player.addListener('playbackStatusUpdate', (status) => {
+        if (!status.isLoaded) return;
+        sub.remove();
+        resolve(player);
+      });
+    } catch (e) {
+      reject(e); // player was released mid-warm-up
+    }
+  });
+}
+
+async function getNativeSound(key: SoundKey): Promise<AudioPlayer | null> {
   const cached = nativeSounds.get(key);
   if (cached) return cached;
   const inflight = nativeLoading.get(key);
@@ -194,17 +218,17 @@ async function getNativeSound(key: SoundKey): Promise<Audio.Sound | null> {
   const load = (async () => {
     try {
       await ensureAudioMode();
-      const { sound } = await getAudio().Sound.createAsync(SOUND_MODULES[key], {
-        shouldPlay: false,
-        volume: UI_SOUND_VOLUME,
+      // Reels/stories may have locked UI audio while the mode was applied.
+      if (Date.now() < hushNativeUntil) return null;
+      const player = getAudio().createAudioPlayer(SOUND_MODULES[key]);
+      player.volume = UI_SOUND_VOLUME;
+      // Rewind as soon as a play ends, so the next play() starts instantly
+      // without waiting on a seek.
+      player.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) void player.seekTo(0).catch(() => undefined);
       });
-      // Reels/stories may have locked UI audio while this was loading.
-      if (Date.now() < hushNativeUntil) {
-        void sound.unloadAsync().catch(() => undefined);
-        return null;
-      }
-      nativeSounds.set(key, sound);
-      return sound;
+      nativeSounds.set(key, player);
+      return player;
     } catch {
       return null;
     } finally {
@@ -231,21 +255,41 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /**
- * Plays without awaiting anything when the sound is already preloaded, so the
- * sound lands in the same tick as the haptic. `replayAsync` = seek 0 + play.
+ * Starts the sound in the same tick as the haptic: players are rewound when a
+ * play finishes, so a rested player just needs play(). Only a sound that is
+ * still mid-play (rapid repeat) waits on a seek back to 0.
  */
+function startPlayer(player: AudioPlayer): void {
+  try {
+    if (player.playing || player.currentTime > 0.02) {
+      player
+        .seekTo(0)
+        .then(() => {
+          if (Date.now() < hushNativeUntil) return;
+          player.play();
+        })
+        .catch(() => undefined);
+    } else {
+      player.play();
+    }
+  } catch {
+    /* released player — ignore */
+  }
+}
+
 function playNativeSound(key: SoundKey): void {
   if (Date.now() < hushNativeUntil) return;
   const cached = nativeSounds.get(key);
   if (cached) {
-    void cached.replayAsync().catch(() => undefined);
+    startPlayer(cached);
     return;
   }
   void (async () => {
     try {
-      const sound = await withTimeout(getNativeSound(key), 400);
-      if (!sound || Date.now() < hushNativeUntil) return;
-      await withTimeout(sound.replayAsync(), 250);
+      const player = await withTimeout(getNativeSound(key), 400);
+      if (!player || Date.now() < hushNativeUntil) return;
+      // play() before the file is buffered is fine: playback starts when ready.
+      startPlayer(player);
     } catch {
       /* ignore — never block the UI after camera / check-in */
     }
@@ -271,7 +315,9 @@ function schedulePreload(): void {
     void (async () => {
       for (const key of SOUND_KEYS) {
         if (Date.now() < hushNativeUntil) break;
-        await withTimeout(getNativeSound(key), 1500);
+        const player = await withTimeout(getNativeSound(key), 1500);
+        // Pace the warm-up: let each file buffer before opening the next.
+        if (player) await withTimeout(whenPlayerLoaded(player), 1500);
       }
     })();
   };

@@ -153,7 +153,7 @@ export default function CircleJournalCard({
           </View>
         </Pressable>
         <Pressable onPress={onMore} hitSlop={10} style={tw`p-1`}>
-          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color="#78716C" />
+          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color="#6B645E" />
         </Pressable>
       </View>
 

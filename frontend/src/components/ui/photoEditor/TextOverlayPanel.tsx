@@ -170,7 +170,7 @@ export default function TextOverlayPanel({
       <View style={tw`flex-row items-center justify-between mb-3`}>
         <View>
           <Text style={tw`text-white text-base font-bold`}>Text studio</Text>
-          <Text style={tw`text-stone-500 text-xs mt-0.5`}>
+          <Text style={tw`text-stone-400 text-xs mt-0.5`}>
             Add, style, and place labels on the frame
           </Text>
         </View>
@@ -291,7 +291,7 @@ export default function TextOverlayPanel({
                   >
                     {s.label}
                   </Text>
-                  <Text style={tw`text-[11px] text-stone-500 mt-0.5`}>{s.hint}</Text>
+                  <Text style={tw`text-[11px] text-stone-400 mt-0.5`}>{s.hint}</Text>
                 </Pressable>
               );
             })}
@@ -376,7 +376,7 @@ export default function TextOverlayPanel({
             <Text style={tw`text-stone-200 text-xs font-semibold text-center`}>
               Press and hold the text on the photo, then drag it anywhere
             </Text>
-            <Text style={tw`text-stone-500 text-[11px] text-center mt-1`}>
+            <Text style={tw`text-stone-400 text-[11px] text-center mt-1`}>
               Quick snaps below are optional
             </Text>
           </View>
@@ -439,7 +439,7 @@ export default function TextOverlayPanel({
           <Text style={tw`text-stone-300 text-sm font-medium text-center`}>
             Tap Add or a quick phrase to place text on your story or reel.
           </Text>
-          <Text style={tw`text-stone-500 text-xs text-center mt-2`}>
+          <Text style={tw`text-stone-400 text-xs text-center mt-2`}>
             Press and drag text on the preview to place it freely.
           </Text>
         </View>
@@ -447,7 +447,7 @@ export default function TextOverlayPanel({
 
       <View style={tw`border-t border-stone-800 pt-4 mb-6`}>
         <Text style={tw`text-stone-300 text-sm font-medium mb-1`}>Cinematic edges</Text>
-        <Text style={tw`text-stone-500 text-xs mb-2`}>
+        <Text style={tw`text-stone-400 text-xs mb-2`}>
           Soft top/bottom darken — classic vertical look.
         </Text>
         <AdjustSlider label="Amount" value={cinematic} min={0} max={50} onChange={onCinematicChange} />

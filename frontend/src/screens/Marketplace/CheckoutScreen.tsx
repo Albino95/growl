@@ -526,7 +526,7 @@ export default function CheckoutScreen() {
                     : 'Select country'}
               </Text>
               {geoReady ? (
-                <Ionicons name="chevron-down" size={18} color="#78716C" />
+                <Ionicons name="chevron-down" size={18} color="#6B645E" />
               ) : (
                 <ActivityIndicator size="small" color="#059669" />
               )}
@@ -552,7 +552,7 @@ export default function CheckoutScreen() {
                   <Text style={tw`text-[15px] ${shipping.state ? 'text-stone-900' : 'text-stone-500'}`}>
                     {shipping.state || `Select ${regionLabel.toLowerCase()}`}
                   </Text>
-                  <Ionicons name="chevron-down" size={18} color="#78716C" />
+                  <Ionicons name="chevron-down" size={18} color="#6B645E" />
                 </TouchableOpacity>
                 {fieldErrors.state ? (
                   <Text style={tw`text-red-600 text-xs mb-2`}>{fieldErrors.state}</Text>
@@ -594,7 +594,7 @@ export default function CheckoutScreen() {
                   <Text style={tw`text-[15px] ${shipping.city ? 'text-stone-900' : 'text-stone-500'}`}>
                     {shipping.city || 'Select city'}
                   </Text>
-                  <Ionicons name="chevron-down" size={18} color="#78716C" />
+                  <Ionicons name="chevron-down" size={18} color="#6B645E" />
                 </TouchableOpacity>
                 {fieldErrors.city ? (
                   <Text style={tw`text-red-600 text-xs mb-1`}>{fieldErrors.city}</Text>

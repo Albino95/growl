@@ -2,6 +2,7 @@
  * Explore — discover people, stories, posts, and shop picks by growth path.
  */
 
+import { toast } from '../../state/useToastStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -14,9 +15,9 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
@@ -102,6 +103,8 @@ export default function ExploreScreen() {
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   const friendIdsRef = useRef(friendIds);
   friendIdsRef.current = friendIds;
+  const listRef = useRef<FlatList<FeedPost>>(null);
+  useScrollToTop(listRef);
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -478,12 +481,7 @@ export default function ExploreScreen() {
         );
       }
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
-      void alertMessage(
-        result.connected ? 'Friends' : 'Request sent',
-        result.connected
-          ? 'You are now friends.'
-          : 'Friend request sent. They can accept it from your profile.'
-      );
+      toast.success(result.connected ? 'You are now friends' : 'Friend request sent');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not add friend';
       void alertMessage('Could not add', msg);
@@ -586,6 +584,7 @@ export default function ExploreScreen() {
         style={tw`flex-row items-center bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-3 mb-2`}
       >
         <TouchableOpacity
+          activeOpacity={0.7}
           onPress={() => openProfile(hit.id)}
           style={tw`flex-row items-center flex-1`}
         >
@@ -727,11 +726,12 @@ export default function ExploreScreen() {
                     const image = resolvePostMediaUri(p.image_url, p.category, p.id);
                     return (
                       <TouchableOpacity
+                        activeOpacity={0.7}
                         key={p.id}
                         onPress={() => openSearchPost(p)}
                         style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
                       >
-                        <Image
+                        <GrowImage
                           source={{ uri: image }}
                           style={tw`w-full h-36`}
                           contentFit="cover"
@@ -764,6 +764,7 @@ export default function ExploreScreen() {
                 >
                   {filteredShopHits.map((product) => (
                     <TouchableOpacity
+                      activeOpacity={0.7}
                       key={product.id}
                       style={tw`w-36 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
                       onPress={() => {
@@ -775,7 +776,7 @@ export default function ExploreScreen() {
                         );
                       }}
                     >
-                      <Image
+                      <GrowImage
                         source={{ uri: product.image_url || '' }}
                         style={tw`w-full h-44 bg-stone-100`}
                         contentFit="cover"
@@ -869,7 +870,7 @@ export default function ExploreScreen() {
                 style={tw`items-center mr-4 w-20`}
               >
                 <View style={tw`w-16 h-16 rounded-full border-2 border-emerald-500 p-0.5`}>
-                  <Image
+                  <GrowImage
                     source={thumb ? { uri: thumb } : avatarSource(avatar)}
                     style={tw`w-full h-full rounded-full`}
                     contentFit="cover"
@@ -911,7 +912,7 @@ export default function ExploreScreen() {
                 });
               }}
             >
-              <Image
+              <GrowImage
                 source={{
                   uri: product.image_url || '',
                 }}
@@ -951,11 +952,12 @@ export default function ExploreScreen() {
             const image = resolvePostMediaUri(p.image_url, p.category, p.id);
             return (
               <TouchableOpacity
+                activeOpacity={0.7}
                 key={p.id}
                 onPress={() => openPostDetail(p)}
                 style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
               >
-                <Image
+                <GrowImage
                   source={{ uri: image }}
                   style={tw`w-full h-36`}
                   contentFit="cover"
@@ -989,6 +991,7 @@ export default function ExploreScreen() {
                 style={tw`w-44 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-3`}
               >
                 <TouchableOpacity
+                  activeOpacity={0.7}
                   onPress={() =>
                     person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId)
                   }
@@ -1150,6 +1153,7 @@ export default function ExploreScreen() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={isSearching ? [] : filteredReels}
           keyExtractor={(p) => p.id}
           ListHeaderComponent={ListHeader}
@@ -1164,7 +1168,7 @@ export default function ExploreScreen() {
                 activeOpacity={0.9}
                 onPress={() => openPostDetail(p)}
               >
-                <Image
+                <GrowImage
                   source={{ uri: image }}
                   style={tw`w-full h-52 bg-stone-200`}
                   cachePolicy="memory-disk"

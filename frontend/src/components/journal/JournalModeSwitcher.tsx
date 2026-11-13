@@ -86,7 +86,7 @@ export default function JournalModeSwitcher({
         <Ionicons
           name="book-outline"
           size={15}
-          color={mode === 'pages' ? '#059669' : '#78716C'}
+          color={mode === 'pages' ? '#059669' : '#6B645E'}
         />
         <Text
           style={tw`ml-1.5 text-[14px] ${
@@ -114,7 +114,7 @@ export default function JournalModeSwitcher({
         <Ionicons
           name="radio-outline"
           size={15}
-          color={mode === 'voices' ? '#059669' : '#78716C'}
+          color={mode === 'voices' ? '#059669' : '#6B645E'}
         />
         <Text
           style={tw`ml-1.5 text-[14px] ${

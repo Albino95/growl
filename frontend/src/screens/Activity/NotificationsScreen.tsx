@@ -8,7 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
@@ -32,6 +32,7 @@ import { haptic } from '../../theme/haptics';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage } from '../../utils/confirmDialog';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 function timeAgo(iso: string): string {
   const t = new Date(iso).getTime();
@@ -412,8 +413,8 @@ export default function NotificationsScreen() {
       </FadeInUp>
 
       {loading ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" />
+        <View style={tw`flex-1 px-4`}>
+          <SkeletonList variant="notification" count={6} />
         </View>
       ) : (
         <FlatList
@@ -490,7 +491,7 @@ export default function NotificationsScreen() {
                           item.actor ? `Open ${item.actor.username} profile` : 'Profile'
                         }
                       >
-                        <Image
+                        <GrowImage
                           source={avatarSource(avatar)}
                           style={tw`w-12 h-12 rounded-full bg-[#EAE4D6]`}
                           contentFit="cover"
@@ -539,7 +540,7 @@ export default function NotificationsScreen() {
                         {preview && !actionable ? (
                           <View style={tw`mt-3 flex-row items-center rounded-2xl overflow-hidden border border-stone-200/80 bg-[#F3EEE4]`}>
                             {previewImage ? (
-                              <Image
+                              <GrowImage
                                 source={{ uri: previewImage }}
                                 style={tw`w-[72px] h-[72px] bg-[#EAE4D6]`}
                                 contentFit="cover"

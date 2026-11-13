@@ -1,6 +1,18 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { Animated, Easing, Linking, StyleSheet, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
+
+/** Cream scene behind every screen so pushes, modals and bounces never flash grey. */
+const NAV_THEME: Theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#F3EEE4',
+    card: '#FFFCF7',
+    primary: '#059669',
+    border: 'rgba(231,229,228,0.9)',
+  },
+};
 import { Provider } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -15,6 +27,7 @@ import { markBootSplashDone, onBootRevealStart } from './src/components/auth/boo
 import { theme } from './src/lib/tw';
 import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
+import ToastHost from './src/components/ui/Toast';
 import { KeyboardDoneAccessory } from './src/components/ui/KeyboardDoneAccessory';
 import { initMonitoring } from './src/services/monitoring';
 import { prewarmFirstOpenRead } from './src/utils/firstLaunch';
@@ -121,7 +134,7 @@ function AppContent() {
         <Animated.View
           style={[styles.nav, navSettled ? null : { transform: [{ scale: navScale }] }]}
         >
-          <NavigationContainer key={token || 'no-token'} ref={navigationRef} linking={linking}>
+          <NavigationContainer key={token || 'no-token'} ref={navigationRef} linking={linking} theme={NAV_THEME}>
             <StatusBar style="auto" />
             <RootNavigator />
           </NavigationContainer>
@@ -175,6 +188,8 @@ export default function App() {
     <Provider store={store}>
       <SafeAreaProvider>
         <AppContent />
+        {/* Success / info toasts: above navigation, below AppDialog modals */}
+        <ToastHost />
         <AppDialogHost />
         {/* Shared iOS Done bar for FormTextInput / formInputAccessoryProps fields */}
         <KeyboardDoneAccessory />

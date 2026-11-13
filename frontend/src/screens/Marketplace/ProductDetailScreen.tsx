@@ -7,7 +7,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -189,7 +189,7 @@ export default function ProductDetailScreen() {
                       <Ionicons name="image-outline" size={40} color="#A8A29E" />
                     </View>
                   ) : (
-                    <Image
+                    <GrowImage
                       key={index}
                       source={{ uri: image }}
                       style={{ width, height: 384 }}
@@ -228,7 +228,7 @@ export default function ProductDetailScreen() {
           {/* Business Info */}
           {product.business && (
             <View style={tw`flex-row items-center mb-4`}>
-              <Image
+              <GrowImage
                 source={avatarSource(
                   resolveAvatarUri(
                     product.business.id,
@@ -333,6 +333,7 @@ export default function ProductDetailScreen() {
                   const thumb = resolveProductImageUri(item.image_url, item.images);
                   return (
                     <TouchableOpacity
+                      activeOpacity={0.7}
                       key={item.id}
                       onPress={() =>
                         (navigation as { navigate: (a: string, b: object) => void }).navigate(
@@ -343,7 +344,7 @@ export default function ProductDetailScreen() {
                       style={tw`w-36 mr-3 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}
                     >
                       {thumb ? (
-                        <Image source={{ uri: thumb }} style={tw`w-full h-40 bg-surface-subtle`} contentFit="cover" />
+                        <GrowImage source={{ uri: thumb }} style={tw`w-full h-40 bg-surface-subtle`} contentFit="cover" />
                       ) : (
                         <View style={tw`w-full h-40 bg-surface-subtle items-center justify-center`}>
                           <Ionicons name="image-outline" size={28} color="#A8A29E" />

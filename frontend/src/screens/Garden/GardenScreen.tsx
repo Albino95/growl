@@ -11,7 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio, type AVPlaybackStatus } from 'expo-av';
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+  type AudioStatus,
+} from 'expo-audio';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { breathe, easing as motionEasing } from '../../theme/motion';
@@ -68,8 +73,8 @@ export default function GardenScreen() {
   const [voicePlaying, setVoicePlaying] = useState(false);
   const [voicePos, setVoicePos] = useState(0);
   const [voiceDur, setVoiceDur] = useState(0);
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const voiceRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
+  const voiceRef = useRef<AudioPlayer | null>(null);
   const breathAnim = useRef(new Animated.Value(0)).current;
   const ringAnim = useRef(new Animated.Value(0)).current;
   const breathTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -107,10 +112,11 @@ export default function GardenScreen() {
 
   const stopMusic = async () => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+      const player = soundRef.current;
+      soundRef.current = null;
+      if (player) {
+        player.pause();
+        player.remove();
       }
     } catch {
       /* ignore */
@@ -119,10 +125,11 @@ export default function GardenScreen() {
 
   const stopVoice = async () => {
     try {
-      if (voiceRef.current) {
-        await voiceRef.current.stopAsync();
-        await voiceRef.current.unloadAsync();
-        voiceRef.current = null;
+      const player = voiceRef.current;
+      voiceRef.current = null;
+      if (player) {
+        player.pause();
+        player.remove();
       }
     } catch {
       /* ignore */
@@ -135,7 +142,7 @@ export default function GardenScreen() {
 
   const duckAmbient = async (volume: number) => {
     try {
-      if (soundRef.current) await soundRef.current.setVolumeAsync(volume);
+      if (soundRef.current) soundRef.current.volume = volume;
     } catch {
       /* ignore */
     }
@@ -157,19 +164,20 @@ export default function GardenScreen() {
     if (!shouldPlay) return;
     if (forceOn) setMusicOn(true);
     try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        allowsRecordingIOS: false,
+      await setAudioModeAsync({
+        // User-started listening: plays with the silent switch on, mixed with other audio.
+        playsInSilentMode: true,
+        interruptionMode: 'mixWithOthers',
+        shouldPlayInBackground: false,
+        interruptionModeAndroid: 'duckOthers',
+        allowsRecording: false,
       });
       await stopMusic();
-      const { sound } = await Audio.Sound.createAsync(scape.source, {
-        isLooping: true,
-        volume: voiceRef.current ? 0.16 : 0.55,
-        shouldPlay: true,
-      });
-      soundRef.current = sound;
+      const player = createAudioPlayer(scape.source);
+      player.loop = true;
+      player.volume = voiceRef.current ? 0.16 : 0.55;
+      player.play();
+      soundRef.current = player;
       setMusicError(null);
       feedback.select();
     } catch (e) {
@@ -240,14 +248,12 @@ export default function GardenScreen() {
     }, 1000);
   };
 
-  const onVoiceStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) {
-      if ('error' in status && status.error) setVoiceError(String(status.error));
-      return;
-    }
-    setVoicePlaying(status.isPlaying);
-    setVoicePos(status.positionMillis || 0);
-    setVoiceDur(status.durationMillis || 0);
+  // expo-audio reports seconds; the voice UI state stays in milliseconds.
+  const onVoiceStatus = (status: AudioStatus) => {
+    if (!status.isLoaded) return;
+    setVoicePlaying(status.playing);
+    setVoicePos(Math.round((status.currentTime || 0) * 1000));
+    setVoiceDur(Math.round((status.duration || 0) * 1000));
     if (status.didJustFinish) {
       void duckAmbient(0.55);
       setVoicePlaying(false);
@@ -265,22 +271,24 @@ export default function GardenScreen() {
     setVoiceError(null);
     setVoiceLoading(true);
     try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        allowsRecordingIOS: false,
+      await setAudioModeAsync({
+        // User-started listening: plays with the silent switch on, mixed with other audio.
+        playsInSilentMode: true,
+        interruptionMode: 'mixWithOthers',
+        shouldPlayInBackground: false,
+        interruptionModeAndroid: 'duckOthers',
+        allowsRecording: false,
       });
       if (voiceRef.current) {
-        await voiceRef.current.unloadAsync();
+        voiceRef.current.pause();
+        voiceRef.current.remove();
         voiceRef.current = null;
       }
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: m.voiceUri },
-        { shouldPlay: true, volume: 1, progressUpdateIntervalMillis: 400 }
-      );
-      voiceRef.current = sound;
-      sound.setOnPlaybackStatusUpdate(onVoiceStatus);
+      const player = createAudioPlayer({ uri: m.voiceUri }, { updateInterval: 400 });
+      player.volume = 1;
+      player.addListener('playbackStatusUpdate', onVoiceStatus);
+      player.play();
+      voiceRef.current = player;
       await duckAmbient(0.16);
       if (!musicOn) void playSoundscape(soundId, true);
     } catch (e) {
@@ -292,16 +300,19 @@ export default function GardenScreen() {
   };
 
   const toggleVoice = async () => {
-    const sound = voiceRef.current;
-    if (!sound) return;
+    const player = voiceRef.current;
+    if (!player) return;
     try {
-      const st = await sound.getStatusAsync();
-      if (!st.isLoaded) return;
-      if (st.isPlaying) {
-        await sound.pauseAsync();
+      if (!player.isLoaded) return;
+      if (player.playing) {
+        player.pause();
         await duckAmbient(0.4);
       } else {
-        await sound.playAsync();
+        // A finished voice track rests at its end; rewind so Play restarts it.
+        if (player.duration > 0 && player.currentTime >= player.duration - 0.05) {
+          await player.seekTo(0);
+        }
+        player.play();
         await duckAmbient(0.16);
       }
       feedback.select();
@@ -311,10 +322,11 @@ export default function GardenScreen() {
   };
 
   const seekVoice = async (ratio: number) => {
-    const sound = voiceRef.current;
-    if (!sound || voiceDur <= 0) return;
+    const player = voiceRef.current;
+    if (!player || voiceDur <= 0) return;
     try {
-      await sound.setPositionAsync(Math.max(0, Math.min(1, ratio)) * voiceDur);
+      // voiceDur is ms; expo-audio seeks in seconds.
+      await player.seekTo((Math.max(0, Math.min(1, ratio)) * voiceDur) / 1000);
     } catch {
       /* ignore */
     }
