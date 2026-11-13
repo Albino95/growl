@@ -1,786 +1,152 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  useWindowDimensions,
-  ScrollView,
-  Platform,
-} from 'react-native';
-import GrowLoader from '../../components/ui/GrowLoader';
-import { feedback, hushNativeAudio } from '../../utils/interactionFeedback';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import React from 'react';
+import { Pressable, Text } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
-import { createFeedPost, type FeedPost } from '../../services/api/feed';
-import { uploadMediaApi, uploadMediaFile } from '../../services/api/media';
-import { isRemoteMediaUrl } from '../../utils/mediaUri';
-import { useAuth, useAppDispatch } from '../../store/hooks';
-import { prependFeedPost } from '../../store/slices/feedSlice';
-import PhotoEditor from '../../components/ui/PhotoEditor';
-import VideoEditor, {
-  ReelVideoPlayer,
-  DEFAULT_VIDEO_EDIT,
-  type VideoEditSettings,
-} from '../../components/ui/VideoEditor';
+import { useMediaComposer } from '../../hooks/useMediaComposer';
+import ComposerShell from '../../components/composer/ComposerShell';
+import ComposerEditor from '../../components/composer/ComposerEditor';
+import ComposerMediaStage from '../../components/composer/ComposerMediaStage';
+import ComposerCaption from '../../components/composer/ComposerCaption';
+import ComposerStickyBar from '../../components/composer/ComposerStickyBar';
+import CategoryPicker from '../../components/composer/CategoryPicker';
+import MediaSourcePicker from '../../components/composer/MediaSourcePicker';
+import PublishingOverlay from '../../components/composer/PublishingOverlay';
+import ToolChipRow from '../../components/composer/ToolChipRow';
 import ReelCameraCapture from '../../components/ui/videoEditor/ReelCameraCapture';
-import ScreenHeader from '../../components/ui/ScreenHeader';
-import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
-import PostComposerLayout from '../Post/components/PostComposerLayout';
-import PostCaptionOverlay from '../Post/components/PostCaptionOverlay';
-import PostCategorySheet from '../Post/components/PostCategorySheet';
-import PostStickyBar from '../Post/components/PostStickyBar';
 import { openReelsAtPost } from '../../utils/reelNavigation';
-import { reelSoundtrackFromEdit } from '../../utils/reelMedia';
-import { fitReelStage } from '../../utils/fitMediaBox';
 import tw from '../../lib/tw';
-import { FAST_REEL_PICKER } from '../../utils/prepareImageUpload';
-import { persistPickerAsset, pickedFromAsset } from '../../utils/pickedMedia';
-import {
-  buildPlaceholders,
-  frameCountForDuration,
-  sampleClipFramesQuiet,
-  stillSourceFromFrames,
-  type FrameThumb,
-} from '../../components/ui/videoEditor/extractFrames';
-import {
-  nativeEditorOpenMs,
-  nativePublishUnloadMs,
-  waitMs,
-} from '../../components/ui/videoEditor/videoEditorPolicy';
-import { useDeferredNativePlayer } from '../../components/ui/videoEditor/useDeferredNativePlayer';
-import EditorErrorBoundary from '../../components/ui/EditorErrorBoundary';
-import { showPermissionDenied } from '../../utils/permissionPrompt';
-import { useCreateFlowLeaveGuard } from '../../hooks/useCreateFlowLeaveGuard';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'CreateReel'>;
-type Props = { navigation: Nav };
-type MediaKind = 'image' | 'video';
-
-function StepPill({ label, active, done }: { label: string; active?: boolean; done?: boolean }) {
-  return (
-    <View
-      style={tw`flex-row items-center px-3 py-1.5 rounded-full mr-2 ${
-        active ? 'bg-brand-600' : done ? 'bg-white/20' : 'bg-white/10'
-      }`}
-    >
-      {done ? <Ionicons name="checkmark" size={12} color="#A7F3D0" style={tw`mr-1`} /> : null}
-      <Text
-        style={tw`text-[11px] font-bold ${active || done ? 'text-white' : 'text-white/50'}`}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-function ToolChip({
-  icon,
-  label,
-  onPress,
-  danger,
-  disabled,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
-      style={tw`flex-row items-center rounded-full px-3.5 py-2.5 mr-2 flex-shrink-0 ${
-        disabled ? 'opacity-40 ' : ''
-      }${
-        danger ? 'bg-red-500/80 border border-red-400/40' : 'bg-white/15 border border-white/20'
-      }`}
-      hitSlop={6}
-    >
-      <Ionicons name={icon} size={16} color="#FFFFFF" />
-      <Text style={tw`text-white text-xs font-semibold ml-1.5`}>{label}</Text>
-    </Pressable>
-  );
-}
+type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'CreateReel'> };
 
 export default function CreateReelScreen({ navigation }: Props) {
-  const dispatch = useAppDispatch();
-  const { user, updateUser } = useAuth();
-  const { width: windowW, height: windowH } = useWindowDimensions();
-  const stage = fitReelStage(windowW, Math.round(windowH * 0.62));
-  const userCategories = user?.categories || [];
+  const composer = useMediaComposer({ kind: 'reel', navigation });
+  const { state, config, isVideo, publishing, published } = composer;
 
-  const [mediaUri, setMediaUri] = useState<string | null>(null);
-  const [mediaKind, setMediaKind] = useState<MediaKind>('image');
-  const [mimeType, setMimeType] = useState<string | undefined>();
-  const [caption, setCaption] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(
-    userCategories[0] || null
-  );
-  const [posting, setPosting] = useState(false);
-  const [showPhotoEditor, setShowPhotoEditor] = useState(false);
-  const [showVideoEditor, setShowVideoEditor] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
-  const [videoEdit, setVideoEdit] = useState<VideoEditSettings>(DEFAULT_VIDEO_EDIT);
-  const [showCategorySheet, setShowCategorySheet] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [publishedPostId, setPublishedPostId] = useState<string | null>(null);
-  const [publishedPost, setPublishedPost] = useState<FeedPost | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [openingEditor, setOpeningEditor] = useState(false);
-  const [clipDurationMs, setClipDurationMs] = useState(0);
-  const [clipFrames, setClipFrames] = useState<FrameThumb[]>([]);
-  const [wantPlay, setWantPlay] = useState(false);
-  const [stillsBusy, setStillsBusy] = useState(false);
-  const captionInputRef = useRef<import('react-native').TextInput>(null);
-  const publishingRef = useRef(false);
-  const clipStill = stillSourceFromFrames(clipFrames);
-  const previewActive = Boolean(
-    wantPlay &&
-      !stillsBusy &&
-      mediaUri &&
-      mediaKind === 'video' &&
-      !openingEditor &&
-      !posting &&
-      !showVideoEditor &&
-      !showPhotoEditor
-  );
-  const previewArmed = useDeferredNativePlayer(previewActive);
+  if (composer.editorVisible) return <ComposerEditor composer={composer} />;
 
-  const { leave } = useCreateFlowLeaveGuard({
-    navigation,
-    hasDraft: (Boolean(mediaUri) || Boolean(caption.trim()) || importing) && !showSuccess,
-    busy: posting,
-    editorOpen: showPhotoEditor || showVideoEditor,
-    onCloseEditor: () => {
-      setShowPhotoEditor(false);
-      setShowVideoEditor(false);
-      setOpeningEditor(false);
-    },
-    discardTitle: 'Discard reel?',
-    discardMessage: 'Your draft will be lost.',
-  });
+  const busy = publishing || state.status === 'editing';
 
-  // Categories can arrive after mount (profile refresh) — still default to the first.
-  const firstCategory = userCategories[0];
-  useEffect(() => {
-    if (!selectedCategory && firstCategory) setSelectedCategory(firstCategory);
-  }, [selectedCategory, firstCategory]);
-
-  useEffect(() => {
-    if (mediaUri && !showPhotoEditor && !showVideoEditor && !openingEditor) {
-      const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
-      return () => clearTimeout(timer);
-    }
-  }, [mediaUri, showPhotoEditor, showVideoEditor, openingEditor]);
-
-  useEffect(() => {
-    if (!openingEditor) return;
-    if (stillsBusy) return;
-    if (mediaKind !== 'video') {
-      setShowPhotoEditor(true);
-      setOpeningEditor(false);
-      return;
-    }
-    const delay = previewArmed ? nativeEditorOpenMs() : 0;
-    const t = setTimeout(() => {
-      setShowVideoEditor(true);
-      setOpeningEditor(false);
-    }, delay);
-    return () => clearTimeout(t);
-  }, [openingEditor, mediaKind, stillsBusy, previewArmed]);
-
-  const applyAsset = async (asset: ImagePicker.ImagePickerAsset) => {
-    setShowVideoEditor(false);
-    setShowPhotoEditor(false);
-    setOpeningEditor(false);
-    setWantPlay(false);
-
-    const immediate = pickedFromAsset(asset);
-    setMediaKind(immediate.kind);
-    setMimeType(immediate.mimeType);
-    setClipDurationMs(immediate.durationMs);
-    const nextEdit = { ...DEFAULT_VIDEO_EDIT };
-    if (immediate.kind === 'video' && immediate.durationMs > 60000) {
-      nextEdit.trimEndMs = 60000;
-    }
-    setVideoEdit(nextEdit);
-
-    let uri = immediate.uri;
-    let kind = immediate.kind;
-    let durationMs = immediate.durationMs;
-    try {
-      const picked = await persistPickerAsset(asset);
-      if (picked.uri) uri = picked.uri;
-      kind = picked.kind;
-      if (picked.mimeType) setMimeType(picked.mimeType);
-      if (picked.durationMs > 0) durationMs = picked.durationMs;
-      setMediaKind(kind);
-      setClipDurationMs(durationMs);
-    } catch {
-      /* use the picker URI */
-    }
-
-    if (kind === 'video') {
-      setClipFrames(buildPlaceholders(durationMs, frameCountForDuration(durationMs)));
-      setWantPlay(false);
-      setStillsBusy(true);
-      setMediaUri(uri);
-      hushNativeAudio(1800);
-      try {
-        const frames = await sampleClipFramesQuiet(uri, durationMs, setClipFrames);
-        setClipFrames(frames);
-      } finally {
-        setStillsBusy(false);
-      }
-    } else {
-      setClipFrames([]);
-      setMediaUri(uri);
-    }
-  };
-
-  const pickFromLibrary = async () => {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm.status !== 'granted') {
-        await showPermissionDenied('photos', {
-          canAskAgain: perm.canAskAgain,
-          message: 'Allow library access to create a reel.',
-        });
-        return;
-      }
-
-      setImporting(true);
-      const result = await ImagePicker.launchImageLibraryAsync(FAST_REEL_PICKER);
-      hushNativeAudio(1800);
-
-      if (result.canceled || !result.assets?.[0]) {
-        return;
-      }
-      await applyAsset(result.assets[0]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not add that clip.';
-      await alertMessage('Reel media', `${msg}\n\nTry another video, or record with Camera.`);
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const captureMedia = async () => {
-    setShowCamera(true);
-  };
-
-  const onCameraCaptured = (result: {
-    uri: string;
-    kind: 'image' | 'video';
-    mimeType?: string;
-    durationMs?: number;
-  }) => {
-    setShowCamera(false);
-    setWantPlay(false);
-    setMediaKind(result.kind);
-    setMimeType(result.mimeType);
-    setVideoEdit(DEFAULT_VIDEO_EDIT);
-    setClipDurationMs(result.durationMs || 0);
-    if (result.kind !== 'video') {
-      setClipFrames([]);
-      setMediaUri(result.uri);
-      return;
-    }
-    const durationMs = result.durationMs || 0;
-    setClipFrames(buildPlaceholders(durationMs, frameCountForDuration(durationMs)));
-    setMediaUri(result.uri);
-    setStillsBusy(true);
-    hushNativeAudio(1800);
-    void sampleClipFramesQuiet(result.uri, durationMs, setClipFrames)
-      .then(setClipFrames)
-      .finally(() => setStillsBusy(false));
-  };
-
-  const clearMedia = () => {
-    setMediaUri(null);
-    setMediaKind('image');
-    setMimeType(undefined);
-    setCaption('');
-    setVideoEdit(DEFAULT_VIDEO_EDIT);
-    setClipDurationMs(0);
-    setClipFrames([]);
-    setWantPlay(false);
-  };
-
-  const handleRemove = async () => {
-    const confirmed = await confirmAsync(
-      'Remove clip?',
-      'This clears the media and caption for this reel draft.',
-      { confirmLabel: 'Remove', destructive: true }
-    );
-    if (!confirmed) return;
-    clearMedia();
-  };
-
-  const handleClose = async () => {
-    if (posting) return;
-    if (!mediaUri && !caption.trim()) {
-      navigation.goBack();
-      return;
-    }
-    const confirmed = await confirmAsync('Discard reel?', 'Your draft will be lost.', {
-      confirmLabel: 'Discard',
-      destructive: true,
-    });
-    if (!confirmed) return;
-    leave(() => navigation.goBack());
-  };
-
-  const publishReel = async () => {
-    if (!mediaUri || posting || publishingRef.current) return;
-    if (!selectedCategory) {
-      await alertMessage('Category required', 'Pick a growth path category for this reel.');
-      setShowCategorySheet(true);
-      return;
-    }
-
-    publishingRef.current = true;
-    setPosting(true);
-    try {
-      if (mediaKind === 'video' && previewArmed) {
-        await waitMs(nativePublishUnloadMs());
-      }
-      let mediaUrl = mediaUri;
-      let uploadedKind: MediaKind = mediaKind;
-      let contentType = mimeType;
-
-      if (!isRemoteMediaUrl(mediaUri)) {
-        if (mediaKind === 'video') {
-          const uploaded = await uploadMediaFile(mediaUri, 'reel', {
-            mimeType: mimeType || 'video/mp4',
-          });
-          mediaUrl = uploaded.url;
-          uploadedKind = uploaded.mediaType;
-          contentType = uploaded.contentType;
-        } else {
-          let persistable = mediaUri;
-          if (Platform.OS === 'web' && mediaUri.toLowerCase().startsWith('blob:')) {
-            try {
-              const res = await fetch(mediaUri);
-              const blob = await res.blob();
-              const objectUrl = URL.createObjectURL(blob);
-              try {
-                const imageEl = await new Promise<HTMLImageElement>((resolve, reject) => {
-                  const img = new window.Image();
-                  img.onload = () => resolve(img);
-                  img.onerror = () => reject(new Error('decode failed'));
-                  img.src = objectUrl;
-                });
-                const maxDim = 1600;
-                const scale = Math.min(1, maxDim / Math.max(imageEl.width, imageEl.height));
-                const width = Math.max(1, Math.round(imageEl.width * scale));
-                const height = Math.max(1, Math.round(imageEl.height * scale));
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.drawImage(imageEl, 0, 0, width, height);
-                  persistable = canvas.toDataURL('image/jpeg', 0.88);
-                }
-              } finally {
-                URL.revokeObjectURL(objectUrl);
-              }
-            } catch {
-              // keep original
-            }
-          }
-
-          if (persistable.toLowerCase().startsWith('data:')) {
-            mediaUrl = await uploadMediaApi(persistable, 'reel');
-          } else {
-            const uploaded = await uploadMediaFile(persistable, 'reel', {
-              mimeType: mimeType || 'image/jpeg',
-            });
-            mediaUrl = uploaded.url;
-            contentType = uploaded.contentType;
-          }
-        }
-      }
-
-      const category = selectedCategory.split(':')[0];
-      const subcategory = selectedCategory.includes(':')
-        ? selectedCategory.split(':')[1]
-        : undefined;
-
-      if (!isRemoteMediaUrl(mediaUrl) || !/\/api\/[^/]+\/media\//i.test(mediaUrl)) {
-        await alertMessage(
-          'Reel not published',
-          'Your media did not finish uploading. Nothing was posted — try again.'
-        );
-        return;
-      }
-
-      const soundtrack = reelSoundtrackFromEdit(videoEdit);
-
-      const created = await createFeedPost({
-        image_url: mediaUrl,
-        caption: caption.trim() || '',
-        category,
-        subcategory,
-        metadata: {
-          format: 'reel',
-          media_type: uploadedKind,
-          content_type: contentType,
-          ...(uploadedKind === 'video' ? { video_edit: videoEdit } : {}),
-          ...(soundtrack.audioUrl
-            ? { audio_url: soundtrack.audioUrl, audio_title: soundtrack.audioTitle }
-            : {}),
-        },
-      });
-
-      const publishedUrl = created?.data?.image_url?.trim() || '';
-      if (!created?.data || !/^https:\/\//i.test(publishedUrl)) {
-        await alertMessage(
-          'Reel not published',
-          'The server did not save your media. Nothing was posted — try again.'
-        );
-        return;
-      }
-
-      const serverMeta = created.data.metadata || {};
-      dispatch(
-        prependFeedPost({
-          ...created.data,
-          image_url: publishedUrl,
-          feed_section: 'following',
-          metadata: {
-            format: 'reel',
-            media_type: uploadedKind,
-            content_type: contentType,
-            ...serverMeta,
-            ...(uploadedKind === 'video' ? { video_edit: videoEdit } : {}),
-            ...(soundtrack.audioUrl
-              ? { audio_url: soundtrack.audioUrl, audio_title: soundtrack.audioTitle }
-              : {}),
-            username:
-              serverMeta.username ||
-              user?.username ||
-              user?.email?.split('@')[0] ||
-              'You',
-            avatar: serverMeta.avatar || user?.avatar,
-            likes: Number(serverMeta.likes ?? 0),
-            comments: Number(serverMeta.comments ?? 0),
-            has_liked: !!serverMeta.has_liked,
-          },
-        })
-      );
-      if (typeof created.data.points_total === 'number') {
-        updateUser({ points: created.data.points_total });
-      }
-
-      const newPostId = created.data.id || null;
-      setPublishedPost(created.data);
-      setPublishedPostId(newPostId);
-      setShowSuccess(true);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to publish reel';
-      await alertMessage('Reel not published', `${msg}\n\nNothing was posted to your feed.`);
-    } finally {
-      publishingRef.current = false;
-      setPosting(false);
-    }
-  };
-
-  if (showPhotoEditor && mediaUri && mediaKind === 'image') {
-    return (
-      <EditorErrorBoundary onClose={() => setShowPhotoEditor(false)}>
-        <PhotoEditor
-          imageUri={mediaUri}
-          title="Edit Reel"
-          preferredAspect="9:16"
-          enableOverlays
-          onSave={(editedUri) => {
-            setMediaUri(editedUri);
-            setShowPhotoEditor(false);
+  const successActions = (
+    <>
+      {published?.id ? (
+        <Pressable
+          onPress={() => {
+            const postId = published.id;
+            composer.exit(() => openReelsAtPost(navigation, postId, published));
           }}
-          onCancel={() => setShowPhotoEditor(false)}
-        />
-      </EditorErrorBoundary>
-    );
-  }
-
-  if (showVideoEditor && mediaUri && mediaKind === 'video') {
-    return (
-      <EditorErrorBoundary onClose={() => setShowVideoEditor(false)}>
-        <VideoEditor
-          videoUri={mediaUri}
-          title="Edit Reel"
-          initialSettings={videoEdit}
-          hintDurationMs={clipDurationMs}
-          initialFrames={clipFrames}
-          onSave={(settings) => {
-            setVideoEdit(settings);
-            setShowVideoEditor(false);
-          }}
-          onCancel={() => setShowVideoEditor(false)}
-        />
-      </EditorErrorBoundary>
-    );
-  }
-
-  const canPublish = Boolean(mediaUri && selectedCategory && !posting);
+          accessibilityRole="button"
+          style={tw`w-full bg-brand-600 py-3.5 rounded-2xl items-center mb-3`}
+        >
+          <Text style={tw`text-white font-bold text-base`}>View in Reels</Text>
+        </Pressable>
+      ) : null}
+      <Pressable
+        onPress={() => composer.exit()}
+        accessibilityRole="button"
+        style={tw`w-full py-3.5 rounded-2xl items-center border border-white/25`}
+      >
+        <Text style={tw`text-white font-semibold`}>Done</Text>
+      </Pressable>
+    </>
+  );
 
   return (
-    <PostComposerLayout
+    <ComposerShell
+      title={config.title}
+      onClose={composer.requestClose}
+      closeDisabled={publishing}
       footer={
-        mediaUri ? (
-          <PostStickyBar
-            selectedCategory={selectedCategory}
-            hasImage
-            isPosting={posting}
-            canPost={canPublish}
-            hasCategories={userCategories.length > 0}
-            onOpenCategory={() => setShowCategorySheet(true)}
-            onSubmit={() => {
-              if (/^(grow!?|🌱|still growing\.?)$/i.test(caption.trim())) {
-                feedback.celebrate();
-              }
-              void publishReel();
+        state.media ? (
+          <ComposerStickyBar
+            category={{
+              selected: state.category,
+              hasCategories: composer.userCategories.length > 0,
+              onOpen: () => composer.setCategorySheetOpen(true),
             }}
-            onLongSubmit={() => {
-              feedback.egg();
-              void publishReel();
-            }}
-            submitLabel="Publish Reel"
+            publishing={publishing}
+            canPublish={composer.canSubmit}
+            error={
+              state.status === 'error' && state.error
+                ? { message: state.error, onRetry: () => void composer.retry(), onEdit: composer.editAfterError }
+                : null
+            }
+            onSubmit={composer.submit}
+            onLongSubmit={composer.longSubmit}
+          />
+        ) : null
+      }
+      overlay={
+        state.status === 'success' ? (
+          <PublishingOverlay
+            variant="success"
+            body="Your clip is in the feed. Open Reels to watch and scroll more."
+            actions={successActions}
           />
         ) : null
       }
     >
-      <ScreenHeader
-        title="Create Reel"
-        onBack={() => void handleClose()}
-        backIcon="close"
-        transparent
-        light
-        style={tw`border-b-0 bg-transparent z-20`}
-      />
-
-      {showSuccess && (
-        <View style={tw`absolute inset-0 z-50 bg-brand-900/95 items-center justify-center px-8`}>
-          <View style={tw`w-16 h-16 rounded-full bg-brand-600 items-center justify-center mb-4`}>
-            <Ionicons name="checkmark" size={32} color="#fff" />
-          </View>
-          <Text style={tw`text-white text-2xl font-bold mb-2`}>Reel is live!</Text>
-          <Text style={tw`text-white/70 text-center mb-8`}>
-            Your clip is in the feed. Open Reels to watch and scroll more.
-          </Text>
-          {publishedPostId ? (
-            <Pressable
-              onPress={() => {
-                const postId = publishedPostId;
-                const seed = publishedPost;
-                leave(() => navigation.goBack());
-                requestAnimationFrame(() => {
-                  openReelsAtPost(navigation, postId, seed);
-                });
-              }}
-              style={tw`w-full bg-brand-600 py-3.5 rounded-2xl items-center mb-3`}
-            >
-              <Text style={tw`text-white font-bold text-base`}>View in Reels</Text>
-            </Pressable>
-          ) : null}
-          <Pressable
-            onPress={() => leave(() => navigation.goBack())}
-            accessibilityRole="button"
-            style={tw`w-full py-3.5 rounded-2xl items-center border border-white/25`}
-          >
-            <Text style={tw`text-white font-semibold`}>Done</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {!mediaUri ? (
-        <View
-          style={[
-            tw`flex-1 items-center justify-center px-6 bg-brand-900`,
-            { minHeight: stage.height },
-          ]}
-        >
-          {importing ? (
-            <GrowLoader label="Reading your clip…" />
-          ) : (
-          <>
-          <View style={tw`items-center mb-10`}>
-            <Pressable
-              onLongPress={() => feedback.egg()}
-              delayLongPress={450}
-              style={tw`bg-white/15 rounded-full p-5 mb-4 border border-white/20`}
-            >
-              <Ionicons name="film-outline" size={48} color="#FFFFFF" />
-            </Pressable>
-            <Text style={tw`text-white text-2xl font-bold mb-2 text-center`}>
-              Create a vertical clip
-            </Text>
-            <Text style={tw`text-white/70 text-base text-center px-4`}>
-              Camera or library — photos or video up to 60s. Trim on the film, then publish.
-            </Text>
-          </View>
-          <View style={tw`flex-row gap-3 w-full`}>
-            <Pressable
-              onPress={() => void captureMedia()}
-              style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-brand-600`}
-            >
-              <Ionicons name="camera" size={22} color="#FFFFFF" style={tw`mr-2`} />
-              <Text style={tw`font-semibold text-base text-white`}>Camera</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void pickFromLibrary()}
-              style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-white/15 border border-white/25`}
-            >
-              <Ionicons name="images" size={22} color="#FFFFFF" style={tw`mr-2`} />
-              <Text style={tw`font-semibold text-base text-white`}>Library</Text>
-            </Pressable>
-          </View>
-          </>
-          )}
-        </View>
+      {!state.media ? (
+        <MediaSourcePicker
+          icon={config.empty.icon}
+          title={config.empty.title}
+          subtitle={config.empty.subtitle}
+          busyLabel={state.status === 'importing' ? config.empty.importing : null}
+          onCamera={() => void composer.pick('camera')}
+          onLibrary={() => void composer.pick('library')}
+        />
       ) : (
-        <View style={tw`flex-1`}>
-          <View style={tw`flex-row px-4 pt-2 pb-1 flex-shrink-0`}>
-            <StepPill label="Capture" done />
-            <StepPill label="Preview" active />
-            <StepPill label="Publish" />
-          </View>
-          <View style={tw`flex-1 min-h-0 bg-black items-center justify-center`}>
-            <View
-              style={[
-                tw`relative overflow-hidden bg-black`,
-                { width: stage.width, height: '100%', maxHeight: stage.height },
-              ]}
-            >
-            {mediaKind === 'video' ? (
-              previewArmed && mediaUri ? (
-                <ReelVideoPlayer
-                  key={mediaUri}
-                  uri={mediaUri}
-                  settings={videoEdit}
-                  shouldPlay={previewArmed && !posting && !showVideoEditor && !showPhotoEditor}
-                  contentFit="cover"
-                  style={{ width: '100%', height: '100%' }}
-                />
-              ) : clipStill ? (
-                <Image
-                  source={clipStill as { uri: string }}
-                  style={tw`w-full h-full`}
-                  contentFit="cover"
-                />
-              ) : (
-                <View style={tw`w-full h-full bg-black`} />
-              )
-            ) : (
-              <Image
-                source={{ uri: mediaUri }}
-                style={tw`w-full h-full`}
-                contentFit="cover"
-                transition={160}
-              />
-            )}
-            <View style={tw`absolute bottom-0 left-0 right-0 h-24 bg-black/35`} pointerEvents="none" />
-            {mediaKind === 'video' && !wantPlay && !stillsBusy && !openingEditor && !posting && clipStill ? (
-              <View
-                pointerEvents="box-none"
-                style={tw`absolute bottom-4 left-0 right-0 items-center z-20`}
-              >
-                <Pressable
-                  onPress={() => setWantPlay(true)}
-                  style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Play clip"
-                >
-                  <Ionicons name="play" size={22} color="#fff" />
-                </Pressable>
-              </View>
-            ) : null}
-            {(posting || openingEditor || importing) && (
-              <View style={tw`absolute inset-0 bg-black/55 items-center justify-center z-30`}>
-                <GrowLoader
-                  label={
-                    openingEditor
-                      ? 'Opening editor…'
-                      : posting
-                        ? mediaKind === 'video'
-                          ? 'Growing your reel…'
-                          : 'Planting your reel…'
-                        : 'Opening clip…'
-                  }
-                />
-              </View>
-            )}
-            {mediaKind === 'video' && (
-              <View style={tw`absolute left-3 bottom-3 bg-black/55 px-2.5 py-1 rounded-full`}>
-                <Text style={tw`text-white text-xs font-semibold`}>Video</Text>
-              </View>
-            )}
-            </View>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`px-4 py-3 items-center`}
-            style={tw`flex-grow-0 flex-shrink-0`}
-          >
-            <ToolChip
-              icon={mediaKind === 'video' ? 'cut-outline' : 'color-wand-outline'}
-              label="Edit"
-              disabled={posting}
-              onPress={() => {
-                if (openingEditor || showVideoEditor || showPhotoEditor) return;
-                hushNativeAudio(900);
-                setWantPlay(false);
-                setOpeningEditor(true);
-              }}
-            />
-            <ToolChip
-              icon="images-outline"
-              label="Replace"
-              disabled={posting}
-              onPress={() => void pickFromLibrary()}
-            />
-            <ToolChip
-              icon="trash-outline"
-              label="Remove"
-              danger
-              disabled={posting}
-              onPress={() => void handleRemove()}
-            />
-          </ScrollView>
-
-          <PostCaptionOverlay
-            caption={caption}
-            onChangeCaption={setCaption}
-            inputRef={captionInputRef}
+        <>
+          <ComposerMediaStage composer={composer} badge={isVideo ? 'Video' : null} />
+          <ToolChipRow
+            chips={[
+              {
+                key: 'edit',
+                icon: isVideo ? 'cut-outline' : 'color-wand-outline',
+                label: 'Edit',
+                accessibilityLabel: isVideo ? 'Edit clip' : 'Edit photo',
+                onPress: composer.openEditor,
+                disabled: busy,
+              },
+              {
+                key: 'replace',
+                icon: 'images-outline',
+                label: 'Replace',
+                onPress: () => void composer.pick('library'),
+                disabled: busy,
+              },
+              {
+                key: 'remove',
+                icon: 'trash-outline',
+                label: 'Remove',
+                danger: true,
+                onPress: () => void composer.removeMedia(),
+                disabled: busy,
+              },
+            ]}
           />
-        </View>
+          <ComposerCaption
+            caption={state.caption}
+            onChangeCaption={composer.setCaption}
+            maxLength={config.captionMax}
+            inputRef={composer.captionInputRef}
+            editable={!publishing}
+          />
+        </>
       )}
 
-      <PostCategorySheet
-        visible={showCategorySheet}
-        onClose={() => setShowCategorySheet(false)}
-        userCategories={userCategories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
+      <CategoryPicker
+        visible={composer.categorySheetOpen}
+        onClose={() => composer.setCategorySheetOpen(false)}
+        userCategories={composer.userCategories}
+        selectedCategory={state.category}
+        onSelectCategory={composer.setCategory}
       />
 
       <ReelCameraCapture
-        visible={showCamera}
-        onClose={() => setShowCamera(false)}
-        onCaptured={onCameraCaptured}
+        visible={composer.cameraOpen}
+        onClose={() => composer.setCameraOpen(false)}
+        onCaptured={composer.onCameraCaptured}
       />
-    </PostComposerLayout>
+    </ComposerShell>
   );
 }

@@ -8,26 +8,27 @@ import {
   Platform,
   InputAccessoryView,
 } from 'react-native';
-import tw from '../../../lib/tw';
+import tw from '../../lib/tw';
 
-const CAPTION_ACCESSORY_ID = 'post-caption-done';
+const CAPTION_ACCESSORY_ID = 'composer-caption-done';
 
 type Props = {
   caption: string;
   onChangeCaption: (text: string) => void;
+  maxLength: number;
   inputRef?: RefObject<TextInput | null>;
-  visible?: boolean;
+  editable?: boolean;
 };
 
-export default function PostCaptionOverlay({
+/** Caption field shared by every create flow. */
+export default function ComposerCaption({
   caption,
   onChangeCaption,
+  maxLength,
   inputRef,
-  visible = true,
+  editable = true,
 }: Props) {
-  if (!visible) return null;
-
-  const nearLimit = caption.length >= 450;
+  const nearLimit = caption.length >= Math.floor(maxLength * 0.9);
 
   return (
     <View style={tw`px-4 pb-2`}>
@@ -47,21 +48,23 @@ export default function PostCaptionOverlay({
       </View>
       <TextInput
         ref={inputRef}
-        placeholder="Write a caption..."
+        placeholder="Write a caption…"
         placeholderTextColor="rgba(255,255,255,0.55)"
         multiline
         value={caption}
         onChangeText={onChangeCaption}
+        editable={editable}
         style={tw`text-white text-base min-h-[44px] max-h-28`}
-        maxLength={500}
+        maxLength={maxLength}
         returnKeyType="done"
         blurOnSubmit
         onSubmitEditing={() => Keyboard.dismiss()}
         inputAccessoryViewID={Platform.OS === 'ios' ? CAPTION_ACCESSORY_ID : undefined}
         textAlignVertical="top"
+        accessibilityLabel="Caption"
       />
       <Text style={tw`text-xs mt-1 ${nearLimit ? 'text-amber-400' : 'text-white/50'}`}>
-        {caption.length}/500
+        {caption.length}/{maxLength}
       </Text>
       {Platform.OS === 'ios' ? (
         <InputAccessoryView nativeID={CAPTION_ACCESSORY_ID}>

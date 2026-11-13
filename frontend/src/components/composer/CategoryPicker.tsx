@@ -2,9 +2,9 @@ import React from 'react';
 import { View, Text, Modal, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import CATEGORIES from '../../../data/categories';
-import Chip from '../../../components/ui/Chip';
-import tw from '../../../lib/tw';
+import Chip from '../ui/Chip';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import tw from '../../lib/tw';
 
 type Props = {
   visible: boolean;
@@ -14,15 +14,8 @@ type Props = {
   onSelectCategory: (cat: string) => void;
 };
 
-function getCategoryLabel(cat: string): string {
-  const category = CATEGORIES.find((c) => c.key === cat || c.key === cat.split(':')[0]);
-  const subcategory = cat.includes(':')
-    ? category?.subcategories.find((s) => s.key === cat.split(':')[1])
-    : null;
-  return subcategory ? subcategory.label : category?.label || cat;
-}
-
-export default function PostCategorySheet({
+/** Bottom sheet: pick the growth path this share belongs to. */
+export default function CategoryPicker({
   visible,
   onClose,
   userCategories,
@@ -54,25 +47,28 @@ export default function PostCategorySheet({
             <View style={tw`py-6 items-center`}>
               <Ionicons name="grid-outline" size={40} color="#A8A29E" />
               <Text style={tw`text-stone-600 text-center mt-3 px-4`}>
-                Add interests in your profile to choose a category for your post.
+                Add interests in your profile to choose a category.
               </Text>
             </View>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-2`}>
+            <ScrollView style={tw`max-h-72 mb-2`} showsVerticalScrollIndicator={false}>
               <View style={tw`flex-row flex-wrap`}>
-                {userCategories.map((cat) => (
-                  <View key={cat} style={tw`flex-row items-center`}>
+                {userCategories.map((cat) => {
+                  const selected = selectedCategory === cat;
+                  const label = getCategoryLabel(cat);
+                  return (
                     <Chip
-                      selected={selectedCategory === cat}
+                      key={cat}
+                      selected={selected}
                       onPress={() => {
                         onSelectCategory(cat);
                         onClose();
                       }}
                     >
-                      {selectedCategory === cat ? `✓ ${getCategoryLabel(cat)}` : getCategoryLabel(cat)}
+                      {selected ? `✓ ${label}` : label}
                     </Chip>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </ScrollView>
           )}
@@ -81,5 +77,3 @@ export default function PostCategorySheet({
     </Modal>
   );
 }
-
-export { getCategoryLabel };
