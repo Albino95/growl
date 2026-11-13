@@ -22,7 +22,8 @@ export type FeedbackKind =
   | 'celebrate'
   | 'filter'
   | 'autoLook'
-  | 'commit';
+  | 'commit'
+  | 'bloom';
 
 type HapticStyle =
   | 'light'
@@ -180,6 +181,11 @@ const KIND: Record<FeedbackKind, KindConfig> = {
     vibrate: [0, 12, 20, 10],
     sound: 'send',
     web: { f0: 380, f1: 220, ms: 70, type: 'triangle', vol: 0.026 },
+  },
+  /** App-open splash — the seed smiles. One soft tap, deliberately silent. */
+  bloom: {
+    haptic: 'soft',
+    vibrate: 6,
   },
 };
 
@@ -474,4 +480,5 @@ export const feedback = {
   filter: () => triggerFeedback('filter'),
   autoLook: () => triggerFeedback('autoLook'),
   commit: () => triggerFeedback('commit'),
+  bloom: () => triggerFeedback('bloom'),
 };
