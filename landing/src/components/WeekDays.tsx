@@ -134,9 +134,9 @@ function Tuesday() {
           <h3 className="mt-3 text-[1.125rem] font-semibold text-bark">How are you arriving?</h3>
           <div className="mt-5 flex justify-between" aria-hidden="true">
             {[
-              ['🌧', 'Heavy'],
+              ['\u{1F327}\u{FE0F}', 'Heavy'],
               ['🌙', 'Tired'],
-              ['◇', 'Okay'],
+              ['🙂', 'Okay'],
               ['😊', 'Good'],
               ['⚡', 'Bright'],
             ].map(([g, l]) => (

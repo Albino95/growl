@@ -123,8 +123,34 @@ details[open] .faq-plus {
 .is-sprouted .sprout-leaf {
   animation: sprout-pop 680ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-.is-sprouted .sprout-pill {
-  animation: pill-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1) 360ms both;
+.pill-in {
+  animation: pill-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.reveal {
+  animation: pill-in 180ms ease-out both;
+}
+.check-pop {
+  animation: check-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes check-pop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes mood-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes sprout-pop {
@@ -138,11 +164,88 @@ details[open] .faq-plus {
 @keyframes pill-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* ---------- Hero phone: the real app's home screen ---------- */
+/* The app uses the system font, so the phone does too. */
+.app-ui {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', system-ui, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+.app-ui :focus-visible {
+  outline-color: #047857;
+  outline-offset: 2px;
+}
+/* Today card (frontend/src/components/feed/TodayCard.tsx), kept in CSS so the demo island stays light. */
+.td-card {
+  @apply mx-4 mb-3 rounded-3xl border border-stone-200/70 bg-[#FFFcf7] px-4 pt-4 pb-3.5;
+}
+.td-reply {
+  @apply mx-4 mb-3 rounded-2xl border border-emerald-200/80 bg-[#FFFcf7] p-4 outline-none;
+}
+.td-pill {
+  @apply flex w-full items-center rounded-full border border-emerald-100 bg-emerald-50 px-3.5 py-2.5 text-left;
+}
+.td-pill-text {
+  @apply min-w-0 flex-1 truncate pr-2 text-[13px] font-semibold text-emerald-900;
+}
+.td-panel {
+  @apply mt-2 rounded-2xl border border-stone-200/70 bg-[#FFFcf7] px-4 py-3;
+}
+.td-edit {
+  @apply rounded-xl bg-[#EAE4D6] px-4 py-2.5 text-[13px] font-semibold text-stone-800;
+}
+.td-mood {
+  @apply flex min-w-[56px] flex-col items-center rounded-2xl border border-transparent p-2 text-[11px] leading-[14px] text-stone-500 transition-colors hover:bg-[#EAE4D6]/60;
+}
+.td-mood > span {
+  @apply mb-1 inline-block text-xl leading-7;
+}
+.td-mood[aria-pressed='true'] {
+  @apply border-emerald-300 bg-emerald-50 font-semibold text-emerald-800;
+}
+.td-mood[aria-pressed='true'] > span {
+  animation: mood-pop 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.td-chip {
+  @apply shrink-0 rounded-full bg-[#EAE4D6] px-3 py-1.5 text-[13px] font-semibold text-stone-700 transition-colors;
+}
+.td-chip[aria-pressed='true'] {
+  @apply bg-emerald-600 text-white;
+}
+.td-input {
+  @apply mt-3 w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-[15px] text-stone-900 placeholder:text-[#A8A29E];
+}
+.td-done {
+  @apply mt-3 w-full rounded-xl bg-emerald-600 py-3 text-[15px] font-bold text-white transition-colors hover:bg-emerald-700;
+}
+.td-link {
+  @apply text-xs font-semibold;
+}
+.td-restart {
+  @apply ml-1 inline-flex min-h-[44px] items-center font-semibold text-leaf underline decoration-leaf/30 underline-offset-4 hover:decoration-leaf;
+}
+
+/* Designed at a 360pt screen (380px with bezel); zoomed to fit the column and small phones. */
+.phone-zoom {
+  zoom: 0.9;
+}
+@media (max-width: 389px) {
+  .phone-zoom {
+    zoom: 0.84;
+  }
+}
+@media (max-width: 359px) {
+  .phone-zoom {
+    zoom: 0.73;
   }
 }
 

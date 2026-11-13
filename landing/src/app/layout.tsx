@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Figtree } from 'next/font/google';
 import './globals.css';
 import {
   SITE_NAME,
+  COMPANY_NAME,
   APP_STORE_ID,
   siteDescription,
   getSiteUrl,
@@ -24,7 +25,7 @@ const body = Figtree({
   display: 'swap',
 });
 
-const TITLE = 'Grow! — grow a little every day';
+const TITLE = 'Grow! — Let’s grow';
 
 const siteUrl = getSiteUrl();
 
@@ -46,8 +47,9 @@ export const metadata: Metadata = {
     'private journal',
     'growth with friends',
   ],
-  authors: [{ name: SITE_NAME }],
-  creator: SITE_NAME,
+  authors: [{ name: COMPANY_NAME }],
+  creator: COMPANY_NAME,
+  publisher: COMPANY_NAME,
   openGraph: {
     type: 'website',
     locale: 'en_US',

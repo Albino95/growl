@@ -1,7 +1,11 @@
 export const SITE_NAME = 'Grow!';
-export const SITE_TAGLINE = 'Grow a little every day.';
+/** Legal entity / publisher behind the app. */
+export const COMPANY_NAME = "Let's Grow Group";
+/** Brand line and motto. */
+export const SITE_TAGLINE = 'Let’s grow.';
+export const SITE_MOTTO = 'Making your life better, a little each day.';
 export const SITE_DESCRIPTION =
-  'Grow! is a calm daily check-in for the things you want to get better at — up to 3 growth paths, ten seconds a day, a streak with rest days, and friends who cheer you on. Free, no ads.';
+  'Making your life better, a little each day. Grow! is a calm daily check-in: up to 3 growth paths, ten seconds a day, rest days, and friends who cheer you on. Free, no ads.';
 /** Alias of SITE_DESCRIPTION (camelCase name used in newer code). */
 export const siteDescription = SITE_DESCRIPTION;
 
@@ -103,7 +107,8 @@ export function organizationJsonLd(siteUrl: string) {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
-    name: SITE_NAME,
+    name: COMPANY_NAME,
+    brand: { '@type': 'Brand', name: SITE_NAME, slogan: SITE_MOTTO },
     url: siteUrl,
     logo: `${siteUrl}${LOGO_PATH}`,
     description: SITE_DESCRIPTION,
@@ -129,6 +134,7 @@ export function softwareApplicationJsonLd(siteUrl: string) {
     name: SITE_NAME,
     applicationCategory: 'LifestyleApplication',
     operatingSystem: 'iOS',
+    publisher: { '@type': 'Organization', name: COMPANY_NAME },
     description: SITE_DESCRIPTION,
     url: siteUrl,
     image: `${siteUrl}${LOGO_PATH}`,

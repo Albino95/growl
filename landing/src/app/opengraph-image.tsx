@@ -1,11 +1,12 @@
 import { ImageResponse } from 'next/og';
-import { SITE_NAME } from '@/lib/seo';
+import { COMPANY_NAME, SITE_MOTTO, SITE_NAME } from '@/lib/seo';
 
-const HEADLINE = 'Grow a little every day.';
-const SUBLINE = 'Ten seconds a day. Rest days included. No ads.';
+const HEADLINE = 'Let’s grow.';
+const SUBLINE = SITE_MOTTO;
+const BYLINE = `${SITE_NAME} by ${COMPANY_NAME}`;
 const DOMAIN = 'letsgrow.lu';
 
-export const alt = `${SITE_NAME} — ${HEADLINE} ${SUBLINE}`;
+export const alt = `${HEADLINE} ${SUBLINE} ${BYLINE}.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -56,7 +57,7 @@ function SeedMark({ size: px }: { size: number }) {
 export default async function OpenGraphImage() {
   const [bold, regular] = await Promise.all([
     loadBricolage(800, `${SITE_NAME}${HEADLINE}`),
-    loadBricolage(500, `${SUBLINE}${DOMAIN}`),
+    loadBricolage(500, `${SUBLINE}${BYLINE}${DOMAIN}`),
   ]);
   const fonts = [
     ...(bold ? [{ name: 'Bricolage', data: bold, weight: 800 as const, style: 'normal' as const }] : []),
@@ -91,15 +92,18 @@ export default async function OpenGraphImage() {
               fontWeight: 800,
               letterSpacing: -3,
               lineHeight: 1.02,
-              maxWidth: 760,
+              maxWidth: 900,
             }}
           >
             {HEADLINE}
           </div>
-          <div style={{ marginTop: 28, fontSize: 38, fontWeight: 500, color: MOSS }}>{SUBLINE}</div>
+          <div style={{ marginTop: 28, fontSize: 40, fontWeight: 500, color: MOSS }}>{SUBLINE}</div>
         </div>
 
-        <div style={{ display: 'flex', fontSize: 26, fontWeight: 500, color: '#047857' }}>{DOMAIN}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 26, fontWeight: 500 }}>
+          <div style={{ display: 'flex', color: MOSS }}>{BYLINE}</div>
+          <div style={{ display: 'flex', color: '#047857' }}>{DOMAIN}</div>
+        </div>
       </div>
     ),
     { ...size, fonts: fonts.length ? fonts : undefined }

@@ -87,9 +87,12 @@ export function FinalCta() {
     <section id="get-grow" aria-labelledby="final-title" className="border-t border-line">
       <div className="mx-auto flex max-w-3xl flex-col items-center px-5 py-24 text-center sm:py-32">
         <h2 id="final-title" className="display text-[clamp(2.75rem,6vw,5rem)] text-bark">
-          Day 1 is today.
+          <span className="block">Let’s grow.</span>
+          <span className="block">Day 1 is today.</span>
         </h2>
-        <p className="mt-4 text-[1.125rem] text-moss">Free on iPhone. Ten seconds a day.</p>
+        <p className="mt-4 text-[1.125rem] text-moss">
+          Making your life better, a little each day. Free on iPhone, ten seconds a day.
+        </p>
         <div className="mt-8">
           <AppStoreBadge className="h-[56px]" />
         </div>

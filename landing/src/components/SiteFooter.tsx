@@ -1,5 +1,6 @@
 import { Wordmark } from './brand';
 import { SUPPORT_EMAIL } from '@/lib/content';
+import { COMPANY_NAME, SITE_NAME } from '@/lib/seo';
 
 const LINKS = [
   ['Privacy', '/privacy'],
@@ -19,6 +20,9 @@ export default function SiteFooter() {
           <a href="/" aria-label="Grow! home" className="w-fit rounded-lg">
             <Wordmark />
           </a>
+          <p className="font-medium text-bark">
+            {SITE_NAME} by {COMPANY_NAME}. Making your life better, a little each day.
+          </p>
           <p>
             Made in Luxembourg. Write to us at{' '}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline decoration-moss/40 underline-offset-4 hover:text-bark">
@@ -37,7 +41,7 @@ export default function SiteFooter() {
             ))}
           </ul>
         </nav>
-        <p>© {year} Grow!</p>
+        <p>© {year} {COMPANY_NAME}</p>
       </div>
     </footer>
   );
