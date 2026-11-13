@@ -19,7 +19,7 @@ import { flushColorSchemeNotify } from './scheme';
  * Flip together with DEFAULT_APPEARANCE → 'system' (useUiPrefsStore.ts) and
  * app.config.ts `userInterfaceStyle: 'automatic'`.
  */
-export const DARK_MODE_READY = false;
+export const DARK_MODE_READY = true;
 
 type SystemScheme = 'light' | 'dark' | null | undefined;
 

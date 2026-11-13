@@ -15,7 +15,7 @@ export type AppearancePref = 'system' | 'light' | 'dark';
  * 'light' while screens are still being migrated to semantic colour tokens.
  * Phase 2 flips this to 'system' together with DARK_MODE_READY.
  */
-export const DEFAULT_APPEARANCE: AppearancePref = 'light';
+export const DEFAULT_APPEARANCE: AppearancePref = 'system';
 
 type UiPrefsState = {
   soundEnabled: boolean;

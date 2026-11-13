@@ -59,7 +59,7 @@ const STEPS: Step[] = [
       return theme.colors.brandSoft;
     },
     details: [
-      { icon: 'heart-outline', title: 'Soft, not shouty', body: 'Cream cards, emerald actions, coral for the good moments.' },
+      { icon: 'heart-outline', title: 'Soft, not shouty', body: 'Calm cards, emerald actions, coral for the good moments.' },
       { icon: 'people-outline', title: 'People on your paths', body: 'Friends, coaches, and posts from the areas you chose.' },
     ],
   },

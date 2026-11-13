@@ -17,7 +17,7 @@ describe('useUiPrefsStore', () => {
     expect(s.soundEnabled).toBe(true);
     expect(s.hapticsEnabled).toBe(true);
     // Light until phase 2 migrates screens and flips the default to 'system'.
-    expect(s.appearance).toBe('light');
+    expect(s.appearance).toBe('system');
     // zustand never flips hasHydrated() on a storage error — readiness covers it.
     expect(useUiPrefsStore.persist.hasHydrated()).toBe(false);
     const cb = vi.fn();
@@ -27,8 +27,8 @@ describe('useUiPrefsStore', () => {
 });
 
 describe('appearance pref', () => {
-  it('defaults to light and can be set', () => {
-    expect(DEFAULT_APPEARANCE).toBe('light');
+  it('defaults to system and can be set', () => {
+    expect(DEFAULT_APPEARANCE).toBe('system');
     useUiPrefsStore.getState().setAppearance('dark');
     expect(useUiPrefsStore.getState().appearance).toBe('dark');
     useUiPrefsStore.getState().setAppearance('system');

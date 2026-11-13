@@ -28,7 +28,7 @@ const defineConfig = (): ExpoConfig => ({
   // scheme to Appearance and native chrome (alerts, pickers, keyboard) follows.
   // Android: 'automatic' needs expo-system-ui (NOT installed yet — adding it is
   // a native change that requires a new build).
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
   // Native cold-start: the brand mark (cream leaf + smile, transparent) centred
   // at 128pt on emerald. BrandLoadingScreen draws the same mark at the same rect
   // (centre of the full window, 128×128) so the JS handoff is seamless.

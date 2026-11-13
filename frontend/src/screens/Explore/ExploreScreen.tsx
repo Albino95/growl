@@ -51,7 +51,7 @@ import CATEGORIES from '../../data/categories';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
 import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
-import { getCategoryLabel } from '../../utils/categoryLabels';
+import { getCategoryLabel, getCategoryMeta } from '../../utils/categoryLabels';
 import { featureFlags } from '../../constants/featureFlags';
 import { getApiBaseUrl } from '../../services/api/http';
 import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
@@ -357,11 +357,12 @@ export default function ExploreScreen() {
     }
 
     return orderedKeys.slice(0, 12).map((key) => {
-      const meta = CATEGORIES.find((c) => c.key === key);
+      // Sub-paths (`fitness:building-muscle`) show their own label and the parent's icon.
+      const m = getCategoryMeta(key);
       return {
         key,
-        label: meta?.label || key,
-        icon: (meta?.icon || 'ellipse-outline') as keyof typeof Ionicons.glyphMap,
+        label: m.subLabel || m.parentLabel,
+        icon: m.icon as keyof typeof Ionicons.glyphMap,
         count: counts[key],
       };
     });
