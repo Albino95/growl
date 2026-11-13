@@ -1,72 +1,174 @@
 @import 'tailwindcss';
 
+/* ---------- Tokens (docs/LANDING_DESIGN.md) ---------- */
 :root {
+  --soil: #f3eee4;
+  --bark: #1c1917;
+  --moss: #57534e;
+  --leaf: #047857;
+  --leaf-hover: #065f46;
+  --deep-leaf: #064e3b;
+  --bloom: #f97066;
+  --card: #fffcf7;
+  --subtle: #eae4d6;
+  --line: rgba(28, 25, 23, 0.12);
+
+  /* Legacy aliases (pitch deck, invite page) */
   --brand: #059669;
-  --brand-deep: #047857;
-  --brand-dark: #064e3b;
+  --brand-deep: var(--leaf);
+  --brand-dark: var(--deep-leaf);
   --brand-glow: #34d399;
-  --energy: #F97066;
-  --energy-soft: #FFF1F0;
-  --stone-ink: #1c1917;
-  --stone-muted: #57534e;
+  --energy: var(--bloom);
+  --energy-soft: #fff1f0;
+  --stone-ink: var(--bark);
+  --stone-muted: var(--moss);
   --stone-soft: #a8a29e;
-  --surface: #f3eee4;
-  --surface-elevated: #fffcf7;
-  --surface-alt: #eae4d6;
-  --surface-deep: #1c1917;
-  --radius: 1rem;
-  --nav-offset: 4.25rem;
+  --surface: var(--soil);
+  --surface-elevated: var(--card);
+  --surface-alt: var(--subtle);
+  --surface-deep: var(--bark);
+
+  --nav-h: 4rem;
 }
 
+@theme inline {
+  --color-soil: var(--soil);
+  --color-bark: var(--bark);
+  --color-moss: var(--moss);
+  --color-leaf: var(--leaf);
+  --color-leaf-hover: var(--leaf-hover);
+  --color-deep-leaf: var(--deep-leaf);
+  --color-bloom: var(--bloom);
+  --color-card: var(--card);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-phone: 44px;
+  --radius-card: 24px;
+  --radius-input: 14px;
+}
+
+/* ---------- Base ---------- */
 html {
   scroll-behavior: smooth;
+}
+
+body {
+  color: var(--bark);
+  background: var(--soil);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #a7f3d0;
+  color: var(--bark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.on-dark :focus-visible {
+  outline-color: var(--soil);
+}
+
+/* Display type: tight, large, optical size follows the font size. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+
+.measure {
+  max-width: 68ch;
+}
+
+/* Day sections land below the fixed nav (+ the mobile week row). */
+.day-section {
+  scroll-margin-top: calc(var(--nav-h) + 3rem);
+}
+@media (min-width: 1024px) {
+  .day-section {
+    scroll-margin-top: var(--nav-h);
+  }
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] .faq-plus {
+  transform: rotate(45deg);
+}
+
+/* ---------- Hero sprout (the one animated moment) ---------- */
+.sprout-leaf {
+  transform-box: fill-box;
+  transform-origin: 40% 100%;
+}
+.is-sprouted .sprout-leaf {
+  animation: sprout-pop 680ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.is-sprouted .sprout-pill {
+  animation: pill-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1) 360ms both;
+}
+
+@keyframes sprout-pop {
+  from {
+    transform: scale(0.12) rotate(-18deg);
+  }
+  to {
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Week rail dot */
+.week-dot {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    transform 300ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
-
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  .path-marquee-track {
     animation: none !important;
-    transform: none !important;
+    transition: none !important;
   }
 }
 
-body {
-  color: var(--stone-ink);
-  background: var(--surface);
-  -webkit-font-smoothing: antialiased;
-}
-
-::selection {
-  background: color-mix(in srgb, var(--brand) 35%, white);
-  color: var(--stone-ink);
-}
-
-.font-display {
-  font-family: var(--font-display), system-ui, sans-serif;
-}
-
+/* ---------- Legacy helpers still used by /pitch ---------- */
 .font-body {
-  font-family: var(--font-body), system-ui, sans-serif;
-}
-
-#about,
-#how,
-#paths,
-#features,
-#faq,
-#early-access {
-  scroll-margin-top: var(--nav-offset);
+  font-family: var(--font-body);
 }
 
 .hero-atmosphere {
@@ -80,28 +182,4 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   opacity: 0.035;
   mix-blend-mode: multiply;
-}
-
-.path-marquee {
-  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-}
-
-.path-marquee-track {
-  display: flex;
-  width: max-content;
-  animation: path-scroll 52s linear infinite;
-}
-
-.path-marquee:hover .path-marquee-track {
-  animation-play-state: paused;
-}
-
-@keyframes path-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
 }

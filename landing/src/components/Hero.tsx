@@ -1,120 +1,76 @@
-'use client';
-
-import Image from 'next/image';
-import { motion, useReducedMotion } from 'framer-motion';
+import AppStoreBadge from './AppStoreBadge';
+import CheckInDemo from './CheckInDemo';
+import QrCard from './QrCard';
 import WaitlistForm from './WaitlistForm';
-import {
-  getAppStoreUrl,
-  getPlayStoreUrl,
-  hasLiveAppStoreUrl,
-  hasLivePlayStoreUrl,
-} from '@/lib/seo';
+import { GetAppButton } from './MobileCta';
+import { SeedMark } from './brand';
 
-const HERO_IMAGE =
-  'https://picsum.photos/seed/grow-purpose-scroll-hero/1400/1800';
+function Phone({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mx-auto w-full max-w-[340px] rounded-[44px] bg-bark p-[10px] shadow-[0_40px_80px_-30px_rgba(28,25,23,0.45)]">
+      <div className="overflow-hidden rounded-[34px] bg-soil">
+        <div className="flex items-center justify-between px-6 pb-1 pt-3 text-[11px] font-semibold text-bark" aria-hidden="true">
+          <span>9:41</span>
+          <span className="h-[18px] w-[76px] rounded-full bg-bark" />
+          <span className="w-[26px]" />
+        </div>
+        <div className="flex items-center justify-between px-5 pb-3 pt-2">
+          <span className="inline-flex items-center gap-1.5" aria-hidden="true">
+            <SeedMark className="h-5 w-auto text-leaf" />
+            <span className="font-display text-base font-extrabold tracking-[-0.02em]">Grow!</span>
+          </span>
+          <span className="text-xs font-medium text-moss">Monday</span>
+        </div>
+        <div className="px-3 pb-7">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function Hero() {
-  const prefersReduced = useReducedMotion();
-  const appLive = hasLiveAppStoreUrl();
-  const playLive = hasLivePlayStoreUrl();
-  const appStore = getAppStoreUrl();
-  const playStore = getPlayStoreUrl();
-
   return (
-    <header className="relative isolate min-h-[100dvh] overflow-hidden">
-      <div className="absolute inset-0 hero-atmosphere" aria-hidden />
-      <div className="pointer-events-none absolute inset-0 page-grain" aria-hidden />
-
-      <div className="relative z-10 mx-auto grid min-h-[100dvh] max-w-[1400px] grid-cols-1 items-center lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <div className="flex flex-col justify-center px-6 pb-12 pt-24 sm:px-8 sm:pt-28 lg:px-10 lg:pb-20 lg:pt-24">
-          <motion.p
-            initial={prefersReduced ? false : { opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-            className="font-display text-[clamp(3.5rem,12vw,7.5rem)] font-extrabold leading-[0.88] tracking-tight text-stone-900"
-          >
-            Grow<span className="text-[var(--energy)]">!</span>
-          </motion.p>
-
-          <motion.h1
-            initial={prefersReduced ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-6 max-w-lg font-display text-2xl font-semibold tracking-tight text-stone-800 sm:text-3xl lg:text-[2.15rem] lg:leading-[1.15]"
-          >
-            Grow by unlocking skills — and sharing them.
-          </motion.h1>
-
-          <motion.p
-            initial={prefersReduced ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-4 max-w-md text-base leading-relaxed text-stone-600 sm:text-lg"
-          >
-            Interest feeds, peer instructors, and private-by-default journaling that turn intent into
-            progress you can be proud of.
-          </motion.p>
-
-          <motion.div
-            id="early-access-hero"
-            initial={prefersReduced ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-9 flex max-w-lg flex-col gap-4"
-          >
-            <WaitlistForm variant="hero" />
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-stone-500">
-              {appLive ? (
-                <a
-                  href={appStore}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-stone-700 underline-offset-4 transition hover:text-emerald-800 hover:underline"
-                >
-                  App Store
-                </a>
-              ) : (
-                <span>App Store soon</span>
-              )}
-              <span className="text-stone-300" aria-hidden>
-                /
-              </span>
-              {playLive ? (
-                <a
-                  href={playStore}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-stone-700 underline-offset-4 transition hover:text-emerald-800 hover:underline"
-                >
-                  Google Play
-                </a>
-              ) : (
-                <span>Google Play soon</span>
-              )}
-            </div>
-          </motion.div>
+    <section id="top" aria-labelledby="hero-title" className="px-5 pb-16 pt-10 sm:px-8 sm:pt-14 lg:px-10 lg:pb-24 lg:pt-20">
+      <div className="mx-auto grid max-w-6xl gap-x-16 gap-y-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:grid-rows-[auto_auto_1fr]">
+        <div className="lg:col-start-1 lg:row-start-1">
+          <h1 id="hero-title" className="display text-[clamp(2.75rem,6vw,5rem)] text-bark">
+            <span className="block">Grow a little</span>
+            <span className="block">every day.</span>
+            <span className="mt-2 block text-[0.62em] font-bold tracking-[-0.015em] text-bark/85">Without the scroll.</span>
+          </h1>
+          <p className="measure mt-6 max-w-[34rem] text-[1.125rem] leading-[1.6] text-moss">
+            Pick up to 3 things you care about — fitness, a language, art, money. Check in for ten
+            seconds a day, rest when you need to, and share the progress with friends who cheer you on.
+          </p>
         </div>
 
-        <motion.div
-          initial={prefersReduced ? false : { opacity: 0, scale: 1.03 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.9, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-          className="relative min-h-[42vh] w-full lg:min-h-[100dvh]"
-        >
-          <Image
-            src={HERO_IMAGE}
-            alt="People training outdoors with focus and calm energy"
-            fill
-            priority
-            sizes="(max-width: 1024px) 100vw, 48vw"
-            className="object-cover object-center"
-          />
-          <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[var(--surface)] via-transparent to-transparent lg:bg-gradient-to-l lg:from-transparent lg:via-transparent lg:to-[var(--surface)]/80"
-            aria-hidden
-          />
-        </motion.div>
+        <div className="lg:col-start-1 lg:row-start-2">
+          {/* Mobile */}
+          <div className="md:hidden">
+            <GetAppButton className="w-full" />
+          </div>
+          {/* Tablet / desktop */}
+          <div className="hidden flex-wrap items-center gap-4 md:flex">
+            <AppStoreBadge className="h-[56px]" />
+            <div className="hidden lg:block">
+              <QrCard />
+            </div>
+          </div>
+          <p className="mt-4 text-[0.9375rem] font-medium text-bark">Free. No ads. Your journal stays yours.</p>
+        </div>
+
+        <div className="lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:pt-2">
+          <Phone>
+            <CheckInDemo />
+          </Phone>
+          <p className="mx-auto mt-4 max-w-[340px] text-center text-sm text-moss">
+            This is the check-in from the app. Go on, tap it.
+          </p>
+        </div>
+
+        <div id="android" className="scroll-mt-28 lg:col-start-1 lg:row-start-3 lg:self-start">
+          <WaitlistForm inputId="android-email" />
+        </div>
       </div>
-    </header>
+    </section>
   );
 }

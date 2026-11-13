@@ -1,39 +1,36 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useId, useState } from 'react';
 
-const STORAGE_KEY = 'grow-waitlist-joined';
+/** Session-only memory: show "You're on the list" until the tab is closed, never forever. */
+const SESSION_KEY = 'grow-android-waitlist';
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
-export default function WaitlistForm({
-  variant = 'hero',
-}: {
-  variant?: 'hero' | 'footer' | 'dark';
-}) {
+export default function WaitlistForm({ inputId = 'android-email' }: { inputId?: string }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const labelId = useId();
+  const errorId = useId();
 
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEY)) {
-        setStatus('ok');
-        setMessage('You’re already on the Grow! early access list.');
-      }
+      if (window.sessionStorage.getItem(SESSION_KEY)) setStatus('ok');
     } catch {
-      /* ignore */
+      /* storage unavailable */
     }
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
     const trimmed = email.trim().toLowerCase();
     if (!isValidEmail(trimmed)) {
       setStatus('error');
-      setMessage('Enter a valid email address.');
+      setMessage('That email doesn’t look right. Check it and try again.');
       return;
     }
     setStatus('loading');
@@ -42,76 +39,65 @@ export default function WaitlistForm({
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({
+          email: trimmed,
+          platform: 'android',
+          source: 'landing',
+          // Honeypot: real people never see or fill this field.
+          company: (form.elements.namedItem('company') as HTMLInputElement | null)?.value ?? '',
+        }),
       });
-      const data = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
+        let error = 'Something went wrong. Try again in a moment.';
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (data.error) error = data.error;
+        } catch {
+          /* non-JSON error */
+        }
         setStatus('error');
-        setMessage(data.error || 'Something went wrong. Try again.');
+        setMessage(error);
         return;
       }
       try {
-        window.localStorage.setItem(STORAGE_KEY, '1');
+        window.sessionStorage.setItem(SESSION_KEY, '1');
       } catch {
         /* ignore */
       }
       setStatus('ok');
-      setMessage(data.message || 'You’re on the list. We’ll email you when Grow! launches.');
       setEmail('');
     } catch {
       setStatus('error');
-      setMessage('Network error. Try again.');
+      setMessage('No connection. Try again in a moment.');
     }
   };
 
-  const isDark = variant === 'dark';
-  const isHero = variant === 'hero';
-
   if (status === 'ok') {
     return (
-      <div
-        className={`rounded-2xl border px-4 py-4 text-sm ${
-          isDark
-            ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-50'
-            : 'border-emerald-200/80 bg-emerald-50 text-emerald-900'
-        }`}
-        role="status"
-      >
-        <p className="font-semibold">You’re in.</p>
-        <p className="mt-1 opacity-90">{message}</p>
-        <button
-          type="button"
-          className={`mt-3 text-xs font-semibold underline-offset-2 hover:underline ${
-            isDark ? 'text-emerald-100' : 'text-emerald-800'
-          }`}
-          onClick={() => {
-            try {
-              window.localStorage.removeItem(STORAGE_KEY);
-            } catch {
-              /* ignore */
-            }
-            setStatus('idle');
-            setMessage('');
-          }}
-        >
-          Add another email
-        </button>
-      </div>
+      <p role="status" className="text-[0.9375rem] text-bark">
+        <span className="font-semibold">You’re on the list.</span>{' '}
+        <span className="text-moss">One email, when Grow! is ready on Android.</span>
+      </p>
     );
   }
 
   return (
-    <div className={`w-full ${isHero || isDark ? 'max-w-md' : 'max-w-lg'}`}>
-      <form
-        onSubmit={onSubmit}
-        className="flex w-full flex-col gap-3 sm:flex-row sm:items-stretch"
-        noValidate
-      >
-        <label className="sr-only" htmlFor={`waitlist-email-${variant}`}>
+    <form onSubmit={onSubmit} noValidate aria-labelledby={labelId} className="w-full max-w-md">
+      <p id={labelId} className="text-[0.9375rem] text-moss">
+        On Android? We’ll email you once, when it’s ready.
+      </p>
+      <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+        <label>
+          Company
+          <input type="text" name="company" tabIndex={-1} autoComplete="off" defaultValue="" />
+        </label>
+      </div>
+      <div className="mt-2.5 flex gap-2">
+        <label htmlFor={inputId} className="sr-only">
           Email address
         </label>
         <input
-          id={`waitlist-email-${variant}`}
+          id={inputId}
           type="email"
           name="email"
           required
@@ -128,29 +114,22 @@ export default function WaitlistForm({
           }}
           disabled={status === 'loading'}
           aria-invalid={status === 'error'}
-          className={`min-h-12 flex-1 rounded-2xl border px-4 text-base outline-none transition focus:ring-2 focus:ring-emerald-500/50 ${
-            isDark
-              ? 'border-white/20 bg-white/10 text-white placeholder:text-emerald-100/55'
-              : 'border-stone-300/90 bg-[var(--surface-elevated)] text-stone-900 placeholder:text-stone-400 shadow-[0_1px_0_rgba(28,25,23,0.04)]'
-          }`}
+          aria-describedby={status === 'error' ? errorId : undefined}
+          className="min-h-[44px] min-w-0 flex-1 rounded-[14px] border border-[#CFC7B6] bg-card px-3.5 text-base text-bark placeholder:text-[#8A847C] focus-visible:border-leaf"
         />
         <button
           type="submit"
           disabled={status === 'loading'}
-          className={`min-h-12 shrink-0 rounded-2xl px-6 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-60 ${
-            isDark
-              ? 'bg-white text-emerald-950 hover:bg-emerald-50'
-              : 'bg-emerald-700 text-white hover:bg-emerald-800'
-          }`}
+          className="min-h-[44px] shrink-0 rounded-[14px] border border-bark/80 px-4 text-sm font-semibold text-bark transition-colors hover:bg-bark hover:text-soil disabled:opacity-60"
         >
-          {status === 'loading' ? 'Joining…' : 'Get early access'}
+          {status === 'loading' ? 'Sending…' : 'Notify me'}
         </button>
-      </form>
-      {message && status === 'error' ? (
-        <p className={`mt-2 text-sm ${isDark ? 'text-red-200' : 'text-red-600'}`} role="alert">
+      </div>
+      {status === 'error' ? (
+        <p id={errorId} role="alert" className="mt-2 text-sm text-[#B42318]">
           {message}
         </p>
       ) : null}
-    </div>
+    </form>
   );
 }

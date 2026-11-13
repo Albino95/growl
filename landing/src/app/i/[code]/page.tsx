@@ -4,7 +4,9 @@ import SiteFooter from '@/components/SiteFooter';
 import CopyCodeButton from '@/components/CopyCodeButton';
 import { getAppStoreUrl } from '@/lib/seo';
 
-const API_BASE = 'https://growl-backend-production.wispy-leaf-4e8b.workers.dev/api/v1';
+const API_BASE = (
+  process.env.GROW_API_URL?.trim() || 'https://growl-backend-production.wispy-leaf-4e8b.workers.dev/api/v1'
+).replace(/\/$/, '');
 
 type Inviter = { username: string; avatar: string | null };
 type Lookup = { status: 'ok'; inviter: Inviter } | { status: 'expired' } | { status: 'error' };
@@ -104,7 +106,7 @@ export default async function InvitePage({ params }: Props) {
               ) : (
                 <div
                   aria-hidden
-                  className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-[#fffcf7] bg-emerald-600 font-display text-4xl font-bold text-white shadow-[0_12px_30px_rgba(28,25,23,0.12)]"
+                  className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-[#fffcf7] bg-emerald-700 font-display text-4xl font-bold text-white shadow-[0_12px_30px_rgba(28,25,23,0.12)]"
                 >
                   {inviter ? initial : '🌱'}
                 </div>
@@ -127,7 +129,7 @@ export default async function InvitePage({ params }: Props) {
           <div className="mt-10 w-full rounded-3xl border border-stone-200/80 bg-[#fffcf7] p-6 shadow-[0_8px_30px_rgba(28,25,23,0.05)]">
             {lookup.status !== 'expired' ? (
               <>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-600">
                   Your invite code
                 </p>
                 <p
@@ -146,7 +148,7 @@ export default async function InvitePage({ params }: Props) {
             <div className={`flex flex-col gap-3 sm:flex-row ${lookup.status !== 'expired' ? 'mt-6' : ''}`}>
               <a
                 href={appStoreUrl}
-                className="inline-flex flex-1 items-center justify-center rounded-full bg-emerald-600 px-6 py-3.5 text-base font-semibold text-white transition hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+                className="inline-flex flex-1 items-center justify-center rounded-full bg-emerald-700 px-6 py-3.5 text-base font-semibold text-white transition hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
               >
                 Download on the App Store
               </a>
@@ -160,7 +162,7 @@ export default async function InvitePage({ params }: Props) {
               ) : null}
             </div>
             {lookup.status === 'error' ? (
-              <p className="mt-4 text-xs text-stone-500">
+              <p className="mt-4 text-xs text-stone-600">
                 We couldn’t check this invite right now, but the code should still work in the app.
               </p>
             ) : null}

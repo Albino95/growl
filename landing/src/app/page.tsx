@@ -1,27 +1,33 @@
 import Hero from '@/components/Hero';
-import FeatureSections from '@/components/FeatureSections';
-import FaqSection from '@/components/FaqSection';
-import SiteFooter from '@/components/SiteFooter';
+import WeekDays from '@/components/WeekDays';
+import WeekRail from '@/components/WeekRail';
 import SiteNav from '@/components/SiteNav';
-import ScrollProgress from '@/components/ScrollProgress';
-import { FAQ_ITEMS } from '@/lib/content';
-import { faqJsonLd } from '@/lib/seo';
+import SiteFooter from '@/components/SiteFooter';
+import { Faq, FinalCta, MadeIn, PrivacyPromise } from '@/components/Closing';
+import { StickyGetBar } from '@/components/MobileCta';
+import { faqJsonLd, faqItems } from '@/lib/seo';
 
 export default function HomePage() {
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(FAQ_ITEMS)) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqItems)) }}
       />
-      <ScrollProgress />
       <SiteNav />
-      <main id="main">
+      <main id="main" className="pt-16">
         <Hero />
-        <FeatureSections />
-        <FaqSection />
-        <SiteFooter />
+        <div className="relative border-t border-line">
+          <WeekRail />
+          <WeekDays />
+        </div>
+        <PrivacyPromise />
+        <Faq />
+        <MadeIn />
+        <FinalCta />
       </main>
+      <SiteFooter />
+      <StickyGetBar />
     </>
   );
 }

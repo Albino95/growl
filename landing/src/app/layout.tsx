@@ -1,48 +1,50 @@
 import type { Metadata } from 'next';
-import { Syne, DM_Sans } from 'next/font/google';
+import { Bricolage_Grotesque, Figtree } from 'next/font/google';
 import './globals.css';
 import {
-  SITE_DESCRIPTION,
   SITE_NAME,
-  SITE_TAGLINE,
+  APP_STORE_ID,
+  siteDescription,
   getSiteUrl,
   organizationJsonLd,
   softwareApplicationJsonLd,
   websiteJsonLd,
 } from '@/lib/seo';
 
-const display = Syne({
+const display = Bricolage_Grotesque({
   subsets: ['latin'],
-  variable: '--font-display',
+  variable: '--font-bricolage',
   display: 'swap',
-  weight: ['600', '700', '800'],
+  axes: ['opsz'],
 });
 
-const body = DM_Sans({
+const body = Figtree({
   subsets: ['latin'],
-  variable: '--font-body',
+  variable: '--font-figtree',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
 });
+
+const TITLE = 'Grow! — grow a little every day';
 
 const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: `${SITE_NAME} · ${SITE_TAGLINE}`,
+    default: TITLE,
     template: `%s · ${SITE_NAME}`,
   },
-  description: SITE_DESCRIPTION,
+  description: siteDescription,
   applicationName: SITE_NAME,
   keywords: [
     'Grow!',
     'Grow app',
     'personal growth',
-    'social fitness',
-    'instructors',
-    'habit building',
-    'growth marketplace',
+    'daily check-in',
+    'habit tracker',
+    'streak with rest days',
+    'private journal',
+    'growth with friends',
   ],
   authors: [{ name: SITE_NAME }],
   creator: SITE_NAME,
@@ -51,13 +53,13 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: siteUrl,
     siteName: SITE_NAME,
-    title: `${SITE_NAME} · ${SITE_TAGLINE}`,
-    description: SITE_DESCRIPTION,
+    title: TITLE,
+    description: siteDescription,
   },
   twitter: {
     card: 'summary_large_image',
-    title: `${SITE_NAME} · ${SITE_TAGLINE}`,
-    description: SITE_DESCRIPTION,
+    title: TITLE,
+    description: siteDescription,
   },
   alternates: {
     canonical: siteUrl,
@@ -72,6 +74,9 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
+  itunes: {
+    appId: APP_STORE_ID,
+  },
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
   },
@@ -82,10 +87,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
-      <body className="font-body antialiased">
+      <body className="bg-soil font-body text-bark antialiased">
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-emerald-950"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-bark"
         >
           Skip to content
         </a>

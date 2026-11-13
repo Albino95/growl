@@ -19,19 +19,14 @@ export default function LegalDocument({ id }: { id: LegalPageId }) {
   return (
     <>
       <SiteNav />
-      <main id="main" className="bg-[#f3eee4] pt-16">
-        <article className="mx-auto max-w-3xl px-6 py-16 sm:px-8 sm:py-20">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-800">
-            Grow!
-          </p>
-          <h1 className="mt-3 font-display text-4xl font-bold tracking-tight text-stone-900">
-            {page.title}
-          </h1>
-          <p className="mt-3 text-sm text-stone-500">Last updated {page.updatedAt}</p>
-          <p className="mt-4 text-base leading-7 text-stone-600">{page.description}</p>
+      <main id="main" className="bg-soil pt-16">
+        <article className="mx-auto max-w-3xl px-5 py-16 sm:px-8 sm:py-20">
+          <h1 className="display text-[2.5rem] text-bark">{page.title}</h1>
+          <p className="mt-3 text-sm text-moss">Last updated {page.updatedAt}</p>
+          <p className="measure mt-4 text-[1.0625rem] text-moss">{page.description}</p>
           <nav
             aria-label="Related legal pages"
-            className="mt-8 flex flex-wrap gap-x-5 gap-y-2 border-y border-stone-200/80 py-4 text-sm font-medium text-emerald-800"
+            className="mt-8 flex flex-wrap gap-x-5 gap-y-2 border-y border-line py-4 text-sm font-semibold text-leaf"
           >
             {(
               [
@@ -47,8 +42,8 @@ export default function LegalDocument({ id }: { id: LegalPageId }) {
                 href={href}
                 className={
                   href === `/${id}`
-                    ? 'text-stone-900 underline decoration-emerald-600/40 underline-offset-4'
-                    : 'transition hover:text-emerald-950'
+                    ? 'text-bark underline decoration-leaf/50 underline-offset-4'
+                    : 'hover:text-bark'
                 }
               >
                 {label}
@@ -58,9 +53,11 @@ export default function LegalDocument({ id }: { id: LegalPageId }) {
           <div className="mt-10 space-y-10">
             {page.sections.map((section) => (
               <section key={section.heading}>
-                <h2 className="text-lg font-semibold text-stone-900">{section.heading}</h2>
+                <h2 className="font-display text-[1.375rem] font-bold tracking-[-0.01em] text-bark">
+                  {section.heading}
+                </h2>
                 {section.body.map((para) => (
-                  <p key={para.slice(0, 48)} className="mt-3 text-base leading-7 text-stone-600">
+                  <p key={para.slice(0, 48)} className="measure mt-3 text-base leading-[1.7] text-moss">
                     {para}
                   </p>
                 ))}
@@ -68,8 +65,8 @@ export default function LegalDocument({ id }: { id: LegalPageId }) {
             ))}
           </div>
         </article>
-        <SiteFooter />
       </main>
+      <SiteFooter />
     </>
   );
 }
