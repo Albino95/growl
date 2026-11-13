@@ -59,6 +59,9 @@ import InstructorDiscoveryStrip from '../../components/instructor/InstructorDisc
 import { openCoachingReachOut } from '../../utils/coachingReachOut';
 import type { DiscoverInstructor } from '../../services/api/instructor';
 import { feedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
+import { useRefresh } from '../../hooks/useRefresh';
+import SpringIn from '../../components/ui/SpringIn';
 import PressableScale from '../../components/ui/PressableScale';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import MessagesInboxButton from '../../components/navigation/MessagesInboxButton';
@@ -101,9 +104,10 @@ export default function ExploreScreen() {
   friendIdsRef.current = friendIds;
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
+  /** The user a request was just sent to — its "Requested" pill springs in. */
+  const [justRequestedId, setJustRequestedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [shopPicks, setShopPicks] = useState<RankedProduct<ApiProduct>[]>([]);
@@ -212,7 +216,6 @@ export default function ExploreScreen() {
       setLoadError('Could not refresh explore content.');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [user?.id, userPaths]);
 
@@ -323,12 +326,11 @@ export default function ExploreScreen() {
     [navigation]
   );
 
-  const onRefresh = () => {
-    feedback.refresh();
-    setRefreshing(true);
+  const refresh = useRefresh(() => {
     setChallengesRefreshKey((k) => k + 1);
-    void load();
-  };
+    return load();
+  });
+  const { refreshing, onRefresh } = refresh;
 
   const pathCapsules: CapsuleItem[] = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -449,9 +451,12 @@ export default function ExploreScreen() {
     if (addingId) return;
     if (friendIds.has(userId) || pendingRequestIds.has(userId)) return;
     setAddingId(userId);
+    haptic('tapLight');
     try {
       const result = await addFriend(userId);
       if (result.connected) {
+        // They had already asked us — this tap accepted it.
+        haptic('success');
         setFriendIds((prev) => new Set([...prev, userId]));
         setPendingRequestIds((prev) => {
           const next = new Set(prev);
@@ -464,6 +469,7 @@ export default function ExploreScreen() {
           )
         );
       } else if (result.requestSent) {
+        setJustRequestedId(userId);
         setPendingRequestIds((prev) => new Set([...prev, userId]));
         setSearchHits((prev) =>
           prev.map((h) =>
@@ -597,9 +603,12 @@ export default function ExploreScreen() {
         {isFriend ? (
           <Ionicons name="checkmark-circle" size={22} color="#059669" />
         ) : isRequested ? (
-          <View style={tw`bg-stone-100 border border-stone-200 px-3 py-2 rounded-xl`}>
+          <SpringIn
+            animate={justRequestedId === hit.id}
+            style={tw`bg-stone-100 border border-stone-200 px-3 py-2 rounded-xl`}
+          >
             <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
-          </View>
+          </SpringIn>
         ) : (
           <TouchableOpacity
             onPress={() => void onAddFriend(hit.id)}
@@ -1020,9 +1029,12 @@ export default function ExploreScreen() {
                       <Text style={tw`text-stone-600 text-xs font-bold`}>Friends</Text>
                     </View>
                   ) : pendingRequestIds.has(person.userId) ? (
-                    <View style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}>
+                    <SpringIn
+                      animate={justRequestedId === person.userId}
+                      style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
+                    >
                       <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
-                    </View>
+                    </SpringIn>
                   ) : (
                     <TouchableOpacity
                       onPress={() => void onAddFriend(person.userId)}
@@ -1117,7 +1129,7 @@ export default function ExploreScreen() {
           <View style={tw`flex-row items-center justify-between`}>
             <Text style={tw`flex-1 text-sm text-red-700`}>{loadError}</Text>
             <TouchableOpacity
-              onPress={onRefresh}
+              onPress={() => void onRefresh()}
               disabled={refreshing}
               accessibilityRole="button"
               accessibilityLabel="Retry loading explore content"
@@ -1173,9 +1185,12 @@ export default function ExploreScreen() {
                   {isFriend ? (
                     <Ionicons name="checkmark-circle" size={22} color="#059669" />
                   ) : isRequested ? (
-                    <View style={tw`bg-stone-100 px-2.5 py-1.5 rounded-lg`}>
+                    <SpringIn
+                      animate={justRequestedId === p.user_id}
+                      style={tw`bg-stone-100 px-2.5 py-1.5 rounded-lg`}
+                    >
                       <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
-                    </View>
+                    </SpringIn>
                   ) : (
                     <TouchableOpacity
                       onPress={(e) => {
@@ -1200,12 +1215,7 @@ export default function ExploreScreen() {
           {...feedListPerformanceProps}
           keyboardShouldPersistTaps="handled"
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#059669"
-              colors={['#059669']}
-            />
+            <RefreshControl {...refresh} />
           }
           ListEmptyComponent={
             isSearching ? null : filteredPeople.length === 0 ? (

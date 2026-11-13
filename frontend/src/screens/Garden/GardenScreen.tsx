@@ -7,7 +7,6 @@ import {
   RefreshControl,
   Dimensions,
   Animated,
-  Easing,
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Audio, type AVPlaybackStatus } from 'expo-av';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { breathe, easing as motionEasing } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
@@ -189,43 +190,35 @@ export default function GardenScreen() {
   }, [mode, musicOn, maturedCount]);
 
   const orbActive = breathLeft > 0 || voicePlaying;
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
     if (!orbActive) {
       breathAnim.setValue(0);
       ringAnim.setValue(0);
       return;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathAnim, {
-          toValue: 1,
-          duration: 4000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(breathAnim, {
-          toValue: 0,
-          duration: 4000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    // Reduce Motion: the orb holds still (the countdown still paces the breath).
+    if (reducedMotion) {
+      breathAnim.setValue(0.5);
+      ringAnim.setValue(0);
+      return;
+    }
+    const loop = breathe(breathAnim, 0, 1, { period: 8000 });
     const rings = Animated.loop(
       Animated.timing(ringAnim, {
         toValue: 1,
         duration: 4200,
-        easing: Easing.out(Easing.quad),
+        easing: motionEasing.out,
         useNativeDriver: true,
       })
     );
-    loop.start();
+    loop?.start();
     rings.start();
     return () => {
-      loop.stop();
+      loop?.stop();
       rings.stop();
     };
-  }, [orbActive, breathAnim, ringAnim]);
+  }, [orbActive, breathAnim, ringAnim, reducedMotion]);
 
   const startBreathe = (seconds: number) => {
     if (maturedCount < 3) {

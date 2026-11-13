@@ -9,6 +9,7 @@ import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedback } from '../../utils/interactionFeedback';
 import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { spring } from '../../theme/motion';
 
 type StepId =
   | 'welcome'
@@ -264,12 +265,7 @@ function Mascot({
     bounce.setValue(0);
     spin.setValue(0);
     Animated.parallel([
-      Animated.spring(bounce, {
-        toValue: 1,
-        useNativeDriver: true,
-        speed: 16,
-        bounciness: 12,
-      }),
+      spring(bounce, 1, 'bouncy'),
       Animated.timing(spin, {
         toValue: 1,
         duration: 420,
@@ -372,7 +368,7 @@ export default function DemoTutorial({ onFinished }: Props) {
       slide.setValue(next > index ? 16 : -16);
       Animated.parallel([
         Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.spring(slide, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 8 }),
+        spring(slide, 0, 'gentle'),
       ]).start();
     });
   };
@@ -541,7 +537,6 @@ export default function DemoTutorial({ onFinished }: Props) {
           <View style={tw`flex-row items-center`}>
             {!isFirst ? (
               <PressableScale
-                feedback="tap"
                 onPress={() => go(index - 1)}
                 style={tw`w-[72px] h-[50px] rounded-2xl border border-stone-200 bg-[#FFFcf7] items-center justify-center mr-3`}
               >

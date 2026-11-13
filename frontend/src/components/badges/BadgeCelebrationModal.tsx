@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, Modal, Text, View, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Modal, Text, View, StyleSheet, Dimensions } from 'react-native';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import BadgeIcon from './BadgeIcon';
 import { RARE_BADGE_IDS, badgeVisual } from './badgeMeta';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
-import { triggerFeedback } from '../../utils/interactionFeedback';
+import { celebrateOnce } from '../../theme/haptics';
+import { breathe, duration, easing, spring, timing } from '../../theme/motion';
 import { markBadgesSeen, type BadgeEarned } from '../../services/api/growth';
 
 type Props = {
@@ -51,7 +52,8 @@ function makePieces(seed: string): Piece[] {
 
 /**
  * Full-screen celebration for one earned badge. RN Animated only, native driver.
- * Reduce Motion: no confetti / scale, just a fade.
+ * Reduce Motion: no confetti / scale, just a fade. Confetti + the celebrate
+ * haptic fire once ever per badge (celebrateOnce); the card shows for any unseen badge.
  */
 export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, onNext }: Props) {
   const reduced = useReducedMotion();
@@ -59,7 +61,8 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
   const scale = useRef(new Animated.Value(0.4)).current;
   const glow = useRef(new Animated.Value(0)).current;
   const confetti = useRef(Array.from({ length: CONFETTI_COUNT }, () => new Animated.Value(0))).current;
-  const glowLoop = useRef<Animated.CompositeAnimation | null>(null);
+  /** Confetti + celebrate haptic play once ever per badge (celebrateOnce). */
+  const [confettiOn, setConfettiOn] = useState(false);
 
   const badgeId = badge?.id ?? '';
   const pieces = useMemo(() => makePieces(badgeId || 'badge'), [badgeId]);
@@ -67,55 +70,54 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
 
   useEffect(() => {
     if (!badgeId) return;
-    triggerFeedback('celebrate');
+    let alive = true;
+    let burst: Animated.CompositeAnimation | null = null;
+    setConfettiOn(false);
     fade.setValue(0);
     scale.setValue(reduced ? 1 : 0.4);
     glow.setValue(0);
     confetti.forEach((v) => v.setValue(0));
 
-    const anims: Animated.CompositeAnimation[] = [
-      Animated.timing(fade, { toValue: 1, duration: reduced ? 180 : 220, useNativeDriver: true }),
-    ];
-    if (!reduced) {
-      anims.push(
-        Animated.spring(scale, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true }),
-        Animated.stagger(
-          12,
-          confetti.map((v, i) =>
-            Animated.timing(v, {
-              toValue: 1,
-              duration: 1500,
-              delay: pieces[i].delay,
-              easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
-            })
-          )
-        )
-      );
-    }
-    const intro = Animated.parallel(anims);
+    // The card + medal always show for an unseen badge.
+    const intro = Animated.parallel([
+      timing(fade, 1, { duration: duration.base, easing: easing.out }, reduced),
+      spring(scale, 1, 'bouncy', reduced),
+    ]);
     intro.start();
 
-    glowLoop.current?.stop();
-    if (!reduced) {
-      glowLoop.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glow, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-          Animated.timing(glow, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        ])
+    // Haptic + confetti only the first time this badge is ever celebrated on this device.
+    void celebrateOnce(`badge:${badgeId}`).then((fresh) => {
+      if (!alive || !fresh || reduced) return;
+      setConfettiOn(true);
+      burst = Animated.stagger(
+        12,
+        confetti.map((v, i) =>
+          Animated.timing(v, {
+            toValue: 1,
+            duration: 1500,
+            delay: pieces[i].delay,
+            easing: easing.out,
+            useNativeDriver: true,
+          })
+        )
       );
-      glowLoop.current.start();
-    }
+      burst.start();
+    });
+
+    const glowLoop = breathe(glow, 0, 1, { period: 2200 }, reduced);
+    glowLoop?.start();
     return () => {
+      alive = false;
       intro.stop();
-      glowLoop.current?.stop();
+      burst?.stop();
+      glowLoop?.stop();
     };
   }, [badgeId, reduced]);
 
   const finish = (share: boolean) => {
     if (!badge) return;
     void markBadgesSeen([badge.id]).catch(() => undefined);
-    triggerFeedback('tap');
+    // Silent: Share opens a sheet, "Nice!" just dismisses — no extra tick after the celebration.
     if (share) onShare(badge);
     else onNext(badge);
   };
@@ -130,7 +132,7 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
         {badge ? (
           <View style={tw`w-full max-w-sm items-center`}>
             {/* Confetti (behind the card) */}
-            {!reduced ? (
+            {!reduced && confettiOn ? (
               <View pointerEvents="none" style={[StyleSheet.absoluteFill, tw`items-center`, { top: 70 }]}>
                 {pieces.map((p, i) => {
                   const v = confetti[i];

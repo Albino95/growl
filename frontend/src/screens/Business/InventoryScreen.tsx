@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { useRefresh } from '../../hooks/useRefresh';
 import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedListPerformanceProps } from '../../constants/scroll';
@@ -44,7 +45,6 @@ export default function InventoryScreen() {
   const threshold = useAppSelector((s) => s.business.kpis?.low_stock_threshold) ?? 10;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<(typeof products)[0] | null>(null);
 
@@ -60,11 +60,7 @@ export default function InventoryScreen() {
     }
   }, [route.params?.openForm, navigation]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await dispatch(fetchBusinessProducts());
-    setRefreshing(false);
-  };
+  const refresh = useRefresh(() => dispatch(fetchBusinessProducts()));
 
   // Catalog changes affect dashboard KPIs (stock, inventory value, low-stock alerts).
   const refreshAfterCatalogChange = async () => {
@@ -241,7 +237,7 @@ export default function InventoryScreen() {
           filteredProducts.length === 0 ? tw`flex-grow` : null,
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" colors={['#059669']} />
+          <RefreshControl {...refresh} />
         }
         {...feedListPerformanceProps}
         ListEmptyComponent={

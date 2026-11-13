@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { haptic } from '../../theme/haptics';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import { featureFlags } from '../../constants/featureFlags';
 import {
@@ -182,7 +183,10 @@ function PrefRow({
       </View>
       <Switch
         value={value}
-        onValueChange={onToggle}
+        onValueChange={() => {
+          haptic('selection');
+          onToggle();
+        }}
         disabled={disabled}
         trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
         thumbColor={value ? '#059669' : '#F5F5F4'}

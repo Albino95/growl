@@ -5,6 +5,7 @@ import CATEGORIES, { type Category } from '../../data/categories';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { alertMessage } from '../../utils/confirmDialog';
 import tw from '../../lib/tw';
+import { getReducedMotion } from '../../hooks/useReducedMotion';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -119,7 +120,8 @@ export default function GrowthAreasPicker({ value, onChange, showCountBanner = t
     normalized.some((k) => parentKeyOf(k) === category.key);
 
   const expand = (key: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // Reduce Motion: expand/collapse instantly.
+    if (!getReducedMotion()) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedCategory((prev) => (prev === key ? null : key));
   };
 

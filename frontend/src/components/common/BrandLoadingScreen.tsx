@@ -1,9 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Animated,
+  Dimensions,
+  Easing,
+  Platform,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { theme } from '../../lib/tw';
+import { easing as motionEasing } from '../../theme/motion';
 import { triggerFeedback } from '../../utils/interactionFeedback';
 import { markFirstOpenSeen, resolveBootMode, type BootMode } from '../../utils/firstLaunch';
+import { markBootRevealStart } from '../auth/bootSplashSignal';
 
 export type BrandLoadingVariant = 'splash' | 'page' | 'dark';
 
@@ -16,8 +27,15 @@ type Props = {
   showWordmark?: boolean;
   /** When false, leave StatusBar alone (nested in screens with their own bar) */
   manageStatusBar?: boolean;
-  /** Fired when the loader layout is ready (hide native splash after paint). */
+  /** Fired when the loader layout is ready. */
   onLayout?: () => void;
+  /**
+   * Cold-start only: fired once the brand mark has actually loaded at the
+   * native splash rect (both image layers `onLoadEnd` + full-screen layout),
+   * i.e. the JS frame now looks exactly like the native splash. Hide the
+   * native splash here, not on layout.
+   */
+  onMarkPainted?: () => void;
   /**
    * Cold-start only: parent says the session is hydrated.
    * Intro still plays to the end; then we fade out.
@@ -32,7 +50,7 @@ type Props = {
    */
   exitBackground?: string;
   /**
-   * Cold-start only. `daily` = ~0.5s wake-up, `first` = ~1.6s sprout intro,
+   * Cold-start only. `daily` = ~0.4s wake-up, `first` = ~1.3s sprout intro,
    * `auto` = read the `grow.firstOpenSeen` flag (capped at 100ms → daily).
    * Omit for in-app loaders (classic grow + breath loop).
    */
@@ -75,33 +93,640 @@ const PALETTE = {
   },
 };
 
-const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+const EASE_OUT = motionEasing.out;
+const OUT_CUBIC = Easing.out(Easing.cubic);
 
 /** Grow + smile + hold. Breath loops after that until `ready`. */
 const INTRO_MS = 680 + 360 + 420;
 const EXIT_MS = 340;
 const SAFETY_MS = 5200;
 
-/* Cold-start timings (ms). */
-/** Daily: earliest exit (exit waits for max(this, ready)). */
-const DAILY_MIN_MS = 220;
-const DAILY_EXIT_MS = 280;
-/** Daily: still not ready → show wordmark + "Still growing." and breathe. */
-const DAILY_SLOW_MS = 1200;
-const DAILY_HAPTIC_MS = 200;
-/** First launch: smile + bloom haptic, tagline, then hold until exit. */
-const FIRST_SMILE_MS = 600;
-const FIRST_TAGLINE_MS = 760;
-const FIRST_HOLD_MS = 1300;
-const REDUCED_EXIT_MS = 150;
-const STEM_H = 36;
+/**
+ * Default export: cold start (`mode` set) renders the brand-mark boot splash;
+ * everything else (in-app gates, page/dark variants) keeps the classic seed.
+ * `mode` is fixed for the life of a mount.
+ */
+export default function BrandLoadingScreen(props: Props) {
+  const isBoot = useRef(!!props.mode).current;
+  return isBoot ? <BootSplash {...props} /> : <ClassicLoader {...props} />;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Cold start: the brand mark, handed off pixel-for-pixel from native.      */
+/* ------------------------------------------------------------------------ */
 
 /**
- * Cold-start / gate loader — a seed that swells and smiles.
- * Not a spinner, not orbit rings, not a leaf.
- * Pass `ready` + `onFinished` on app open so Home waits for the intro.
+ * Must match app.config.ts → splash / expo-splash-screen `imageWidth`.
+ * iOS centres the image in the launch storyboard's full-screen container;
+ * Android 12+ centres it in the window. Both: the full screen, no insets.
  */
-export default function BrandLoadingScreen({
+const MARK = 128;
+const HALO_D = MARK * 2.4;
+const LEAF_SRC = require('../../../assets/boot/leaf.png');
+const SMILE_SRC = require('../../../assets/boot/smile.png');
+/** Leaf base (where it meets the smile) relative to the mark centre, in pt. Pivot for tilt/dip. */
+const LEAF_PIVOT = { x: -5, y: 19 };
+
+/* Daily (ms from the JS frame that matches the native splash). */
+const D_WAKE_AT = 90;
+const D_WAKE_MS = 140;
+const D_HAPTIC_MS = 230;
+const D_HALO_MS = 240;
+/** Earliest exit; actual exit = max(this, ready). */
+const D_MIN_MS = 380;
+/** Still not ready → wordmark + "Still growing." and breathe. */
+const D_SLOW_MS = 1200;
+
+/* First launch. */
+const F_DIP_AT = 120;
+const F_DIP_MS = 200;
+const F_SPROUT_AT = 320;
+const F_HALO_AT = 380;
+const F_HALO_MS = 300;
+const F_HAPTIC_MS = 560;
+const F_TAGLINE_AT = 700;
+const F_HOLD_MS = 1300;
+
+/* Exit. */
+const X_MARK_MS = 260;
+const X_MARK_FADE_MS = 160;
+const X_BG_DELAY = 40;
+const X_BG_MS = 260;
+const REDUCED_EXIT_MS = 150;
+/** Native splash safety in case an image never reports load. */
+const PAINT_FALLBACK_MS = 2500;
+
+type Halo = { color: string; opacity: number; dusk: number };
+
+/** Same hour bands as src/utils/greeting.ts (05–11, 12–17, 18–22, 23–04). */
+export function haloForHour(hour: number): Halo {
+  if (hour >= 5 && hour <= 11) return { color: '#FCD34D', opacity: 0.18, dusk: 0 };
+  if (hour >= 12 && hour <= 17) return { color: '#ECFDF5', opacity: 0.1, dusk: 0 };
+  if (hour >= 18 && hour <= 22) return { color: '#FDBA74', opacity: 0.1, dusk: 0.15 };
+  return { color: '#064E3B', opacity: 0.25, dusk: 0 };
+}
+
+/** The halo's soft blend + big scale is the costliest layer; skip it on old Android. */
+const LITE =
+  Platform.OS === 'android' && typeof Platform.Version === 'number' && Platform.Version < 29;
+
+function BootSplash({
+  message,
+  showWordmark = true,
+  manageStatusBar = true,
+  onLayout,
+  onMarkPainted,
+  ready = true,
+  onFinished,
+  exitBackground,
+  mode,
+}: Props) {
+  const palette = PALETTE.splash;
+  const halo = useRef(haloForHour(new Date().getHours())).current;
+
+  // Native-splash rect. Seeded from the window so images start loading on the
+  // first render; corrected by the root (full-screen) onLayout before we paint.
+  const [size, setSize] = useState(() => {
+    const w = Dimensions.get('window');
+    return { w: w.width, h: w.height };
+  });
+
+  // Every value starts at its "identical to native splash" state.
+  const bgOpacity = useRef(new Animated.Value(1)).current;
+  const bgShift = useRef(new Animated.Value(0)).current;
+  const rootOpacity = useRef(new Animated.Value(1)).current;
+  const dusk = useRef(new Animated.Value(0)).current;
+  const wake = useRef(new Animated.Value(1)).current;
+  const breath = useRef(new Animated.Value(0)).current;
+  const exitScale = useRef(new Animated.Value(1)).current;
+  const markOpacity = useRef(new Animated.Value(1)).current;
+  const leafY = useRef(new Animated.Value(0)).current;
+  const leafTilt = useRef(new Animated.Value(0)).current; // degrees
+  const leafScale = useRef(new Animated.Value(1)).current;
+  const smileX = useRef(new Animated.Value(1)).current;
+  const haloOpacity = useRef(new Animated.Value(0)).current;
+  const haloScale = useRef(new Animated.Value(1)).current;
+  const tagline = useRef(new Animated.Value(0)).current;
+  const taglineRise = useRef(new Animated.Value(8)).current;
+  const late = useRef(new Animated.Value(0)).current;
+
+  const [exiting, setExiting] = useState(false);
+  const exitBackgroundRef = useRef(exitBackground);
+  exitBackgroundRef.current = exitBackground;
+  const reducedRef = useRef(false);
+  const introDoneRef = useRef(false);
+  const finishedRef = useRef(false);
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
+  const onMarkPaintedRef = useRef(onMarkPainted);
+  onMarkPaintedRef.current = onMarkPainted;
+  const breathLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // ---- Paint gate: layout + both mark layers loaded → hide native, start timeline.
+  const paintRef = useRef({ layout: false, leaf: false, smile: false, fired: false });
+  const startTimelineRef = useRef<(() => void) | null>(null);
+  const firePaintedIfReady = useCallback(() => {
+    const g = paintRef.current;
+    if (g.fired || !g.layout || !g.leaf || !g.smile) return;
+    g.fired = true;
+    onMarkPaintedRef.current?.();
+    startTimelineRef.current?.();
+  }, []);
+  const forcePainted = useCallback(() => {
+    const g = paintRef.current;
+    g.layout = g.leaf = g.smile = true;
+    firePaintedIfReady();
+  }, [firePaintedIfReady]);
+
+  const handleRootLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const { width, height } = e.nativeEvent.layout;
+      setSize((s) => (s.w === width && s.h === height ? s : { w: width, h: height }));
+      onLayout?.();
+      // Let the corrected position commit before we report "painted".
+      requestAnimationFrame(() => {
+        paintRef.current.layout = true;
+        firePaintedIfReady();
+      });
+    },
+    [firePaintedIfReady, onLayout],
+  );
+  const onLeafLoaded = useCallback(() => {
+    paintRef.current.leaf = true;
+    firePaintedIfReady();
+  }, [firePaintedIfReady]);
+  const onSmileLoaded = useCallback(() => {
+    paintRef.current.smile = true;
+    firePaintedIfReady();
+  }, [firePaintedIfReady]);
+
+  const tryExit = useCallback(() => {
+    if (finishedRef.current) return;
+    if (!introDoneRef.current) return;
+    if (!readyRef.current) return;
+    if (!onFinishedRef.current) return;
+    finishedRef.current = true;
+    breathLoopRef.current?.stop();
+    const reduced = reducedRef.current;
+    // Icons go dark as the exit starts, not at unmount, so they never sit
+    // white over the cream page underneath.
+    setExiting(true);
+    markBootRevealStart({ animate: !reduced });
+    const done = ({ finished }: { finished: boolean }) => {
+      if (finished) onFinishedRef.current?.();
+    };
+    const toCream = !!exitBackgroundRef.current;
+
+    if (reduced || LITE) {
+      const ms = reduced ? REDUCED_EXIT_MS : X_BG_MS;
+      const anims: Animated.CompositeAnimation[] = toCream
+        ? [
+            Animated.timing(bgShift, {
+              toValue: 1,
+              duration: ms,
+              easing: EASE_OUT,
+              useNativeDriver: true,
+            }),
+            Animated.timing(markOpacity, {
+              toValue: 0,
+              duration: Math.round(ms * 0.7),
+              easing: EASE_OUT,
+              useNativeDriver: true,
+            }),
+          ]
+        : [
+            Animated.timing(rootOpacity, {
+              toValue: 0,
+              duration: ms,
+              easing: EASE_OUT,
+              useNativeDriver: true,
+            }),
+          ];
+      Animated.parallel(anims).start(done);
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(exitScale, {
+        toValue: 1.8,
+        duration: X_MARK_MS,
+        easing: motionEasing.standard,
+        useNativeDriver: true,
+      }),
+      Animated.timing(markOpacity, {
+        toValue: 0,
+        duration: X_MARK_FADE_MS,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+      Animated.timing(haloScale, {
+        toValue: 5,
+        duration: X_MARK_MS,
+        easing: motionEasing.standard,
+        useNativeDriver: true,
+      }),
+      Animated.timing(haloOpacity, {
+        toValue: 0,
+        duration: X_MARK_MS,
+        easing: EASE_OUT,
+        useNativeDriver: true,
+      }),
+      Animated.timing(tagline, { toValue: 0, duration: X_MARK_FADE_MS, useNativeDriver: true }),
+      Animated.timing(late, { toValue: 0, duration: X_MARK_FADE_MS, useNativeDriver: true }),
+      toCream
+        ? // Signed out: emerald → cream auth page; unmount is then seamless.
+          Animated.timing(bgShift, {
+            toValue: 1,
+            duration: X_BG_MS,
+            delay: X_BG_DELAY,
+            easing: EASE_OUT,
+            useNativeDriver: true,
+          })
+        : // Signed in: the emerald lifts off Home (which settles 1.03 → 1 underneath).
+          Animated.timing(bgOpacity, {
+            toValue: 0,
+            duration: X_BG_MS,
+            delay: X_BG_DELAY,
+            easing: EASE_OUT,
+            useNativeDriver: true,
+          }),
+    ]).start(done);
+  }, [
+    bgOpacity,
+    bgShift,
+    exitScale,
+    haloOpacity,
+    haloScale,
+    late,
+    markOpacity,
+    rootOpacity,
+    tagline,
+  ]);
+
+  const markIntroDone = useCallback(() => {
+    introDoneRef.current = true;
+    tryExit();
+  }, [tryExit]);
+
+  const startBreath = useCallback(() => {
+    if (reducedRef.current || breathLoopRef.current) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breath, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breath, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    breathLoopRef.current = loop;
+    loop.start();
+  }, [breath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const later = (ms: number, fn: () => void) => {
+      timers.push(
+        setTimeout(() => {
+          if (!cancelled) fn();
+        }, ms),
+      );
+    };
+
+    const haloIn = (to: number, ms: number, delay: number) => {
+      if (LITE) return;
+      Animated.timing(haloOpacity, {
+        toValue: to,
+        duration: ms,
+        delay,
+        easing: EASE_OUT,
+        useNativeDriver: true,
+      }).start();
+      if (halo.dusk > 0) {
+        Animated.timing(dusk, {
+          toValue: halo.dusk,
+          duration: ms,
+          delay,
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }).start();
+      }
+    };
+
+    const settle = (v: Animated.Value, toValue: number) =>
+      Animated.spring(v, { toValue, damping: 12, stiffness: 200, mass: 1, useNativeDriver: true });
+    const t140 = (v: Animated.Value, toValue: number) =>
+      Animated.timing(v, {
+        toValue,
+        duration: D_WAKE_MS,
+        easing: OUT_CUBIC,
+        useNativeDriver: true,
+      });
+
+    const playDaily = (reduced: boolean) => {
+      if (!reduced) {
+        // t=90 wake (140ms) → t=230 spring settle.
+        Animated.sequence([
+          Animated.delay(D_WAKE_AT),
+          Animated.parallel([
+            t140(wake, 1.05),
+            t140(leafY, -6),
+            t140(leafTilt, -5),
+            t140(smileX, 1.06),
+          ]),
+          Animated.parallel([
+            settle(wake, 1),
+            settle(leafY, 0),
+            settle(leafTilt, 0),
+            settle(smileX, 1),
+          ]),
+        ]).start();
+        haloIn(halo.opacity, D_HALO_MS, D_WAKE_AT);
+      }
+      later(D_HAPTIC_MS, () => triggerFeedback('bloom'));
+      later(D_MIN_MS, markIntroDone);
+      later(D_SLOW_MS, () => {
+        if (finishedRef.current || readyRef.current) return;
+        // Slow network: say so, and let the mark breathe while we wait.
+        Animated.timing(late, {
+          toValue: 1,
+          duration: 320,
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }).start();
+        startBreath();
+      });
+    };
+
+    const playFirst = (reduced: boolean) => {
+      if (reduced) {
+        tagline.setValue(1);
+        taglineRise.setValue(0);
+      } else {
+        // Leaf dips into the smile (tilting as it goes)…
+        Animated.timing(leafY, {
+          toValue: 10,
+          duration: F_DIP_MS,
+          delay: F_DIP_AT,
+          easing: motionEasing.standard,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(leafScale, {
+          toValue: 0.9,
+          duration: F_DIP_MS,
+          delay: F_DIP_AT,
+          easing: motionEasing.standard,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(leafTilt, {
+          toValue: -12,
+          duration: F_DIP_MS,
+          delay: F_DIP_AT,
+          easing: motionEasing.standard,
+          useNativeDriver: true,
+        }).start();
+        // …then sprouts back up: −12° → 0, scale → 1.
+        const sprout = (v: Animated.Value, toValue: number) =>
+          Animated.spring(v, {
+            toValue,
+            damping: 10,
+            stiffness: 160,
+            mass: 1,
+            delay: F_SPROUT_AT,
+            useNativeDriver: true,
+          });
+        Animated.parallel([sprout(leafY, 0), sprout(leafTilt, 0), sprout(leafScale, 1)]).start();
+        if (!LITE) {
+          haloScale.setValue(0.85);
+          Animated.timing(haloScale, {
+            toValue: 1,
+            duration: F_HALO_MS,
+            delay: F_HALO_AT,
+            easing: EASE_OUT,
+            useNativeDriver: true,
+          }).start();
+        }
+        haloIn(0.2, F_HALO_MS, F_HALO_AT);
+        Animated.parallel([
+          Animated.timing(tagline, {
+            toValue: 1,
+            duration: 240,
+            delay: F_TAGLINE_AT,
+            easing: EASE_OUT,
+            useNativeDriver: true,
+          }),
+          Animated.timing(taglineRise, {
+            toValue: 0,
+            duration: 240,
+            delay: F_TAGLINE_AT,
+            easing: EASE_OUT,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+      later(F_HAPTIC_MS, () => triggerFeedback('bloom'));
+      later(F_HOLD_MS, () => {
+        markFirstOpenSeen();
+        markIntroDone();
+        if (!finishedRef.current) startBreath();
+      });
+    };
+
+    const reducedP = AccessibilityInfo.isReduceMotionEnabled()
+      .then((r) => !!r)
+      .catch(() => false);
+    const modeP: Promise<BootMode> =
+      !mode || mode === 'auto' ? resolveBootMode(100) : Promise.resolve(mode);
+    // The timeline starts when the mark is on screen (native splash hidden)
+    // AND we know the mode — never under the native splash.
+    const paintedP = new Promise<void>((resolve) => {
+      startTimelineRef.current = resolve;
+      if (paintRef.current.fired) resolve();
+    });
+    later(PAINT_FALLBACK_MS, forcePainted);
+
+    Promise.all([reducedP, modeP, paintedP]).then(([reduced, m]) => {
+      if (cancelled || finishedRef.current) return;
+      reducedRef.current = reduced;
+      if (m === 'first') playFirst(reduced);
+      else playDaily(reduced);
+    });
+
+    const safety = setTimeout(() => {
+      if (cancelled) return;
+      markIntroDone();
+    }, SAFETY_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(safety);
+      timers.forEach(clearTimeout);
+      breathLoopRef.current?.stop();
+    };
+    // Mount-only: the boot timeline runs once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    tryExit();
+  }, [ready, tryExit]);
+
+  const cx = size.w / 2;
+  const cy = size.h / 2;
+  const markLeft = (size.w - MARK) / 2;
+  const markTop = (size.h - MARK) / 2;
+  const breathScale = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] });
+  const groupScale = Animated.multiply(Animated.multiply(wake, breathScale), exitScale);
+  const leafRotate = leafTilt.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ['-360deg', '360deg'],
+  });
+
+  return (
+    <Animated.View
+      style={[styles.bootRoot, { opacity: rootOpacity }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Grow! is opening"
+      onLayout={handleRootLayout}
+    >
+      {manageStatusBar ? <StatusBar style={exiting ? 'dark' : palette.status} /> : null}
+
+      {/* Emerald field (+ evening dusk tint). Fades off Home when signed in. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: palette.bg, opacity: bgOpacity }]}
+      >
+        {halo.dusk > 0 ? (
+          <Animated.View
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#065F46', opacity: dusk }]}
+          />
+        ) : null}
+      </Animated.View>
+
+      {exitBackground ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: exitBackground, opacity: bgShift }]}
+        />
+      ) : null}
+
+      {LITE ? null : (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.halo,
+            {
+              left: cx - HALO_D / 2,
+              top: cy - HALO_D / 2,
+              backgroundColor: halo.color,
+              opacity: haloOpacity,
+              transform: [{ scale: haloScale }],
+            },
+          ]}
+        />
+      )}
+
+      {/* The mark: exactly the native splash rect (full-screen centre, 128×128). */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.mark,
+          {
+            left: markLeft,
+            top: markTop,
+            opacity: markOpacity,
+            transform: [{ scale: groupScale }],
+          },
+        ]}
+      >
+        <Animated.Image
+          source={LEAF_SRC}
+          onLoadEnd={onLeafLoaded}
+          fadeDuration={0}
+          resizeMode="contain"
+          style={[
+            styles.markLayer,
+            {
+              transform: [
+                { translateY: leafY },
+                { translateX: LEAF_PIVOT.x },
+                { translateY: LEAF_PIVOT.y },
+                { rotate: leafRotate },
+                { scale: leafScale },
+                { translateX: -LEAF_PIVOT.x },
+                { translateY: -LEAF_PIVOT.y },
+              ],
+            },
+          ]}
+        />
+        <Animated.Image
+          source={SMILE_SRC}
+          onLoadEnd={onSmileLoaded}
+          fadeDuration={0}
+          resizeMode="contain"
+          style={[styles.markLayer, { transform: [{ scaleX: smileX }] }]}
+        />
+      </Animated.View>
+
+      {showWordmark ? (
+        <Animated.Text
+          style={[
+            styles.wordmark,
+            styles.bootLine,
+            { bottom: size.h - (cy - MARK / 2 - 28), color: palette.wordmark, opacity: late },
+          ]}
+        >
+          Grow!
+        </Animated.Text>
+      ) : null}
+      <Animated.Text
+        style={[
+          styles.tagline,
+          styles.bootLine,
+          {
+            top: cy + MARK / 2 + 28,
+            color: palette.wordmark,
+            opacity: tagline,
+            transform: [{ translateY: taglineRise }],
+          },
+        ]}
+      >
+        {"Let's grow."}
+      </Animated.Text>
+      {message ? (
+        <Animated.Text
+          style={[
+            styles.bootMessage,
+            styles.bootLine,
+            { top: cy + MARK / 2 + 28, color: palette.message, opacity: late },
+          ]}
+        >
+          {message}
+        </Animated.Text>
+      ) : null}
+    </Animated.View>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+/* Classic in-app loader — a seed that swells and smiles.                   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Gate loader — a seed that swells and smiles.
+ * Not a spinner, not orbit rings, not a leaf.
+ */
+function ClassicLoader({
   message,
   variant = 'page',
   showWordmark = true,
@@ -110,7 +735,6 @@ export default function BrandLoadingScreen({
   ready = true,
   onFinished,
   exitBackground,
-  mode,
 }: Props) {
   const palette = PALETTE[variant];
   const grow = useRef(new Animated.Value(0)).current;
@@ -121,19 +745,6 @@ export default function BrandLoadingScreen({
   const exit = useRef(new Animated.Value(1)).current;
   const bgShift = useRef(new Animated.Value(0)).current;
   const contentOut = useRef(new Animated.Value(1)).current;
-  // Cold-start (mode) values
-  const bootMode = useRef(mode).current;
-  const isBoot = !!bootMode;
-  const wake = useRef(new Animated.Value(1)).current;
-  const exitScale = useRef(new Animated.Value(1)).current;
-  const stem = useRef(new Animated.Value(0)).current;
-  const leafL = useRef(new Animated.Value(0)).current;
-  const leafR = useRef(new Animated.Value(0)).current;
-  const tagline = useRef(new Animated.Value(0)).current;
-  const taglineRise = useRef(new Animated.Value(8)).current;
-  const late = useRef(new Animated.Value(0)).current;
-  const resolvedModeRef = useRef<BootMode>('daily');
-  const [exiting, setExiting] = useState(false);
 
   const exitBackgroundRef = useRef(exitBackground);
   exitBackgroundRef.current = exitBackground;
@@ -146,9 +757,10 @@ export default function BrandLoadingScreen({
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
 
-  const loopsRef = useRef<{ speck?: Animated.CompositeAnimation; breath?: Animated.CompositeAnimation }>(
-    {}
-  );
+  const loopsRef = useRef<{
+    speck?: Animated.CompositeAnimation;
+    breath?: Animated.CompositeAnimation;
+  }>({});
 
   const tryExit = useCallback(() => {
     if (finishedRef.current) return;
@@ -158,16 +770,8 @@ export default function BrandLoadingScreen({
     finishedRef.current = true;
     loopsRef.current.speck?.stop();
     loopsRef.current.breath?.stop();
-    let duration = reducedRef.current ? REDUCED_EXIT_MS : EXIT_MS;
-    if (isBoot) {
-      // Icons go dark as the exit starts, not at unmount, so they never sit
-      // white over the cream page underneath.
-      setExiting(true);
-      if (!reducedRef.current && resolvedModeRef.current === 'daily') duration = DAILY_EXIT_MS;
-    }
+    const duration = reducedRef.current ? REDUCED_EXIT_MS : EXIT_MS;
     if (exitBackgroundRef.current) {
-      // Emerald → next screen's background, mark fades out on top. When done the
-      // overlay is the same colour as the screen below, so unmounting is seamless.
       Animated.parallel([
         Animated.timing(bgShift, {
           toValue: 1,
@@ -186,30 +790,17 @@ export default function BrandLoadingScreen({
       });
       return;
     }
-    const fade = Animated.timing(exit, {
+    Animated.timing(exit, {
       toValue: 0,
       duration,
       easing: EASE_OUT,
       useNativeDriver: true,
-    });
-    const anim =
-      isBoot && !reducedRef.current
-        ? Animated.parallel([
-            fade,
-            Animated.timing(exitScale, {
-              toValue: 1.12,
-              duration,
-              easing: EASE_OUT,
-              useNativeDriver: true,
-            }),
-          ])
-        : fade;
-    anim.start(({ finished }) => {
+    }).start(({ finished }) => {
       if (finished) onFinishedRef.current?.();
     });
-  }, [bgShift, contentOut, exit, exitScale, isBoot]);
+  }, [bgShift, contentOut, exit]);
 
-  const startLoops = useCallback((withSpeck = true) => {
+  const startLoops = useCallback(() => {
     const speckLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(speck, {
@@ -224,7 +815,7 @@ export default function BrandLoadingScreen({
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     const breathLoop = Animated.loop(
       Animated.sequence([
@@ -240,10 +831,10 @@ export default function BrandLoadingScreen({
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
-    loopsRef.current = { speck: withSpeck ? speckLoop : undefined, breath: breathLoop };
-    if (withSpeck) speckLoop.start();
+    loopsRef.current = { speck: speckLoop, breath: breathLoop };
+    speckLoop.start();
     breathLoop.start();
   }, [breath, speck]);
 
@@ -252,9 +843,7 @@ export default function BrandLoadingScreen({
     tryExit();
   }, [tryExit]);
 
-  // Classic in-app loader (no `mode`).
   useEffect(() => {
-    if (isBoot) return undefined;
     let cancelled = false;
     let safety: ReturnType<typeof setTimeout> | undefined;
 
@@ -316,188 +905,17 @@ export default function BrandLoadingScreen({
       loopsRef.current.speck?.stop();
       loopsRef.current.breath?.stop();
     };
-  }, [enter, grow, isBoot, markIntroDone, smile, startLoops]);
-
-  // Cold start: daily wake-up or first-launch sprout.
-  useEffect(() => {
-    if (!bootMode) return undefined;
-    let cancelled = false;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const later = (ms: number, fn: () => void) => {
-      timers.push(
-        setTimeout(() => {
-          if (!cancelled) fn();
-        }, ms)
-      );
-    };
-    const showAll = () => {
-      enter.setValue(1);
-      wake.setValue(1);
-      stem.setValue(1);
-      smile.setValue(1);
-    };
-
-    const playDaily = (reduced: boolean) => {
-      // Final layout from frame one: seed at full size, stem up, no leaves.
-      showAll();
-      smile.setValue(0);
-      if (!reduced) {
-        Animated.sequence([
-          Animated.timing(wake, {
-            toValue: 1.06,
-            duration: 160,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.spring(wake, {
-            toValue: 1,
-            damping: 14,
-            stiffness: 220,
-            mass: 1,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }
-      Animated.timing(smile, {
-        toValue: 1,
-        duration: 180,
-        delay: 60,
-        easing: EASE_OUT,
-        useNativeDriver: true,
-      }).start();
-      later(DAILY_HAPTIC_MS, () => triggerFeedback('bloom'));
-      later(DAILY_MIN_MS, markIntroDone);
-      later(DAILY_SLOW_MS, () => {
-        if (finishedRef.current || readyRef.current) return;
-        // Slow network: say so, and let the seed breathe while we wait.
-        Animated.timing(late, {
-          toValue: 1,
-          duration: 320,
-          easing: EASE_OUT,
-          useNativeDriver: true,
-        }).start();
-        if (!reduced) startLoops(false);
-      });
-    };
-
-    const playFirst = (reduced: boolean) => {
-      if (reduced) {
-        enter.setValue(1);
-        wake.setValue(1);
-        stem.setValue(1);
-        leafL.setValue(1);
-        leafR.setValue(1);
-        taglineRise.setValue(0);
-      } else {
-        wake.setValue(0.34);
-        Animated.timing(enter, {
-          toValue: 1,
-          duration: 200,
-          easing: EASE_OUT,
-          useNativeDriver: true,
-        }).start();
-        Animated.spring(wake, {
-          toValue: 1,
-          damping: 12,
-          stiffness: 140,
-          mass: 1,
-          useNativeDriver: true,
-        }).start();
-        Animated.timing(stem, {
-          toValue: 1,
-          duration: 300,
-          delay: 200,
-          easing: EASE_OUT,
-          useNativeDriver: true,
-        }).start();
-        const leafSpring = (v: Animated.Value) =>
-          Animated.spring(v, { toValue: 1, damping: 10, stiffness: 180, mass: 1, useNativeDriver: true });
-        Animated.sequence([
-          Animated.delay(380),
-          Animated.stagger(80, [leafSpring(leafL), leafSpring(leafR)]),
-        ]).start();
-        Animated.timing(taglineRise, {
-          toValue: 0,
-          duration: 240,
-          delay: FIRST_TAGLINE_MS,
-          easing: EASE_OUT,
-          useNativeDriver: true,
-        }).start();
-      }
-      Animated.timing(smile, {
-        toValue: 1,
-        duration: 220,
-        delay: FIRST_SMILE_MS,
-        easing: EASE_OUT,
-        useNativeDriver: true,
-      }).start();
-      later(FIRST_SMILE_MS, () => triggerFeedback('bloom'));
-      Animated.timing(tagline, {
-        toValue: 1,
-        duration: 240,
-        delay: FIRST_TAGLINE_MS,
-        easing: EASE_OUT,
-        useNativeDriver: true,
-      }).start();
-      later(FIRST_HOLD_MS, () => {
-        markFirstOpenSeen();
-        markIntroDone();
-        if (!finishedRef.current && !reduced) startLoops(false);
-      });
-    };
-
-    const reducedP = AccessibilityInfo.isReduceMotionEnabled()
-      .then((r) => !!r)
-      .catch(() => false);
-    const modeP: Promise<BootMode> =
-      bootMode === 'auto' ? resolveBootMode(100) : Promise.resolve(bootMode);
-
-    Promise.all([reducedP, modeP]).then(([reduced, m]) => {
-      if (cancelled || finishedRef.current) return;
-      reducedRef.current = reduced;
-      resolvedModeRef.current = m;
-      if (m === 'first') playFirst(reduced);
-      else playDaily(reduced);
-    });
-
-    const safety = setTimeout(() => {
-      if (cancelled) return;
-      showAll();
-      leafL.setValue(resolvedModeRef.current === 'first' ? 1 : 0);
-      leafR.setValue(resolvedModeRef.current === 'first' ? 1 : 0);
-      markIntroDone();
-    }, SAFETY_MS);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(safety);
-      timers.forEach(clearTimeout);
-      loopsRef.current.speck?.stop();
-      loopsRef.current.breath?.stop();
-    };
-  }, [
-    bootMode,
-    enter,
-    late,
-    leafL,
-    leafR,
-    markIntroDone,
-    smile,
-    startLoops,
-    stem,
-    tagline,
-    taglineRise,
-    wake,
-  ]);
+  }, [enter, grow, markIntroDone, smile, startLoops]);
 
   useEffect(() => {
     tryExit();
   }, [ready, tryExit]);
 
   const breathScale = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] });
-  const seedScale = isBoot
-    ? Animated.multiply(Animated.multiply(wake, breathScale), exitScale)
-    : Animated.multiply(grow.interpolate({ inputRange: [0, 1], outputRange: [0.34, 1] }), breathScale);
+  const seedScale = Animated.multiply(
+    grow.interpolate({ inputRange: [0, 1], outputRange: [0.34, 1] }),
+    breathScale,
+  );
   const contentY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
   const seedSize = variant === 'splash' ? 96 : 84;
 
@@ -507,9 +925,7 @@ export default function BrandLoadingScreen({
       accessibilityRole="progressbar"
       onLayout={onLayout}
     >
-      {manageStatusBar ? (
-        <StatusBar style={isBoot && exiting ? 'dark' : palette.status} />
-      ) : null}
+      {manageStatusBar ? <StatusBar style={palette.status} /> : null}
 
       {exitBackground ? (
         <Animated.View
@@ -523,21 +939,11 @@ export default function BrandLoadingScreen({
           styles.content,
           {
             opacity: Animated.multiply(enter, contentOut),
-            transform: isBoot ? [] : [{ translateY: contentY }],
+            transform: [{ translateY: contentY }],
           },
         ]}
       >
-        {isBoot ? (
-          // Fixed-height slots keep the seed's centre on the screen centre
-          // whether or not the wordmark / message are showing.
-          <View style={styles.bootTop}>
-            {showWordmark ? (
-              <Animated.Text style={[styles.wordmark, { color: palette.wordmark, opacity: late }]}>
-                Grow!
-              </Animated.Text>
-            ) : null}
-          </View>
-        ) : showWordmark ? (
+        {showWordmark ? (
           <Animated.Text style={[styles.wordmark, { color: palette.wordmark, opacity: smile }]}>
             Grow!
           </Animated.Text>
@@ -562,49 +968,14 @@ export default function BrandLoadingScreen({
               },
             ]}
           />
-          {isBoot ? (
-            <>
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.leaf,
-                  styles.leafLeft,
-                  { backgroundColor: palette.leaf, transform: [{ rotate: '35deg' }, { scale: leafL }] },
-                ]}
-              />
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.leaf,
-                  styles.leafRight,
-                  { backgroundColor: palette.leaf, transform: [{ rotate: '-35deg' }, { scale: leafR }] },
-                ]}
-              />
-            </>
-          ) : null}
           <Animated.View
             style={[
               styles.stem,
-              isBoot
-                ? {
-                    backgroundColor: palette.stem,
-                    opacity: stem,
-                    // Grow from the base: scale about the centre, then shift down.
-                    transform: [
-                      {
-                        translateY: stem.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [STEM_H / 2, 0],
-                        }),
-                      },
-                      { scaleY: stem },
-                    ],
-                  }
-                : {
-                    backgroundColor: palette.stem,
-                    opacity: grow,
-                    transform: [{ scaleY: grow }],
-                  },
+              {
+                backgroundColor: palette.stem,
+                opacity: grow,
+                transform: [{ scaleY: grow }],
+              },
             ]}
           />
           <Animated.View
@@ -634,30 +1005,7 @@ export default function BrandLoadingScreen({
           </Animated.View>
         </View>
 
-        {isBoot ? (
-          <View style={styles.bootBottom}>
-            <Animated.Text
-              style={[
-                styles.tagline,
-                styles.bootLine,
-                {
-                  color: palette.wordmark,
-                  opacity: tagline,
-                  transform: [{ translateY: taglineRise }],
-                },
-              ]}
-            >
-              {"Let's grow."}
-            </Animated.Text>
-            {message ? (
-              <Animated.Text
-                style={[styles.message, styles.bootLine, { color: palette.message, opacity: late }]}
-              >
-                {message}
-              </Animated.Text>
-            ) : null}
-          </View>
-        ) : message ? (
+        {message ? (
           <Animated.Text style={[styles.message, { color: palette.message, opacity: smile }]}>
             {message}
           </Animated.Text>
@@ -672,6 +1020,39 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bootRoot: {
+    flex: 1,
+  },
+  halo: {
+    position: 'absolute',
+    width: HALO_D,
+    height: HALO_D,
+    borderRadius: HALO_D / 2,
+  },
+  mark: {
+    position: 'absolute',
+    width: MARK,
+    height: MARK,
+  },
+  markLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: MARK,
+    height: MARK,
+  },
+  bootLine: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    marginBottom: 0,
+    textAlign: 'center',
+  },
+  bootMessage: {
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 22,
   },
   content: {
     alignItems: 'center',
@@ -700,7 +1081,7 @@ const styles = StyleSheet.create({
   },
   stem: {
     width: 3,
-    height: STEM_H,
+    height: 36,
     borderRadius: 2,
     marginBottom: 6,
   },
@@ -711,51 +1092,11 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 6,
   },
-  // Column = top(72) + stage(160) + gap(28) + bottom(108); the seed centre
-  // (stage bottom − 48) then lands exactly on the column centre.
-  bootTop: {
-    height: 72,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  bootBottom: {
-    height: 108,
-    width: 280,
-    alignItems: 'center',
-  },
-  bootLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
   tagline: {
     fontSize: 20,
     fontWeight: '700',
     letterSpacing: 0.4,
     textAlign: 'center',
-  },
-  // Stem spans y 22–58 in the 160-tall stage (seed 96 + 6 gap below it).
-  leaf: {
-    position: 'absolute',
-    top: 24,
-    width: 18,
-    height: 11,
-  },
-  leafLeft: {
-    left: 70 - 18 + 1,
-    borderTopLeftRadius: 11,
-    borderBottomRightRadius: 11,
-    borderTopRightRadius: 2,
-    borderBottomLeftRadius: 2,
-  },
-  leafRight: {
-    left: 70 - 1,
-    top: 30,
-    borderTopRightRadius: 11,
-    borderBottomLeftRadius: 11,
-    borderTopLeftRadius: 2,
-    borderBottomRightRadius: 2,
   },
   message: {
     fontSize: 15,

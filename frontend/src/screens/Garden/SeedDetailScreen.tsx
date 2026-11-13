@@ -148,7 +148,7 @@ export default function SeedDetailScreen() {
               setLoading(true);
               void load();
             }}
-            feedback="tap"
+            feedback="impactLight"
             style={tw`mt-4 px-5 py-3 rounded-xl bg-emerald-600`}
           >
             <Text style={tw`text-white font-bold`}>Try again</Text>

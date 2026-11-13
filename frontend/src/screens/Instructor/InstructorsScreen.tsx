@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { useRefresh } from '../../hooks/useRefresh';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
@@ -29,7 +30,6 @@ export default function InstructorsScreen() {
   const { user } = useAuth();
   const [items, setItems] = useState<DiscoverInstructor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -43,9 +43,9 @@ export default function InstructorsScreen() {
       setLoadError(e instanceof Error ? e.message : 'Could not load instructors');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
+  const refresh = useRefresh(load);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,14 +103,7 @@ export default function InstructorsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load();
-            }}
-            tintColor="#059669"
-          />
+          <RefreshControl {...refresh} />
         }
         ListHeaderComponent={
           <FadeInUp>

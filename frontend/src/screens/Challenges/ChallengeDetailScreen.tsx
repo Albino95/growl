@@ -3,7 +3,7 @@
  * Contract: docs/GROWTH_SYSTEM.md § Challenges.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, ScrollView, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -21,6 +21,10 @@ import { useAuth } from '../../store/hooks';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { feedback } from '../../utils/interactionFeedback';
+import { celebrateOnce, haptic } from '../../theme/haptics';
+import { pop } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { useRefresh } from '../../hooks/useRefresh';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import PressableScale from '../../components/ui/PressableScale';
 import GrowAvatar from '../../components/ui/GrowAvatar';
@@ -77,11 +81,12 @@ export default function ChallengeDetailScreen() {
 
   const [detail, setDetail] = useState<ChallengeDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const celebratedRef = useRef(false);
+  const treeScale = useRef(new Animated.Value(1)).current;
+  const reduced = useReducedMotion();
   const seqRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -100,10 +105,7 @@ export default function ChallengeDetailScreen() {
       if (seq !== seqRef.current) return;
       setError(errorText(e, 'We couldn’t load this challenge.'));
     } finally {
-      if (seq === seqRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      if (seq === seqRef.current) setLoading(false);
     }
   }, [challengeId]);
 
@@ -111,19 +113,22 @@ export default function ChallengeDetailScreen() {
     void load();
   }, [load]);
 
-  // One gentle celebration the first time we see a completed challenge.
+  // One celebration ever per challenge (persisted): haptic + the tree pops in.
   useEffect(() => {
-    if (detail?.completed && !celebratedRef.current) {
-      celebratedRef.current = true;
-      feedback.celebrate();
-    }
-  }, [detail?.completed]);
+    if (!detail?.completed || !detail.id || celebratedRef.current) return;
+    celebratedRef.current = true;
+    let alive = true;
+    void celebrateOnce(`challenge:${detail.id}`).then((fresh) => {
+      if (!alive || !fresh) return;
+      treeScale.setValue(reduced ? 1 : 0.6);
+      pop(treeScale, 1.18, 'bouncy', reduced).start();
+    });
+    return () => {
+      alive = false;
+    };
+  }, [detail?.completed, detail?.id, reduced, treeScale]);
 
-  const onRefresh = () => {
-    feedback.refresh();
-    setRefreshing(true);
-    void load();
-  };
+  const refresh = useRefresh(load);
 
   const goBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -133,12 +138,11 @@ export default function ChallengeDetailScreen() {
   const onJoin = async () => {
     if (!detail || busy) return;
     setBusy(true);
-    feedback.commit();
+    haptic('tapLight');
     try {
       const d = await joinChallenge(detail.id);
       setDetail(d);
       markChallengesDirty();
-      feedback.success();
     } catch (e) {
       feedback.error();
       void alertMessage('Couldn’t join just now', errorText(e, 'Please try again in a moment.'));
@@ -241,11 +245,11 @@ export default function ChallengeDetailScreen() {
       {header}
       <ScrollView
         contentContainerStyle={tw`px-5 pb-16`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" />}
+        refreshControl={<RefreshControl {...refresh} />}
       >
         {error ? (
           <Pressable
-            onPress={onRefresh}
+            onPress={() => void refresh.onRefresh()}
             style={tw`mb-3 px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 flex-row items-center`}
           >
             <Ionicons name="cloud-offline-outline" size={16} color="#B45309" />
@@ -271,7 +275,7 @@ export default function ChallengeDetailScreen() {
 
         {c.completed ? (
           <View style={tw`mt-6 p-5 rounded-3xl bg-[#FFF1F0] border border-[#F97066]/30 items-center`}>
-            <Text style={tw`text-3xl`}>🌳</Text>
+            <Animated.Text style={[tw`text-3xl`, { transform: [{ scale: treeScale }] }]}>🌳</Animated.Text>
             <Text style={tw`mt-2 text-lg font-bold text-stone-900 text-center`}>
               You finished {c.title} 🌳
             </Text>

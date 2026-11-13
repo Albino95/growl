@@ -62,6 +62,9 @@ import {
   type JournalMood,
 } from '../../store/slices/journalSlice';
 import { feedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import { getReducedMotion } from '../../hooks/useReducedMotion';
+import { spring } from '../../theme/motion';
 import type { IndividualTabsParamList } from '../../app/navigation/tabs/IndividualTabs';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -169,7 +172,6 @@ export default function JournalScreen() {
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
   const [focusDateKey, setFocusDateKey] = useState<string | null>(null);
   const [circleEntries, setCircleEntries] = useState<CircleJournalEntry[]>([]);
   const [circleLoading, setCircleLoading] = useState(false);
@@ -265,19 +267,14 @@ export default function JournalScreen() {
       ]).start(() => {
         setMode(next);
         if (next === 'voices') setVoiceFilterUserId(null);
-        contentSlide.setValue(next === 'voices' ? 8 : -8);
+        contentSlide.setValue(getReducedMotion() ? 0 : next === 'voices' ? 8 : -8);
         Animated.parallel([
           Animated.timing(contentOpacity, {
             toValue: 1,
             duration: 180,
             useNativeDriver: true,
           }),
-          Animated.spring(contentSlide, {
-            toValue: 0,
-            useNativeDriver: true,
-            speed: 20,
-            bounciness: 6,
-          }),
+          spring(contentSlide, 0, 'gentle', getReducedMotion()),
         ]).start();
       });
     },
@@ -345,19 +342,13 @@ export default function JournalScreen() {
       .slice(0, 3) as [JournalMood, number][];
   }, [entries]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    feedback.refresh();
-    try {
-      if (mode === 'voices') {
-        await Promise.all([loadCircle(), loadReflections()]);
-      } else {
-        await Promise.all([loadEntries(), loadReflections()]);
-      }
-    } finally {
-      setRefreshing(false);
+  const refresh = useRefresh(async () => {
+    if (mode === 'voices') {
+      await Promise.all([loadCircle(), loadReflections()]);
+    } else {
+      await Promise.all([loadEntries(), loadReflections()]);
     }
-  };
+  });
 
   const sharedCount = useMemo(
     () => entries.filter((e) => e.isPublic ?? e.is_public).length,
@@ -563,11 +554,7 @@ export default function JournalScreen() {
             {...feedListPerformanceProps}
             {...verticalScrollProps}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => void onRefresh()}
-                tintColor="#059669"
-              />
+              <RefreshControl {...refresh} />
             }
             ListHeaderComponent={
               <View>
@@ -652,11 +639,7 @@ export default function JournalScreen() {
             style={tw`flex-1`}
             contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => void onRefresh()}
-                tintColor="#1C1917"
-              />
+              <RefreshControl {...refresh} tintColor="#1C1917" />
             }
             {...verticalScrollProps}
           >
@@ -839,11 +822,7 @@ export default function JournalScreen() {
             {...feedListPerformanceProps}
             {...verticalScrollProps}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => void onRefresh()}
-                tintColor="#1C1917"
-              />
+              <RefreshControl {...refresh} tintColor="#1C1917" />
             }
             ListHeaderComponent={
               <View style={tw`mb-2`}>

@@ -20,6 +20,7 @@ import { isRemoteMediaUrl } from '../utils/mediaUri';
 import { uploadReelCover } from '../utils/uploadReelCover';
 import { alertMessage, confirmAsync } from '../utils/confirmDialog';
 import { feedback, hushNativeAudio } from '../utils/interactionFeedback';
+import { haptic } from '../theme/haptics';
 import { warmPhotoEditorSource } from '../components/ui/photoEditor/imageProcessing';
 import {
   buildPlaceholders,
@@ -306,7 +307,8 @@ export function useMediaComposer({
   // --- publish -----------------------------------------------------------------
   const finishSuccess = useCallback(
     (post: FeedPost | null) => {
-      feedback.success();
+      // One success haptic (+ sound) per publish; the overlay blooms the check.
+      haptic('success');
       setPublished(post);
       dispatch({ type: 'PUBLISH_SUCCESS' });
       // Reel stays on its success sheet ("View in Reels"); others close.

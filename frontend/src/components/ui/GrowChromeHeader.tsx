@@ -3,6 +3,8 @@ import { View, Text, Image, Pressable, Animated, StyleProp, ViewStyle } from 're
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import { feedback } from '../../utils/interactionFeedback';
+import { duration, spring, timing } from '../../theme/motion';
+import { getReducedMotion } from '../../hooks/useReducedMotion';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useHomeTabStore } from '../../state/useHomeTabStore';
 import SeedSmileBurst from './SeedSmileBurst';
@@ -29,15 +31,13 @@ export default function GrowChromeHeader({ right, leftAccessory, style }: Props)
   const rotate = useRef(new Animated.Value(0)).current;
 
   const bounce = () => {
-    Animated.sequence([
-      Animated.spring(scale, { toValue: 0.86, useNativeDriver: true, speed: 42, bounciness: 0 }),
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 10 }),
-    ]).start();
+    if (getReducedMotion()) return;
+    Animated.sequence([spring(scale, 0.86, 'snappy'), spring(scale, 1, 'bouncy')]).start();
   };
 
   const goHome = () => {
     bounce();
-    feedback.tap();
+    // Plain navigation: silent until the 7-tap egg fires (celebrate below).
     navigateFromRoot(navigation, 'Individual', { screen: 'Feed' });
     requestHome();
   };
@@ -59,10 +59,12 @@ export default function GrowChromeHeader({ right, leftAccessory, style }: Props)
 
   const onMarkLong = () => {
     feedback.egg();
-    Animated.sequence([
-      Animated.timing(rotate, { toValue: 1, duration: 140, useNativeDriver: true }),
-      Animated.spring(rotate, { toValue: 0, useNativeDriver: true, speed: 16, bounciness: 9 }),
-    ]).start();
+    if (!getReducedMotion()) {
+      Animated.sequence([
+        timing(rotate, 1, { duration: duration.quick }),
+        spring(rotate, 0, 'bouncy'),
+      ]).start();
+    }
     setHint('Hi.');
     setTimeout(() => setHint(''), 1100);
   };

@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
+import CountUpText from '../ui/CountUpText';
 import { getProgress, type Progress } from '../../services/api/growth';
 import { localDayKey } from '../../services/api/http';
 import { getCategoryLabel } from '../../utils/categoryLabels';
@@ -130,7 +131,7 @@ function Stat({ label, value, hint }: { label: string; value: number; hint: stri
       <Text style={tw`text-[10px] font-semibold tracking-wider text-stone-500 uppercase`} numberOfLines={1}>
         {label}
       </Text>
-      <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>{value}</Text>
+      <CountUpText style={tw`text-2xl font-bold text-stone-900 mt-0.5`} value={value} />
       <Text style={tw`text-[10px] text-stone-400`}>{hint}</Text>
     </View>
   );

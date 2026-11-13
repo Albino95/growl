@@ -2,7 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
-import { feedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
+import { duration, easing, pop, press, spring, stagger, timing } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 export type FeedReaction = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
@@ -63,66 +65,38 @@ export default function FeedLikeButton({
   const scale = useRef(new Animated.Value(1)).current;
   const ring = useRef(new Animated.Value(0)).current;
   const prevLiked = useRef(hasLiked);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (hasLiked && !prevLiked.current) {
       ring.setValue(0);
       Animated.parallel([
-        Animated.sequence([
-          Animated.spring(scale, {
-            toValue: 1.28,
-            friction: 3.5,
-            tension: 240,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scale, {
-            toValue: 1,
-            friction: 5,
-            tension: 180,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.timing(ring, {
-            toValue: 1,
-            duration: 380,
-            useNativeDriver: true,
-          }),
-          // Ensure ring is fully gone after the burst (no faded leftover).
-          Animated.timing(ring, {
-            toValue: 0,
-            duration: 1,
-            useNativeDriver: true,
-          }),
-        ]),
+        pop(scale, 1.28, 'bouncy', reduced),
+        reduced
+          ? Animated.delay(0)
+          : Animated.sequence([
+              timing(ring, 1, { duration: duration.gentle + 60, easing: easing.out }),
+              // Ensure ring is fully gone after the burst (no faded leftover).
+              Animated.timing(ring, { toValue: 0, duration: 1, useNativeDriver: true }),
+            ]),
       ]).start();
     } else if (!hasLiked && prevLiked.current) {
-      Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }).start();
+      spring(scale, 1, 'snappy', reduced).start();
       ring.setValue(0);
     } else {
       // Already liked on mount / hydrate — never show a stuck ring.
       ring.setValue(0);
     }
     prevLiked.current = hasLiked;
-  }, [hasLiked, scale, ring]);
+  }, [hasLiked, scale, ring, reduced]);
 
   return (
     <Pressable
       onPressIn={() => {
-        Animated.spring(scale, {
-          toValue: 0.9,
-          useNativeDriver: true,
-          speed: 40,
-          bounciness: 0,
-        }).start();
+        if (!reduced) spring(scale, press.icon, 'snappy').start();
       }}
       onPressOut={() => {
-        Animated.spring(scale, {
-          toValue: 1,
-          useNativeDriver: true,
-          speed: 28,
-          bounciness: 6,
-        }).start();
+        spring(scale, 1, 'snappy', reduced).start();
       }}
       onPress={onPress}
       onLongPress={onLongPress}
@@ -180,25 +154,19 @@ export function ReactionPickerBar({
   const enter = useRef(new Animated.Value(0)).current;
   const scales = useRef(items.map(() => new Animated.Value(0.5))).current;
 
+  const reduced = useReducedMotion();
+
   useEffect(() => {
-    Animated.spring(enter, {
-      toValue: 1,
-      friction: 7,
-      tension: 140,
-      useNativeDriver: true,
-    }).start();
+    spring(enter, 1, 'gentle', reduced).start();
+    if (reduced) {
+      scales.forEach((s) => s.setValue(1));
+      return;
+    }
     Animated.stagger(
-      35,
-      scales.map((s) =>
-        Animated.spring(s, {
-          toValue: 1,
-          friction: 4,
-          tension: 200,
-          useNativeDriver: true,
-        })
-      )
+      stagger,
+      scales.map((s) => spring(s, 1, 'bouncy'))
     ).start();
-  }, [enter, scales]);
+  }, [enter, scales, reduced]);
 
   return (
     <Animated.View
@@ -232,7 +200,7 @@ export function ReactionPickerBar({
         <Pressable
           key={item.key}
           onPress={() => {
-            feedback.like(true);
+            haptic('tapLight');
             onPick(item.key);
           }}
           style={({ pressed }) => [

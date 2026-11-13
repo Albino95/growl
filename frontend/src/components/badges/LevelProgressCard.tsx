@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import tw from '../../lib/tw';
 import type { GrowthLevel } from '../../services/api/growth';
 import { levelProgress, pointsToNext } from './badgeMeta';
+import CountUpText from '../ui/CountUpText';
 
 const LEVEL_EMOJI = ['🌰', '🌱', '🪴', '🌸', '🌳', '🌲'];
 
@@ -32,7 +33,7 @@ export default function LevelProgressCard({ level }: { level: GrowthLevel }) {
           </Text>
           <Text style={tw`text-xl font-bold text-stone-900`}>{level.name}</Text>
         </View>
-        <Text style={tw`text-base font-bold text-stone-800`}>{level.points} pts</Text>
+        <CountUpText style={tw`text-base font-bold text-stone-800`} value={level.points} suffix=" pts" />
       </View>
       <View style={tw`h-2 bg-white rounded-full overflow-hidden mt-3`}>
         <View style={[tw`h-full rounded-full bg-emerald-600`, { width: `${Math.max(3, frac * 100)}%` }]} />

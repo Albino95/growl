@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { useRefresh } from '../../hooks/useRefresh';
 import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
 import {
   setCatalogFilter,
@@ -77,7 +78,6 @@ export default function BizDashboard() {
   const unreadCount = useAppSelector((s) => s.business.unreadNotificationCount);
   const { period, setPeriod, kpis, timeseries, status, error, loading, refresh } =
     useBusinessDashboard();
-  const [refreshing, setRefreshing] = useState(false);
 
   const stackNav = navigation.getParent?.() || navigation;
 
@@ -93,14 +93,9 @@ export default function BizDashboard() {
     }, [dispatch])
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refresh, dispatch]);
+  const pull = useRefresh(() =>
+    Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()])
+  );
 
   const handleNotificationPress = useCallback(
     (id: string, refType?: string | null, refId?: string | null) => {
@@ -248,12 +243,7 @@ export default function BizDashboard() {
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         {...verticalScrollProps}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#059669"
-            colors={['#059669']}
-          />
+          <RefreshControl {...pull} />
         }
       >
         <View style={tw`px-5 mb-4`}>

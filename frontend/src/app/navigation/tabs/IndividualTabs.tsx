@@ -17,6 +17,9 @@ import tw, { theme } from '../../../lib/tw';
 import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
 import { feedback } from '../../../utils/interactionFeedback';
+import { haptic } from '../../../theme/haptics';
+import { duration, pop, spring, timing } from '../../../theme/motion';
+import { useReducedMotion } from '../../../hooks/useReducedMotion';
 import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../../constants/featureFlags';
 import DemoTutorial from '../../../screens/Onboarding/DemoTutorial';
@@ -71,49 +74,32 @@ function DockTabButton({
   const iconScale = useRef(new Animated.Value(isActive ? 1 : 0.92)).current;
   const dotScale = useRef(new Animated.Value(isActive ? 1 : 0)).current;
   const labelOpacity = useRef(new Animated.Value(isActive ? 1 : 0.72)).current;
+  const reduced = useReducedMotion();
+  const mounted = useRef(false);
 
   useEffect(() => {
+    // No pop on first mount — only when a tab actually becomes active.
+    const first = !mounted.current;
+    mounted.current = true;
+    if (first) return;
     Animated.parallel([
-      Animated.spring(iconScale, {
-        toValue: isActive ? 1.08 : 0.92,
-        useNativeDriver: true,
-        speed: 22,
-        bounciness: 10,
-      }),
-      Animated.spring(dotScale, {
-        toValue: isActive ? 1 : 0,
-        useNativeDriver: true,
-        speed: 26,
-        bounciness: 8,
-      }),
-      Animated.timing(labelOpacity, {
-        toValue: isActive ? 1 : 0.72,
-        duration: 160,
-        useNativeDriver: true,
-      }),
+      isActive ? pop(iconScale, 1.12, 'bouncy', reduced) : spring(iconScale, 0.92, 'snappy', reduced),
+      spring(dotScale, isActive ? 1 : 0, 'snappy', reduced),
+      timing(labelOpacity, isActive ? 1 : 0.72, { duration: duration.quick }, reduced),
     ]).start();
-  }, [isActive, iconScale, dotScale, labelOpacity]);
+  }, [isActive, iconScale, dotScale, labelOpacity, reduced]);
 
   return (
     <Pressable
       onPressIn={() => {
-        Animated.spring(scale, {
-          toValue: 0.88,
-          useNativeDriver: true,
-          speed: 42,
-          bounciness: 0,
-        }).start();
+        if (!reduced) spring(scale, 0.88, 'snappy').start();
       }}
       onPressOut={() => {
-        Animated.spring(scale, {
-          toValue: 1,
-          useNativeDriver: true,
-          speed: 26,
-          bounciness: 8,
-        }).start();
+        spring(scale, 1, 'snappy', reduced).start();
       }}
       onPress={() => {
-        feedback.tab();
+        // Selection tick only when the tab actually changes (re-tap is silent).
+        if (!isActive) haptic('selection');
         onPress();
       }}
       style={[tw`flex-1 items-center justify-center min-w-0`, { height: TAB_HEIGHT }]}
@@ -186,19 +172,16 @@ export default function IndividualTabs() {
   const showTutorial = tutorialHydrated && (!tutorialSeen || tutorialForce);
 
   const fabSpin = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    Animated.spring(fabSpin, {
-      toValue: createOpen ? 1 : 0,
-      useNativeDriver: true,
-      speed: 18,
-      bounciness: 8,
-    }).start();
-  }, [createOpen, fabSpin]);
+    spring(fabSpin, createOpen ? 1 : 0, 'snappy', reducedMotion).start();
+  }, [createOpen, fabSpin, reducedMotion]);
 
   const fabFeedback = usePressFeedback({
     onPress: () => setCreateOpen((open) => !open),
-    kind: 'open',
+    kind: 'impactLight',
+    pressedScale: 0.9,
   });
 
   const handleCreate = (action: CreateAction) => {

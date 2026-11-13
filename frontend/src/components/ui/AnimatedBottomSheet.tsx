@@ -14,6 +14,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from '../../lib/tw';
 import { feedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
+import { duration, easing, spring, timing } from '../../theme/motion';
+import { getReducedMotion } from '../../hooks/useReducedMotion';
+
+/** Drag distance (pt) past which releasing dismisses the sheet. */
+const DISMISS_DY = 72;
 
 type CloseApi = { close: () => void };
 
@@ -53,6 +59,8 @@ export default function AnimatedBottomSheet({
   onCloseRef.current = onClose;
   closeFeedbackRef.current = closeFeedback;
   const maxH = Dimensions.get('window').height * maxHeightRatio;
+  /** True once the current drag has crossed the dismiss threshold (one haptic per drag). */
+  const pastThreshold = useRef(false);
 
   const resetPose = useCallback(() => {
     closing.current = false;
@@ -68,18 +76,12 @@ export default function AnimatedBottomSheet({
     }
     closing.current = false;
     dragY.setValue(0);
+    haptic('tapLight');
+    const r = getReducedMotion();
+    if (r) sheetY.setValue(0);
     Animated.parallel([
-      Animated.timing(backdrop, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.spring(sheetY, {
-        toValue: 0,
-        useNativeDriver: true,
-        speed: 18,
-        bounciness: 8,
-      }),
+      timing(backdrop, 1, { duration: duration.base, easing: easing.out }, r),
+      spring(sheetY, 0, 'gentle', r),
     ]).start();
   }, [visible, backdrop, sheetY, dragY, resetPose]);
 
@@ -88,17 +90,15 @@ export default function AnimatedBottomSheet({
       if (closing.current) return;
       closing.current = true;
       if (closeFeedbackRef.current) feedback.close();
+      const r = getReducedMotion();
       Animated.parallel([
-        Animated.timing(backdrop, {
-          toValue: 0,
-          duration: 160,
-          useNativeDriver: true,
-        }),
-        Animated.timing(fromDrag ? dragY : sheetY, {
-          toValue: fromDrag ? 440 : 40,
-          duration: 220,
-          useNativeDriver: true,
-        }),
+        timing(backdrop, 0, { duration: duration.quick, easing: easing.in }, r),
+        timing(
+          fromDrag ? dragY : sheetY,
+          fromDrag ? 440 : 40,
+          { duration: duration.base, easing: easing.in },
+          r
+        ),
       ]).start(({ finished }) => {
         if (finished) onCloseRef.current();
         closing.current = false;
@@ -115,31 +115,29 @@ export default function AnimatedBottomSheet({
       onMoveShouldSetPanResponder: (_, g) => g.dy > 2,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
-        feedback.transition();
+        pastThreshold.current = false;
         dragY.stopAnimation();
       },
       onPanResponderMove: (_, g) => {
         const next = Math.max(0, g.dy);
         dragY.setValue(next);
         backdrop.setValue(Math.max(0.06, 1 - next / 360));
+        // A single tick per drag when it first crosses "release to close".
+        if (next > DISMISS_DY && !pastThreshold.current) {
+          pastThreshold.current = true;
+          haptic('impactMedium');
+        }
       },
       onPanResponderRelease: (_, g) => {
-        if (g.dy > 72 || g.vy > 1.05) {
+        pastThreshold.current = false;
+        if (g.dy > DISMISS_DY || g.vy > 1.05) {
           runClose(true);
           return;
         }
+        const r = getReducedMotion();
         Animated.parallel([
-          Animated.spring(dragY, {
-            toValue: 0,
-            useNativeDriver: true,
-            speed: 22,
-            bounciness: 8,
-          }),
-          Animated.timing(backdrop, {
-            toValue: 1,
-            duration: 140,
-            useNativeDriver: true,
-          }),
+          spring(dragY, 0, 'snappy', r),
+          timing(backdrop, 1, { duration: duration.quick }, r),
         ]).start();
       },
     })

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  Animated,
   View,
   Text,
   ScrollView,
@@ -54,6 +55,10 @@ import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { alertMessage } from '../../utils/confirmDialog';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { haptic } from '../../theme/haptics';
+import { spring } from '../../theme/motion';
 import PressableScale from '../../components/ui/PressableScale';
 import BadgeRow from '../../components/badges/BadgeRow';
 import LevelPill from '../../components/badges/LevelPill';
@@ -175,6 +180,8 @@ export default function PublicProfileScreen() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
   const [friendConnected, setFriendConnected] = useState(false);
+  const friendMorph = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
   const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [friendRequestReceived, setFriendRequestReceived] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
@@ -187,7 +194,6 @@ export default function PublicProfileScreen() {
   const [requestBusy, setRequestBusy] = useState(false);
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
   const [profileError, setProfileError] = useState<'not_found' | 'error' | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [publicBadges, setPublicBadges] = useState<{
     earned: { id: string; earned_at: string }[];
     level: GrowthLevel | null;
@@ -386,10 +392,17 @@ export default function PublicProfileScreen() {
           Alert.alert('Cancelled', 'Friend request cancelled.');
         }
       } else {
+        haptic('tapLight');
         const result = await addFriend(userId);
         setFriendConnected(result.connected);
         setFriendRequestSent(result.requestSent);
         setFriendRequestReceived(false);
+        // Request accepted (they'd asked us) → success; sent → the label morphs to "Requested".
+        if (result.connected) haptic('success');
+        if (result.connected || result.requestSent) {
+          friendMorph.setValue(reducedMotion ? 1 : 0.86);
+          spring(friendMorph, 1, 'snappy', reducedMotion).start();
+        }
         if (Platform.OS === 'web') {
           window.alert(result.connected ? 'Friend request accepted.' : 'Friend request sent.');
         } else {
@@ -450,17 +463,12 @@ export default function PublicProfileScreen() {
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        loadProfile({ silent: true }),
-        activeTab === 'posts' ? prefetchPrimaryContent() : loadContent(),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const refresh = useRefresh(() =>
+    Promise.all([
+      loadProfile({ silent: true }),
+      activeTab === 'posts' ? prefetchPrimaryContent() : loadContent(),
+    ])
+  );
 
   /** Prefetch posts while profile metadata loads so the grid appears faster. */
   const prefetchPrimaryContent = async () => {
@@ -804,11 +812,7 @@ export default function PublicProfileScreen() {
         style={tw`flex-1`}
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void onRefresh()}
-            tintColor="#059669"
-          />
+          <RefreshControl {...refresh} />
         }
       >
         <View style={tw`px-5 pt-4 pb-3`}>
@@ -960,40 +964,44 @@ export default function PublicProfileScreen() {
                           : 'bg-emerald-600'
                     } ${friendBusy ? 'opacity-60' : ''}`}
                   >
-                    {friendBusy ? (
-                      <ActivityIndicator
-                        color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
-                      />
-                    ) : (
-                      <Ionicons
-                        name={
-                          friendConnected
-                            ? 'checkmark-circle'
-                            : friendRequestSent
-                              ? 'time'
-                              : friendRequestReceived
-                                ? 'mail-open'
-                                : 'person-add'
-                        }
-                        size={18}
-                        color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
-                      />
-                    )}
-                    <Text
-                      style={tw`font-bold text-sm ${
-                        friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
-                      }`}
+                    <Animated.View
+                      style={[tw`flex-row items-center gap-1.5`, { transform: [{ scale: friendMorph }] }]}
                     >
-                      {friendBusy
-                        ? '…'
-                        : friendConnected
-                          ? 'Friends'
-                          : friendRequestSent
-                            ? 'Requested'
-                            : friendRequestReceived
-                              ? 'Accept'
-                              : 'Add friend'}
-                    </Text>
+                      {friendBusy ? (
+                        <ActivityIndicator
+                          color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
+                        />
+                      ) : (
+                        <Ionicons
+                          name={
+                            friendConnected
+                              ? 'checkmark-circle'
+                              : friendRequestSent
+                                ? 'time'
+                                : friendRequestReceived
+                                  ? 'mail-open'
+                                  : 'person-add'
+                          }
+                          size={18}
+                          color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
+                        />
+                      )}
+                      <Text
+                        style={tw`font-bold text-sm ${
+                          friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
+                        }`}
+                      >
+                        {friendBusy
+                          ? '…'
+                          : friendConnected
+                            ? 'Friends'
+                            : friendRequestSent
+                              ? 'Requested'
+                              : friendRequestReceived
+                                ? 'Accept'
+                                : 'Add friend'}
+                      </Text>
+                    </Animated.View>
                   </TouchableOpacity>
 
                   {profileUser.isInstructor &&

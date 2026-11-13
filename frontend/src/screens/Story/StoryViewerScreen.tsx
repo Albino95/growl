@@ -9,6 +9,7 @@ import {
   Animated,
   PanResponder,
   ActivityIndicator,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
@@ -26,12 +27,17 @@ import {
   unlockNativeUiAudio,
 } from '../../utils/interactionFeedback';
 import { isVideoMedia } from '../../services/api/media';
+import { haptic } from '../../theme/haptics';
+import { duration as motionDuration, easing, timing } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /** A video story that never reports playback progress within this window is skipped. */
 const VIDEO_STALL_SKIP_MS = 10000;
+/** How long a photo story stays up before auto-advancing. */
+const PHOTO_STORY_MS = 5000;
 
 /** Opening a ring at 0 jumps to the first story not yet seen (Instagram-style). */
 function startIndexFor(stories: Story[], initialIndex: number | undefined): number {
@@ -101,6 +107,13 @@ export default function StoryViewerScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [previousUserId, setPreviousUserId] = useState<string | null>(null);
+  const reduced = useReducedMotion();
+  /** Running photo-story progress timing (its completion advances the story). */
+  const photoAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  /** Last known progress value (0..1), kept in sync so a pause can resume from it. */
+  const progressValueRef = useRef(0);
+  const heldRef = useRef(false);
+  const [held, setHeld] = useState(false);
 
   useEffect(() => {
     lockNativeUiAudio();
@@ -159,6 +172,67 @@ export default function StoryViewerScreen() {
     }
   }).current;
 
+  useEffect(() => {
+    const id = progressAnim.addListener(({ value }) => {
+      progressValueRef.current = value;
+    });
+    return () => progressAnim.removeListener(id);
+  }, [progressAnim]);
+
+  /**
+   * Run the photo progress from `from` to 1 on the native driver; its finish
+   * (not a separate timer) advances, so the bar and the advance never drift.
+   */
+  const startPhotoProgress = useRef((from: number) => {
+    photoAnimRef.current?.stop();
+    const remaining = Math.max(0, 1 - from);
+    progressAnim.setValue(from);
+    const anim = Animated.timing(progressAnim, {
+      toValue: 1,
+      duration: Math.round(PHOTO_STORY_MS * remaining),
+      easing: easing.linear,
+      useNativeDriver: true,
+    });
+    photoAnimRef.current = anim;
+    anim.start(({ finished }) => {
+      if (photoAnimRef.current === anim) photoAnimRef.current = null;
+      // No haptic on auto-advance.
+      if (finished) goToNextStory();
+    });
+  }).current;
+
+  /** Press-and-hold pauses the story; release resumes from the current value. */
+  const pauseStory = () => {
+    if (heldRef.current) return;
+    heldRef.current = true;
+    setHeld(true);
+    if (photoAnimRef.current) {
+      const anim = photoAnimRef.current;
+      photoAnimRef.current = null;
+      anim.stop();
+      progressAnim.stopAnimation((v) => {
+        progressValueRef.current = v;
+      });
+    }
+  };
+
+  const resumeStory = (isVideo: boolean) => {
+    if (!heldRef.current) return;
+    heldRef.current = false;
+    setHeld(false);
+    if (!isVideo && !photoAnimRef.current) startPhotoProgress(progressValueRef.current);
+  };
+
+  const tapPrevious = () => {
+    if (currentIndexRef.current > 0) haptic('selection');
+    goToPreviousStory();
+  };
+
+  const tapNext = () => {
+    haptic('selection');
+    goToNextStory();
+  };
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -192,27 +266,13 @@ export default function StoryViewerScreen() {
     // Check if we're switching to a different user (for transition animation)
     if (currentStory && previousUserId && currentStory.userId !== previousUserId) {
       // More noticeable transition: fade + slide when changing users
-      slideAnim.setValue(50); // Start from right
+      slideAnim.setValue(reduced ? 0 : 50); // Start from right (crossfade only with reduce motion)
       Animated.parallel([
         Animated.sequence([
-          Animated.timing(fadeAnim, {
-            toValue: 0,
-            duration: 150,
-            useNativeDriver: true,
-          }),
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
+          timing(fadeAnim, 0, { duration: motionDuration.quick, easing: easing.in }, reduced),
+          timing(fadeAnim, 1, { duration: motionDuration.gentle, easing: easing.out }, reduced),
         ]),
-        Animated.sequence([
-          Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-        ]),
+        timing(slideAnim, 0, { duration: motionDuration.gentle, easing: easing.out }, reduced),
       ]).start();
     } else {
       fadeAnim.setValue(1);
@@ -249,7 +309,12 @@ export default function StoryViewerScreen() {
       }
     }
 
+    photoAnimRef.current?.stop();
+    photoAnimRef.current = null;
     progressAnim.setValue(0);
+    progressValueRef.current = 0;
+    heldRef.current = false;
+    setHeld(false);
     if (isVideoStory) {
       // The player has no error callback: if playback never starts, move on.
       videoProgressSeenRef.current = false;
@@ -264,22 +329,12 @@ export default function StoryViewerScreen() {
       };
     }
 
-    const timer = setTimeout(() => {
-      if (currentIndexRef.current < storiesRef.current.length - 1) {
-        goToNextStory();
-      } else {
-        markAllViewedAndClose();
-      }
-    }, 5000);
-
-    Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: 5000,
-      useNativeDriver: false,
-    }).start();
+    // goToNextStory closes the viewer after the last story.
+    startPhotoProgress(0);
 
     return () => {
-      clearTimeout(timer);
+      photoAnimRef.current?.stop();
+      photoAnimRef.current = null;
       progressAnim.setValue(0);
     };
   }, [currentIndex, isVideoStory]);
@@ -330,7 +385,7 @@ export default function StoryViewerScreen() {
             <ReelVideoPlayer
               uri={storyImageUrl}
               settings={storyVideoTrim(storyImageUrl)}
-              shouldPlay
+              shouldPlay={!held}
               loop={false}
               contentFit="cover"
               style={tw`w-full h-full`}
@@ -362,13 +417,8 @@ export default function StoryViewerScreen() {
               {index === currentIndex && (
                 <Animated.View
                   style={[
-                    tw`h-full bg-white`,
-                    {
-                      width: progressAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0%', '100%'],
-                      }),
-                    },
+                    tw`h-full w-full bg-white`,
+                    { transformOrigin: 'left', transform: [{ scaleX: progressAnim }] },
                   ]}
                 />
               )}
@@ -411,15 +461,25 @@ export default function StoryViewerScreen() {
 
         {/* Navigation Areas */}
         <View style={tw`absolute inset-0 flex-row`}>
-          <TouchableOpacity
+          <Pressable
             style={tw`flex-1`}
-            onPress={goToPreviousStory}
-            activeOpacity={1}
+            onPressIn={pauseStory}
+            onPressOut={() => resumeStory(isVideoStory)}
+            onPress={tapPrevious}
+            onLongPress={() => undefined}
+            delayLongPress={220}
+            accessibilityRole="button"
+            accessibilityLabel="Previous story"
           />
-          <TouchableOpacity
+          <Pressable
             style={tw`flex-1`}
-            onPress={goToNextStory}
-            activeOpacity={1}
+            onPressIn={pauseStory}
+            onPressOut={() => resumeStory(isVideoStory)}
+            onPress={tapNext}
+            onLongPress={() => undefined}
+            delayLongPress={220}
+            accessibilityRole="button"
+            accessibilityLabel="Next story"
           />
         </View>
 
@@ -428,7 +488,7 @@ export default function StoryViewerScreen() {
           <TouchableOpacity
             style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center`}
             onPress={() => {
-              triggerPressFeedback();
+              if (!likedIds[currentStory.id]) haptic('tapLight');
               setLikedIds((prev) => ({
                 ...prev,
                 [currentStory.id]: !prev[currentStory.id],

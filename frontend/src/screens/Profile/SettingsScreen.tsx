@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { haptic } from '../../theme/haptics';
 import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useUiPrefsStore } from '../../state/useUiPrefsStore';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
@@ -113,7 +114,11 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={hapticsEnabled}
-              onValueChange={setHapticsEnabled}
+              onValueChange={(v) => {
+                setHapticsEnabled(v);
+                // Confirm "on" with the tick itself; turning haptics off stays silent.
+                if (v) haptic('selection');
+              }}
               trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
               thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
             />
@@ -127,7 +132,10 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={soundEnabled}
-              onValueChange={setSoundEnabled}
+              onValueChange={(v) => {
+                haptic('selection');
+                setSoundEnabled(v);
+              }}
               trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
               thumbColor={soundEnabled ? '#059669' : '#F5F5F4'}
             />

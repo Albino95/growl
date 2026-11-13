@@ -7,6 +7,8 @@ import ScreenHeader from '../../components/ui/ScreenHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
 import FadeInUp from '../../components/ui/FadeInUp';
+import CountUpText from '../../components/ui/CountUpText';
+import { useRefresh } from '../../hooks/useRefresh';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import BadgeIcon from '../../components/badges/BadgeIcon';
 import LevelProgressCard from '../../components/badges/LevelProgressCard';
@@ -30,7 +32,6 @@ export default function BadgesScreen() {
   const [data, setData] = useState<MyBadges | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Tile | null>(null);
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
 
@@ -49,6 +50,7 @@ export default function BadgesScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+  const refresh = useRefresh(load);
 
   const tiles = useMemo(() => {
     if (!data) return [] as Tile[];
@@ -106,21 +108,13 @@ export default function BadgesScreen() {
         <ScrollView
           contentContainerStyle={tw`px-4 pb-16 pt-2`}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              tintColor="#059669"
-              onRefresh={async () => {
-                setRefreshing(true);
-                await load();
-                setRefreshing(false);
-              }}
-            />
+            <RefreshControl {...refresh} />
           }
         >
           <FadeInUp>
             <LevelProgressCard level={data.level} />
             <Text style={tw`text-xs text-stone-500 mt-2 mb-1 px-1`}>
-              {earnedCount} of {tiles.length} badges earned · points can’t be spent, they just show
+              <CountUpText value={earnedCount} /> of {tiles.length} badges earned · points can’t be spent, they just show
               how far you’ve grown.
             </Text>
           </FadeInUp>
@@ -202,7 +196,6 @@ function BadgeTile({ tile, width, onPress }: { tile: Tile; width: number; onPres
   return (
     <PressableScale
       onPress={onPress}
-      feedback="tap"
       style={[
         tw`items-center rounded-2xl px-2 pt-3 pb-2.5 border ${
           earned ? 'bg-[#FFFcf7] border-stone-200/80' : 'bg-[#F7F3EA] border-stone-200/50'

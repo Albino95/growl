@@ -27,6 +27,8 @@ import { getFeedPost } from '../../services/api/feed';
 import { avatarSource, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { stageEmoji } from '../../components/garden/seedMeta';
 import { feedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import { haptic } from '../../theme/haptics';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage } from '../../utils/confirmDialog';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
@@ -160,7 +162,6 @@ export default function NotificationsScreen() {
   const navigation = useNavigation();
   const [items, setItems] = useState<ActivityNotification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -178,9 +179,10 @@ export default function NotificationsScreen() {
       setHasMore(false);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
+  const refresh = useRefresh(load);
+  const { refreshing } = refresh;
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMoreRef.current || loading || refreshing) return;
@@ -317,7 +319,8 @@ export default function NotificationsScreen() {
     setBusyId(item.id);
     try {
       await respondToEndorsementRequest(item.ref_id, status);
-      feedback.success();
+      // Accepting is an outcome worth a success; declining is a quiet state change.
+      haptic(status === 'accepted' ? 'success' : 'tapLight');
       void markNotificationRead(item.id);
       setItems((prev) =>
         prev.map((n) =>
@@ -418,14 +421,7 @@ export default function NotificationsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={tw`px-4 pb-28 ${items.length === 0 ? 'flex-1' : ''}`}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                void load();
-              }}
-              tintColor="#059669"
-            />
+            <RefreshControl {...refresh} />
           }
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.4}
@@ -608,7 +604,6 @@ export default function NotificationsScreen() {
                                 <PressableScale
                                   onPress={() => void onRespondRequest(item, 'accepted')}
                                   disabled={busyId === item.id}
-                                  feedback="success"
                                   style={tw`flex-1 py-3 rounded-xl bg-emerald-600 items-center flex-row justify-center gap-1.5 ${
                                     busyId === item.id ? 'opacity-60' : ''
                                   }`}
@@ -619,7 +614,6 @@ export default function NotificationsScreen() {
                                 <PressableScale
                                   onPress={() => void onRespondRequest(item, 'declined')}
                                   disabled={busyId === item.id}
-                                  feedback="tap"
                                   style={tw`px-4 py-3 rounded-xl bg-white border border-stone-200 items-center`}
                                 >
                                   <Text style={tw`text-stone-700 font-semibold text-sm`}>

@@ -24,6 +24,7 @@ import PrimaryButton from '../../components/ui/PrimaryButton';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
 import { feedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { copyText, friendlyInviteError } from './inviteHelpers';
 
@@ -73,10 +74,10 @@ export default function InviteScreen() {
 
   const onCopy = async () => {
     if (!invite) return;
-    feedback.tap();
     const ok = await copyText(invite.url);
     if (ok) {
-      feedback.success();
+      // Light tap + the button's check pops in as "Copied".
+      haptic('tapLight');
       setCopied(true);
     }
   };

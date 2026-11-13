@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated, Easing } from 'react-native';
+import { View, Text, Animated } from 'react-native';
 import tw from '../../lib/tw';
+import { breathe, pop } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { stageAccent, stageEmoji, stageLabel } from './seedMeta';
 
 type Props = {
@@ -29,73 +31,29 @@ export default function SeedPlantVisual({
   const accent = stageAccent(stage);
   const pct = Math.max(0, Math.min(1, progress));
 
+  const reduced = useReducedMotion();
+
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bob, {
-          toValue: -4,
-          duration: 1600,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(bob, {
-          toValue: 0,
-          duration: 1600,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const swayLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sway, {
-          toValue: 1,
-          duration: 2200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(sway, {
-          toValue: -1,
-          duration: 2200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const glowLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glow, {
-          toValue: 0.7,
-          duration: 1800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(glow, {
-          toValue: 0.3,
-          duration: 1800,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    swayLoop.start();
-    glowLoop.start();
-    return () => {
-      loop.stop();
-      swayLoop.stop();
-      glowLoop.stop();
-    };
-  }, [bob, sway, glow]);
+    // Ambient bob / sway / glow — held still under Reduce Motion.
+    bob.setValue(0);
+    sway.setValue(0);
+    glow.setValue(0.5);
+    const loops = [
+      breathe(bob, 0, -4, { period: 3200 }, reduced),
+      breathe(sway, -1, 1, { period: 4400 }, reduced),
+      breathe(glow, 0.3, 0.7, { period: 3600 }, reduced),
+    ];
+    loops.forEach((l) => l?.start());
+    return () => loops.forEach((l) => l?.stop());
+  }, [bob, sway, glow, reduced]);
 
   useEffect(() => {
     if (!pulseKey) return;
     scale.stopAnimation();
-    const pulse = Animated.sequence([
-      Animated.spring(scale, { toValue: 1.16, friction: 3.5, tension: 220, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, friction: 5, tension: 160, useNativeDriver: true }),
-    ]);
+    const pulse = pop(scale, 1.16, 'bouncy', reduced);
     pulse.start();
     return () => pulse.stop();
-  }, [pulseKey, scale]);
+  }, [pulseKey, scale, reduced]);
 
   const ringSize = size + 18;
   const rotate = sway.interpolate({

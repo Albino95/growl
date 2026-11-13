@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
 import tw from '../../lib/tw';
+import { useRefresh } from '../../hooks/useRefresh';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
 import { resolveProductImageUri } from '../../utils/images';
 import EmptyState from '../../components/ui/EmptyState';
@@ -36,7 +37,6 @@ export default function MarketplaceScreen() {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const { products, selectedCategory, isLoading, error } = useAppSelector((state) => state.marketplace);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
@@ -72,11 +72,7 @@ export default function MarketplaceScreen() {
     return () => request.abort();
   }, [dispatch, fetchParams]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await dispatch(fetchProducts(fetchParams));
-    setRefreshing(false);
-  };
+  const refresh = useRefresh(() => dispatch(fetchProducts(fetchParams)));
 
   const handleCategoryChange = (category: string | null) => {
     setSelectedSubcategory(null);
@@ -277,12 +273,7 @@ export default function MarketplaceScreen() {
           contentContainerStyle={tw`px-4 pt-3 pb-24`}
           {...feedListPerformanceProps}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing || isLoading}
-              onRefresh={onRefresh}
-              tintColor="#059669"
-              colors={['#059669']}
-            />
+            <RefreshControl {...refresh} refreshing={refresh.refreshing || isLoading} />
           }
           ListHeaderComponent={
             <>
@@ -680,7 +671,7 @@ export default function MarketplaceScreen() {
                 ))}
               </View>
 
-              <PressableScale onPress={clearShopFilters} feedback="tap" style={tw`mt-4 py-3 items-center`}>
+              <PressableScale onPress={clearShopFilters} feedback="selection" style={tw`mt-4 py-3 items-center`}>
                 <Text style={tw`text-emerald-700 font-semibold`}>Clear filters</Text>
               </PressableScale>
 

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } fr
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { useRefresh } from '../../hooks/useRefresh';
 import {
   feedListPerformanceProps,
   horizontalScrollProps,
@@ -45,7 +46,6 @@ export default function OrdersScreen() {
   const orders = useAppSelector((s) => s.business.orders);
   const statusFilter = useAppSelector((s) => s.business.ordersFilter);
   const ordersStatus = useAppSelector((s) => s.business.ordersStatus);
-  const [refreshing, setRefreshing] = useState(false);
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(route.params?.search || '');
 
@@ -60,11 +60,7 @@ export default function OrdersScreen() {
     if (route.params?.search) setSearchQuery(route.params.search);
   }, [route.params?.search]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await dispatch(fetchBusinessOrders());
-    setRefreshing(false);
-  };
+  const refresh = useRefresh(() => dispatch(fetchBusinessOrders()));
 
   const advanceStatus = async (orderId: string, current: string) => {
     const next = NEXT_STATUS[current];
@@ -248,7 +244,7 @@ export default function OrdersScreen() {
           { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" colors={['#059669']} />
+          <RefreshControl {...refresh} />
         }
         {...feedListPerformanceProps}
         ListEmptyComponent={

@@ -7,11 +7,15 @@ import {
   Platform,
   StyleSheet,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
+import { haptic } from '../../../theme/haptics';
+import { breathe } from '../../../theme/motion';
+import { useReducedMotion } from '../../../hooks/useReducedMotion';
 import { alertMessage } from '../../../utils/confirmDialog';
 import { showPermissionDenied } from '../../../utils/permissionPrompt';
 
@@ -61,6 +65,20 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
   const [mode, setMode] = useState<CaptureMode>('photo');
   const [ready, setReady] = useState(false);
   const [recording, setRecording] = useState(false);
+  const reducedMotion = useReducedMotion();
+  const recDot = useRef(new Animated.Value(1)).current;
+
+  // Recording dot breathes while recording (static under Reduce Motion).
+  useEffect(() => {
+    recDot.setValue(1);
+    if (!recording) return;
+    const loop = breathe(recDot, 1, 0.3, {}, reducedMotion);
+    loop?.start();
+    return () => {
+      loop?.stop();
+      recDot.setValue(1);
+    };
+  }, [recording, reducedMotion, recDot]);
   const [busy, setBusy] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
 
@@ -249,6 +267,8 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
   };
 
   const beginRecordingUi = () => {
+    // Record start: one medium impact (the hold/tap that started it was silent).
+    haptic('impactMedium');
     recordingRef.current = true;
     recordStartedAt.current = Date.now();
     setRecording(true);
@@ -351,6 +371,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
 
   const stopRecording = async () => {
     if (!recordingRef.current) return;
+    haptic('tapLight');
 
     if (isWeb) {
       try {
@@ -375,6 +396,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
 
   const switchMode = (next: CaptureMode) => {
     if (recordingRef.current) return;
+    if (next !== mode) haptic('selection');
     setMode(next);
   };
 
@@ -493,7 +515,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                 </Pressable>
                 {recording ? (
                   <View style={tw`flex-row items-center bg-red-600/90 px-3 py-1.5 rounded-full`}>
-                    <View style={tw`w-2 h-2 rounded-full bg-white mr-2`} />
+                    <Animated.View style={[tw`w-2 h-2 rounded-full bg-white mr-2`, { opacity: recDot }]} />
                     <Text style={tw`text-white text-xs font-bold`}>
                       {String(Math.floor(recordSec / 60)).padStart(1, '0')}:
                       {String(recordSec % 60).padStart(2, '0')}

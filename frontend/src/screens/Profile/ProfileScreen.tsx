@@ -50,6 +50,10 @@ import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { groupGrowthPaths } from '../../utils/categoryLabels';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import CountUpText from '../../components/ui/CountUpText';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { breathe } from '../../theme/motion';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
 import NotificationBellButton from '../../components/navigation/NotificationBellButton';
@@ -257,7 +261,10 @@ export default function ProfileScreen({ navigation: navProp }: any) {
   const [followers, setFollowers] = useState<FriendSummary[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [postsLoaded, setPostsLoaded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useRefresh(async () => {
+    if (progressOpened) setProgressRefreshKey((k) => k + 1);
+    await loadProfileContent();
+  });
   const [connectionsSheet, setConnectionsSheet] = useState<ConnectionsSheetMode | null>(null);
   const connectionsSheetRef = useRef<ConnectionsSheetMode | null>(null);
   connectionsSheetRef.current = connectionsSheet;
@@ -599,19 +606,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
           paddingBottom: Platform.OS === 'web' ? 160 : TAB_SCREEN_BOTTOM_PADDING,
         }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              try {
-                if (progressOpened) setProgressRefreshKey((k) => k + 1);
-                await loadProfileContent();
-              } finally {
-                setRefreshing(false);
-              }
-            }}
-            tintColor="#059669"
-          />
+          <RefreshControl {...refresh} />
         }
       >
         {/* Identity */}
@@ -669,9 +664,11 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                     key={it.label}
                     style={tw`flex-1 items-center ${i > 0 ? 'border-l border-[#FECACA]/70' : ''}`}
                   >
-                    <Text style={tw`text-base font-bold text-stone-900`}>
-                      {it.icon} {it.value}
-                    </Text>
+                    <CountUpText
+                      style={tw`text-base font-bold text-stone-900`}
+                      prefix={`${it.icon} `}
+                      value={it.value}
+                    />
                     <Text style={tw`text-[10px] text-stone-500 mt-0.5`}>{it.label}</Text>
                   </View>
                 ))}
@@ -745,7 +742,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
                 Growth points
               </Text>
-              <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>{points}</Text>
+              <CountUpText style={tw`text-2xl font-bold text-stone-900 mt-0.5`} value={points} />
             </View>
             <Text style={tw`text-[11px] text-stone-500 text-right w-28 leading-4`}>
               Posts & endorsements earn points
@@ -1307,25 +1304,14 @@ function PathChangeSyncOverlay({
 }) {
   const pulse = useRef(new Animated.Value(0)).current;
   const ring = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!visible) return;
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    // Pulse holds still under Reduce Motion; the ring keeps turning as the
+    // "working" indicator (like a system spinner).
+    pulse.setValue(reduced ? 1 : 0);
+    const pulseLoop = breathe(pulse, 0, 1, { period: 1800 }, reduced);
     const ringLoop = Animated.loop(
       Animated.timing(ring, {
         toValue: 1,
@@ -1334,15 +1320,15 @@ function PathChangeSyncOverlay({
         useNativeDriver: true,
       })
     );
-    pulseLoop.start();
+    pulseLoop?.start();
     ringLoop.start();
     return () => {
-      pulseLoop.stop();
+      pulseLoop?.stop();
       ringLoop.stop();
       pulse.setValue(0);
       ring.setValue(0);
     };
-  }, [visible, pulse, ring]);
+  }, [visible, pulse, ring, reduced]);
 
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.06] });
   const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });

@@ -6,6 +6,7 @@ import InventoryScreen from '../../../screens/Business/InventoryScreen';
 import OrdersScreen from '../../../screens/Business/OrdersScreen';
 import GrowScreen from '../../../screens/Business/GrowScreen';
 import { useAppSelector } from '../../../store/hooks';
+import { haptic } from '../../../theme/haptics';
 import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
 
 export type BusinessTabsParamList = {
@@ -23,6 +24,12 @@ export default function BusinessTabs() {
   return (
     <Tab.Navigator
       detachInactiveScreens={false}
+      screenListeners={({ navigation }) => ({
+        // Selection tick only when switching tabs (re-tapping the active tab is silent).
+        tabPress: () => {
+          if (!navigation.isFocused()) haptic('selection');
+        },
+      })}
       screenOptions={({ route }) => ({
         headerShown: false,
         animation: 'shift',

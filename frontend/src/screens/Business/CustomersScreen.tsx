@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import { useRefresh } from '../../hooks/useRefresh';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -24,7 +25,6 @@ export default function CustomersScreen() {
   const customers = useAppSelector((s) => s.business.customers);
   const customersStatus = useAppSelector((s) => s.business.customersStatus);
   const customersError = useAppSelector((s) => s.business.customersError);
-  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(customers.length === 0);
 
   const load = useCallback(async () => {
@@ -41,11 +41,7 @@ export default function CustomersScreen() {
     void load();
   }, [load]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
+  const refresh = useRefresh(load);
 
   const openCustomerOrders = (customer: BusinessCustomer) => {
     const tabNav = navigation.getParent()?.getParent?.() || navigation.getParent?.() || navigation;
@@ -105,7 +101,7 @@ export default function CustomersScreen() {
           { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" colors={['#059669']} />
+          <RefreshControl {...refresh} />
         }
         {...feedListPerformanceProps}
         ListEmptyComponent={

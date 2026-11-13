@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, View, type StyleProp, type ViewStyle } from 'react-native';
 import tw from '../../lib/tw';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { spring } from '../../theme/motion';
 import { progressRatio } from './challengeUtils';
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** Soft emerald progress bar that grows into place (static with reduced motion). */
+/** Soft emerald progress bar that springs into place (static with reduced motion). */
 export default function ChallengeProgressBar({ progress, target, height = 6, completed, style }: Props) {
   const ratio = progressRatio(progress, target);
   const reduced = useReducedMotion();
@@ -23,12 +24,11 @@ export default function ChallengeProgressBar({ progress, target, height = 6, com
       anim.setValue(ratio);
       return;
     }
-    const a = Animated.timing(anim, { toValue: ratio, duration: 520, useNativeDriver: false });
+    // Native-driven scaleX (anchored left) — springs in on mount / join / check-in.
+    const a = spring(anim, ratio, 'gentle');
     a.start();
     return () => a.stop();
   }, [anim, ratio, reduced]);
-
-  const width = anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
   return (
     <View
@@ -38,7 +38,8 @@ export default function ChallengeProgressBar({ progress, target, height = 6, com
     >
       <Animated.View
         style={[
-          { height, width, borderRadius: height / 2 },
+          // The track's rounded overflow clips the ends, so the fill stays square (no squashed caps).
+          { height, width: '100%', transformOrigin: 'left', transform: [{ scaleX: anim }] },
           { backgroundColor: completed ? '#F97066' : '#059669' },
         ]}
       />

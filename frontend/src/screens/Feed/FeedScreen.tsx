@@ -44,6 +44,8 @@ import { reelCoverUri } from '../../utils/reelCover';
 import { postMatchesCategoryFilter } from '../../utils/categoryFilter';
 import { reelPlaybackSettingsFromMetadata, reelSoundtrackFromEdit } from '../../utils/reelMedia';
 import { feedback, triggerPressFeedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
+import { useRefresh } from '../../hooks/useRefresh';
 import InstructorDiscoveryStrip from '../../components/instructor/InstructorDiscoveryStrip';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { openCoachingReachOut } from '../../utils/coachingReachOut';
@@ -154,7 +156,6 @@ export default function FeedScreen({ navigation, route }: any) {
   const feedStatus = useAppSelector((s) => s.feed.status);
   const feedError = useAppSelector((s) => s.feed.error);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const feedListRef = React.useRef<SectionList<Post>>(null);
   const homePulse = useHomeTabStore((s) => s.pulse);
   const lastJournalDateKey = useActivationStore((s) => s.lastJournalDateKey);
@@ -408,9 +409,7 @@ export default function FeedScreen({ navigation, route }: any) {
     });
   }, [userCategories]);
 
-  const onRefresh = async () => {
-    feedback.refresh();
-    setRefreshing(true);
+  const refresh = useRefresh(async () => {
     try {
       await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
@@ -419,8 +418,7 @@ export default function FeedScreen({ navigation, route }: any) {
     await loadStoriesOnly();
     void useGrowthStore.getState().refresh({ force: true, userId: user?.id ?? null });
     if (isRecapWindow()) void useGrowthStore.getState().refreshRecap({ force: true });
-    setRefreshing(false);
-  };
+  });
 
   useEffect(() => {
     if (homePulse < 1) return;
@@ -428,7 +426,8 @@ export default function FeedScreen({ navigation, route }: any) {
       scrollToOffset?: (opts: { offset: number; animated: boolean }) => void;
     };
     list?.scrollToOffset?.({ offset: 0, animated: true });
-    void onRefresh();
+    // Re-tapping Home: spinner, but no haptics (the dock tap was silent too).
+    void refresh.onRefresh({ haptics: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse is the trigger
   }, [homePulse]);
 
@@ -455,7 +454,7 @@ export default function FeedScreen({ navigation, route }: any) {
 
     // Optimistic Redux patch so SectionList re-renders with a filled heart.
     if (opts?.fromDoubleTap && wasLiked) {
-      feedback.like(true);
+      haptic('tapLight');
       playHeartBurst(postId);
       return;
     }
@@ -469,7 +468,8 @@ export default function FeedScreen({ navigation, route }: any) {
       ? (current?.likes ?? 0) + 1
       : Math.max(0, (current?.likes ?? 0) - 1);
 
-    feedback.like(nextLiked);
+    // Light tap on like only — unliking is silent.
+    if (nextLiked) haptic('tapLight');
 
     dispatch(
       patchFeedPostEngagement({
@@ -728,7 +728,9 @@ export default function FeedScreen({ navigation, route }: any) {
     void toggleLike(postId);
   });
   const onCardLikeLongPress = useStableCallback((postId: string) => {
-    setShowReactionPicker(showReactionPicker === postId ? null : postId);
+    const opening = showReactionPicker !== postId;
+    if (opening) haptic('impactMedium');
+    setShowReactionPicker(opening ? postId : null);
   });
   const onCardOpenComments = useStableCallback((post: Post) => openComments(post));
   const onCardShare = useStableCallback((item: Post) => {
@@ -1174,12 +1176,7 @@ export default function FeedScreen({ navigation, route }: any) {
           )}
           contentContainerStyle={[tw`pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#059669"
-              colors={['#059669']}
-            />
+            <RefreshControl {...refresh} />
           }
           {...feedListPerformanceProps}
           {...verticalScrollProps}

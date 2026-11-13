@@ -31,11 +31,11 @@ import FeedLikeButton, {
   type FeedReaction,
 } from '../../components/feed/FeedLikeButton';
 import {
-  feedback,
   lockNativeUiAudio,
   triggerPressFeedback,
   unlockNativeUiAudio,
 } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
 import GrowLoader from '../../components/ui/GrowLoader';
 import tw from '../../lib/tw';
 
@@ -328,7 +328,7 @@ export default function ReelsScreen() {
     const wasLiked = !!current?.liked;
 
     if (opts?.fromDoubleTap && wasLiked) {
-      feedback.like(true);
+      haptic('tapLight');
       playHeartBurst(postId);
       return;
     }
@@ -338,7 +338,8 @@ export default function ReelsScreen() {
       ? (current?.metadata?.likes ?? 0) + 1
       : Math.max(0, (current?.metadata?.likes ?? 0) - 1);
 
-    feedback.like(nextLiked);
+    // Light tap on like only — unliking is silent.
+    if (nextLiked) haptic('tapLight');
 
     setItems((prev) =>
       prev.map((row) => {
@@ -601,9 +602,10 @@ export default function ReelsScreen() {
                     tone="dark"
                     compact
                     onPress={() => void onToggleLike(item.id)}
-                    onLongPress={() =>
-                      setShowReactionPicker((prev) => (prev === item.id ? null : item.id))
-                    }
+                    onLongPress={() => {
+                      if (showReactionPicker !== item.id) haptic('impactMedium');
+                      setShowReactionPicker((prev) => (prev === item.id ? null : item.id));
+                    }}
                   />
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(likes)}</Text>

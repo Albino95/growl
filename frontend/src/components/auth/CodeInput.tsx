@@ -3,6 +3,8 @@ import { Animated, Platform, Pressable, StyleSheet, Text, TextInput, View } from
 import tw from '../../lib/tw';
 import { formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
 import { runShake } from './authMotion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { spring } from '../../theme/motion';
 
 export const CODE_LENGTH = 6;
 
@@ -51,13 +53,7 @@ function Digit({
       return () => a.stop();
     }
     pop.setValue(0);
-    const a = Animated.spring(pop, {
-      toValue: 1,
-      damping: 12,
-      stiffness: 320,
-      mass: 0.8,
-      useNativeDriver: true,
-    });
+    const a = spring(pop, 1, 'bouncy');
     a.start();
     return () => a.stop();
   }, [char, pop, reducedMotion]);
@@ -110,13 +106,16 @@ const CodeInput = forwardRef<CodeInputHandle, Props>(function CodeInput(
     onChangeText,
     onComplete,
     hasError = false,
-    reducedMotion = false,
+    reducedMotion: reducedMotionProp,
     autoFocus = true,
     disabled,
     accessibilityLabel = 'Verification code',
   },
   ref
 ) {
+  // Falls back to the OS setting so the pop + caret loop are always gated.
+  const osReducedMotion = useReducedMotion();
+  const reducedMotion = reducedMotionProp ?? osReducedMotion;
   const inputRef = useRef<TextInput>(null);
   const shakeX = useRef(new Animated.Value(0)).current;
   const [focused, setFocused] = useState(false);

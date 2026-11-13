@@ -10,12 +10,18 @@ import {
   ScrollView,
   ActivityIndicator,
   AppState,
+  Easing,
+  AccessibilityInfo,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import WeekDots from '../recap/WeekDots';
+import CountUpText from '../ui/CountUpText';
+import CheckinWeekDots from './CheckinWeekDots';
+import StreakBurst from './StreakBurst';
+import { streakMilestoneCopy } from './streakMilestones';
 import {
   CHECKIN_MOODS,
   FOLLOWUP_OPTIONS,
@@ -23,7 +29,6 @@ import {
   firstNameOf,
   followupReply,
   isEvening,
-  isStreakMilestone,
   moodReply,
   streakLabel,
   topLevelPaths,
@@ -35,8 +40,10 @@ import { useGrowthStore } from '../../state/useGrowthStore';
 import { useActivationStore } from '../../state/useActivationStore';
 import { useAuth } from '../../store/hooks';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
-import { triggerFeedback } from '../../utils/interactionFeedback';
+import { celebrateOnce, haptic } from '../../theme/haptics';
+import { duration, easing, pop, spring, timing } from '../../theme/motion';
 import { getTimeOfDayGreeting } from '../../utils/greeting';
+import { isBootRevealStarted, onBootRevealStart } from '../auth/bootSplashSignal';
 import { getCategoryMeta } from '../../utils/categoryLabels';
 import CATEGORIES from '../../data/categories';
 import type { Mood } from '../../services/api/growth';
@@ -48,11 +55,55 @@ if (Platform.OS === 'android' && typeof UIManager.setLayoutAnimationEnabledExper
 type Phase = 'form' | 'reply' | 'pill';
 
 const REPLY_HOLD_MS = 2400;
+/** Milestone copy needs a beat longer to read before the card collapses. */
+const MILESTONE_HOLD_MS = 3600;
+/** Don't let a slow SecureStore read hold the reply back. */
+const CELEBRATE_LOOKUP_MS = 300;
 const INTENTION_MAX = 140;
 
 function pathLabel(key: string | null | undefined): string {
   if (!key) return '';
   return getCategoryMeta(key).parentLabel;
+}
+
+/**
+ * Cold start: if this card is already on screen under the boot splash, the
+ * greeting arrives with the reveal (fade + 6pt rise, 260ms, 120ms after the
+ * splash starts lifting). Mounted later → static. Reduce motion → static.
+ */
+function useBootRevealGreeting(reduceMotion: boolean) {
+  const [underSplash] = useState(() => !isBootRevealStarted());
+  const progress = useRef(new Animated.Value(underSplash ? 0 : 1)).current;
+  const reduceRef = useRef(reduceMotion);
+  reduceRef.current = reduceMotion;
+  useEffect(() => {
+    if (!underSplash) return undefined;
+    return onBootRevealStart(({ animate }) => {
+      if (!animate || reduceRef.current) {
+        progress.setValue(1);
+        return;
+      }
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 260,
+        delay: 120,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [progress, underSplash]);
+  return useMemo(
+    () =>
+      underSplash
+        ? {
+            opacity: progress,
+            transform: [
+              { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+            ],
+          }
+        : null,
+    [progress, underSplash]
+  );
 }
 
 /**
@@ -64,6 +115,7 @@ function TodayCard() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const reduceMotion = useReducedMotion();
+  const greetIn = useBootRevealGreeting(reduceMotion);
 
   const streak = useGrowthStore((s) => s.streak);
   const checkin = useGrowthStore((s) => s.checkin);
@@ -85,14 +137,28 @@ function TodayCard() {
   const [restNote, setRestNote] = useState<string | null>(null);
   const [pointsAwarded, setPointsAwarded] = useState(0);
   const [followupLine, setFollowupLine] = useState<string | null>(null);
+  /** Streak before this save — the reply counts up from it. */
+  const [streakFrom, setStreakFrom] = useState(0);
+  /** Milestone (3/7/14/30/50/100/365) being celebrated for the first time, else null. */
+  const [milestone, setMilestone] = useState<number | null>(null);
+  /** Bumped per save → replays the done sequence once the reply view is mounted. */
+  const [replyRun, setReplyRun] = useState(0);
 
   const moodScales = useRef(CHECKIN_MOODS.map(() => new Animated.Value(1))).current;
   const reveal = useRef(new Animated.Value(0)).current;
   const checkPop = useRef(new Animated.Value(1)).current;
+  const replyIn = useRef(new Animated.Value(1)).current;
+  const dotFill = useRef(new Animated.Value(1)).current;
+  const streakPop = useRef(new Animated.Value(1)).current;
+  const milestoneIn = useRef(new Animated.Value(1)).current;
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** True while Done is saving → keeps the server-sync effect from jumping to the pill. */
+  const committing = useRef(false);
+  const mounted = useRef(true);
 
   useEffect(
     () => () => {
+      mounted.current = false;
       timers.current.forEach(clearTimeout);
       timers.current = [];
     },
@@ -112,6 +178,17 @@ function TodayCard() {
     LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
   }, [reduceMotion]);
 
+  /** Reply → pill collapse: a gentle spring on the size change, skipped under Reduce Motion. */
+  const animateCollapse = useCallback(() => {
+    if (reduceMotion) return;
+    LayoutAnimation.configureNext({
+      duration: duration.gentle,
+      create: { type: 'easeInEaseOut', property: 'opacity' },
+      update: { type: 'spring', springDamping: 0.86 },
+      delete: { type: 'easeInEaseOut', property: 'opacity' },
+    });
+  }, [reduceMotion]);
+
   // Keep phase in sync with the server (new day → form; check-in from elsewhere → pill).
   useEffect(() => {
     if (!checkin) {
@@ -119,7 +196,7 @@ function TodayCard() {
       setEditing(false);
       return;
     }
-    if (phase === 'form' && !editing && !saving) setPhase('pill');
+    if (phase === 'form' && !editing && !saving && !committing.current) setPhase('pill');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkin]);
 
@@ -141,7 +218,7 @@ function TodayCard() {
   }, [reduceMotion, reveal]);
 
   const onMood = (value: Mood, index: number) => {
-    triggerFeedback('select');
+    haptic('selection');
     setError(null);
     const first = mood == null;
     setMood(value);
@@ -157,23 +234,51 @@ function TodayCard() {
   };
 
   const onPath = (key: string) => {
-    triggerFeedback('select');
+    haptic('selection');
     setPath((cur) => (cur === key ? null : key));
   };
 
-  const popCheck = useCallback(() => {
+  /**
+   * Done sequence (≤ ~900ms, native driver): check pops → reply line rises →
+   * "+N" and the streak count up (CountUpText, JS) → today's week dot springs
+   * full. Milestone: the big streak number pops with a dot burst + copy.
+   * Reduce motion: everything lands at once, milestone copy just fades in.
+   */
+  useEffect(() => {
+    if (!replyRun) return undefined;
     if (reduceMotion) {
       checkPop.setValue(1);
-      return;
+      dotFill.setValue(1);
+      streakPop.setValue(1);
+      replyIn.setValue(0);
+      milestoneIn.setValue(0);
+      const fade = Animated.parallel([timing(replyIn, 1, {}, true), timing(milestoneIn, 1, {}, true)]);
+      fade.start();
+      return () => fade.stop();
     }
     checkPop.setValue(0.4);
-    Animated.spring(checkPop, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 14 }).start();
-  }, [reduceMotion, checkPop]);
+    replyIn.setValue(0);
+    dotFill.setValue(0);
+    streakPop.setValue(0);
+    milestoneIn.setValue(0);
+    const seq = Animated.parallel([
+      pop(checkPop, 1.15, 'bouncy'),
+      timing(replyIn, 1, { duration: duration.quick, easing: easing.out, delay: 80 }),
+      spring(dotFill, 1, 'snappy', false, { delay: 280 }),
+      Animated.sequence([Animated.delay(220), pop(streakPop, 1.35, 'bouncy')]),
+      timing(milestoneIn, 1, { duration: duration.base, easing: easing.out, delay: 380 }),
+    ]);
+    seq.start();
+    return () => seq.stop();
+  }, [replyRun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onDone = async () => {
     if (!mood || saving) return;
-    triggerFeedback('commit');
+    // No tap haptic: the save itself answers with success (or celebrate / error).
     setError(null);
+    const prevStreak = streak?.current ?? 0;
+    const firstToday = !checkin;
+    committing.current = true;
     try {
       const trimmed = intention.trim().slice(0, INTENTION_MAX);
       const res = await useGrowthStore.getState().saveCheckin({
@@ -182,24 +287,44 @@ function TodayCard() {
         intention: trimmed || null,
       });
       const awarded = res.points_awarded || 0;
+      const nextStreak = res.streak?.current ?? prevStreak;
+      const copy = firstToday ? streakMilestoneCopy(nextStreak) : null;
+      // celebrateOnce fires haptic('celebrate') itself, the first time only.
+      const fresh = copy
+        ? await Promise.race([
+            celebrateOnce(`streak:${nextStreak}`).catch(() => false),
+            new Promise<boolean>((r) => setTimeout(() => r(false), CELEBRATE_LOOKUP_MS)),
+          ])
+        : false;
+      if (!fresh) haptic('success');
+      if (!mounted.current) return;
+      const reached = fresh ? nextStreak : null;
       setPointsAwarded(awarded);
-      if (awarded > 0 && isStreakMilestone(res.streak?.current ?? 0)) {
-        triggerFeedback('celebrate');
-      }
+      setStreakFrom(prevStreak);
+      setMilestone(reached);
       setEditing(false);
       setExpanded(false);
       animateLayout();
       setPhase('reply');
-      popCheck();
+      setReplyRun((n) => n + 1);
+      const reply = moodReply(res.checkin?.mood ?? mood);
+      AccessibilityInfo.announceForAccessibility(
+        [reply, awarded > 0 ? `Plus ${awarded} points` : '', streakLabel(nextStreak), reached ? copy : '']
+          .filter(Boolean)
+          .join('. ')
+      );
       timers.current.push(
         setTimeout(() => {
-          animateLayout();
+          animateCollapse();
           setPhase('pill');
-        }, REPLY_HOLD_MS)
+          setMilestone(null);
+        }, reached ? MILESTONE_HOLD_MS : REPLY_HOLD_MS)
       );
     } catch {
-      triggerFeedback('warn');
+      haptic('error');
       setError('Couldn’t save just now. Tap Done to try again.');
+    } finally {
+      committing.current = false;
     }
   };
 
@@ -207,11 +332,11 @@ function TodayCard() {
 
   const onRest = async () => {
     if (saving) return;
+    haptic('tapLight');
     if (restLeft <= 0) {
       setRestNote('No rest days left right now — one refills after 7 active days. Any small step counts today.');
       return;
     }
-    triggerFeedback('commit');
     setRestNote(null);
     setError(null);
     try {
@@ -225,13 +350,14 @@ function TodayCard() {
         setRestNote('No rest days left right now — one refills after 7 active days. Any small step counts today.');
         void useGrowthStore.getState().refresh({ force: true });
       } else {
+        haptic('error');
         setError('Couldn’t save just now. Try again in a moment.');
       }
     }
   };
 
   const onEdit = () => {
-    triggerFeedback('tap');
+    haptic('tapLight');
     setMood(checkin?.mood ?? null);
     setPath(checkin?.path ?? null);
     setIntention(checkin?.intention ?? '');
@@ -242,7 +368,7 @@ function TodayCard() {
   };
 
   const onWriteMore = () => {
-    triggerFeedback('open');
+    haptic('tapLight');
     useGrowthStore.getState().setComposeDraft({
       mood: journalMoodFromCheckin(checkin?.mood ?? null),
       path: checkin?.path ?? null,
@@ -252,14 +378,14 @@ function TodayCard() {
   };
 
   const onTogglePill = () => {
-    triggerFeedback('toggle');
+    haptic('selection');
     animateLayout();
     setExpanded((v) => !v);
   };
 
   const onFollowup = async (value: Followup) => {
     if (!checkin || saving) return;
-    triggerFeedback(value === 'yes' ? 'success' : 'select');
+    haptic('selection');
     try {
       await useGrowthStore.getState().saveCheckin({
         ...(checkin.mood ? { mood: checkin.mood } : {}),
@@ -270,6 +396,7 @@ function TodayCard() {
       animateLayout();
       setFollowupLine(followupReply(value));
     } catch {
+      haptic('error');
       setError('Couldn’t save just now. Try again in a moment.');
     }
   };
@@ -302,10 +429,22 @@ function TodayCard() {
 
   // ---------- Reply (just saved) ----------
   if (phase === 'reply' && checkin) {
+    const reply = moodReply(checkin.mood);
+    const milestoneCopy = milestone ? streakMilestoneCopy(milestone) : null;
+    const rise = (v: Animated.Value, from: number) =>
+      reduceMotion ? 0 : v.interpolate({ inputRange: [0, 1], outputRange: [from, 0] });
     return (
       <View
         style={tw`mx-4 mb-3 px-4 py-4 rounded-2xl bg-[#FFFcf7] border border-emerald-200/80`}
-        accessibilityLiveRegion="polite"
+        accessible
+        accessibilityLabel={[
+          reply,
+          pointsAwarded > 0 ? `Plus ${pointsAwarded} points` : '',
+          streakLabel(current),
+          milestoneCopy ?? '',
+        ]
+          .filter(Boolean)
+          .join('. ')}
       >
         <View style={tw`flex-row items-center`}>
           <Animated.View
@@ -316,16 +455,56 @@ function TodayCard() {
           >
             <Ionicons name="checkmark" size={20} color="#fff" />
           </Animated.View>
-          <View style={tw`flex-1`}>
-            <Text style={tw`text-[15px] font-semibold text-stone-900 leading-5`}>
-              {moodReply(checkin.mood)}
-            </Text>
+          <Animated.View
+            style={[tw`flex-1`, { opacity: replyIn, transform: [{ translateY: rise(replyIn, 6) }] }]}
+          >
+            <Text style={tw`text-[15px] font-semibold text-stone-900 leading-5`}>{reply}</Text>
             <Text style={tw`text-xs font-semibold text-[#E0584E] mt-1`}>
-              {pointsAwarded > 0 ? `+${pointsAwarded} · ` : ''}
-              {streakLabel(current)}
+              {pointsAwarded > 0 ? (
+                <>
+                  <CountUpText key={`p${replyRun}`} value={pointsAwarded} from={0} prefix="+" delay={180} />
+                  {' · '}
+                </>
+              ) : null}
+              <CountUpText
+                key={`s${replyRun}`}
+                value={current}
+                from={streakFrom}
+                suffix="-day streak"
+                delay={180}
+              />
             </Text>
-          </View>
+          </Animated.View>
+          {streak.week?.length ? (
+            <View style={tw`ml-2`}>
+              <CheckinWeekDots days={streak.week} todayKey={streak.today || localDateKey()} fill={dotFill} size={8} />
+            </View>
+          ) : null}
         </View>
+
+        {milestoneCopy && milestone ? (
+          <View style={tw`flex-row items-center mt-3 pt-3 border-t border-emerald-100`}>
+            <View style={tw`w-16 h-12 items-center justify-center mr-2`}>
+              {!reduceMotion ? <StreakBurst triggerKey={replyRun} delay={260} radius={30} /> : null}
+              <Animated.Text
+                style={[
+                  tw`text-[30px] font-extrabold text-[#E0584E]`,
+                  { transform: [{ scale: streakPop }] },
+                ]}
+              >
+                {milestone}
+              </Animated.Text>
+            </View>
+            <Animated.Text
+              style={[
+                tw`flex-1 text-[14px] font-semibold text-emerald-900 leading-5`,
+                { opacity: milestoneIn, transform: [{ translateY: rise(milestoneIn, 4) }] },
+              ]}
+            >
+              {milestoneCopy}
+            </Animated.Text>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -464,7 +643,9 @@ function TodayCard() {
     <View style={tw`mx-4 mb-3 px-4 pt-4 pb-3.5 rounded-3xl bg-[#FFFcf7] border border-stone-200/70`}>
       <View style={tw`flex-row items-start justify-between`}>
         <View style={tw`flex-1 pr-3`}>
-          <Text style={tw`text-[17px] font-bold text-stone-900`}>{greeting}</Text>
+          <Animated.Text style={[tw`text-[17px] font-bold text-stone-900`, greetIn]}>
+            {greeting}
+          </Animated.Text>
           <Text style={tw`text-sm text-stone-500 mt-0.5`}>
             {editing ? 'Update today’s check-in.' : 'How are you arriving today?'}
           </Text>
@@ -573,8 +754,9 @@ function TodayCard() {
       <View style={tw`flex-row items-center justify-between mt-2.5`}>
         {editing ? (
           <PressableScale
-            feedback="close"
+            feedback={false}
             onPress={() => {
+              haptic('selection');
               setEditing(false);
               setError(null);
               animateLayout();

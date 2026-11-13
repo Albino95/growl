@@ -2,7 +2,6 @@ import React, { memo, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Easing,
   Pressable,
   Text,
   View,
@@ -12,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
 import { useReducedMotion } from '../../../hooks/useReducedMotion';
+import { breathe } from '../../../theme/motion';
 
 /** What the editor is preparing — drives the copy only. */
 export type EditorSubject = 'photo' | 'clip';
@@ -88,24 +88,9 @@ function EditorLoadingStateBase({
       pulse.setValue(0.7);
       return;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 0.95,
-          duration: 850,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0.55,
-          duration: 850,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
+    const loop = breathe(pulse, 0.55, 0.95, { period: 1700 }, reduce);
+    loop?.start();
+    return () => loop?.stop();
   }, [pulse, reduce, status]);
 
   const ratio = aspectRatio(aspect);

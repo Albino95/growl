@@ -16,6 +16,7 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import tw from '../../lib/tw';
+import { haptic } from '../../theme/haptics';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import {
   KeyboardDoneAccessory,
@@ -275,7 +276,10 @@ export default function BizSettings() {
             </View>
             <Switch
               value={inAppAlerts}
-              onValueChange={setInAppAlerts}
+              onValueChange={(v) => {
+                haptic('selection');
+                setInAppAlerts(v);
+              }}
               trackColor={{ false: '#D6D3D1', true: EMERALD }}
               thumbColor="#FFFFFF"
             />

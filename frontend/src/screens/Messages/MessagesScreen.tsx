@@ -52,6 +52,7 @@ import PressableScale from '../../components/ui/PressableScale';
 import SearchField from '../../components/ui/SearchField';
 import SkeletonCard, { SkeletonList } from '../../components/ui/SkeletonCard';
 import { feedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
 import { isAppActive } from '../../utils/appActive';
 import { alertMessage } from '../../utils/confirmDialog';
 import {
@@ -189,7 +190,6 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [listError, setListError] = useState<string | null>(null);
@@ -247,9 +247,9 @@ export default function MessagesScreen() {
       if (!opts?.silent) setConversations([]);
     } finally {
       setLoadingConversations(false);
-      setRefreshing(false);
     }
   }, []);
+  const refresh = useRefresh(() => loadConversations());
 
   const openConversation = useCallback(async (conversation: ConversationSummary) => {
     feedback.open();
@@ -1088,14 +1088,7 @@ export default function MessagesScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                void loadConversations();
-              }}
-              tintColor="#059669"
-            />
+            <RefreshControl {...refresh} />
           }
           renderItem={({ item }) => (
             <PressableScale
