@@ -431,3 +431,136 @@ export async function sampleClipFramesQuiet(
   await waitMs(nativeThumbnailReleaseMs());
   return frames;
 }
+
+/** A single poster still: `uri` is a local file (native) or a data: URL (web). */
+export type CoverStill = { uri: string; width: number; height: number };
+
+async function sharedImageToJpegFile(source: unknown, maxWidth: number): Promise<CoverStill | null> {
+  if (!source) return null;
+  try {
+    const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
+    const ctx = ImageManipulator.manipulate(source as Parameters<typeof ImageManipulator.manipulate>[0]);
+    const w = Number((source as { width?: number }).width) || 0;
+    if (w > maxWidth) ctx.resize({ width: maxWidth });
+    const ref = await ctx.renderAsync();
+    const saved = await ref.saveAsync({ compress: 0.82, format: SaveFormat.JPEG });
+    return saved?.uri ? { uri: saved.uri, width: saved.width, height: saved.height } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function captureCoverWeb(videoUri: string, timeMs: number, maxWidth: number): Promise<CoverStill | null> {
+  if (typeof document === 'undefined') return null;
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  if (/^https?:\/\//i.test(videoUri)) video.crossOrigin = 'anonymous';
+  video.src = videoUri;
+  try {
+    if (!(await waitForVideoReady(video))) return null;
+    const durSec = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    const t = durSec > 0 ? Math.min(Math.max(0.08, timeMs / 1000), Math.max(0.08, durSec - 0.08)) : 0;
+    await seekVideo(video, t);
+    const w = video.videoWidth || 0;
+    const h = video.videoHeight || 0;
+    if (w < 2 || h < 2) return null;
+    const scale = Math.min(1, maxWidth / w);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return { uri: canvas.toDataURL('image/jpeg', 0.82), width: canvas.width, height: canvas.height };
+  } catch {
+    return null;
+  } finally {
+    video.pause();
+    video.removeAttribute('src');
+    try {
+      video.load();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Same safe path as `extractFramesNative`: expo-video on a *copy* of the clip
+ * (never expo-video-thumbnails / AVAssetImageGenerator), player released and
+ * copy deleted before returning. Callers must have no VideoView mounted on
+ * `videoUri` (publish: after the preview unloads).
+ */
+async function captureCoverNative(
+  videoUri: string,
+  timeMs: number,
+  durationMs: number,
+  maxWidth: number
+): Promise<CoverStill | null> {
+  const thumbsUri = await copyClipForThumbs(videoUri);
+  if (!thumbsUri) return null;
+  let player: VideoPlayer | null = null;
+  try {
+    const ExpoVideo = await import('expo-video');
+    const p = ExpoVideo.createVideoPlayer(null);
+    player = p;
+    await withTimeout(
+      p.replaceAsync({ uri: thumbsUri, contentType: 'auto' }).then(() => true),
+      8000,
+      false
+    );
+    if (!(await waitPlayerReady(p, 8000))) return null;
+    const t = clampThumbnailTimeMs(timeMs, Math.max(durationMs, 1000)) / 1000;
+    const thumbs = await withTimeout(
+      p.generateThumbnailsAsync([t], { maxWidth, maxHeight: Math.round(maxWidth * 2) }),
+      8000,
+      []
+    );
+    return await sharedImageToJpegFile(thumbs[0] ?? null, maxWidth);
+  } catch {
+    return null;
+  } finally {
+    try {
+      player?.pause();
+    } catch {
+      /* ignore */
+    }
+    try {
+      player?.release?.();
+    } catch {
+      /* ignore */
+    }
+    await deleteQuiet(thumbsUri);
+  }
+}
+
+/**
+ * Grab one full-size-ish poster still at `timeMs` (reel cover). Never throws;
+ * resolves null on any failure / timeout. `fallbackSource` (an already-sampled
+ * filmstrip still) is rendered to a file if the fresh capture fails.
+ */
+export async function captureCoverFrame(
+  videoUri: string,
+  timeMs: number,
+  durationMs: number,
+  opts?: { maxWidth?: number; fallbackSource?: unknown }
+): Promise<CoverStill | null> {
+  const maxWidth = Math.max(160, Math.min(1080, opts?.maxWidth ?? 720));
+  if (!videoUri) return null;
+  try {
+    let still: CoverStill | null = null;
+    if (Platform.OS === 'web') {
+      still = await withTimeout(captureCoverWeb(videoUri, timeMs, maxWidth), 9000, null);
+    } else if (nativeMayGenerateThumbnails()) {
+      still = await withTimeout(captureCoverNative(videoUri, timeMs, durationMs, maxWidth), 14000, null);
+    }
+    if (!still && opts?.fallbackSource && Platform.OS !== 'web') {
+      still = await withTimeout(sharedImageToJpegFile(opts.fallbackSource, maxWidth), 4000, null);
+    }
+    return still;
+  } catch {
+    return null;
+  }
+}

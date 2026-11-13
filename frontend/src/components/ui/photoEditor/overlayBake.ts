@@ -304,17 +304,25 @@ export function applyCinematicEdges(
   if (amount <= 0) return;
   const { data, width, height } = buffer;
   const strength = amount / 100;
+  // Falloff is separable: precompute the per-column term once (was a Math.pow
+  // per pixel), the per-row term once per row.
+  const edgeX = new Float32Array(width);
+  for (let x = 0; x < width; x++) {
+    const nx = x / (width - 1 || 1);
+    edgeX[x] = Math.pow(Math.max(0, 1 - Math.min(nx, 1 - nx) * 2.4), 1.8) * 0.35 * strength;
+  }
   for (let y = 0; y < height; y++) {
     const ny = y / (height - 1 || 1);
-    const edgeY = Math.pow(Math.max(0, 1 - Math.min(ny, 1 - ny) * 2.2), 1.6);
-    for (let x = 0; x < width; x++) {
-      const nx = x / (width - 1 || 1);
-      const edgeX = Math.pow(Math.max(0, 1 - Math.min(nx, 1 - nx) * 2.4), 1.8);
-      const factor = 1 - Math.min(0.85, (edgeY * 0.85 + edgeX * 0.35) * strength);
-      const i = (y * width + x) * 4;
-      data[i] = clampByte(data[i] * factor);
-      data[i + 1] = clampByte(data[i + 1] * factor);
-      data[i + 2] = clampByte(data[i + 2] * factor);
+    const edgeY = Math.pow(Math.max(0, 1 - Math.min(ny, 1 - ny) * 2.2), 1.6) * 0.85 * strength;
+    let i = y * width * 4;
+    for (let x = 0; x < width; x++, i += 4) {
+      const darken = edgeY + edgeX[x];
+      if (darken <= 0) continue;
+      const factor = 1 - (darken < 0.85 ? darken : 0.85);
+      // Uint8ClampedArray store clamps + rounds.
+      data[i] *= factor;
+      data[i + 1] *= factor;
+      data[i + 2] *= factor;
     }
   }
 }

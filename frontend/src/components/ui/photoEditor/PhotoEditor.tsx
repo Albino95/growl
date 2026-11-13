@@ -8,15 +8,12 @@ import {
   StyleSheet,
   PanResponder,
   Platform,
-  BackHandler,
 } from 'react-native';
-import GrowLoader from '../GrowLoader';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
-import { alertMessage, confirmAsync } from '../../../utils/confirmDialog';
+import { alertMessage } from '../../../utils/confirmDialog';
 import { feedback } from '../../../utils/interactionFeedback';
 import type {
   CropAspect,
@@ -42,13 +39,24 @@ import {
 } from './filterEngine';
 import {
   cropToAspect,
-  exportEditedImage,
+  exportErrorPhase,
   flipImage,
-  prepareExportSource,
+  nextFrame,
+  renderEditedPhoto,
   rotateImage,
   sampleImageStats,
   straightenImage,
+  warmPhotoEditorSource,
+  type ExportPhase,
 } from './imageProcessing';
+import {
+  EditorBusyOverlay,
+  EditorLoadingState,
+  EditorShell,
+  EditorToolTabs,
+  type EditorToolTab,
+} from '../editorShell';
+import { useReducedMotion } from '../../../hooks/useReducedMotion';
 import type { FilterCategory } from './types';
 import CropFrameOverlay from './CropFrameOverlay';
 import DraggableTextOverlay from './DraggableTextOverlay';
@@ -56,7 +64,7 @@ import DraggableTextOverlay from './DraggableTextOverlay';
 const { width: SCREEN_W } = Dimensions.get('window');
 const PREVIEW_H = Math.min(SCREEN_W * 1.05, 480);
 
-const ALL_TABS: { id: EditorTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const ALL_TABS: EditorToolTab<EditorTab>[] = [
   { id: 'looks', label: 'Looks', icon: 'color-filter-outline' },
   { id: 'adjust', label: 'Adjust', icon: 'options-outline' },
   { id: 'overlay', label: 'Text', icon: 'text-outline' },
@@ -106,6 +114,29 @@ type EditorSnapshot = {
 };
 
 const HISTORY_LIMIT = 24;
+
+type BusyState = { label: string; detail?: string; saving?: boolean };
+
+const SAVE_PHASE_LABEL: Record<ExportPhase, string> = {
+  geometry: 'Straightening & cropping…',
+  read: 'Applying edits…',
+  decode: 'Applying edits…',
+  adjust: 'Applying edits…',
+  encode: 'Saving photo…',
+  write: 'Saving photo…',
+};
+
+const SAVE_FAILURE_COPY: Record<ExportPhase, string> = {
+  geometry: "We couldn't straighten or crop this photo.",
+  read: "We couldn't read the photo file.",
+  decode: "This photo's format couldn't be processed.",
+  adjust: 'Something went wrong while applying your look.',
+  encode: "We couldn't encode the edited photo.",
+  write: "We couldn't store the edited photo — your phone may be low on space.",
+};
+
+/** If expo-image never reports onLoad, don't keep the editor locked forever. */
+const IMAGE_LOAD_GRACE_MS = 6000;
 
 /** Cheap live grade — never jpeg-js while dragging. Pixel bake happens on Done. */
 function LiveGradeOverlays({
@@ -202,7 +233,7 @@ function FilterThumb({
   filterCss,
   onPress,
 }: {
-  uri: string;
+  uri: string | null;
   label: string;
   active: boolean;
   filterCss: string;
@@ -225,7 +256,7 @@ function FilterThumb({
         ]}
       >
         <Image
-          source={{ uri }}
+          source={uri ? { uri } : null}
           style={[
             tw`w-full h-full bg-stone-900`,
             Platform.OS === 'web' && filterCss !== 'none' ? ({ filter: filterCss } as object) : null,
@@ -254,7 +285,7 @@ export default function PhotoEditor({
   imageUri,
   onSave,
   onCancel,
-  title = 'Edit Photo',
+  title = 'Edit photo',
   preferredAspect,
   enableOverlays = true,
 }: PhotoEditorProps) {
@@ -280,7 +311,16 @@ export default function PhotoEditor({
   const [straighten, setStraighten] = useState(0);
   const [overlays, setOverlays] = useState<TextOverlay[]>([]);
   const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [busy, setBusy] = useState<BusyState | null>(null);
+  const isProcessing = busy !== null;
+  const reducedMotion = useReducedMotion();
+  /** Light JPEG working copy of the picked photo (null while preparing). */
+  const [baseUri, setBaseUri] = useState<string | null>(null);
+  const [sourceStatus, setSourceStatus] = useState<'preparing' | 'ready' | 'failed'>('preparing');
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [prepareAttempt, setPrepareAttempt] = useState(0);
+  const editorReady = sourceStatus === 'ready' && imageLoaded;
+  const controlsLocked = isProcessing || !editorReady;
   const [comparing, setComparing] = useState(false);
   const [history, setHistory] = useState<EditorSnapshot[]>([]);
 
@@ -289,6 +329,40 @@ export default function PhotoEditor({
   const adjustHistoryArmed = useRef(true);
   const [previewSize, setPreviewSize] = useState({ w: SCREEN_W, h: PREVIEW_H });
   cropOffsetRef.current = { x: cropOffsetX, y: cropOffsetY };
+
+  // Make (or reuse a pre-warmed) light JPEG working copy before showing the
+  // photo: big HEIC originals are slow to decode and jpeg-js can't read them.
+  useEffect(() => {
+    let alive = true;
+    setSourceStatus('preparing');
+    setImageLoaded(false);
+    void warmPhotoEditorSource(originalUri).then((copy) => {
+      if (!alive) return;
+      setBaseUri(copy.uri);
+      setWorkingUri(copy.uri);
+      setSourceStatus('ready');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [originalUri, prepareAttempt]);
+
+  useEffect(() => {
+    if (sourceStatus !== 'ready' || imageLoaded) return;
+    const t = setTimeout(() => setImageLoaded(true), IMAGE_LOAD_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [sourceStatus, imageLoaded]);
+
+  const onPreviewError = useCallback(() => {
+    if (imageLoaded) return;
+    // Working copy didn't render — try the original before giving up.
+    if (workingUri !== originalUri) {
+      setBaseUri(originalUri);
+      setWorkingUri(originalUri);
+      return;
+    }
+    setSourceStatus('failed');
+  }, [imageLoaded, workingUri, originalUri]);
 
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
 
@@ -299,7 +373,7 @@ export default function PhotoEditor({
   const filterCss = useMemo(() => buildCssFilter(effective), [effective]);
   const isEdited =
     hasActiveEdits(manualAdjust, presetId) ||
-    workingUri !== originalUri ||
+    workingUri !== (baseUri ?? originalUri) ||
     Math.abs(straighten) >= 0.4 ||
     overlays.some((o) => o.text.trim()) ||
     (selectedCrop !== 'free' && (cropOffsetX !== 0 || cropOffsetY !== 0));
@@ -370,7 +444,7 @@ export default function PhotoEditor({
   const applyAuto = useCallback(async () => {
     pushHistory();
     feedback.autoLook();
-    setIsProcessing(true);
+    setBusy({ label: 'Reading the light…' });
     try {
       const stats = await sampleImageStats(workingUri);
       setPresetId('original');
@@ -381,42 +455,59 @@ export default function PhotoEditor({
         ...(isVerticalClip ? AUTO_REEL_ADJUSTMENTS : AUTO_ENHANCE_ADJUSTMENTS),
       });
     } finally {
-      setIsProcessing(false);
+      setBusy(null);
     }
   }, [pushHistory, isVerticalClip, workingUri]);
 
   const handleSave = useCallback(async () => {
+    if (controlsLocked) return;
     const liveOverlays = overlays.filter((o) => o.text.trim());
-    const needsGeom = Math.abs(straighten) >= 0.4 || (selectedCrop !== 'free' && cropDirty);
+    const needsStraighten = Math.abs(straighten) >= 0.4;
+    const needsCrop = selectedCrop !== 'free' && cropDirty;
     const needsPixel = !isAdjustmentsNeutral(effective) || liveOverlays.length > 0;
 
-    if (!needsGeom && !needsPixel) {
+    if (!needsStraighten && !needsCrop && !needsPixel) {
       feedback.commit();
-      onSave(workingUri);
+      // Untouched → hand back the original, not our downscaled working copy.
+      onSave(workingUri === baseUri ? originalUri : workingUri);
       return;
     }
 
     feedback.commit();
-    setIsProcessing(true);
+    setBusy({ label: 'Applying edits…', detail: 'Keep the app open', saving: true });
+    // Let the overlay paint before native / JS work starts.
+    await nextFrame();
     try {
-      let uri = await prepareExportSource(workingUri);
-      if (Math.abs(straighten) >= 0.4) {
-        uri = await straightenImage(uri, straighten);
-      }
-      if (selectedCrop !== 'free' && cropDirty) {
-        uri = await cropToAspect(uri, selectedCrop, cropOffsetX, cropOffsetY);
-      }
-      if (needsPixel) {
-        uri = await exportEditedImage(uri, effective, { overlays: liveOverlays });
-      }
+      const uri = await renderEditedPhoto(workingUri, {
+        geometry: {
+          straighten: needsStraighten ? straighten : 0,
+          crop: needsCrop ? selectedCrop : 'free',
+          offsetX: cropOffsetX,
+          offsetY: cropOffsetY,
+        },
+        adjustments: effective,
+        overlays: liveOverlays,
+        onPhase: (phase) =>
+          setBusy({ label: SAVE_PHASE_LABEL[phase], detail: 'Keep the app open', saving: true }),
+      });
+      setBusy(null);
       onSave(uri);
-    } catch {
-      alertMessage('Export failed', 'Could not apply edits. Please try again.');
-    } finally {
-      setIsProcessing(false);
+    } catch (err) {
+      setBusy(null);
+      if (__DEV__) console.warn('[PhotoEditor] export failed', err);
+      const phase = exportErrorPhase(err);
+      const what = phase ? SAVE_FAILURE_COPY[phase] : "We couldn't apply your edits.";
+      // Edits stay in state, so Done simply retries.
+      void alertMessage(
+        "Couldn't save your edits",
+        `${what} Your edits are still here — tap Done to try again.`
+      );
     }
   }, [
+    controlsLocked,
     workingUri,
+    baseUri,
+    originalUri,
     effective,
     onSave,
     straighten,
@@ -429,7 +520,7 @@ export default function PhotoEditor({
 
   const handleRotate = useCallback(async () => {
     pushHistory();
-    setIsProcessing(true);
+    setBusy({ label: 'Rotating…' });
     try {
       const next = await rotateImage(workingUri);
       setWorkingUri(next);
@@ -438,21 +529,21 @@ export default function PhotoEditor({
     } catch {
       alertMessage('Error', 'Could not rotate image.');
     } finally {
-      setIsProcessing(false);
+      setBusy(null);
     }
   }, [workingUri, pushHistory]);
 
   const handleFlip = useCallback(
     async (dir: 'horizontal' | 'vertical') => {
       pushHistory();
-      setIsProcessing(true);
+      setBusy({ label: 'Flipping…' });
       try {
         const next = await flipImage(workingUri, dir);
         setWorkingUri(next);
       } catch {
         alertMessage('Error', 'Could not flip image.');
       } finally {
-        setIsProcessing(false);
+        setBusy(null);
       }
     },
     [workingUri, pushHistory]
@@ -461,7 +552,7 @@ export default function PhotoEditor({
   const commitStraighten = useCallback(async () => {
     if (Math.abs(straighten) < 0.4) return;
     pushHistory();
-    setIsProcessing(true);
+    setBusy({ label: 'Straightening…' });
     try {
       const next = await straightenImage(workingUri, straighten);
       setWorkingUri(next);
@@ -469,7 +560,7 @@ export default function PhotoEditor({
     } catch {
       alertMessage('Error', 'Could not straighten image.');
     } finally {
-      setIsProcessing(false);
+      setBusy(null);
     }
   }, [workingUri, straighten, pushHistory]);
 
@@ -477,7 +568,7 @@ export default function PhotoEditor({
     if (selectedCrop === 'free') return;
     pushHistory();
     feedback.commit();
-    setIsProcessing(true);
+    setBusy({ label: 'Cropping…' });
     try {
       let uri = workingUri;
       if (Math.abs(straighten) >= 0.4) {
@@ -493,7 +584,7 @@ export default function PhotoEditor({
     } catch {
       alertMessage('Error', 'Could not crop image.');
     } finally {
-      setIsProcessing(false);
+      setBusy(null);
     }
   }, [workingUri, selectedCrop, cropOffsetX, cropOffsetY, straighten, pushHistory]);
 
@@ -553,7 +644,7 @@ export default function PhotoEditor({
     [activeTab, selectedCrop]
   );
 
-  const previewUri = comparing ? originalUri : workingUri;
+  const previewUri = comparing ? baseUri ?? originalUri : workingUri;
   const previewStyle =
     Platform.OS === 'web' && !comparing && filterCss !== 'none'
       ? ({ filter: filterCss } as object)
@@ -569,38 +660,9 @@ export default function PhotoEditor({
   const showPanHandlers = activeTab === 'crop' && selectedCrop !== 'free';
 
   const hasUnsavedChanges = isEdited || cropDirty || history.length > 0;
-  const closingRef = useRef(false);
+  const saving = Boolean(busy?.saving);
 
-  /** Close, confirming first only when there is something to lose. */
-  const requestClose = useCallback(async () => {
-    if (isProcessing || closingRef.current) return;
-    if (hasUnsavedChanges) {
-      closingRef.current = true;
-      try {
-        const discard = await confirmAsync('Discard edits?', 'Your changes to this photo will be lost.', {
-          confirmLabel: 'Discard',
-          destructive: true,
-        });
-        if (!discard) return;
-      } finally {
-        closingRef.current = false;
-      }
-    }
-    feedback.close();
-    onCancel();
-  }, [hasUnsavedChanges, isProcessing, onCancel]);
-
-  // Android hardware back closes the editor (with the same confirm), never the screen.
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      void requestClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [requestClose]);
-
-  const onTitlePress = () => {
+  const onTitlePress = useCallback(() => {
     const now = Date.now();
     if (now - titleTaps.current.at > 2800) titleTaps.current.n = 0;
     titleTaps.current.at = now;
@@ -611,105 +673,84 @@ export default function PhotoEditor({
       setTitleHint('Look closer.');
       setTimeout(() => setTitleHint(''), 1400);
     }
-  };
+  }, []);
 
-  return (
-    <View style={tw`flex-1 bg-stone-950`}>
-      <SafeAreaView style={tw`flex-1 bg-stone-950`} edges={['top', 'bottom']}>
-        <View
-          style={[
-            tw`flex-row items-center justify-between px-4 border-b border-stone-800`,
-            { paddingBottom: 10, paddingTop: 6 },
-          ]}
-        >
-          <Pressable
-            onPress={() => void requestClose()}
-            disabled={isProcessing}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Close editor"
-            style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
-          >
-            <Ionicons name="close" size={20} color="#E7E5E4" />
-          </Pressable>
-          <Pressable onPress={onTitlePress} style={tw`items-center flex-1 px-2`}>
-            <Text style={tw`text-white text-base font-bold`} numberOfLines={1}>
-              {titleHint || title}
-            </Text>
-            {isEdited && !comparing && !titleHint && (
-              <Text style={tw`text-brand-400 text-[10px] mt-0.5`}>Looks apply on Done</Text>
-            )}
-            {comparing && <Text style={tw`text-amber-400 text-[10px] mt-0.5`}>Original</Text>}
-          </Pressable>
-          <Pressable
-            onPress={handleSave}
-            disabled={isProcessing}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={isProcessing ? 'Saving edits' : 'Done editing'}
-            accessibilityState={{ disabled: isProcessing, busy: isProcessing }}
-            style={tw`px-4 py-2 rounded-full ${isProcessing ? 'bg-stone-800' : 'bg-brand-600'}`}
-          >
-            <Text style={tw`text-white font-bold text-sm`}>
-              {isProcessing ? 'Saving…' : 'Done'}
-            </Text>
-          </Pressable>
-        </View>
+  const onDone = useCallback(() => {
+    void handleSave();
+  }, [handleSave]);
 
-        <View style={tw`flex-row items-center justify-between px-4 py-2 bg-stone-900/80`}>
-          <Pressable
-            onPress={handleUndo}
-            disabled={history.length === 0 || isProcessing}
-            accessibilityRole="button"
-            accessibilityLabel="Undo"
-            accessibilityState={{ disabled: history.length === 0 || isProcessing }}
-            style={tw`flex-row items-center gap-1.5 px-2 py-1 ${
-              history.length === 0 ? 'opacity-35' : ''
-            }`}
-            hitSlop={8}
-          >
-            <Ionicons name="arrow-undo-outline" size={18} color="#A8A29E" />
-            <Text style={tw`text-stone-400 text-xs`}>Undo</Text>
-          </Pressable>
+  const onLoadingClose = useCallback(() => {
+    feedback.close();
+    onCancel();
+  }, [onCancel]);
 
-          <Pressable
-            onPress={() => void applyAuto()}
-            disabled={isProcessing}
-            accessibilityRole="button"
-            accessibilityLabel="Auto enhance"
-            style={tw`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800`}
-            hitSlop={8}
-          >
-            <Ionicons name="sparkles-outline" size={16} color="#34D399" />
-            <Text style={tw`text-brand-400 text-xs font-semibold`}>Auto</Text>
-          </Pressable>
+  const onLoadingRetry = useCallback(() => setPrepareAttempt((n) => n + 1), []);
 
-          <Pressable
-            onPressIn={() => setComparing(true)}
-            onPressOut={() => setComparing(false)}
-            disabled={isProcessing}
-            accessibilityRole="button"
-            accessibilityLabel="Compare with original"
-            accessibilityHint="Press and hold to see the original photo"
-            style={tw`flex-row items-center gap-1.5 px-2 py-1`}
-            hitSlop={8}
-          >
-            <Ionicons name="eye-outline" size={18} color={comparing ? '#FBBF24' : '#A8A29E'} />
-            <Text style={tw`text-xs ${comparing ? 'text-amber-400' : 'text-stone-400'}`}>
-              Compare
-            </Text>
-          </Pressable>
-        </View>
+  const subtitle = comparing
+    ? 'Original'
+    : isEdited && !titleHint
+      ? 'Looks apply on Done'
+      : undefined;
 
-        <View
-          style={[tw`items-center justify-center bg-black overflow-hidden`, { height: PREVIEW_H }]}
-          onLayout={(e) => {
-            const { width, height } = e.nativeEvent.layout;
-            if (width > 0 && height > 0) setPreviewSize({ w: width, h: height });
-          }}
-          {...(showPanHandlers ? panResponder.panHandlers : {})}
-        >
-          <View style={tw`relative w-full h-full`}>
+  const toolbar = (
+    <View style={tw`flex-row items-center justify-between px-4 py-2 bg-stone-900/80`}>
+      <Pressable
+        onPress={handleUndo}
+        disabled={history.length === 0 || controlsLocked}
+        accessibilityRole="button"
+        accessibilityLabel="Undo"
+        accessibilityState={{ disabled: history.length === 0 || controlsLocked }}
+        style={tw`flex-row items-center gap-1.5 px-2 py-1 ${
+          history.length === 0 ? 'opacity-35' : ''
+        }`}
+        hitSlop={8}
+      >
+        <Ionicons name="arrow-undo-outline" size={18} color="#A8A29E" />
+        <Text style={tw`text-stone-400 text-xs`}>Undo</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={() => void applyAuto()}
+        disabled={controlsLocked}
+        accessibilityRole="button"
+        accessibilityLabel="Auto enhance"
+        style={tw`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800`}
+        hitSlop={8}
+      >
+        <Ionicons name="sparkles-outline" size={16} color="#34D399" />
+        <Text style={tw`text-brand-400 text-xs font-semibold`}>Auto</Text>
+      </Pressable>
+
+      <Pressable
+        onPressIn={() => setComparing(true)}
+        onPressOut={() => setComparing(false)}
+        disabled={controlsLocked}
+        accessibilityRole="button"
+        accessibilityLabel="Compare with original"
+        accessibilityHint="Press and hold to see the original photo"
+        style={tw`flex-row items-center gap-1.5 px-2 py-1`}
+        hitSlop={8}
+      >
+        <Ionicons name="eye-outline" size={18} color={comparing ? '#FBBF24' : '#A8A29E'} />
+        <Text style={tw`text-xs ${comparing ? 'text-amber-400' : 'text-stone-400'}`}>
+          Compare
+        </Text>
+      </Pressable>
+    </View>
+  );
+
+  const stage = (
+    <>
+      <View
+        style={[tw`items-center justify-center bg-black overflow-hidden`, { height: PREVIEW_H }]}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) setPreviewSize({ w: width, h: height });
+        }}
+        {...(showPanHandlers ? panResponder.panHandlers : {})}
+      >
+        <View style={tw`relative w-full h-full`}>
+          {sourceStatus === 'ready' ? (
             <Image
               source={{ uri: previewUri }}
               style={[
@@ -718,115 +759,134 @@ export default function PhotoEditor({
                 { transform: previewTransform, backgroundColor: '#000' },
               ]}
               contentFit="contain"
-              transition={0}
+              // Fade in only on first appearance; looks/compare stay instant.
+              transition={imageLoaded || reducedMotion ? 0 : 180}
+              priority="high"
+              onLoad={() => setImageLoaded(true)}
+              onError={onPreviewError}
+              accessibilityIgnoresInvertColors
             />
-            <LiveGradeOverlays adj={effective} comparing={comparing} />
-            {vignetteOpacity > 0 && (
+          ) : null}
+          <LiveGradeOverlays adj={effective} comparing={comparing} />
+          {vignetteOpacity > 0 && (
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: `rgba(0,0,0,${vignetteOpacity * 0.35})` },
+              ]}
+            />
+          )}
+          {cinematicOpacity > 0 && (
+            <>
               <View
                 pointerEvents="none"
                 style={[
-                  StyleSheet.absoluteFillObject,
-                  { backgroundColor: `rgba(0,0,0,${vignetteOpacity * 0.35})` },
+                  tw`absolute left-0 right-0 top-0`,
+                  { height: PREVIEW_H * 0.18, backgroundColor: `rgba(0,0,0,${cinematicOpacity})` },
                 ]}
               />
-            )}
-            {cinematicOpacity > 0 && (
-              <>
-                <View
-                  pointerEvents="none"
-                  style={[
-                    tw`absolute left-0 right-0 top-0`,
-                    { height: PREVIEW_H * 0.18, backgroundColor: `rgba(0,0,0,${cinematicOpacity})` },
-                  ]}
-                />
-                <View
-                  pointerEvents="none"
-                  style={[
-                    tw`absolute left-0 right-0 bottom-0`,
-                    { height: PREVIEW_H * 0.22, backgroundColor: `rgba(0,0,0,${cinematicOpacity})` },
-                  ]}
-                />
-              </>
-            )}
-            {!comparing &&
-              overlays.map((o) =>
-                o.text.trim() ? (
-                  <DraggableTextOverlay
-                    key={o.id}
-                    overlay={o}
-                    selected={activeOverlayId === o.id}
-                    containerW={previewSize.w}
-                    containerH={previewSize.h}
-                    editable={!isProcessing}
-                    onSelect={() => {
-                      setActiveOverlayId(o.id);
-                      setActiveTab('overlay');
-                    }}
-                    onMove={(x, y) => {
-                      setOverlays((prev) =>
-                        prev.map((item) => (item.id === o.id ? { ...item, x, y } : item))
-                      );
-                    }}
-                  />
-                ) : null
-              )}
-            {activeTab === 'crop' && selectedCrop !== 'free' && (
-              <CropFrameOverlay
-                aspect={selectedCrop}
-                containerW={SCREEN_W}
-                containerH={PREVIEW_H}
+              <View
+                pointerEvents="none"
+                style={[
+                  tw`absolute left-0 right-0 bottom-0`,
+                  { height: PREVIEW_H * 0.22, backgroundColor: `rgba(0,0,0,${cinematicOpacity})` },
+                ]}
               />
-            )}
-            {isProcessing && (
-              <View style={tw`absolute inset-0 bg-black/55 items-center justify-center`}>
-                <GrowLoader label="Saving look…" />
-              </View>
-            )}
-          </View>
-        </View>
-
-        {activeTab === 'crop' && selectedCrop !== 'free' && (
-          <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
-            Drag to reframe · Apply Crop when ready
-          </Text>
-        )}
-        {activeTab === 'overlay' && activeOverlay && (
-          <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
-            Press and drag the text to place it anywhere
-          </Text>
-        )}
-
-        <View style={tw`flex-row border-b border-stone-800 bg-stone-900`}>
-          {tabs.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-                <Pressable
-                  key={tab.id}
-                  onPress={() => {
-                    if (tab.id !== activeTab) feedback.tab();
-                    setActiveTab(tab.id);
+            </>
+          )}
+          {!comparing &&
+            overlays.map((o) =>
+              o.text.trim() ? (
+                <DraggableTextOverlay
+                  key={o.id}
+                  overlay={o}
+                  selected={activeOverlayId === o.id}
+                  containerW={previewSize.w}
+                  containerH={previewSize.h}
+                  editable={!isProcessing}
+                  onSelect={() => {
+                    setActiveOverlayId(o.id);
+                    setActiveTab('overlay');
                   }}
-                  accessibilityRole="tab"
-                  accessibilityLabel={tab.label}
-                  accessibilityState={{ selected: active }}
-                  style={tw`flex-1 items-center py-2.5 border-b-2 ${
-                    active ? 'border-brand-500' : 'border-transparent'
-                  }`}
-                >
-                <Ionicons name={tab.icon} size={18} color={active ? '#34D399' : '#78716C'} />
-                <Text
-                  style={tw`text-[9px] mt-0.5 ${
-                    active ? 'text-brand-400 font-semibold' : 'text-stone-500'
-                  }`}
-                >
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  onMove={(x, y) => {
+                    setOverlays((prev) =>
+                      prev.map((item) => (item.id === o.id ? { ...item, x, y } : item))
+                    );
+                  }}
+                />
+              ) : null
+            )}
+          {activeTab === 'crop' && selectedCrop !== 'free' && (
+            <CropFrameOverlay
+              aspect={selectedCrop}
+              containerW={SCREEN_W}
+              containerH={PREVIEW_H}
+            />
+          )}
+          {!editorReady && (
+            <EditorLoadingState
+              subject="photo"
+              status={sourceStatus === 'failed' ? 'failed' : 'preparing'}
+              width={previewSize.w}
+              height={previewSize.h}
+              aspect={preferredAspect}
+              reducedMotion={reducedMotion}
+              onRetry={onLoadingRetry}
+              onClose={onLoadingClose}
+            />
+          )}
+          {/* Saving uses the shell's full-screen overlay; other busy work stays on the stage. */}
+          {busy && !busy.saving && <EditorBusyOverlay label={busy.label} detail={busy.detail} />}
         </View>
+      </View>
 
-        <View style={tw`flex-1 bg-stone-900`}>
+      {activeTab === 'crop' && selectedCrop !== 'free' && (
+        <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
+          Drag to reframe · Apply Crop when ready
+        </Text>
+      )}
+      {activeTab === 'overlay' && activeOverlay && (
+        <Text style={tw`text-center text-stone-500 text-[11px] py-1.5 bg-black`}>
+          Press and drag the text to place it anywhere
+        </Text>
+      )}
+    </>
+  );
+
+  return (
+    <EditorShell
+      title={titleHint || title}
+      subtitle={subtitle}
+      subtitleTone={comparing ? 'amber' : 'brand'}
+      onTitlePress={onTitlePress}
+      hasUnsavedChanges={hasUnsavedChanges}
+      discardMessage="Your changes to this photo will be lost."
+      onCancel={onCancel}
+      closeDisabled={isProcessing}
+      onDone={onDone}
+      doneDisabled={controlsLocked}
+      saving={saving}
+      savingLabel={busy?.label}
+      savingDetail={busy?.detail}
+      toolbar={toolbar}
+      stage={stage}
+      tools={
+        <EditorToolTabs
+          tabs={tabs}
+          value={activeTab}
+          onChange={setActiveTab}
+          disabled={controlsLocked}
+          dimmed={!editorReady}
+        />
+      }
+    >
+        <View
+          style={[tw`flex-1 bg-stone-900`, !editorReady && { opacity: 0.5 }]}
+          pointerEvents={controlsLocked ? 'none' : 'auto'}
+          accessibilityElementsHidden={controlsLocked}
+          importantForAccessibility={controlsLocked ? 'no-hide-descendants' : 'auto'}
+        >
           {activeTab === 'looks' && (
             <View style={tw`flex-1 pt-1`}>
               <FilterCategoryBar
@@ -848,7 +908,7 @@ export default function PhotoEditor({
                   return (
                     <FilterThumb
                       key={preset.id}
-                      uri={workingUri}
+                      uri={editorReady ? workingUri : null}
                       label={preset.label}
                       active={presetId === preset.id}
                       filterCss={thumbFilter}
@@ -1032,7 +1092,6 @@ export default function PhotoEditor({
             </ScrollView>
           )}
         </View>
-      </SafeAreaView>
-    </View>
+    </EditorShell>
   );
 }

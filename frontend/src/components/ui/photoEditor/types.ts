@@ -125,7 +125,7 @@ export interface PhotoEditorProps {
   imageUri: string;
   onSave: (editedUri: string) => void;
   onCancel: () => void;
-  /** Optional title in the header (default: Edit Photo). */
+  /** Optional title in the header (default: "Edit photo"). */
   title?: string;
   /** Prefer a crop aspect when opening the Crop tab (e.g. stories → 9:16). */
   preferredAspect?: CropAspect;

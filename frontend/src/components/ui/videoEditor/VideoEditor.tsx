@@ -5,13 +5,11 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  ActivityIndicator,
   useWindowDimensions,
   StyleSheet,
   Platform,
-  BackHandler,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import NativeClipPlayer from './NativeClipPlayer';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +23,15 @@ import {
   DEFAULT_ADJUSTMENTS,
   MAX_TEXT_OVERLAYS,
 } from '../photoEditor/types';
-import { alertMessage, confirmAsync } from '../../../utils/confirmDialog';
+import { alertMessage } from '../../../utils/confirmDialog';
+import { useReducedMotion } from '../../../hooks/useReducedMotion';
+import {
+  EditorLoadingState,
+  EditorShell,
+  EditorToolTabs,
+  useDelayedFlag,
+  type EditorToolTab,
+} from '../editorShell';
 import { MUSIC_PLAYBACK_SUPPORTED } from '../../../utils/mediaCapabilities';
 import DraggableTextOverlay from '../photoEditor/DraggableTextOverlay';
 import { AdjustSlider } from '../photoEditor/AdjustSlider';
@@ -63,11 +69,14 @@ import { fitReelStage } from '../../../utils/fitMediaBox';
 
 type Tab = 'edit' | 'look' | 'audio';
 
-const TABS: { id: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const TABS: EditorToolTab<Tab>[] = [
   { id: 'edit', label: 'Edit', icon: 'cut-outline' },
   { id: 'look', label: 'Look', icon: 'color-filter-outline' },
   { id: 'audio', label: 'Sound', icon: 'musical-notes-outline' },
 ];
+
+/** Only show the saving overlay when Done takes longer than this. */
+const SAVING_OVERLAY_DELAY_MS = 150;
 
 const TEXT_STYLES: { id: TextOverlayStyle; label: string }[] = [
   { id: 'outline', label: 'Outline' },
@@ -112,14 +121,18 @@ type Props = {
    * params), so looks, text, sound, speed, flip and cover would be dropped.
    */
   mode?: 'reel' | 'story';
-  onSave: (settings: VideoEditSettings) => void;
+  /**
+   * May return a promise (e.g. cover/frame capture in the caller): the editor
+   * shows its saving overlay until it settles (only if it takes > 150ms).
+   */
+  onSave: (settings: VideoEditSettings) => void | Promise<void>;
   onCancel: () => void;
 };
 
 export default function VideoEditor({
   videoUri,
   initialSettings,
-  title = 'Edit Reel',
+  title = 'Edit video',
   maxClipMs,
   hintDurationMs = 0,
   initialFrames,
@@ -128,7 +141,7 @@ export default function VideoEditor({
   onCancel,
 }: Props) {
   const isStory = mode === 'story';
-  const visibleTabs = isStory ? TABS.filter((t) => t.id === 'edit') : TABS;
+  const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const maxPreviewW = winW - 24;
@@ -169,7 +182,20 @@ export default function VideoEditor({
   const playingRef = useRef(false);
   const [seekGeneration, setSeekGeneration] = useState(0);
   const [playHeadSeekMs, setPlayHeadSeekMs] = useState(0);
-  const [loading, setLoading] = useState(false);
+  // Web mounts the <video> right away, so it starts "preparing" until metadata
+  // arrives (or the 5s grace below). Native only loads after the first Play.
+  const [loading, setLoading] = useState(Platform.OS === 'web');
+  /** Done pressed and its async work (sound teardown, caller's onSave) running. */
+  const [doneBusy, setDoneBusy] = useState(false);
+  const doneBusyRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const showSaving = useDelayedFlag(doneBusy, SAVING_OVERLAY_DELAY_MS);
   const [previewSize, setPreviewSize] = useState({ w: reelStage.width, h: reelStage.height });
 
   const [originalVolume, setOriginalVolume] = useState(initial.originalVolume);
@@ -561,6 +587,10 @@ export default function VideoEditor({
   };
 
   const finishAndSave = useCallback(async () => {
+    if (doneBusyRef.current) return;
+    doneBusyRef.current = true;
+    setDoneBusy(true);
+    feedback.commit();
     try {
       if (Platform.OS === 'web') {
         htmlVideoRef.current?.pause();
@@ -583,7 +613,12 @@ export default function VideoEditor({
         soundRef.current = null;
       }
     } finally {
-      onSave(buildSettings());
+      try {
+        await onSave(buildSettings());
+      } finally {
+        doneBusyRef.current = false;
+        if (mountedRef.current) setDoneBusy(false);
+      }
     }
   }, [buildSettings, onSave]);
 
@@ -620,37 +655,20 @@ export default function VideoEditor({
     Math.abs(audioVolume - initialSnap.audioVolume) > 0.001 ||
     JSON.stringify(overlays) !== JSON.stringify(initialSnap.overlays);
 
-  const closingRef = useRef(false);
-  /** Close, confirming first only when there is something to lose. */
-  const requestClose = useCallback(async () => {
-    if (closingRef.current) return;
-    if (hasUnsavedChanges) {
-      closingRef.current = true;
-      try {
-        const discard = await confirmAsync(
-          'Discard edits?',
-          'Your changes to this clip will be lost.',
-          { confirmLabel: 'Discard', destructive: true }
-        );
-        if (!discard) return;
-      } finally {
-        closingRef.current = false;
-      }
-    }
+  /** Shell has already confirmed the discard (and played the close haptic). */
+  const closeEditor = useCallback(() => {
     setPlaying(false);
     setPlayerArmed(false);
     onCancel();
-  }, [hasUnsavedChanges, onCancel]);
+  }, [onCancel]);
 
-  // Android hardware back closes the editor (with the same confirm), never the screen.
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      void requestClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [requestClose]);
+  const onDone = useCallback(() => {
+    void finishAndSave();
+  }, [finishAndSave]);
+
+  const onTitleLongPress = useCallback(() => {
+    feedback.egg();
+  }, []);
 
   const flipTransform = [
     { scaleX: flipH ? -1 : 1 },
@@ -659,45 +677,16 @@ export default function VideoEditor({
   const webFlip =
     [flipH ? 'scaleX(-1)' : '', flipV ? 'scaleY(-1)' : ''].filter(Boolean).join(' ') || undefined;
 
-  return (
-    <View style={tw`flex-1 bg-black`}>
-      <SafeAreaView style={tw`flex-1 bg-black`} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3 z-30`}>
-          <Pressable
-            onPress={() => void requestClose()}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Close editor"
-            style={tw`w-11 h-11 rounded-full bg-black items-center justify-center border border-white/20`}
-          >
-            <Ionicons name="close" size={22} color="#fff" />
-          </Pressable>
-          <Pressable
-            onLongPress={() => {
-              feedback.egg();
-            }}
-            delayLongPress={400}
-            style={tw`items-center`}
-          >
-            <Text style={tw`text-white text-base font-bold`}>{title}</Text>
-            <Text style={tw`text-stone-500 text-[10px] mt-0.5`}>
-              {durationMs > 0
-                ? `${formatMs(Math.max(0, (effectiveEnd || durationMs) - trimStartMs))} · Pro editor`
-                : 'Pro editor'}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => void finishAndSave()}
-            accessibilityRole="button"
-            accessibilityLabel="Done editing"
-            style={tw`px-4 py-2 rounded-full bg-brand-600`}
-            hitSlop={6}
-          >
-            <Text style={tw`text-white font-bold text-sm`}>Done</Text>
-          </Pressable>
-        </View>
+  const clipPreparing =
+    Platform.OS === 'web' ? loading : playerArmed && loading && !scrubSource;
 
+  const subtitle =
+    durationMs > 0
+      ? `${formatMs(Math.max(0, (effectiveEnd || durationMs) - trimStartMs))} · Pro editor`
+      : 'Pro editor';
+
+  const stage = (
+    <>
         {/* Preview — 9:16 frame, video fills it */}
         <View
           style={[
@@ -795,13 +784,17 @@ export default function VideoEditor({
 
           <VideoGradeStack edit={editPreview} />
 
-          {playerArmed && loading && !scrubSource ? (
-            <View
-              pointerEvents="none"
-              style={tw`absolute inset-0 items-center justify-center bg-black/40 z-30`}
-            >
-              <ActivityIndicator color="#fff" size="large" />
-            </View>
+          {clipPreparing ? (
+            // Under the play button (z-20) so play/pause stays reachable.
+            <EditorLoadingState
+              subject="clip"
+              status="preparing"
+              width={previewSize.w}
+              height={previewSize.h}
+              aspect="9:16"
+              reducedMotion={reducedMotion}
+              style={{ zIndex: 15 }}
+            />
           ) : null}
 
           <View
@@ -863,40 +856,34 @@ export default function VideoEditor({
           </Text>
         </View>
 
-        {/* Tabs — stories only get trim, so no tab bar there */}
-        {isStory ? (
+    </>
+  );
+
+  return (
+    <EditorShell
+      title={title}
+      subtitle={subtitle}
+      onTitleLongPress={onTitleLongPress}
+      hasUnsavedChanges={hasUnsavedChanges}
+      discardMessage="Your changes to this clip will be lost."
+      onCancel={closeEditor}
+      closeDisabled={doneBusy}
+      onDone={onDone}
+      saving={showSaving}
+      savingLabel="Saving your edits…"
+      savingDetail="Keep the app open"
+      stage={stage}
+      tools={
+        // Stories only get trim, so no tab bar there.
+        isStory ? (
           <Text style={tw`text-stone-500 text-[11px] text-center px-6 pt-2`}>
             Stories keep your trim. Looks, text, sound and speed are for reels.
           </Text>
-        ) : null}
-        <View style={[tw`flex-row px-2 pt-2 pb-1`, isStory && tw`hidden`]}>
-          {visibleTabs.map((t) => {
-            const selected = tab === t.id;
-            return (
-              <Pressable
-                key={t.id}
-                onPress={() => setTab(t.id)}
-                accessibilityRole="tab"
-                accessibilityLabel={t.label}
-                accessibilityState={{ selected }}
-                style={[
-                  tw`flex-1 items-center py-2 mx-0.5 rounded-2xl`,
-                  selected ? tw`bg-white/12` : tw`bg-transparent`,
-                ]}
-              >
-                <Ionicons name={t.icon} size={18} color={selected ? '#34D399' : '#A8A29E'} />
-                <Text
-                  style={tw`text-[10px] font-semibold mt-1 ${
-                    selected ? 'text-brand-300' : 'text-stone-500'
-                  }`}
-                >
-                  {t.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
+        ) : (
+          <EditorToolTabs tabs={TABS} value={tab} onChange={setTab} disabled={doneBusy} />
+        )
+      }
+    >
         {tab === 'edit' ? (
           <ScrollView
             style={tw`flex-1 px-4`}
@@ -1296,7 +1283,6 @@ export default function VideoEditor({
             )}
           </ScrollView>
         )}
-      </SafeAreaView>
-    </View>
+    </EditorShell>
   );
 }

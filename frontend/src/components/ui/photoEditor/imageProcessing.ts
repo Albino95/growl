@@ -1,56 +1,120 @@
 import { Image, Platform } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
-import jpeg from 'jpeg-js';
 import type { CropAspect, EditAdjustments, ImageToneStats, TextOverlay } from './types';
-import { isAdjustmentsNeutral, sanitizeAdjustments } from './filterEngine';
+import { bakeTextOverlaysOnBuffer, bakeTextOverlaysOnCanvas } from './overlayBake';
+import { needsPixelPass, processPixelBuffer } from './pixelOps';
+import { readFileBytes, writeJpegBytes } from './fileBytes';
+import { decodeJpeg, encodeJpeg } from './jpegCodec';
 import {
-  applyCinematicEdges,
-  bakeTextOverlaysOnBuffer,
-  bakeTextOverlaysOnCanvas,
-} from './overlayBake';
+  computeCropRect,
+  isManipulatorJpeg,
+  planGeometry,
+  type GeometryEdit,
+  type Size,
+} from './geometry';
 
-async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
+export { computeCropRect, planGeometry, isManipulatorJpeg };
+export type { GeometryEdit, Size };
+
+/**
+ * Long edge of the working copy / export. Upload caps are 1440 (story) –
+ * 1600 (post); a phone shows ≤1170px wide, and 1280 cuts ~16% of the pixels
+ * the jpeg-js pass has to touch versus the old 1400.
+ */
+export const EXPORT_MAX_EDGE = 1280;
+
+/** Intermediate JPEGs get decoded again — keep them near-lossless. */
+const INTERMEDIATE_QUALITY = 0.92;
+const FINAL_JPEG_QUALITY = 88;
+
+const isWeb = () => Platform.OS === 'web' || typeof document !== 'undefined';
+
+// ---------------------------------------------------------------------------
+// Sizes: every ImageManipulator result tells us its size; remember it so later
+// steps don't pay for Image.getSize (which loads the image again).
+// ---------------------------------------------------------------------------
+const sizeCache = new Map<string, Size>();
+
+function rememberSize(uri: string, width: number, height: number) {
+  if (!(width > 0 && height > 0)) return;
+  if (sizeCache.size > 48) {
+    const first = sizeCache.keys().next().value;
+    if (first !== undefined) sizeCache.delete(first);
+  }
+  sizeCache.set(uri, { width, height });
+}
+
+async function getImageDimensions(uri: string): Promise<Size> {
+  const cached = sizeCache.get(uri);
+  if (cached) return cached;
   if (typeof document !== 'undefined') {
     const img = await loadHtmlImage(uri);
     return { width: img.width, height: img.height };
   }
-  return new Promise((resolve, reject) => {
+  const size = await new Promise<Size>((resolve, reject) => {
     Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
+  });
+  rememberSize(uri, size.width, size.height);
+  return size;
+}
+
+async function manipulate(
+  uri: string,
+  actions: ImageManipulator.Action[],
+  compress = INTERMEDIATE_QUALITY
+): Promise<{ uri: string; width: number; height: number }> {
+  const res = await ImageManipulator.manipulateAsync(uri, actions, {
+    compress,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+  rememberSize(res.uri, res.width, res.height);
+  return { uri: res.uri, width: res.width, height: res.height };
+}
+
+/** Let React commit + the UI paint (e.g. a "Saving…" overlay) before heavy sync work. */
+export function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => void })
+      .requestAnimationFrame;
+    if (typeof raf === 'function') raf(() => setTimeout(resolve, 0));
+    else setTimeout(resolve, 16);
   });
 }
 
-function computeCropRect(
-  width: number,
-  height: number,
-  aspect: CropAspect,
-  /** Normalized −1…1 shift within the available slack. */
-  offsetX = 0,
-  offsetY = 0
-): { originX: number; originY: number; cropW: number; cropH: number } {
-  const [wR, hR] = aspect.split(':').map(Number);
-  const targetRatio = wR / hR;
-  const currentRatio = width / height;
+// ---------------------------------------------------------------------------
+// Geometry (straighten / crop / resize) — ONE ImageManipulator call on native.
+// ---------------------------------------------------------------------------
 
-  let cropW = width;
-  let cropH = height;
-
-  if (currentRatio > targetRatio) {
-    cropW = Math.round(height * targetRatio);
-  } else {
-    cropH = Math.round(width / targetRatio);
+/**
+ * Native: rotate + crop + resize in a single manipulateAsync (one decode, one
+ * encode). The old path re-encoded after every step and called Image.getSize
+ * in between. Web keeps the canvas / sequential path.
+ *
+ * `normalize`: also re-encode when nothing changes, unless the source is
+ * already one of our JPEGs (jpeg-js can't read HEIC/PNG and ignores EXIF
+ * orientation; ImageManipulator output has orientation baked in).
+ */
+export async function applyGeometry(
+  uri: string,
+  geometry: GeometryEdit,
+  opts: { maxEdge?: number; normalize?: boolean } = {}
+): Promise<{ uri: string; width: number; height: number }> {
+  const maxEdge = opts.maxEdge ?? Number.POSITIVE_INFINITY;
+  if (isWeb()) {
+    let out = uri;
+    if (Math.abs(geometry.straighten) >= 0.4) out = await straightenSequential(out, geometry.straighten);
+    if (geometry.crop !== 'free') {
+      out = await cropToAspectWeb(out, geometry.crop, geometry.offsetX, geometry.offsetY);
+    }
+    return { uri: out, width: 0, height: 0 };
   }
 
-  const maxOffsetX = Math.max(0, (width - cropW) / 2);
-  const maxOffsetY = Math.max(0, (height - cropH) / 2);
-  const clampedX = Math.max(-1, Math.min(1, offsetX));
-  const clampedY = Math.max(-1, Math.min(1, offsetY));
-
-  return {
-    originX: Math.round(maxOffsetX + clampedX * maxOffsetX),
-    originY: Math.round(maxOffsetY + clampedY * maxOffsetY),
-    cropW,
-    cropH,
-  };
+  const size = await getImageDimensions(uri);
+  const plan = planGeometry(size, geometry, maxEdge);
+  if (plan.actions.length === 0 && (!opts.normalize || isManipulatorJpeg(uri))) {
+    return { uri, width: size.width, height: size.height };
+  }
+  return manipulate(uri, plan.actions);
 }
 
 async function cropToAspectWeb(
@@ -59,6 +123,7 @@ async function cropToAspectWeb(
   offsetX = 0,
   offsetY = 0
 ): Promise<string> {
+  if (aspect === 'free') return uri;
   const img = await loadHtmlImage(uri);
   const { originX, originY, cropW, cropH } = computeCropRect(
     img.width,
@@ -85,96 +150,64 @@ export async function cropToAspect(
   offsetY = 0
 ): Promise<string> {
   if (aspect === 'free') return uri;
+  if (isWeb()) return cropToAspectWeb(uri, aspect, offsetX, offsetY);
+  const out = await applyGeometry(uri, { straighten: 0, crop: aspect, offsetX, offsetY });
+  return out.uri;
+}
 
-  if (typeof document !== 'undefined') {
-    return cropToAspectWeb(uri, aspect, offsetX, offsetY);
-  }
-
-  const { width, height } = await getImageDimensions(uri);
-  const { originX, originY, cropW, cropH } = computeCropRect(
-    width,
-    height,
-    aspect,
-    offsetX,
-    offsetY
-  );
-
-  const result = await ImageManipulator.manipulateAsync(
-    uri,
-    [{ crop: { originX, originY, width: cropW, height: cropH } }],
-    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-  );
-  return result.uri;
+/** Web: rotate, measure, crop (ImageManipulator web build is canvas based). */
+async function straightenSequential(uri: string, degrees: number): Promise<string> {
+  const angle = Math.max(-15, Math.min(15, degrees));
+  if (Math.abs(angle) < 0.4) return uri;
+  const { width: srcW, height: srcH } = await getImageDimensions(uri);
+  const rotated = await manipulate(uri, [{ rotate: angle }]);
+  const { width, height } = rotated;
+  const rad = (Math.abs(angle) * Math.PI) / 180;
+  const sin = Math.sin(rad);
+  const cos = Math.cos(rad);
+  const safeW = Math.min(Math.max(1, Math.round(srcW * cos - srcH * sin)), width);
+  const safeH = Math.min(Math.max(1, Math.round(srcH * cos - srcW * sin)), height);
+  if (safeW < 8 || safeH < 8) return rotated.uri;
+  const out = await manipulate(rotated.uri, [
+    {
+      crop: {
+        originX: Math.round((width - safeW) / 2),
+        originY: Math.round((height - safeH) / 2),
+        width: safeW,
+        height: safeH,
+      },
+    },
+  ]);
+  return out.uri;
 }
 
 /**
  * Straighten by a small angle (−15…15°), then center-crop to remove empty corners.
  */
 export async function straightenImage(uri: string, degrees: number): Promise<string> {
-  const angle = Math.max(-15, Math.min(15, degrees));
-  if (Math.abs(angle) < 0.4) return uri;
-
-  const { width: srcW, height: srcH } = await getImageDimensions(uri);
-  const rotated = await ImageManipulator.manipulateAsync(
-    uri,
-    [{ rotate: angle }],
-    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-  );
-
-  const { width, height } = await getImageDimensions(rotated.uri);
-  const rad = (Math.abs(angle) * Math.PI) / 180;
-  const sin = Math.sin(rad);
-  const cos = Math.cos(rad);
-  // Inscribed axis-aligned rectangle after rotation
-  const cropW = Math.max(1, Math.round(srcW * cos - srcH * sin));
-  const cropH = Math.max(1, Math.round(srcH * cos - srcW * sin));
-  const safeW = Math.min(cropW, width);
-  const safeH = Math.min(cropH, height);
-  if (safeW < 8 || safeH < 8) return rotated.uri;
-
-  const result = await ImageManipulator.manipulateAsync(
-    rotated.uri,
-    [
-      {
-        crop: {
-          originX: Math.round((width - safeW) / 2),
-          originY: Math.round((height - safeH) / 2),
-          width: safeW,
-          height: safeH,
-        },
-      },
-    ],
-    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-  );
-  return result.uri;
+  if (Math.abs(degrees) < 0.4) return uri;
+  if (isWeb()) return straightenSequential(uri, degrees);
+  const out = await applyGeometry(uri, { straighten: degrees, crop: 'free', offsetX: 0, offsetY: 0 });
+  return out.uri;
 }
 
 export async function rotateImage(uri: string, degrees = 90): Promise<string> {
-  const result = await ImageManipulator.manipulateAsync(
-    uri,
-    [{ rotate: degrees }],
-    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-  );
-  return result.uri;
+  return (await manipulate(uri, [{ rotate: degrees }])).uri;
 }
 
 export async function flipImage(
   uri: string,
   direction: 'horizontal' | 'vertical'
 ): Promise<string> {
-  const result = await ImageManipulator.manipulateAsync(
-    uri,
-    [
-      {
-        flip:
-          direction === 'horizontal'
-            ? ImageManipulator.FlipType.Horizontal
-            : ImageManipulator.FlipType.Vertical,
-      },
-    ],
-    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-  );
-  return result.uri;
+  const out = await manipulate(uri, [
+    {
+      flip:
+        direction === 'horizontal'
+          ? ImageManipulator.FlipType.Horizontal
+          : ImageManipulator.FlipType.Vertical,
+    },
+  ]);
+  return out.uri;
 }
 
 async function loadHtmlImage(uri: string): Promise<HTMLImageElement> {
@@ -203,207 +236,207 @@ async function loadHtmlImage(uri: string): Promise<HTMLImageElement> {
   }
 }
 
-function applyPixelAdjustments(buffer: PixelBuffer, adj: EditAdjustments) {
-  if (isAdjustmentsNeutral(adj)) return;
+// ---------------------------------------------------------------------------
+// Working copy
+// ---------------------------------------------------------------------------
 
-  const a = sanitizeAdjustments(adj);
-  const { data: px } = buffer;
-  const exposure = 1 + (a.exposure !== 0 ? a.exposure / 85 : 0) + (a.brightness !== 0 ? a.brightness / 170 : 0);
-  const contrast = 1 + (a.contrast !== 0 ? a.contrast / 85 : 0);
-  const satFactor = a.saturation !== 0 ? 1 + a.saturation / 85 : 1;
-  const warmth = a.warmth !== 0 ? a.warmth / 100 : 0;
-  const tint = a.tint !== 0 ? a.tint / 100 : 0;
-  const fade = a.fade !== 0 ? a.fade / 100 : 0;
-  const grayMix = a.grayscale !== 0 ? a.grayscale / 100 : 0;
-  const sepiaMix = a.sepia !== 0 ? a.sepia / 100 : 0;
+export type WorkingCopy = { uri: string; width: number; height: number };
 
-  for (let i = 0; i < px.length; i += 4) {
-    let r = px[i];
-    let g = px[i + 1];
-    let b = px[i + 2];
-
-    r = ((r / 255 - 0.5) * contrast + 0.5) * 255 * exposure;
-    g = ((g / 255 - 0.5) * contrast + 0.5) * 255 * exposure;
-    b = ((b / 255 - 0.5) * contrast + 0.5) * 255 * exposure;
-
-    if (a.hue !== 0) {
-      const rad = (a.hue * 0.9 * Math.PI) / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const nr =
-        r * (0.213 + 0.787 * cos - 0.213 * sin) +
-        g * (0.715 - 0.715 * cos - 0.715 * sin) +
-        b * (0.072 - 0.072 * cos + 0.928 * sin);
-      const ng =
-        r * (0.213 - 0.213 * cos + 0.143 * sin) +
-        g * (0.715 + 0.285 * cos + 0.14 * sin) +
-        b * (0.072 - 0.072 * cos - 0.283 * sin);
-      const nb =
-        r * (0.213 - 0.213 * cos - 0.787 * sin) +
-        g * (0.715 - 0.715 * cos + 0.715 * sin) +
-        b * (0.072 + 0.928 * cos + 0.072 * sin);
-      r = nr;
-      g = ng;
-      b = nb;
+/**
+ * JPEG copy of the picked photo, long edge ≤ maxEdge, orientation baked in.
+ * iPhone library photos are often 12–48 MP HEIC: slow to show and jpeg-js
+ * can't decode them. Never throws — falls back to the original URI.
+ */
+export async function prepareWorkingCopy(
+  uri: string,
+  maxEdge = EXPORT_MAX_EDGE
+): Promise<WorkingCopy> {
+  const compress = maxEdge <= 720 ? 0.72 : INTERMEDIATE_QUALITY;
+  try {
+    // Already a small-enough JPEG written by ImageManipulator: reuse it instead
+    // of re-compressing (costs time and quality).
+    if (isManipulatorJpeg(uri)) {
+      const size = await getImageDimensions(uri);
+      if (Math.max(size.width, size.height) <= maxEdge) return { uri, ...size };
     }
-
-    r += warmth * 28;
-    b -= warmth * 22;
-    g += tint * 16;
-    r -= tint * 10;
-
-    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    const sat = satFactor;
-    r = lum + (r - lum) * sat;
-    g = lum + (g - lum) * sat;
-    b = lum + (b - lum) * sat;
-
-    // Tone curve: highlights / shadows
-    if (a.highlights !== 0 || a.shadows !== 0) {
-      const t = lum / 255;
-      const hi = a.highlights / 100;
-      const sh = a.shadows / 100;
-      const hiW = Math.max(0, (t - 0.45) / 0.55);
-      const shW = Math.max(0, (0.55 - t) / 0.55);
-      const lift = hi * hiW * 40 + sh * shW * 40;
-      r += lift;
-      g += lift;
-      b += lift;
-    }
-
-    // Clarity ≈ mild midtone contrast
-    if (a.clarity !== 0) {
-      const mid = lum / 255;
-      const midW = 1 - Math.abs(mid - 0.5) * 2;
-      const c = 1 + (a.clarity / 120) * midW;
-      r = ((r / 255 - 0.5) * c + 0.5) * 255;
-      g = ((g / 255 - 0.5) * c + 0.5) * 255;
-      b = ((b / 255 - 0.5) * c + 0.5) * 255;
-    }
-
-    if (sepiaMix > 0) {
-      const sr = 0.393 * r + 0.769 * g + 0.189 * b;
-      const sg = 0.349 * r + 0.686 * g + 0.168 * b;
-      const sb = 0.272 * r + 0.534 * g + 0.131 * b;
-      r = r * (1 - sepiaMix) + sr * sepiaMix;
-      g = g * (1 - sepiaMix) + sg * sepiaMix;
-      b = b * (1 - sepiaMix) + sb * sepiaMix;
-    }
-
-    if (grayMix > 0) {
-      r = r * (1 - grayMix) + lum * grayMix;
-      g = g * (1 - grayMix) + lum * grayMix;
-      b = b * (1 - grayMix) + lum * grayMix;
-    }
-
-    if (fade > 0) {
-      r = r * (1 - fade * 0.35) + 255 * fade * 0.35;
-      g = g * (1 - fade * 0.35) + 255 * fade * 0.35;
-      b = b * (1 - fade * 0.35) + 255 * fade * 0.35;
-    }
-
-    px[i] = clampByte(r);
-    px[i + 1] = clampByte(g);
-    px[i + 2] = clampByte(b);
-  }
-}
-
-function applySharpen(buffer: PixelBuffer, amount: number) {
-  if (amount <= 0) return;
-  const { width, height, data: px } = buffer;
-  const copy = new Uint8ClampedArray(px);
-  const strength = amount / 200;
-  const kernel = [0, -strength, 0, -strength, 1 + 4 * strength, -strength, 0, -strength, 0];
-
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      for (let c = 0; c < 3; c++) {
-        let sum = 0;
-        let ki = 0;
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const idx = ((y + ky) * width + (x + kx)) * 4 + c;
-            sum += copy[idx] * kernel[ki++];
-          }
-        }
-        px[(y * width + x) * 4 + c] = clampByte(sum);
+    if (!isWeb()) {
+      // One native decode gives us the size; no separate Image.getSize pass.
+      try {
+        return await prepareWithContext(uri, maxEdge, compress);
+      } catch {
+        /* fall through to manipulateAsync */
       }
     }
+    const size = await getImageDimensions(uri);
+    const plan = planGeometry(size, { straighten: 0, crop: 'free', offsetX: 0, offsetY: 0 }, maxEdge);
+    return await manipulate(uri, plan.actions, compress);
+  } catch {
+    return { uri, width: 0, height: 0 };
   }
 }
 
-function applyVignette(buffer: PixelBuffer, amount: number) {
-  if (amount <= 0) return;
-  const { width, height, data: px } = buffer;
-  const cx = width / 2;
-  const cy = height / 2;
-  const maxDist = Math.sqrt(cx * cx + cy * cy);
-  const power = 1 + amount / 25;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / maxDist;
-      const factor = 1 - Math.pow(dist, power) * (amount / 100);
-      const i = (y * width + x) * 4;
-      px[i] = clampByte(px[i] * factor);
-      px[i + 1] = clampByte(px[i + 1] * factor);
-      px[i + 2] = clampByte(px[i + 2] * factor);
+async function prepareWithContext(uri: string, maxEdge: number, compress: number): Promise<WorkingCopy> {
+  const Manip = ImageManipulator.ImageManipulator;
+  const decoded = await Manip.manipulate(uri).renderAsync();
+  let target = decoded;
+  try {
+    const long = Math.max(decoded.width, decoded.height);
+    if (long > maxEdge) {
+      const scale = maxEdge / long;
+      target = await Manip.manipulate(decoded)
+        .resize({
+          width: Math.max(1, Math.round(decoded.width * scale)),
+          height: Math.max(1, Math.round(decoded.height * scale)),
+        })
+        .renderAsync();
+    }
+    const saved = await target.saveAsync({ compress, format: ImageManipulator.SaveFormat.JPEG });
+    rememberSize(saved.uri, saved.width, saved.height);
+    return { uri: saved.uri, width: saved.width, height: saved.height };
+  } finally {
+    try {
+      if (target !== decoded) target.release();
+      decoded.release();
+    } catch {
+      /* best effort */
     }
   }
 }
 
-function applyGrain(buffer: PixelBuffer, amount: number) {
-  if (amount <= 0) return;
-  const { data: px } = buffer;
-  const amp = amount * 0.55;
-  for (let i = 0; i < px.length; i += 4) {
-    const noise = (Math.random() - 0.5) * amp;
-    px[i] = clampByte(px[i] + noise);
-    px[i + 1] = clampByte(px[i + 1] + noise);
-    px[i + 2] = clampByte(px[i + 2] + noise);
+export async function prepareExportSource(uri: string, maxEdge = EXPORT_MAX_EDGE): Promise<string> {
+  return (await prepareWorkingCopy(uri, maxEdge)).uri;
+}
+
+const warmCache = new Map<string, Promise<WorkingCopy>>();
+
+/**
+ * Start preparing the editor's working copy as early as possible (e.g. right
+ * when the picker returns). PhotoEditor awaits the same promise on open.
+ */
+export function warmPhotoEditorSource(uri: string): Promise<WorkingCopy> {
+  const hit = warmCache.get(uri);
+  if (hit) return hit;
+  const p = prepareWorkingCopy(uri, EXPORT_MAX_EDGE).then((copy) => {
+    // Failed prep (original handed back) — don't pin it; a retry tries again.
+    if (copy.uri === uri) warmCache.delete(uri);
+    return copy;
+  });
+  if (warmCache.size >= 4) {
+    const first = warmCache.keys().next().value;
+    if (first !== undefined) warmCache.delete(first);
+  }
+  warmCache.set(uri, p);
+  return p;
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+
+export type ExportPhase = 'geometry' | 'read' | 'decode' | 'adjust' | 'encode' | 'write';
+export type ExportError = Error & { phase: ExportPhase };
+
+function phaseError(phase: ExportPhase, cause: unknown): ExportError {
+  const reason = cause instanceof Error && cause.message ? cause.message : String(cause);
+  const err = new Error(`Export failed at ${phase}: ${reason}`) as ExportError;
+  err.phase = phase;
+  return err;
+}
+
+export function exportErrorPhase(err: unknown): ExportPhase | null {
+  const phase = (err as { phase?: unknown } | null)?.phase;
+  return typeof phase === 'string' ? (phase as ExportPhase) : null;
+}
+
+async function step<T>(
+  phase: ExportPhase,
+  onPhase: ((p: ExportPhase) => void) | undefined,
+  fn: () => T | Promise<T>
+): Promise<T> {
+  onPhase?.(phase);
+  try {
+    return await fn();
+  } catch (err) {
+    throw phaseError(phase, err);
   }
 }
 
-function clampByte(n: number) {
-  return Math.max(0, Math.min(255, Math.round(n)));
-}
-
-function uint8ToBase64(bytes: Uint8Array): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let output = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i];
-    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
-    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
-    const triplet = (a << 16) | (b << 8) | c;
-    output += chars[(triplet >> 18) & 63];
-    output += chars[(triplet >> 12) & 63];
-    output += i + 1 < bytes.length ? chars[(triplet >> 6) & 63] : '=';
-    output += i + 2 < bytes.length ? chars[triplet & 63] : '=';
-  }
-  return output;
-}
-
-export type ExportOptions = {
+export type RenderOptions = {
+  geometry?: GeometryEdit;
+  adjustments: EditAdjustments;
   overlays?: TextOverlay[];
+  /** Called before each phase so the UI can show "Applying edits…" etc. */
+  onPhase?: (phase: ExportPhase) => void;
+  maxEdge?: number;
 };
 
-/** Bake all color edits (+ optional text overlays) into a JPEG data URL. */
+/**
+ * Bake geometry + color edits + text overlays into a new JPEG.
+ * Native returns a file:// URI in the cache dir; web returns a data URL.
+ * Throws an ExportError (with `.phase`) — never silently hands back the
+ * unedited photo.
+ */
+export async function renderEditedPhoto(sourceUri: string, opts: RenderOptions): Promise<string> {
+  const geometry: GeometryEdit = opts.geometry ?? {
+    straighten: 0,
+    crop: 'free',
+    offsetX: 0,
+    offsetY: 0,
+  };
+  const overlays = (opts.overlays || []).filter((o) => o.text.trim());
+  const pixel = needsPixelPass(opts.adjustments, overlays.length);
+  const maxEdge = opts.maxEdge ?? EXPORT_MAX_EDGE;
+  const { onPhase } = opts;
+
+  if (isWeb()) {
+    const geo = await step('geometry', onPhase, () => applyGeometry(sourceUri, geometry));
+    if (!pixel) return geo.uri;
+    return step('adjust', onPhase, async () => {
+      await nextFrame();
+      return exportViaCanvas(geo.uri, opts.adjustments, overlays);
+    });
+  }
+
+  // 1) One native pass: straighten + crop + downscale (+ HEIC → JPEG).
+  const geo = await step('geometry', onPhase, () =>
+    applyGeometry(sourceUri, geometry, { maxEdge, normalize: pixel })
+  );
+  if (!pixel) return geo.uri;
+
+  // 2) Pixel pass (jpeg-js). Yield first so the overlay paints before the JS
+  //    thread is busy with sync work.
+  const bytes = await step('read', onPhase, async () => {
+    await nextFrame();
+    return readFileBytes(geo.uri);
+  });
+  const buffer = await step('decode', onPhase, () => decodeJpeg(bytes));
+  await step('adjust', onPhase, async () => {
+    await nextFrame();
+    processPixelBuffer(buffer, opts.adjustments);
+    if (overlays.length) bakeTextOverlaysOnBuffer(buffer, overlays);
+  });
+  const encoded = await step('encode', onPhase, async () => {
+    await nextFrame();
+    return encodeJpeg(buffer, FINAL_JPEG_QUALITY);
+  });
+  const out = await step('write', onPhase, () => writeJpegBytes(encoded));
+  rememberSize(out, buffer.width, buffer.height);
+  return out;
+}
+
+/** Bake color edits (+ optional text overlays) only — kept for callers without geometry. */
 export async function exportEditedImage(
   uri: string,
   adjustments: EditAdjustments,
-  options?: ExportOptions
+  options?: { overlays?: TextOverlay[] }
 ): Promise<string> {
-  if (typeof document !== 'undefined') {
-    return exportViaCanvas(uri, adjustments, options);
-  }
-  return exportViaJpegJs(uri, adjustments, options);
+  return renderEditedPhoto(uri, { adjustments, overlays: options?.overlays });
 }
 
 async function exportViaCanvas(
   uri: string,
   adjustments: EditAdjustments,
-  options?: ExportOptions
+  overlays: TextOverlay[]
 ): Promise<string> {
   const img = await loadHtmlImage(uri);
   const maxDim = 1600;
@@ -415,14 +448,13 @@ async function exportViaCanvas(
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return uri;
+  if (!ctx) throw new Error('Canvas unavailable');
 
   ctx.drawImage(img, 0, 0, width, height);
   const imageData = ctx.getImageData(0, 0, width, height);
   processPixelBuffer(imageData, adjustments);
   ctx.putImageData(imageData, 0, 0);
 
-  const overlays = (options?.overlays || []).filter((o) => o.text.trim());
   if (overlays.length) {
     bakeTextOverlaysOnCanvas(ctx, width, height, overlays);
   }
@@ -430,120 +462,12 @@ async function exportViaCanvas(
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
-const EXPORT_MAX_EDGE = 1400;
-
-/**
- * Always re-encode as JPEG. iPhone library photos are often HEIC — jpeg-js
- * cannot decode those, so looks used to silently no-op.
- */
-export async function prepareExportSource(
-  uri: string,
-  maxEdge = EXPORT_MAX_EDGE
-): Promise<string> {
-  try {
-    const { width, height } = await getImageDimensions(uri);
-    const longEdge = Math.max(width, height);
-    // Already a small-enough JPEG written by ImageManipulator (orientation baked
-    // in, unlike camera files that rely on an EXIF tag jpeg-js ignores): reuse it
-    // instead of re-compressing, which costs time and image quality.
-    if (longEdge <= maxEdge && /ImageManipulator\/[^/]+\.jpe?g(\?|$)/i.test(uri)) {
-      return uri;
-    }
-    const actions: Parameters<typeof ImageManipulator.manipulateAsync>[1] = [];
-    if (longEdge > maxEdge) {
-      const scale = maxEdge / longEdge;
-      actions.push({
-        resize: {
-          width: Math.max(1, Math.round(width * scale)),
-          height: Math.max(1, Math.round(height * scale)),
-        },
-      });
-    }
-    const normalized = await ImageManipulator.manipulateAsync(uri, actions, {
-      compress: maxEdge <= 720 ? 0.72 : 0.82,
-      format: ImageManipulator.SaveFormat.JPEG,
-    });
-    return normalized.uri;
-  } catch {
-    return uri;
-  }
-}
-
-async function exportViaJpegJs(
-  uri: string,
-  adjustments: EditAdjustments,
-  options?: ExportOptions
-): Promise<string> {
-  try {
-    const sourceUri = await prepareExportSource(uri);
-    const overlays = (options?.overlays || []).filter((o) => o.text.trim());
-    if (isAdjustmentsNeutral(adjustments) && overlays.length === 0) {
-      return sourceUri;
-    }
-
-    const response = await fetch(sourceUri);
-    const buffer = await response.arrayBuffer();
-    const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
-    const pixelBuffer: PixelBuffer = {
-      data: new Uint8ClampedArray(decoded.data),
-      width: decoded.width,
-      height: decoded.height,
-    };
-    processPixelBuffer(pixelBuffer, adjustments);
-
-    if (overlays.length) {
-      bakeTextOverlaysOnBuffer(pixelBuffer, overlays);
-    }
-
-    const encoded = jpeg.encode(
-      { data: pixelBuffer.data, width: pixelBuffer.width, height: pixelBuffer.height },
-      88
-    );
-    const base64 = uint8ToBase64(encoded.data);
-    if (Platform.OS !== 'web') {
-      try {
-        const FileSystem = await import('expo-file-system/legacy');
-        const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-        if (dir) {
-          const path = `${dir}grow-edit-${Date.now()}.jpg`;
-          await FileSystem.writeAsStringAsync(path, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          return path;
-        }
-      } catch {
-        /* fall through to data URL */
-      }
-    }
-    return `data:image/jpeg;base64,${base64}`;
-  } catch (err) {
-    // Never hand back the unedited photo as if the edits were applied —
-    // PhotoEditor catches this and shows "Export failed" so the user can retry.
-    const reason = err instanceof Error && err.message ? `: ${err.message}` : '';
-    throw new Error(`Could not apply edits${reason}`);
-  }
-}
-
-type PixelBuffer = { data: Uint8ClampedArray; width: number; height: number };
-
-function processPixelBuffer(buffer: PixelBuffer, adjustments: EditAdjustments) {
-  const adj = sanitizeAdjustments(adjustments);
-  applyPixelAdjustments(buffer, adj);
-  applySharpen(buffer, adj.sharpen);
-  applyVignette(buffer, adj.vignette);
-  applyCinematicEdges(buffer, adj.cinematic);
-  applyGrain(buffer, adj.grain);
-}
-
 export { rotateImage as rotateImageFile, flipImage as flipImageFile, cropToAspect as cropToAspectFile };
 
 /** Tiny sample for Auto — not the export path. */
 export async function sampleImageStats(uri: string): Promise<ImageToneStats> {
   const jpegUri = await prepareExportSource(uri, 64);
-  const response = await fetch(jpegUri);
-  const buffer = await response.arrayBuffer();
-  const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
-  const px = decoded.data;
+  const px = decodeJpeg(await readFileBytes(jpegUri)).data;
   let lumaSum = 0;
   let lumaSq = 0;
   let warmSum = 0;
@@ -573,28 +497,4 @@ export async function sampleImageStats(uri: string): Promise<ImageToneStats> {
     warmth: warmSum / n / 255,
     sat: satSum / n,
   };
-}
-
-/** Fast look preview for the editor canvas (native). */
-export async function renderLookPreview(
-  uri: string,
-  adjustments: EditAdjustments,
-  maxEdge = 720
-): Promise<string> {
-  if (isAdjustmentsNeutral(adjustments)) return uri;
-  const jpegUri = await prepareExportSource(uri, maxEdge);
-  const response = await fetch(jpegUri);
-  const buffer = await response.arrayBuffer();
-  const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
-  const pixelBuffer: PixelBuffer = {
-    data: new Uint8ClampedArray(decoded.data),
-    width: decoded.width,
-    height: decoded.height,
-  };
-  processPixelBuffer(pixelBuffer, adjustments);
-  const encoded = jpeg.encode(
-    { data: pixelBuffer.data, width: pixelBuffer.width, height: pixelBuffer.height },
-    78
-  );
-  return `data:image/jpeg;base64,${uint8ToBase64(encoded.data)}`;
 }
