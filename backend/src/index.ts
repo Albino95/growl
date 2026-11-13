@@ -28,6 +28,7 @@ import * as adminAuditRoutes from './routes/admin/audit';
 import * as adminDashboardRoutes from './routes/admin/dashboard';
 import * as appReviewsRoutes from './routes/appReviews';
 import * as growthRoutes from './routes/growth';
+import * as waitlistRoutes from './routes/waitlist';
 import { purgeExpiredUnverifiedUsers } from './jobs/purgeUnverifiedUsers';
 
 /**
@@ -996,6 +997,11 @@ async function handleRequest(
 
       if (path === `${apiPrefix}/admin/audit/logs` && request.method === 'GET') {
         return adminAuditRoutes.listAuditLogs(request, env);
+      }
+
+      // Public early-access waitlist (letsgrow.lu); rate limited per visitor inside the handler
+      if (path === `${apiPrefix}/waitlist` && request.method === 'POST') {
+        return waitlistRoutes.joinWaitlist(request, env);
       }
 
       // Growth system (docs/GROWTH_SYSTEM.md): streak, Today, badges, recap, progress, challenges, invites

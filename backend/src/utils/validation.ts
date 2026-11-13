@@ -560,6 +560,18 @@ export const inviteRedeemSchema = z.object({
   code: z.string().trim().min(1, 'Invite code is required').max(32),
 });
 
+/** POST /waitlist — public early-access signup (landing site). */
+export const waitlistSignupSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .max(254, 'Email is too long')
+    .email('Invalid email address')
+    .transform((v) => v.toLowerCase()),
+  platform: z.enum(['android', 'ios', 'web']),
+  source: z.string().trim().max(40).optional(),
+});
+
 export async function validateRequest<T>(
   request: Request,
   schema: z.ZodSchema<T>
