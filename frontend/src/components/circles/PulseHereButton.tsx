@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import EqualizerBars from '../ui/EqualizerBars';
-import { feedback } from '../../utils/interactionFeedback';
+import { haptic } from '../../theme/haptics';
+import { duration, easing, loopPeriod, timing } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   onPress: () => void;
@@ -15,36 +17,31 @@ type Props = {
 export default function PulseHereButton({ onPress, busy, disabled }: Props) {
   const ring = useRef(new Animated.Value(0)).current;
   const burst = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
+    if (reduced) {
+      ring.setValue(1); // ring fully faded out — no ambient pulse
+      return;
+    }
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ring, {
-          toValue: 1,
-          duration: 1600,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(ring, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ])
+      Animated.timing(ring, {
+        toValue: 1,
+        duration: loopPeriod,
+        easing: easing.out,
+        useNativeDriver: true,
+      })
     );
     loop.start();
     return () => loop.stop();
-  }, [ring]);
+  }, [reduced, ring]);
 
   const fire = () => {
-    feedback.tap();
-    burst.setValue(0);
-    Animated.timing(burst, {
-      toValue: 1,
-      duration: 520,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
+    haptic('tapLight');
+    if (!reduced) {
+      burst.setValue(0);
+      timing(burst, 1, { duration: duration.slow, easing: easing.out }).start();
+    }
     onPress();
   };
 

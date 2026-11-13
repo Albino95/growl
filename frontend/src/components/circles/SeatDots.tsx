@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
+import { Animated, View } from 'react-native';
 import tw from '../../lib/tw';
+import { breathe, spring, stagger } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   filled: number;
@@ -16,44 +18,23 @@ export default function SeatDots({ filled, max = 10, live = false, size = 8 }: P
   const taken = Math.max(0, Math.min(count, filled));
   const scales = useRef(Array.from({ length: 12 }, () => new Animated.Value(0.45))).current;
   const glow = useRef(new Animated.Value(1)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
-    const anims = scales.slice(0, count).map((s, i) =>
-      Animated.spring(s, {
-        toValue: i < taken ? 1 : 0.55,
-        delay: i * 28,
-        friction: 6,
-        tension: 140,
-        useNativeDriver: true,
-      })
-    );
-    Animated.stagger(18, anims).start();
-  }, [taken, count, scales]);
+    const anims = scales
+      .slice(0, count)
+      .map((s, i) => spring(s, i < taken ? 1 : 0.55, 'bouncy', reduced));
+    if (reduced) Animated.parallel(anims).start();
+    else Animated.stagger(stagger / 2, anims).start();
+  }, [taken, count, reduced, scales]);
 
   useEffect(() => {
-    if (!live || taken <= 0) {
-      glow.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glow, {
-          toValue: 1.35,
-          duration: 900,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(glow, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    glow.setValue(1);
+    const loop = live && taken > 0 ? breathe(glow, 1, 1.35, {}, reduced) : null;
+    if (!loop) return;
     loop.start();
     return () => loop.stop();
-  }, [live, taken, glow]);
+  }, [live, taken, reduced, glow]);
 
   return (
     <View style={tw`flex-row items-center`}>

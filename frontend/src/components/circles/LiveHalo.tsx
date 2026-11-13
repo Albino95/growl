@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, View, type StyleProp, type ViewStyle } from 'react-native';
+import { breathe } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   children: React.ReactNode;
@@ -10,31 +12,15 @@ type Props = {
 /** Soft breathe so a chip or seat feels occupied, not static. */
 export default function LiveHalo({ children, active = true, style }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
-    if (!active) {
-      scale.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, {
-          toValue: 1.045,
-          duration: 1100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scale, {
-          toValue: 1,
-          duration: 1100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    scale.setValue(1);
+    const loop = active ? breathe(scale, 1, 1.045, {}, reduced) : null;
+    if (!loop) return;
     loop.start();
     return () => loop.stop();
-  }, [active, scale]);
+  }, [active, reduced, scale]);
 
   return (
     <View style={style}>

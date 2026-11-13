@@ -7,14 +7,20 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { triggerFeedback, type FeedbackKind } from '../../utils/interactionFeedback';
+import { press, spring } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Props = PressableProps & {
   style?: StyleProp<ViewStyle>;
-  /** Scale when pressed (default 0.98). */
+  /** Scale when pressed (default motion.press.scale = 0.96). */
   pressedScale?: number;
-  /** Fire haptics/sound via app feedback helper. */
+  /**
+   * Haptic/sound fired on press (never press-in). Default: none — plain
+   * navigation taps are silent. Pass a kind for state-changing taps
+   * (e.g. 'impactLight', 'selection', 'success'). `true` = legacy 'tap' (silent).
+   */
   feedback?: boolean | FeedbackKind;
   /** Optional: a childless PressableScale works as a tap-to-dismiss backdrop. */
   children?: React.ReactNode;
@@ -22,12 +28,13 @@ type Props = PressableProps & {
 
 /**
  * Soft press scale used across cream surfaces so taps feel alive without flashy motion.
+ * Haptics are opt-in via `feedback` and fire on press, not press-in (scroll-safe).
  * Scale is applied on the same node as layout styles so flex-1 / flex-row keep working.
  */
 export default function PressableScale({
   style,
-  pressedScale = 0.98,
-  feedback = true,
+  pressedScale = press.scale,
+  feedback = false,
   onPressIn,
   onPressOut,
   onPress,
@@ -35,27 +42,18 @@ export default function PressableScale({
   ...rest
 }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
+  const reduced = useReducedMotion();
 
   return (
     <AnimatedPressable
       {...rest}
       style={[style, { transform: [{ scale }] }]}
       onPressIn={(e) => {
-        Animated.spring(scale, {
-          toValue: pressedScale,
-          useNativeDriver: true,
-          speed: 40,
-          bounciness: 0,
-        }).start();
+        if (!reduced) spring(scale, pressedScale, 'snappy').start();
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
-        Animated.spring(scale, {
-          toValue: 1,
-          useNativeDriver: true,
-          speed: 28,
-          bounciness: 6,
-        }).start();
+        spring(scale, 1, 'snappy', reduced).start();
         onPressOut?.(e);
       }}
       onPress={(e) => {

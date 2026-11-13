@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
 import { usePressFeedback } from '../../hooks/usePressFeedback';
+import type { FeedbackKind } from '../../utils/interactionFeedback';
 
 type Props = {
   label: string;
@@ -25,6 +26,8 @@ type Props = {
   success?: boolean;
   variant?: 'solid' | 'soft' | 'ghost';
   accessibilityLabel?: string;
+  /** Haptic on press for state-changing actions (default: silent). */
+  feedback?: FeedbackKind;
 };
 
 const CROSSFADE_MS = 120;
@@ -49,9 +52,10 @@ function PrimaryButton({
   success,
   variant = 'solid',
   accessibilityLabel,
+  feedback: feedbackKind,
 }: Props) {
   const isDisabled = !!disabled || !!loading || !!success;
-  const feedback = usePressFeedback({ onPress, disabled: isDisabled });
+  const feedback = usePressFeedback({ onPress, disabled: isDisabled, kind: feedbackKind });
   const baseVariant =
     variant === 'soft'
       ? tw`bg-brand-50 border border-brand-200`

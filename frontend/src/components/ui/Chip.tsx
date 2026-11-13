@@ -11,7 +11,7 @@ type Props = {
 };
 
 function Chip({ selected, onPress, children, tone = 'brand' }: Props) {
-  const feedback = usePressFeedback({ onPress });
+  const feedback = usePressFeedback({ onPress, kind: 'selection' });
   const selectedClass = tone === 'accent' ? 'bg-accent-600 border-accent-600' : 'bg-brand-600 border-brand-600';
   const unselectedClass = 'bg-stone-100 border-stone-200';
   return (

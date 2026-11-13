@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
-import tw, { theme } from '../../lib/tw';
+import React from 'react';
+import { View } from 'react-native';
+import tw from '../../lib/tw';
+import Skeleton from './Skeleton';
 
 export type SkeletonVariant =
   | 'post'
@@ -15,40 +16,7 @@ type Props = {
 };
 
 function ShimmerBlock({ style }: { style: object }) {
-  const shimmer = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [shimmer]);
-
-  return (
-    <Animated.View
-      style={[
-        style,
-        {
-          backgroundColor: theme.colors.subtle,
-          opacity: shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.95] }),
-        },
-      ]}
-    />
-  );
+  return <Skeleton style={style} />;
 }
 
 /** Cream-surface shimmer placeholders for loading states. */

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, View } from 'react-native';
 import tw from '../../lib/tw';
+import { spring } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   filled: number;
@@ -19,15 +21,11 @@ export default function SeatFill({ filled, max = 10 }: Props) {
   const cap = Math.max(1, max);
   const taken = Math.max(0, Math.min(cap, filled));
   const progress = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
-    Animated.spring(progress, {
-      toValue: taken / cap,
-      friction: 8,
-      tension: 70,
-      useNativeDriver: false,
-    }).start();
-  }, [taken, cap, progress]);
+    spring(progress, taken / cap, 'gentle', reduced).start();
+  }, [taken, cap, progress, reduced]);
 
   const hot = taken >= 8;
   return (
@@ -39,12 +37,18 @@ export default function SeatFill({ filled, max = 10 }: Props) {
         <Animated.View
           style={{
             height: 6,
-            borderRadius: 99,
+            width: '100%',
             backgroundColor: hot ? '#F97066' : '#059669',
-            width: progress.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['4%', '100%'],
-            }),
+            // Native-driven scaleX anchored left (track's rounded overflow clips the ends).
+            transformOrigin: 'left',
+            transform: [
+              {
+                scaleX: progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.04, 1],
+                }),
+              },
+            ],
           }}
         />
       </View>

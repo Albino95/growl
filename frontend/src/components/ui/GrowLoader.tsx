@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { feedback } from '../../utils/interactionFeedback';
+import { easing, loopPeriod } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   label?: string;
@@ -18,53 +20,33 @@ export default function GrowLoader({ label, light = false, size = 'md' }: Props)
   const smile = useRef(new Animated.Value(0.35)).current;
   const speck = useRef(new Animated.Value(0)).current;
   const [hint, setHint] = useState('');
+  const reduced = useReducedMotion();
 
   useEffect(() => {
+    if (reduced) {
+      // Still, smiling seed — the label carries the "loading" meaning.
+      pulse.setValue(1);
+      smile.setValue(1);
+      speck.setValue(0);
+      return;
+    }
+    const half = loopPeriod / 2;
+    const to = (v: Animated.Value, toValue: number, ease = true) =>
+      Animated.timing(v, {
+        toValue,
+        duration: half,
+        ...(ease ? { easing: easing.inOut } : {}),
+        useNativeDriver: true,
+      });
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.parallel([
-          Animated.timing(pulse, {
-            toValue: 1.08,
-            duration: 780,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(smile, {
-            toValue: 1,
-            duration: 780,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(speck, {
-            toValue: 1,
-            duration: 780,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(pulse, {
-            toValue: 0.86,
-            duration: 780,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(smile, {
-            toValue: 0.4,
-            duration: 780,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(speck, {
-            toValue: 0.15,
-            duration: 780,
-            useNativeDriver: true,
-          }),
-        ]),
+        Animated.parallel([to(pulse, 1.08), to(smile, 1), to(speck, 1, false)]),
+        Animated.parallel([to(pulse, 0.86), to(smile, 0.4), to(speck, 0.15, false)]),
       ])
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse, smile, speck]);
+  }, [pulse, reduced, smile, speck]);
 
   const dim = size === 'lg' ? 72 : size === 'sm' ? 36 : 56;
   const face = size === 'lg' ? 28 : size === 'sm' ? 14 : 22;

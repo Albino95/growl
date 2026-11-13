@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, Animated, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import PressableScale from '../ui/PressableScale';
 import { getUnreadMessageCount } from '../../services/api/messages';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { isAppActive } from '../../utils/appActive';
+import { useUnreadPulse } from '../../hooks/useUnreadPulse';
 
 const BADGE_REFRESH_MS = 60_000;
 
@@ -14,22 +15,7 @@ const BADGE_REFRESH_MS = 60_000;
 export default function MessagesInboxButton() {
   const navigation = useNavigation();
   const [count, setCount] = useState(0);
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (count <= 0) {
-      pulse.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.14, duration: 720, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 720, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [count, pulse]);
+  const pulse = useUnreadPulse(count, 'messages');
 
   // Refresh on focus, when the app returns to the foreground, and every 60s
   // while this screen is focused (blurred tab screens stay mounted; they don't poll).

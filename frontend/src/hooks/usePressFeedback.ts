@@ -1,46 +1,45 @@
 import { useCallback, useRef } from 'react';
 import { Animated } from 'react-native';
 import { triggerFeedback, type FeedbackKind } from '../utils/interactionFeedback';
+import { press, spring } from '../theme/motion';
+import { useReducedMotion } from './useReducedMotion';
 
 type UsePressFeedbackOptions = {
   onPress?: () => void;
   disabled?: boolean;
+  /** Haptic/sound kind fired on press (not press-in). Omit for a silent tap. */
   kind?: FeedbackKind;
+  /** Pressed scale (default motion.press.scale). */
+  pressedScale?: number;
 };
 
+/**
+ * Press-in scales down (visual only, so a touch that turns into a scroll stays
+ * silent); the haptic fires on `onPress`, i.e. only on a real tap.
+ */
 export function usePressFeedback({
   onPress,
   disabled,
-  kind = 'tap',
+  kind,
+  pressedScale = press.scale,
 }: UsePressFeedbackOptions) {
   const scale = useRef(new Animated.Value(1)).current;
-
-  const animateTo = useCallback(
-    (toValue: number, speed: number, bounciness: number) => {
-      Animated.spring(scale, {
-        toValue,
-        useNativeDriver: true,
-        speed,
-        bounciness,
-      }).start();
-    },
-    [scale]
-  );
+  const reduced = useReducedMotion();
 
   const onPressIn = useCallback(() => {
-    if (disabled) return;
-    triggerFeedback(kind);
-    animateTo(0.94, 42, 0);
-  }, [animateTo, disabled, kind]);
+    if (disabled || reduced) return;
+    spring(scale, pressedScale, 'snappy').start();
+  }, [disabled, pressedScale, reduced, scale]);
 
   const onPressOut = useCallback(() => {
-    animateTo(1, 28, 7);
-  }, [animateTo]);
+    spring(scale, 1, 'snappy', reduced).start();
+  }, [reduced, scale]);
 
   const onPressWithFeedback = useCallback(() => {
     if (disabled) return;
+    if (kind) triggerFeedback(kind);
     onPress?.();
-  }, [disabled, onPress]);
+  }, [disabled, kind, onPress]);
 
   return {
     animatedStyle: { transform: [{ scale }] },

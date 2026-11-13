@@ -1,8 +1,19 @@
 import { Platform, Vibration } from 'react-native';
 import type { Audio } from 'expo-av';
 import { useUiPrefsStore } from '../state/useUiPrefsStore';
+import {
+  createHapticGate,
+  playHapticChannel,
+  type HapticChannel,
+  type HapticsModule,
+} from '../theme/hapticsCore';
 
 export type FeedbackKind =
+  // Channel kinds (preferred; see src/theme/haptics.ts for the moment API)
+  | 'selection'
+  | 'impactLight'
+  | 'impactMedium'
+  // Legacy kinds — still accepted, remapped to the calmer system below
   | 'tap'
   | 'select'
   | 'tab'
@@ -25,193 +36,81 @@ export type FeedbackKind =
   | 'commit'
   | 'bloom';
 
-type HapticStyle =
-  | 'light'
-  | 'medium'
-  | 'heavy'
-  | 'soft'
-  | 'rigid'
-  | 'success'
-  | 'warning'
-  | 'error'
-  | 'selection'
-  | 'none';
+type SoundKey = 'success' | 'send' | 'error';
 
 type KindConfig = {
-  haptic: HapticStyle;
-  /** Extra Vibration pattern (ms) when expo-haptics unavailable or for layered feel. */
+  haptic: HapticChannel;
+  /** Vibration pattern (ms) used only when expo-haptics is unavailable. */
   vibrate?: number | number[];
-  sound?:
-    | 'tap'
-    | 'select'
-    | 'tab'
-    | 'like'
-    | 'unlike'
-    | 'success'
-    | 'send'
-    | 'open'
-    | 'close'
-    | 'toggle'
-    | 'warn'
-    | 'error';
+  /** UI sounds are reserved for send, success, celebrate and error. */
+  sound?: SoundKey;
   /** Web Audio synthesis profile. */
   web?: { f0: number; f1?: number; ms: number; type?: OscillatorType; vol?: number };
 };
 
+const SUCCESS_WEB = { f0: 660, f1: 880, ms: 110, type: 'sine' as const, vol: 0.034 };
+
+/**
+ * Frequency rules: the more often something happens, the quieter it is.
+ * selection → tabs/chips/segments/switches; impactLight → state-changing taps;
+ * impactMedium → record/long-press/drag thresholds; notification types → outcomes.
+ * Generic `tap` is deliberately silent.
+ */
 const KIND: Record<FeedbackKind, KindConfig> = {
-  tap: {
-    haptic: 'light',
-    vibrate: 8,
-    sound: 'tap',
-    web: { f0: 720, ms: 45, type: 'triangle', vol: 0.03 },
-  },
-  select: {
-    haptic: 'selection',
-    vibrate: 12,
-    sound: 'select',
-    web: { f0: 540, f1: 500, ms: 55, type: 'sine', vol: 0.032 },
-  },
-  tab: {
-    haptic: 'soft',
-    vibrate: [0, 10, 20, 8],
-    sound: 'tab',
-    web: { f0: 480, ms: 40, type: 'triangle', vol: 0.028 },
-  },
-  like: {
-    haptic: 'medium',
-    vibrate: [0, 12, 40, 18],
-    sound: 'like',
-    web: { f0: 620, f1: 880, ms: 95, type: 'sine', vol: 0.034 },
-  },
-  unlike: {
-    haptic: 'soft',
-    vibrate: 10,
-    sound: 'unlike',
-    web: { f0: 420, f1: 340, ms: 55, type: 'sine', vol: 0.024 },
-  },
-  open: {
-    haptic: 'medium',
-    vibrate: 14,
-    sound: 'open',
-    web: { f0: 500, f1: 640, ms: 65, type: 'triangle', vol: 0.03 },
-  },
-  close: {
-    haptic: 'light',
-    vibrate: 8,
-    sound: 'close',
-    web: { f0: 560, f1: 420, ms: 50, type: 'triangle', vol: 0.024 },
-  },
-  success: {
-    haptic: 'success',
-    vibrate: [0, 10, 30, 16],
-    sound: 'success',
-    web: { f0: 660, f1: 880, ms: 110, type: 'sine', vol: 0.034 },
-  },
+  selection: { haptic: 'selection', vibrate: 8 },
+  impactLight: { haptic: 'impactLight', vibrate: 10 },
+  impactMedium: { haptic: 'impactMedium', vibrate: 16 },
+
+  tap: { haptic: 'none' },
+  select: { haptic: 'selection', vibrate: 8 },
+  tab: { haptic: 'selection', vibrate: 8 },
+  toggle: { haptic: 'selection', vibrate: 8 },
+  filter: { haptic: 'selection', vibrate: 8 },
+  transition: { haptic: 'selection', vibrate: 8 },
+  unlike: { haptic: 'selection', vibrate: 8 },
+  close: { haptic: 'none' },
+  like: { haptic: 'impactLight', vibrate: 10 },
+  open: { haptic: 'impactLight', vibrate: 10 },
+  refresh: { haptic: 'impactLight', vibrate: 10 },
+  commit: { haptic: 'impactLight', vibrate: 10 },
+  autoLook: { haptic: 'impactLight', vibrate: 10 },
+  egg: { haptic: 'rigid', vibrate: [0, 8, 36, 12] },
   send: {
-    haptic: 'medium',
-    vibrate: [0, 8, 18, 14],
+    haptic: 'impactLight',
+    vibrate: 10,
     sound: 'send',
     web: { f0: 700, f1: 900, ms: 70, type: 'sine', vol: 0.03 },
   },
-  toggle: {
-    haptic: 'selection',
-    vibrate: 11,
-    sound: 'toggle',
-    web: { f0: 610, ms: 48, type: 'sine', vol: 0.028 },
-  },
-  warn: {
-    haptic: 'warning',
-    vibrate: [0, 20, 40, 20],
-    sound: 'warn',
-    web: { f0: 340, ms: 90, type: 'square', vol: 0.03 },
-  },
+  success: { haptic: 'success', vibrate: [0, 10, 30, 16], sound: 'success', web: SUCCESS_WEB },
+  warn: { haptic: 'warning', vibrate: [0, 20, 40, 20] },
+  delete: { haptic: 'warning', vibrate: [0, 18, 35, 22] },
   error: {
     haptic: 'error',
     vibrate: [0, 28, 50, 28],
     sound: 'error',
     web: { f0: 280, f1: 220, ms: 140, type: 'square', vol: 0.032 },
   },
-  delete: {
-    haptic: 'warning',
-    vibrate: [0, 18, 35, 22],
-    sound: 'warn',
-    web: { f0: 300, f1: 240, ms: 100, type: 'square', vol: 0.03 },
-  },
-  refresh: {
-    haptic: 'soft',
-    vibrate: 10,
-    sound: 'select',
-    web: { f0: 520, ms: 40, type: 'sine', vol: 0.022 },
-  },
-  transition: {
-    haptic: 'soft',
-    vibrate: [0, 6, 16, 8],
-    sound: 'open',
-    web: { f0: 480, f1: 560, ms: 55, type: 'triangle', vol: 0.022 },
-  },
-  egg: {
-    haptic: 'rigid',
-    vibrate: [0, 8, 36, 12, 40, 18],
-    sound: 'success',
-    web: { f0: 520, f1: 880, ms: 140, type: 'sine', vol: 0.03 },
-  },
   celebrate: {
-    haptic: 'success',
-    vibrate: [0, 12, 28, 16, 36, 22],
+    haptic: 'celebrate',
+    vibrate: [0, 12, 128, 16, 124, 10],
     sound: 'success',
     web: { f0: 660, f1: 990, ms: 170, type: 'sine', vol: 0.036 },
   },
-  /** Look chip — camera dial click, short. */
-  filter: {
-    haptic: 'selection',
-    vibrate: 9,
-    sound: 'select',
-    web: { f0: 920, f1: 740, ms: 36, type: 'triangle', vol: 0.026 },
-  },
-  /** Auto look — two-note lift, like a grade landing. */
-  autoLook: {
-    haptic: 'success',
-    vibrate: [0, 10, 24, 14],
-    sound: 'success',
-    web: { f0: 494, f1: 784, ms: 150, type: 'sine', vol: 0.03 },
-  },
-  /** Done / apply crop — soft shutter. */
-  commit: {
-    haptic: 'medium',
-    vibrate: [0, 12, 20, 10],
-    sound: 'send',
-    web: { f0: 380, f1: 220, ms: 70, type: 'triangle', vol: 0.026 },
-  },
   /** App-open splash — the seed smiles. One soft tap, deliberately silent. */
-  bloom: {
-    haptic: 'soft',
-    vibrate: 6,
-  },
+  bloom: { haptic: 'soft', vibrate: 6 },
 };
 
-const SOUND_MODULES: Record<NonNullable<KindConfig['sound']>, number> = {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  tap: require('../../assets/sounds/tap.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  select: require('../../assets/sounds/select.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  tab: require('../../assets/sounds/tab.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  like: require('../../assets/sounds/like.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  unlike: require('../../assets/sounds/unlike.wav'),
+/** Resolved channel + sound for a kind (exported for tests / debugging). */
+export function describeFeedback(kind: FeedbackKind): { haptic: HapticChannel; sound: SoundKey | null } {
+  const cfg = KIND[kind] || KIND.tap;
+  return { haptic: cfg.haptic, sound: cfg.sound ?? null };
+}
+
+const SOUND_MODULES: Record<SoundKey, number> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   success: require('../../assets/sounds/success.wav'),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   send: require('../../assets/sounds/send.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  open: require('../../assets/sounds/open.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  close: require('../../assets/sounds/close.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  toggle: require('../../assets/sounds/toggle.wav'),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  warn: require('../../assets/sounds/warn.wav'),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   error: require('../../assets/sounds/error.wav'),
 };
@@ -327,7 +226,7 @@ async function ensureAudioMode() {
   }
 }
 
-async function getNativeSound(key: NonNullable<KindConfig['sound']>): Promise<Audio.Sound | null> {
+async function getNativeSound(key: SoundKey): Promise<Audio.Sound | null> {
   const cached = nativeSounds.get(key);
   if (cached) return cached;
   const inflight = nativeLoading.get(key);
@@ -367,7 +266,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
-async function playNativeSound(key: NonNullable<KindConfig['sound']>) {
+async function playNativeSound(key: SoundKey) {
   if (Date.now() < hushNativeUntil) return;
   try {
     const sound = await withTimeout(getNativeSound(key), 400);
@@ -379,73 +278,53 @@ async function playNativeSound(key: NonNullable<KindConfig['sound']>) {
   }
 }
 
-async function fireHaptic(style: HapticStyle, vibrate?: number | number[]) {
-  if (Platform.OS === 'web') return;
+const gate = createHapticGate();
 
+async function fireHaptic(channel: HapticChannel, vibrate?: number | number[]) {
+  if (Platform.OS === 'web' || channel === 'none') return;
   if (Haptics) {
-    try {
-      switch (style) {
-        case 'light':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          return;
-        case 'medium':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          return;
-        case 'heavy':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          return;
-        case 'soft': {
-          const style =
-            (Haptics.ImpactFeedbackStyle as Record<string, unknown>).Soft ??
-            Haptics.ImpactFeedbackStyle.Light;
-          await Haptics.impactAsync(style as typeof Haptics.ImpactFeedbackStyle.Light);
-          return;
-        }
-        case 'rigid': {
-          const style =
-            (Haptics.ImpactFeedbackStyle as Record<string, unknown>).Rigid ??
-            Haptics.ImpactFeedbackStyle.Medium;
-          await Haptics.impactAsync(style as typeof Haptics.ImpactFeedbackStyle.Medium);
-          return;
-        }
-        case 'success':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          return;
-        case 'warning':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          return;
-        case 'error':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          return;
-        case 'selection':
-          await Haptics.selectionAsync();
-          return;
-        default:
-          return;
-      }
-    } catch {
-      /* fall through to Vibration */
-    }
+    const ok = await playHapticChannel(Haptics as unknown as HapticsModule, channel);
+    if (ok) return;
   }
-
-  if (vibrate != null) {
-    Vibration.vibrate(vibrate);
-  }
+  if (vibrate != null) Vibration.vibrate(vibrate);
 }
 
+/** How long an early haptic waits for persisted prefs before it is dropped. */
+const PREFS_HYDRATION_WAIT_MS = 120;
+
 /**
- * Unified tactile + audio feedback. Respects Settings toggles.
- * Use specific kinds so likes, tabs, menus, and CTAs feel distinct.
+ * Runs `cb(true)` once the persisted sound/haptics prefs are loaded, so a
+ * haptic at app start (e.g. the boot 'bloom') never buzzes a user who turned
+ * haptics off. Waits up to `timeoutMs`; if prefs still are not hydrated by
+ * then, calls `cb(false)` and callers should skip.
  */
-export function triggerFeedback(kind: FeedbackKind = 'tap') {
+export function whenFeedbackReady(cb: (ready: boolean) => void, timeoutMs = PREFS_HYDRATION_WAIT_MS) {
+  const p = (useUiPrefsStore as { persist?: typeof useUiPrefsStore.persist }).persist;
+  if (!p || p.hasHydrated()) {
+    cb(true);
+    return;
+  }
+  let settled = false;
+  const finish = (ready: boolean) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    unsub();
+    cb(ready);
+  };
+  const unsub = p.onFinishHydration(() => finish(true));
+  const timer = setTimeout(() => finish(p.hasHydrated()), timeoutMs);
+}
+
+function fireNow(kind: FeedbackKind, opts: { sound?: boolean }) {
   const { hapticsEnabled, soundEnabled } = useUiPrefsStore.getState();
   const cfg = KIND[kind] || KIND.tap;
 
-  if (hapticsEnabled) {
+  if (hapticsEnabled && cfg.haptic !== 'none' && gate.allow(cfg.haptic)) {
     void fireHaptic(cfg.haptic, cfg.vibrate);
   }
 
-  if (!soundEnabled || !cfg.sound) return;
+  if (!soundEnabled || !cfg.sound || opts.sound === false) return;
 
   if (Platform.OS === 'web') {
     if (cfg.web) playWebTone(cfg.web);
@@ -454,13 +333,29 @@ export function triggerFeedback(kind: FeedbackKind = 'tap') {
   void playNativeSound(cfg.sound);
 }
 
-/** @deprecated Prefer triggerFeedback('tap' | …) */
+/**
+ * Unified tactile + audio feedback. Respects Settings toggles (and waits for
+ * them to load at app start), debounces per haptic group, and only plays
+ * sounds for send / success / celebrate / error. Never call from scroll.
+ */
+export function triggerFeedback(kind: FeedbackKind = 'tap', opts: { sound?: boolean } = {}) {
+  const cfg = KIND[kind] || KIND.tap;
+  if (cfg.haptic === 'none' && !cfg.sound) return;
+  whenFeedbackReady((ready) => {
+    if (ready) fireNow(kind, opts);
+  });
+}
+
+/** @deprecated Prefer `haptic(moment)` from src/theme/haptics. */
 export function triggerPressFeedback() {
   triggerFeedback('tap');
 }
 
 /** Convenience helpers for common call sites. */
 export const feedback = {
+  selection: () => triggerFeedback('selection'),
+  impactLight: () => triggerFeedback('impactLight'),
+  impactMedium: () => triggerFeedback('impactMedium'),
   tap: () => triggerFeedback('tap'),
   select: () => triggerFeedback('select'),
   tab: () => triggerFeedback('tab'),

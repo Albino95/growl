@@ -1,9 +1,10 @@
 import { Animated, Easing } from 'react-native';
+import { duration, easing } from '../../theme/motion';
 
-export const AUTH_EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+export const AUTH_EASE_OUT = easing.out;
 
 /** Max duration for any reduced-motion opacity crossfade. */
-export const REDUCED_FADE_MS = 150;
+export const REDUCED_FADE_MS = duration.quick;
 
 /**
  * Horizontal error shake: 0 → -8 → 8 → -6 → 6 → -3 → 0 (6 × 40ms, native driver).
