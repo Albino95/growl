@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = {
   label: string;
@@ -14,21 +15,20 @@ type Props = {
 
 /** Flat metric tile — no heavy card chrome. */
 export default function KpiCard({ label, value, change, trend = 'neutral', icon, onPress }: Props) {
-  const color = trend === 'up' ? '#059669' : trend === 'down' ? '#DC2626' : '#6B645E';
-  const Wrapper = onPress ? TouchableOpacity : View;
+  const color = trend === 'up' ? theme.colors.brand : trend === 'down' ? theme.colors.danger : theme.colors.ink3;
+  const Wrapper = onPress ? PressableScale : View;
   return (
     <Wrapper
       onPress={onPress}
-      style={tw`bg-[#EAE4D6]/55 rounded-2xl px-3.5 py-3 flex-1 min-w-[46%]`}
-      activeOpacity={0.85}
+      style={tw`bg-raised/55 rounded-card px-3.5 py-3 flex-1 min-w-[46%]`}
     >
       <View style={tw`flex-row items-center justify-between mb-2`}>
         <Ionicons name={icon} size={18} color={color} />
         {change != null ? (
           <Text
             style={[
-              tw`text-[11px] font-semibold ${
-                trend === 'up' ? 'text-emerald-700' : trend === 'down' ? 'text-red-600' : 'text-stone-500'
+              tw`text-caption font-semibold ${
+                trend === 'up' ? 'text-emerald-700' : trend === 'down' ? 'text-red-600' : 'text-ink-3'
               }`,
               { fontVariant: ['tabular-nums'] },
             ]}
@@ -37,10 +37,10 @@ export default function KpiCard({ label, value, change, trend = 'neutral', icon,
           </Text>
         ) : null}
       </View>
-      <Text style={[tw`text-xl font-bold text-stone-900`, { fontVariant: ['tabular-nums'] }]} numberOfLines={1}>
+      <Text style={[tw`text-xl font-bold text-ink`, { fontVariant: ['tabular-nums'] }]} numberOfLines={1}>
         {value}
       </Text>
-      <Text style={tw`text-xs text-stone-500 mt-0.5`}>{label}</Text>
+      <Text style={tw`text-xs text-ink-3 mt-0.5`}>{label}</Text>
     </Wrapper>
   );
 }

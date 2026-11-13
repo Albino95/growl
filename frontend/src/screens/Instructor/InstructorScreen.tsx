@@ -3,8 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
-  Pressable,
   ActivityIndicator,
   RefreshControl,
   Image,
@@ -45,7 +43,7 @@ import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { feedback } from '../../utils/interactionFeedback';
 import PressableScale from '../../components/ui/PressableScale';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
 import { COACHING_ACTIVE_STATUS, COACHING_LIMITS } from '../../constants/coaching';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
@@ -129,14 +127,14 @@ function AvatarBubble({
   return (
     <View
       style={[
-        tw`bg-[#EAE4D6] items-center justify-center border border-stone-200/80`,
+        tw`bg-raised items-center justify-center border border-line/80`,
         { width: size, height: size, borderRadius: size / 2 },
       ]}
     >
       {avatar && avatar.length <= 4 ? (
         <Text style={{ fontSize: size * 0.45 }}>{avatar}</Text>
       ) : (
-        <Text style={tw`font-bold text-stone-700`}>{initial}</Text>
+        <Text style={tw`font-bold text-ink-2`}>{initial}</Text>
       )}
     </View>
   );
@@ -145,8 +143,8 @@ function AvatarBubble({
 function StatCell({ label, value }: { label: string; value: string | number }) {
   return (
     <View style={tw`flex-1 py-3`}>
-      <Text style={tw`text-xl font-bold text-stone-900`}>{value}</Text>
-      <Text style={tw`text-[11px] text-stone-500 mt-0.5 uppercase tracking-wide`}>{label}</Text>
+      <Text style={tw`text-xl font-bold text-ink`}>{value}</Text>
+      <Text style={tw`text-caption text-ink-3 mt-0.5 uppercase tracking-wide`}>{label}</Text>
     </View>
   );
 }
@@ -162,11 +160,11 @@ function EmptyState({
 }) {
   return (
     <View style={tw`py-10 px-4 items-center`}>
-      <View style={tw`w-12 h-12 rounded-full bg-[#EAE4D6] items-center justify-center mb-3`}>
-        <Ionicons name={icon} size={22} color="#57534E" />
+      <View style={tw`w-12 h-12 rounded-full bg-raised items-center justify-center mb-3`}>
+        <Ionicons name={icon} size={22} color={theme.colors.ink2} />
       </View>
-      <Text style={tw`text-base font-semibold text-stone-900 text-center`}>{title}</Text>
-      <Text style={tw`text-sm text-stone-500 text-center mt-1 leading-5`}>{description}</Text>
+      <Text style={tw`text-base font-semibold text-ink text-center`}>{title}</Text>
+      <Text style={tw`text-sm text-ink-3 text-center mt-1 leading-5`}>{description}</Text>
     </View>
   );
 }
@@ -182,14 +180,14 @@ function OfferField({
 }) {
   return (
     <View style={tw`flex-1`}>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1`}>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1`}>
         {label}
       </Text>
       <TextInput
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
-        style={tw`bg-[#F3EEE4] border border-stone-200/80 rounded-xl px-3 py-2 text-[15px] text-stone-900`}
+        style={tw`bg-page border border-line/80 rounded-control px-3 py-2 text-body text-ink`}
       />
     </View>
   );
@@ -518,37 +516,38 @@ export default function InstructorScreen({ navigation }: any) {
 
   if (!user?.isInstructor) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
         <GrowChromeHeader
           leftAccessory={
-            <Pressable
+            <PressableScale
               onPress={goBackOrProfile}
               hitSlop={8}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              pressedScale={0.9}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
-              <Ionicons name="arrow-back" size={18} color="#1C1917" />
-            </Pressable>
+              <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
+            </PressableScale>
           }
         />
         <ScrollView
-          contentContainerStyle={[tw`px-5 pt-4`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+          contentContainerStyle={[tw`px-gutter-wide pt-4`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor="#059669" />
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.colors.brand} />
           }
         >
-          <Text style={tw`text-lg font-bold text-stone-900`}>Instructor Hub</Text>
-          <Text style={tw`text-sm text-stone-500 mt-1 leading-5 mb-6`}>
+          <Text style={tw`text-lg font-bold text-ink`}>Instructor Hub</Text>
+          <Text style={tw`text-sm text-ink-3 mt-1 leading-5 mb-6`}>
             Peers in your growth areas endorse you. Hit the bar, then claim access — no purchase
             required.
           </Text>
 
           {loading && !eligibility ? (
-            <ActivityIndicator color="#059669" style={tw`mt-8`} />
+            <ActivityIndicator color={theme.colors.brand} style={tw`mt-8`} />
           ) : eligibility ? (
-            <View style={tw`border-t border-stone-200/80 pt-5`}>
-              <Text style={tw`text-sm text-stone-500 mb-1`}>
+            <View style={tw`border-t border-line/80 pt-5`}>
+              <Text style={tw`text-sm text-ink-3 mb-1`}>
                 Endorsements {eligibility.endorsementsReceived}/{eligibility.endorsementsNeeded}
               </Text>
               <View style={tw`h-1.5 bg-stone-200/80 rounded-full mb-5 overflow-hidden`}>
@@ -564,7 +563,7 @@ export default function InstructorScreen({ navigation }: any) {
                   ]}
                 />
               </View>
-              <Text style={tw`text-sm text-stone-500 mb-1`}>
+              <Text style={tw`text-sm text-ink-3 mb-1`}>
                 Posts {eligibility.postCount}/{eligibility.postsNeeded}
               </Text>
               <View style={tw`h-1.5 bg-stone-200/80 rounded-full mb-6 overflow-hidden`}>
@@ -581,64 +580,64 @@ export default function InstructorScreen({ navigation }: any) {
                 />
               </View>
               {eligibility.canClaim ? (
-                <View style={tw`rounded-2xl bg-[#FFF1F0] border border-[#FECACA] px-4 py-4 mb-2`}>
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase`}>
+                <View style={tw`rounded-card bg-energy-50 border border-red-200 px-4 py-4 mb-2`}>
+                  <Text style={tw`text-caption font-semibold tracking-widest text-rose-600 uppercase`}>
                     Ready
                   </Text>
-                  <Text style={tw`text-lg font-bold text-stone-900 mt-1`}>You hit the bar</Text>
-                  <Text style={tw`text-sm text-stone-600 mt-1 leading-5 mb-3`}>
+                  <Text style={tw`text-lg font-bold text-ink mt-1`}>You hit the bar</Text>
+                  <Text style={tw`text-sm text-ink-2 mt-1 leading-5 mb-3`}>
                     Unlock community coaching, partner brands, and the Coaches inbox lane.
                   </Text>
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => void onClaim()}
                     disabled={claimBusy}
-                    style={tw`bg-energy-600 rounded-xl py-3.5 items-center ${claimBusy ? 'opacity-60' : ''}`}
+                    style={tw`bg-energy-600 rounded-control py-3.5 items-center ${claimBusy ? 'opacity-60' : ''}`}
                   >
                     <Text style={tw`text-white font-bold`}>
                       {claimBusy ? 'Claiming…' : 'Claim instructor status'}
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 </View>
               ) : (
                 <View>
-                  <Text style={tw`text-sm text-stone-500 leading-5 mb-4`}>
+                  <Text style={tw`text-sm text-ink-3 leading-5 mb-4`}>
                     Ask friends on shared paths to endorse you — or keep posting progress.
                   </Text>
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => navigateFromRoot(navigation, 'Post')}
-                    style={tw`flex-row items-center justify-center py-3 border border-stone-200/80 rounded-xl bg-white/60 mb-5`}
+                    style={tw`flex-row items-center justify-center py-3 border border-line/80 rounded-control bg-card/60 mb-5`}
                   >
-                    <Ionicons name="create-outline" size={18} color="#059669" />
+                    <Ionicons name="create-outline" size={18} color={theme.colors.brand} />
                     <Text style={tw`text-emerald-700 font-semibold ml-2`}>Create a post</Text>
-                  </TouchableOpacity>
+                  </PressableScale>
 
                   {suggestions.length > 0 ? (
-                    <View style={tw`rounded-[22px] overflow-hidden border border-emerald-600/40 bg-[#FFFcf7]`}>
+                    <View style={tw`rounded-sheet overflow-hidden border border-emerald-600/40 bg-card`}>
                       <View style={tw`h-1.5 bg-emerald-600`} />
                       <View style={tw`px-4 pt-3.5 pb-2`}>
                         <View style={tw`flex-row items-center mb-1`}>
-                          <Ionicons name="ribbon-outline" size={14} color="#059669" />
+                          <Ionicons name="ribbon-outline" size={14} color={theme.colors.brand} />
                           <Text
-                            style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
+                            style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
                           >
                             Ask for endorsement
                           </Text>
                         </View>
-                        <Text style={tw`text-sm text-stone-600 leading-5 mb-3`}>
+                        <Text style={tw`text-sm text-ink-2 leading-5 mb-3`}>
                           Structured ask → they get a notification, not a cold DM.
                         </Text>
                         {suggestions.map((person, idx) => (
                           <View
                             key={person.id}
                             style={tw`flex-row items-center py-3 ${
-                              idx < suggestions.length - 1 ? 'border-b border-stone-200/80' : ''
+                              idx < suggestions.length - 1 ? 'border-b border-line/80' : ''
                             }`}
                           >
-                            <TouchableOpacity onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
+                            <PressableScale onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
                               <AvatarBubble avatar={person.avatar} name={person.username} />
-                            </TouchableOpacity>
+                            </PressableScale>
                             <View style={tw`flex-1 ml-3 pr-2`}>
-                              <Text style={tw`font-semibold text-stone-900`}>
+                              <Text style={tw`font-semibold text-ink`}>
                                 {person.username}
                               </Text>
                               <View style={tw`flex-row flex-wrap gap-1 mt-1.5`}>
@@ -647,24 +646,24 @@ export default function InstructorScreen({ navigation }: any) {
                                     key={`${person.id}-${key}`}
                                     style={tw`px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100`}
                                   >
-                                    <Text style={tw`text-[11px] font-semibold text-emerald-800`}>
+                                    <Text style={tw`text-caption font-semibold text-emerald-800`}>
                                       {getCategoryLabel(key)}
                                     </Text>
                                   </View>
                                 ))}
                               </View>
                             </View>
-                            <TouchableOpacity
+                            <PressableScale
                               onPress={() => void askEndorsement(person)}
                               disabled={busyId === person.id}
-                              style={tw`px-3.5 py-2 rounded-xl bg-emerald-600 ${
+                              style={tw`px-3.5 py-2 rounded-control bg-emerald-600 ${
                                 busyId === person.id ? 'opacity-60' : ''
                               }`}
                             >
                               <Text style={tw`text-xs font-bold text-white`}>
                                 {busyId === person.id ? '…' : 'Send ask'}
                               </Text>
-                            </TouchableOpacity>
+                            </PressableScale>
                           </View>
                         ))}
                       </View>
@@ -674,7 +673,7 @@ export default function InstructorScreen({ navigation }: any) {
               )}
             </View>
           ) : (
-            <Text style={tw`text-center text-stone-500 mt-6`}>
+            <Text style={tw`text-center text-ink-3 mt-6`}>
               Could not load eligibility. Pull to refresh.
             </Text>
           )}
@@ -704,51 +703,54 @@ export default function InstructorScreen({ navigation }: any) {
   ];
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
-          <Pressable
+          <PressableScale
             onPress={goBackOrProfile}
             hitSlop={8}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              pressedScale={0.9}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
-          </Pressable>
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
+          </PressableScale>
         }
         right={
           <>
-            <Pressable
+            <PressableScale
+              pressedScale={0.9}
               onPress={() => openMessages()}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Messages"
             >
-              <Ionicons name="chatbubbles-outline" size={17} color="#059669" />
-            </Pressable>
-            <Pressable
+              <Ionicons name="chatbubbles-outline" size={17} color={theme.colors.brand} />
+            </PressableScale>
+            <PressableScale
+              pressedScale={0.9}
               onPress={() => navigateFromRoot(navigation, 'Post')}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Create post"
             >
-              <Ionicons name="create-outline" size={17} color="#059669" />
-            </Pressable>
+              <Ionicons name="create-outline" size={17} color={theme.colors.brand} />
+            </PressableScale>
           </>
         }
       />
 
-      <View style={tw`px-5 pt-3 pb-1`}>
-        <Text style={tw`text-lg font-bold text-stone-900`}>Instructor Hub</Text>
-        <Text style={tw`text-sm text-stone-500 mt-0.5 leading-5`}>
+      <View style={tw`px-gutter-wide pt-3 pb-1`}>
+        <Text style={tw`text-lg font-bold text-ink`}>Instructor Hub</Text>
+        <Text style={tw`text-sm text-ink-3 mt-0.5 leading-5`}>
           Talk, send a written plan, then assign homework.
         </Text>
       </View>
 
-      <View style={tw`flex-row px-5 mt-3 border-b border-stone-200/80`}>
+      <View style={tw`flex-row px-gutter-wide mt-3 border-b border-line/80`}>
         {tabs.map((tab) => (
           <PressableScale
             key={tab.key}
@@ -760,7 +762,7 @@ export default function InstructorScreen({ navigation }: any) {
           >
             <Text
               style={tw`text-sm font-semibold ${
-                activeTab === tab.key ? 'text-emerald-700' : 'text-stone-500'
+                activeTab === tab.key ? 'text-emerald-700' : 'text-ink-3'
               }`}
             >
               {tab.label}
@@ -770,38 +772,38 @@ export default function InstructorScreen({ navigation }: any) {
       </View>
 
       {loading && !hub ? (
-        <View style={tw`flex-1 px-5 pt-4`}>
+        <View style={tw`flex-1 px-gutter-wide pt-4`}>
           <SkeletonList variant="stats" count={2} />
         </View>
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING, paddingTop: 8 }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor="#059669" />
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.colors.brand} />
           }
         >
           {activeTab === 'overview' && stats ? (
-            <View style={tw`px-5 pt-2`}>
+            <View style={tw`px-gutter-wide pt-2`}>
               {justClaimed ? (
-                <View style={tw`mb-4 px-4 py-4 rounded-2xl bg-[#FFF1F0] border border-[#FECACA]`}>
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase`}>
+                <View style={tw`mb-4 px-4 py-4 rounded-card bg-energy-50 border border-red-200`}>
+                  <Text style={tw`text-caption font-semibold tracking-widest text-rose-600 uppercase`}>
                     You’re in
                   </Text>
-                  <Text style={tw`text-lg font-bold text-stone-900 mt-1`}>Instructor unlocked</Text>
-                  <Text style={tw`text-sm text-stone-600 mt-1 leading-5`}>
+                  <Text style={tw`text-lg font-bold text-ink mt-1`}>Instructor unlocked</Text>
+                  <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>
                     Teach today: post a tip, check your inbox, or greet someone who endorsed you.
                   </Text>
-                  <TouchableOpacity onPress={() => setJustClaimed(false)} style={tw`mt-3`}>
-                    <Text style={tw`text-sm font-semibold text-[#E11D48]`}>Dismiss</Text>
-                  </TouchableOpacity>
+                  <PressableScale onPress={() => setJustClaimed(false)} style={tw`mt-3`}>
+                    <Text style={tw`text-sm font-semibold text-rose-600`}>Dismiss</Text>
+                  </PressableScale>
                 </View>
               ) : null}
 
-              <View style={tw`mb-4 px-3.5 py-3.5 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              <View style={tw`mb-4 px-3.5 py-3.5 rounded-card bg-card border border-line/80`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                   Your offer
                 </Text>
-                <Text style={tw`text-sm text-stone-500 mt-1 mb-3`}>
+                <Text style={tw`text-sm text-ink-3 mt-1 mb-3`}>
                   New proposals use your current trial length.{' '}
                   {formatCurrency(offering?.weekly_fee_eur ?? 10, offering?.currency)}/week ·{' '}
                   {completedPlans} completed plans.
@@ -836,13 +838,13 @@ export default function InstructorScreen({ navigation }: any) {
                     disabled={acceptingBusy}
                     accessibilityRole="switch"
                     accessibilityState={{ checked: offerDraft.accepting, disabled: acceptingBusy }}
-                    style={tw`px-3 py-2 rounded-xl ${
-                      offerDraft.accepting ? 'bg-emerald-50' : 'bg-[#EAE4D6]'
+                    style={tw`px-3 py-2 rounded-control ${
+                      offerDraft.accepting ? 'bg-emerald-50' : 'bg-raised'
                     } ${acceptingBusy ? 'opacity-60' : ''}`}
                   >
                     <Text
                       style={tw`text-xs font-semibold ${
-                        offerDraft.accepting ? 'text-emerald-800' : 'text-stone-600'
+                        offerDraft.accepting ? 'text-emerald-800' : 'text-ink-2'
                       }`}
                     >
                       {offerDraft.accepting ? 'Accepting plans' : 'Paused'}
@@ -851,7 +853,7 @@ export default function InstructorScreen({ navigation }: any) {
                   <PressableScale
                     onPress={() => void saveOffering()}
                     disabled={offerBusy}
-                    style={tw`px-4 py-2 rounded-xl bg-emerald-600 ${offerBusy ? 'opacity-60' : ''}`}
+                    style={tw`px-4 py-2 rounded-control bg-emerald-600 ${offerBusy ? 'opacity-60' : ''}`}
                   >
                     <Text style={tw`text-white text-xs font-bold`}>
                       {offerBusy ? 'Saving…' : 'Save offer'}
@@ -864,7 +866,7 @@ export default function InstructorScreen({ navigation }: any) {
               </View>
 
               <Text
-                style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}
               >
                 Do next
               </Text>
@@ -923,56 +925,56 @@ export default function InstructorScreen({ navigation }: any) {
                 <PressableScale
                   key={item.label}
                   onPress={item.onPress}
-                  style={tw`flex-row items-center py-3.5 border-b border-stone-200/80 ${
-                    item.highlight ? 'bg-emerald-50/50 mx-[-8px] px-2 rounded-xl' : ''
+                  style={tw`flex-row items-center py-3.5 border-b border-line/80 ${
+                    item.highlight ? 'bg-emerald-50/50 mx-[-8px] px-2 rounded-control' : ''
                   }`}
                 >
                   <View
                     style={tw`w-9 h-9 rounded-full items-center justify-center mr-3 ${
-                      item.highlight ? 'bg-emerald-600' : 'bg-[#EAE4D6]'
+                      item.highlight ? 'bg-emerald-600' : 'bg-raised'
                     }`}
                   >
                     <Ionicons
                       name={item.icon}
                       size={18}
-                      color={item.highlight ? '#fff' : '#57534E'}
+                      color={item.highlight ? '#fff' : theme.colors.ink2}
                     />
                   </View>
                   <View style={tw`flex-1 pr-2`}>
-                    <Text style={tw`font-semibold text-stone-900`}>{item.label}</Text>
-                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.subtitle}</Text>
+                    <Text style={tw`font-semibold text-ink`}>{item.label}</Text>
+                    <Text style={tw`text-xs text-ink-3 mt-0.5`}>{item.subtitle}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
                 </PressableScale>
               ))}
 
-              <View style={tw`flex-row border-b border-stone-200/80 mt-4`}>
+              <View style={tw`flex-row border-b border-line/80 mt-4`}>
                 <StatCell label="Points" value={stats.points} />
                 <StatCell label="Endorsements" value={stats.endorsements} />
                 <StatCell label="Posts" value={stats.posts} />
               </View>
-              <View style={tw`flex-row border-b border-stone-200/80`}>
+              <View style={tw`flex-row border-b border-line/80`}>
                 <StatCell label="Partners" value={stats.active_partnerships} />
                 <StatCell label="Pending" value={stats.pending_requests} />
                 <StatCell label="Referrals" value={stats.referral_orders} />
               </View>
 
               {stats.referral_revenue > 0 ? (
-                <View style={tw`py-4 border-b border-stone-200/80`}>
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                <View style={tw`py-4 border-b border-line/80`}>
+                  <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                     Attributed sales
                   </Text>
-                  <Text style={tw`text-2xl font-bold text-stone-900 mt-1`}>
+                  <Text style={tw`text-2xl font-bold text-ink mt-1`}>
                     {formatMoney(stats.referral_revenue)}
                   </Text>
-                  <Text style={tw`text-sm text-stone-500 mt-0.5`}>
+                  <Text style={tw`text-sm text-ink-3 mt-0.5`}>
                     From partnership referrals across your brands
                   </Text>
                 </View>
               ) : null}
 
               <Text
-                style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-5 mb-2`}
+                style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-5 mb-2`}
               >
                 More
               </Text>
@@ -988,30 +990,30 @@ export default function InstructorScreen({ navigation }: any) {
                   key={item.label}
                   onPress={item.onPress}
                   style={tw`flex-row items-center py-3.5 ${
-                    i < arr.length - 1 ? 'border-b border-stone-200/80' : ''
+                    i < arr.length - 1 ? 'border-b border-line/80' : ''
                   }`}
                 >
-                  <View style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
-                    <Ionicons name={item.icon} size={18} color="#57534E" />
+                  <View style={tw`w-9 h-9 rounded-full bg-raised items-center justify-center mr-3`}>
+                    <Ionicons name={item.icon} size={18} color={theme.colors.ink2} />
                   </View>
                   <View style={tw`flex-1 pr-2`}>
-                    <Text style={tw`font-semibold text-stone-900`}>{item.label}</Text>
-                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.subtitle}</Text>
+                    <Text style={tw`font-semibold text-ink`}>{item.label}</Text>
+                    <Text style={tw`text-xs text-ink-3 mt-0.5`}>{item.subtitle}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
                 </PressableScale>
               ))}
             </View>
           ) : null}
 
           {activeTab === 'students' ? (
-            <View style={tw`px-5 pt-2`}>
-              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
+            <View style={tw`px-gutter-wide pt-2`}>
+              <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
                 People who reached out. Send a proposal after you talk. Homework lives on their coaching plan.
               </Text>
               {contracts.filter((c) => c.status === 'active').length > 0 ? (
                 <>
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                  <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
                     Active plans
                   </Text>
                   {contracts
@@ -1022,12 +1024,12 @@ export default function InstructorScreen({ navigation }: any) {
                         onPress={() =>
                           navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
                         }
-                        style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                        style={tw`mb-2 px-3.5 py-3 rounded-card bg-card border border-line/80`}
                       >
-                        <Text style={tw`font-bold text-stone-900`}>
+                        <Text style={tw`font-bold text-ink`}>
                           {c.client?.username || 'Client'}
                         </Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                           {c.weeks} wk · {c.sessions_per_week}× ·{' '}
                           {formatCurrency(c.weekly_fee_eur, c.currency)}/week · {COACHING_ACTIVE_STATUS}
                         </Text>
@@ -1036,7 +1038,7 @@ export default function InstructorScreen({ navigation }: any) {
                 </>
               ) : null}
 
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-3`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-3`}>
                 Talking
               </Text>
               {inquiries.length === 0 ? (
@@ -1052,26 +1054,26 @@ export default function InstructorScreen({ navigation }: any) {
                     onPress={() =>
                       openMessages(row.client_id)
                     }
-                    style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
+                    style={tw`flex-row items-center py-3 border-b border-line/80`}
                   >
                     <AvatarBubble
                       avatar={row.client?.avatar}
                       name={row.client?.username || 'Client'}
                     />
                     <View style={tw`flex-1 ml-3`}>
-                      <Text style={tw`font-semibold text-stone-900`}>
+                      <Text style={tw`font-semibold text-ink`}>
                         {row.client?.username || 'Client'}
                       </Text>
-                      <Text style={tw`text-xs text-stone-500 mt-0.5`}>Open coaching thread</Text>
+                      <Text style={tw`text-xs text-ink-3 mt-0.5`}>Open coaching thread</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
                   </PressableScale>
                 ))
               )}
 
               {contracts.filter((c) => c.status === 'completed').length > 0 ? (
                 <>
-                  <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-5`}>
+                  <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-5`}>
                     Completed
                   </Text>
                   {contracts
@@ -1082,12 +1084,12 @@ export default function InstructorScreen({ navigation }: any) {
                         onPress={() =>
                           navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
                         }
-                        style={tw`py-3 border-b border-stone-200/80`}
+                        style={tw`py-3 border-b border-line/80`}
                       >
-                        <Text style={tw`font-semibold text-stone-900`}>
+                        <Text style={tw`font-semibold text-ink`}>
                           {c.client?.username || 'Client'}
                         </Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                           {formatCurrency(c.total_eur, c.currency)} · {c.weeks} weeks
                         </Text>
                       </PressableScale>
@@ -1098,49 +1100,48 @@ export default function InstructorScreen({ navigation }: any) {
           ) : null}
 
           {activeTab === 'community' ? (
-            <View style={tw`px-5 pt-2`}>
-              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
+            <View style={tw`px-gutter-wide pt-2`}>
+              <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
                 Endorsers and friends on your paths — check in or coach them.
               </Text>
               {(hub?.learners?.length ?? 0) > 0 ? (
                 <>
                   <Text
-                    style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                    style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}
                   >
                     On your paths
                   </Text>
                   {hub!.learners!.map((person) => (
                     <View
                       key={`learner-${person.id}`}
-                      style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
+                      style={tw`flex-row items-center py-3 border-b border-line/80`}
                     >
-                      <TouchableOpacity onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
+                      <PressableScale onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
                         <AvatarBubble avatar={person.avatar} name={person.username} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
+                      </PressableScale>
+                      <PressableScale
                         onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}
                         style={tw`flex-1 ml-3 pr-2`}
                       >
-                        <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+                        <Text style={tw`font-semibold text-ink`}>{person.username}</Text>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5`} numberOfLines={1}>
                           {(person.shared_categories || person.categories || [])
                             .slice(0, 2)
                             .map(getCategoryLabel)
                             .join(' · ')}
                         </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      </PressableScale>
+                      <PressableScale
                         onPress={() => void messageEndorser({ ...person, is_friend: true, endorsed_at: '' })}
                         disabled={busyId === person.id}
                         style={tw`px-3 py-1.5 rounded-full bg-emerald-600`}
                       >
                         <Text style={tw`text-xs font-bold text-white`}>Check in</Text>
-                      </TouchableOpacity>
+                      </PressableScale>
                     </View>
                   ))}
                   <Text
-                    style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-5`}
+                    style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-5`}
                   >
                     Endorsers
                   </Text>
@@ -1157,27 +1158,26 @@ export default function InstructorScreen({ navigation }: any) {
                   <View
                     key={person.id}
                     style={tw`flex-row items-center py-3.5 ${
-                      i < hub.endorsers.length - 1 ? 'border-b border-stone-200/80' : ''
+                      i < hub.endorsers.length - 1 ? 'border-b border-line/80' : ''
                     }`}
                   >
-                    <TouchableOpacity onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
+                    <PressableScale onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
                       <AvatarBubble avatar={person.avatar} name={person.username} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
+                    </PressableScale>
+                    <PressableScale
                       onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}
                       style={tw`flex-1 ml-3 pr-2`}
                     >
-                      <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>
-                      <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+                      <Text style={tw`font-semibold text-ink`}>{person.username}</Text>
+                      <Text style={tw`text-xs text-ink-3 mt-0.5`} numberOfLines={1}>
                         {(person.categories || []).slice(0, 2).map(getCategoryLabel).join(' · ') ||
                           `${person.points} pts`}
                       </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    </PressableScale>
+                    <PressableScale
                       onPress={() => void messageEndorser(person)}
                       disabled={busyId === person.id}
-                      style={tw`px-3 py-1.5 rounded-full border border-stone-200/80 bg-white/60`}
+                      style={tw`px-3 py-1.5 rounded-full border border-line/80 bg-card/60`}
                     >
                       <Text style={tw`text-xs font-semibold text-emerald-700`}>
                         {busyId === person.id
@@ -1186,7 +1186,7 @@ export default function InstructorScreen({ navigation }: any) {
                             ? 'Message'
                             : 'Profile'}
                       </Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   </View>
                 ))
               )}
@@ -1194,18 +1194,18 @@ export default function InstructorScreen({ navigation }: any) {
           ) : null}
 
           {activeTab === 'partnerships' ? (
-            <View style={tw`px-5 pt-2`}>
+            <View style={tw`px-gutter-wide pt-2`}>
               {(hub?.pending_requests?.length ?? 0) > 0 ? (
                 <View style={tw`mb-6`}>
                   <Text
-                    style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                    style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}
                   >
                     Incoming requests
                   </Text>
                   {hub!.pending_requests.map((req) => (
                     <View
                       key={req.id}
-                      style={tw`py-4 border-b border-stone-200/80`}
+                      style={tw`py-4 border-b border-line/80`}
                     >
                       <View style={tw`flex-row items-center mb-2`}>
                         <AvatarBubble
@@ -1214,32 +1214,32 @@ export default function InstructorScreen({ navigation }: any) {
                           size={36}
                         />
                         <View style={tw`ml-3 flex-1`}>
-                          <Text style={tw`font-semibold text-stone-900`}>{req.business_name}</Text>
-                          <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                          <Text style={tw`font-semibold text-ink`}>{req.business_name}</Text>
+                          <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                             {partnershipTerms(req)}
                           </Text>
                         </View>
                       </View>
                       {req.message ? (
-                        <Text style={tw`text-sm text-stone-600 mb-3 leading-5`}>{req.message}</Text>
+                        <Text style={tw`text-sm text-ink-2 mb-3 leading-5`}>{req.message}</Text>
                       ) : null}
                       <View style={tw`flex-row`}>
-                        <TouchableOpacity
+                        <PressableScale
                           onPress={() => void onRespondRequest(req, 'approved')}
                           disabled={busyId === req.id}
-                          style={tw`flex-1 mr-2 py-2.5 rounded-xl bg-emerald-700 items-center ${
+                          style={tw`flex-1 mr-2 py-2.5 rounded-control bg-emerald-600 items-center ${
                             busyId === req.id ? 'opacity-60' : ''
                           }`}
                         >
                           <Text style={tw`text-white font-semibold text-sm`}>Accept</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                        </PressableScale>
+                        <PressableScale
                           onPress={() => void onRespondRequest(req, 'declined')}
                           disabled={busyId === req.id}
-                          style={tw`flex-1 ml-2 py-2.5 rounded-xl border border-stone-200/80 bg-white/60 items-center`}
+                          style={tw`flex-1 ml-2 py-2.5 rounded-control border border-line/80 bg-card/60 items-center`}
                         >
-                          <Text style={tw`text-stone-700 font-semibold text-sm`}>Decline</Text>
-                        </TouchableOpacity>
+                          <Text style={tw`text-ink-2 font-semibold text-sm`}>Decline</Text>
+                        </PressableScale>
                       </View>
                     </View>
                   ))}
@@ -1247,7 +1247,7 @@ export default function InstructorScreen({ navigation }: any) {
               ) : null}
 
               <Text
-                style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}
               >
                 Your partnerships
               </Text>
@@ -1261,7 +1261,7 @@ export default function InstructorScreen({ navigation }: any) {
                 hub.partnerships.map((p, i) => (
                   <View
                     key={p.id}
-                    style={tw`py-4 ${i < hub.partnerships.length - 1 ? 'border-b border-stone-200/80' : ''}`}
+                    style={tw`py-4 ${i < hub.partnerships.length - 1 ? 'border-b border-line/80' : ''}`}
                   >
                     <View style={tw`flex-row items-center`}>
                       <AvatarBubble
@@ -1270,14 +1270,14 @@ export default function InstructorScreen({ navigation }: any) {
                         size={36}
                       />
                       <View style={tw`ml-3 flex-1`}>
-                        <Text style={tw`font-semibold text-stone-900`}>{p.business_name}</Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                        <Text style={tw`font-semibold text-ink`}>{p.business_name}</Text>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                           {partnershipTerms(p)} · {p.status}
                         </Text>
                       </View>
                     </View>
                     {(p.attributed_orders > 0 || p.attributed_revenue > 0) && (
-                      <Text style={tw`text-sm text-stone-600 mt-2`}>
+                      <Text style={tw`text-sm text-ink-2 mt-2`}>
                         {p.attributed_orders} referral order
                         {p.attributed_orders === 1 ? '' : 's'} · {formatMoney(p.attributed_revenue)}
                       </Text>
@@ -1285,24 +1285,24 @@ export default function InstructorScreen({ navigation }: any) {
                     <View style={tw`flex-row mt-3 flex-wrap items-center`}>
                       {p.status === 'active' ? (
                         <>
-                          <TouchableOpacity
+                          <PressableScale
                             onPress={() => promotePartnership(p)}
                             hitSlop={10}
                             accessibilityRole="button"
                             style={tw`mr-6 mb-1 py-1`}
                           >
                             <Text style={tw`text-sm font-bold text-emerald-700`}>Promote</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
+                          </PressableScale>
+                          <PressableScale
                             onPress={() => void onUpdatePartnership(p, 'paused')}
                             disabled={busyId === p.id}
                             hitSlop={10}
                             accessibilityRole="button"
                             style={tw`mr-6 mb-1 py-1`}
                           >
-                            <Text style={tw`text-sm font-semibold text-stone-600`}>Pause</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
+                            <Text style={tw`text-sm font-semibold text-ink-2`}>Pause</Text>
+                          </PressableScale>
+                          <PressableScale
                             onPress={() => void onUpdatePartnership(p, 'ended')}
                             disabled={busyId === p.id}
                             hitSlop={10}
@@ -1310,11 +1310,11 @@ export default function InstructorScreen({ navigation }: any) {
                             style={tw`mb-1 py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-red-600`}>End</Text>
-                          </TouchableOpacity>
+                          </PressableScale>
                         </>
                       ) : p.status === 'paused' ? (
                         <>
-                          <TouchableOpacity
+                          <PressableScale
                             onPress={() => void onUpdatePartnership(p, 'active')}
                             disabled={busyId === p.id}
                             hitSlop={10}
@@ -1322,8 +1322,8 @@ export default function InstructorScreen({ navigation }: any) {
                             style={tw`mr-6 py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-emerald-700`}>Resume</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
+                          </PressableScale>
+                          <PressableScale
                             onPress={() => void onUpdatePartnership(p, 'ended')}
                             disabled={busyId === p.id}
                             hitSlop={10}
@@ -1331,10 +1331,10 @@ export default function InstructorScreen({ navigation }: any) {
                             style={tw`py-1`}
                           >
                             <Text style={tw`text-sm font-semibold text-red-600`}>End</Text>
-                          </TouchableOpacity>
+                          </PressableScale>
                         </>
                       ) : (
-                        <TouchableOpacity
+                        <PressableScale
                           onPress={() => void onUpdatePartnership(p, 'active')}
                           disabled={busyId === p.id}
                           hitSlop={10}
@@ -1342,7 +1342,7 @@ export default function InstructorScreen({ navigation }: any) {
                           style={tw`py-1`}
                         >
                           <Text style={tw`text-sm font-semibold text-emerald-700`}>Reactivate</Text>
-                        </TouchableOpacity>
+                        </PressableScale>
                       )}
                     </View>
                   </View>
@@ -1352,7 +1352,7 @@ export default function InstructorScreen({ navigation }: any) {
           ) : null}
 
           {!hub && !loading ? (
-            <Text style={tw`text-center text-stone-500 mt-8 px-5`}>
+            <Text style={tw`text-center text-ink-3 mt-8 px-5`}>
               Could not load hub. Pull to refresh.
             </Text>
           ) : null}

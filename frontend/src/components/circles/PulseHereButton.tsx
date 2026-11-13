@@ -55,14 +55,14 @@ export default function PulseHereButton({ onPress, busy, disabled }: Props) {
       <Animated.View
         pointerEvents="none"
         style={[
-          tw`absolute inset-0 rounded-2xl bg-emerald-500`,
+          tw`absolute inset-0 rounded-card bg-emerald-500`,
           { transform: [{ scale: ringScale }], opacity: ringOpacity },
         ]}
       />
       <Animated.View
         pointerEvents="none"
         style={[
-          tw`absolute inset-0 rounded-2xl bg-emerald-400`,
+          tw`absolute inset-0 rounded-card bg-emerald-400`,
           { transform: [{ scale: burstScale }], opacity: burstOpacity },
         ]}
       />
@@ -70,7 +70,7 @@ export default function PulseHereButton({ onPress, busy, disabled }: Props) {
         onPress={fire}
         disabled={busy || disabled}
         feedback={false}
-        style={tw`py-3.5 rounded-2xl bg-emerald-600 items-center flex-row justify-center ${
+        style={tw`py-3.5 rounded-card bg-emerald-600 items-center flex-row justify-center ${
           busy ? 'opacity-70' : ''
         }`}
       >

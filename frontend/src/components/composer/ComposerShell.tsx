@@ -1,8 +1,9 @@
 import React, { PropsWithChildren } from 'react';
-import { View, Text, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = PropsWithChildren<{
   title: string;
@@ -30,9 +31,10 @@ export default function ComposerShell({
   children,
 }: Props) {
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-900`} edges={['top', 'left', 'right']}>
-      <View style={tw`flex-row items-center justify-between px-4 py-2 z-20`}>
-        <Pressable
+    <SafeAreaView style={tw`flex-1 bg-[#1C1917]`} edges={['top', 'left', 'right']}>
+      <View style={tw`flex-row items-center justify-between px-gutter py-2 z-20`}>
+        <PressableScale
+          pressedScale={0.9}
           onPress={onClose}
           disabled={closeDisabled}
           hitSlop={12}
@@ -43,8 +45,8 @@ export default function ComposerShell({
           accessibilityLabel="Close"
           accessibilityState={{ disabled: !!closeDisabled }}
         >
-          <Ionicons name="close" size={24} color="#fff" />
-        </Pressable>
+          <Ionicons name="close" size={24} color="#FFFFFF" />
+        </PressableScale>
         <Text style={tw`text-white text-base font-bold`} accessibilityRole="header" numberOfLines={1}>
           {title}
         </Text>

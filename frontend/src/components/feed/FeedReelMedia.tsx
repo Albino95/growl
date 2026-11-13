@@ -145,11 +145,11 @@ function FeedReelMedia({
             </View>
           )}
           <View
-            style={tw`absolute bottom-3 right-3 flex-row items-center bg-black/50 px-2.5 py-1 rounded-full`}
+            style={tw`absolute bottom-3 right-3 flex-row items-center bg-black/50 px-2.5 py-1 rounded-chip`}
             pointerEvents="none"
           >
-            <Ionicons name="play" size={12} color="#fff" />
-            <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-[11px] font-bold ml-1`}>Reel</Text>
+            <Ionicons name="play" size={12} color="#FFFFFF" />
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-caption font-bold ml-1`}>Reel</Text>
           </View>
         </View>
       </View>
@@ -173,11 +173,11 @@ function FeedReelMedia({
           />
           {isReel ? (
             <View
-              style={tw`absolute bottom-3 right-3 flex-row items-center bg-black/50 px-2.5 py-1 rounded-full`}
+              style={tw`absolute bottom-3 right-3 flex-row items-center bg-black/50 px-2.5 py-1 rounded-chip`}
               pointerEvents="none"
             >
-              <Ionicons name="play" size={12} color="#fff" />
-              <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-[11px] font-bold ml-1`}>Reel</Text>
+              <Ionicons name="play" size={12} color="#FFFFFF" />
+              <Text maxFontSizeMultiplier={1.3} style={tw`text-white text-caption font-bold ml-1`}>Reel</Text>
             </View>
           ) : null}
         </View>
@@ -189,7 +189,7 @@ function FeedReelMedia({
   return (
     <Pressable
       onPress={handleRetry}
-      style={[tw`w-full bg-[#EAE4D6] items-center justify-center`, { height }]}
+      style={[tw`w-full bg-raised items-center justify-center`, { height }]}
       accessibilityLabel="Post media"
     >
       <View style={[tw`overflow-hidden bg-stone-200`, { width: mediaW, maxWidth: '100%', height: '100%' }]} />

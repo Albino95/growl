@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, Pressable, Text, View } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { triggerFeedback } from '../../utils/interactionFeedback';
 
 type Props = {
@@ -69,7 +69,7 @@ export default function AuthModeSwitch({ isSignUp, onChange, reducedMotion, disa
         accessibilityState={{ selected: active, disabled: !!disabled }}
         accessibilityLabel={label}
       >
-        <Text style={tw`font-semibold ${active ? 'text-emerald-700' : 'text-stone-500'}`}>{label}</Text>
+        <Text style={tw`font-semibold ${active ? 'text-emerald-700' : 'text-ink-3'}`}>{label}</Text>
       </Pressable>
     );
   };
@@ -78,20 +78,20 @@ export default function AuthModeSwitch({ isSignUp, onChange, reducedMotion, disa
     <View
       onLayout={onLayout}
       accessibilityRole="tablist"
-      style={tw`flex-row mb-5 bg-[#EAE4D6]/80 p-1 rounded-2xl border border-stone-200/60`}
+      style={tw`flex-row mb-5 bg-raised/80 p-1 rounded-card border border-line/60`}
     >
       {segmentWidth > 0 ? (
         <Animated.View
           pointerEvents="none"
           style={[
-            tw`absolute rounded-xl bg-[#FFFcf7]`,
+            tw`absolute rounded-control bg-card`,
             {
               top: PADDING,
               bottom: PADDING,
               left: PADDING,
               width: segmentWidth,
               opacity: pillOpacity,
-              shadowColor: '#1C1917',
+              shadowColor: theme.colors.ink,
               shadowOpacity: 0.06,
               shadowRadius: 4,
               shadowOffset: { width: 0, height: 1 },

@@ -1,7 +1,8 @@
 import React from 'react';
-import { ScrollView, Pressable, Text } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 export type ToolChip = {
   key: string;
@@ -20,19 +21,19 @@ export default function ToolChipRow({ chips }: { chips: ToolChip[] }) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={tw`px-4 py-3 items-center`}
+      contentContainerStyle={tw`px-gutter py-3 items-center`}
       style={tw`flex-grow-0 flex-shrink-0`}
       keyboardShouldPersistTaps="handled"
     >
       {chips.map((chip) => (
-        <Pressable
+        <PressableScale
           key={chip.key}
           onPress={chip.onPress}
           disabled={chip.disabled}
           accessibilityRole="button"
           accessibilityLabel={chip.accessibilityLabel ?? chip.label}
           accessibilityState={{ selected: !!chip.active, disabled: !!chip.disabled }}
-          style={tw`flex-row items-center rounded-full px-3.5 py-2.5 mr-2 flex-shrink-0 ${
+          style={tw`flex-row items-center rounded-chip px-3.5 py-2.5 mr-2 flex-shrink-0 ${
             chip.disabled ? 'opacity-40 ' : ''
           }${
             chip.danger
@@ -45,7 +46,7 @@ export default function ToolChipRow({ chips }: { chips: ToolChip[] }) {
         >
           <Ionicons name={chip.icon} size={16} color="#FFFFFF" />
           <Text style={tw`text-white text-xs font-semibold ml-1.5`}>{chip.label}</Text>
-        </Pressable>
+        </PressableScale>
       ))}
     </ScrollView>
   );

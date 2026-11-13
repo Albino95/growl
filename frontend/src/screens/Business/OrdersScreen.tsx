@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import tw from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
 import {
@@ -136,20 +137,19 @@ export default function OrdersScreen() {
         : null;
 
     return (
-      <View style={tw`py-4 border-b border-stone-200/70`}>
-        <TouchableOpacity
-          activeOpacity={0.7}
+      <View style={tw`py-4 border-b border-line/70`}>
+        <PressableScale
           onPress={() =>
             navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })
           }
         >
           <View style={tw`flex-row items-start justify-between mb-2`}>
             <View style={tw`flex-1 pr-2`}>
-              <Text style={tw`text-xs text-stone-500 font-semibold`}>
+              <Text style={tw`text-xs text-ink-3 font-semibold`}>
                 ORD-{order.id.slice(-8).toUpperCase()}
               </Text>
-              <Text style={tw`text-base font-bold text-stone-900 mt-0.5`}>{customer}</Text>
-              <Text style={tw`text-sm text-stone-500 mt-1`}>
+              <Text style={tw`text-base font-bold text-ink mt-0.5`}>{customer}</Text>
+              <Text style={tw`text-sm text-ink-3 mt-1`}>
                 {itemCount} item{itemCount === 1 ? '' : 's'} ·{' '}
                 {new Date(order.created_at).toLocaleDateString()}
               </Text>
@@ -160,7 +160,7 @@ export default function OrdersScreen() {
               ) : null}
             </View>
             <View style={tw`items-end`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>
+              <Text style={tw`text-lg font-bold text-ink`}>
                 {formatCurrency(orderBusinessTotal(order), orderCurrency(order))}
               </Text>
               <View style={tw`mt-1`}>
@@ -171,10 +171,10 @@ export default function OrdersScreen() {
               </View>
             </View>
           </View>
-        </TouchableOpacity>
+        </PressableScale>
         {next ? (
-          <TouchableOpacity
-            style={tw`mt-1 bg-emerald-600 rounded-xl py-3 items-center ${
+          <PressableScale
+            style={tw`mt-1 bg-emerald-600 rounded-control py-3 items-center ${
               advancingId === order.id ? 'opacity-50' : ''
             }`}
             disabled={advancingId === order.id}
@@ -183,7 +183,7 @@ export default function OrdersScreen() {
             <Text style={tw`text-white font-semibold`}>
               {advancingId === order.id ? 'Updating…' : `Mark ${next}`}
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
         ) : null}
       </View>
     );
@@ -196,7 +196,7 @@ export default function OrdersScreen() {
       onSettings={() => navigation.getParent()?.navigate('BusinessSettings')}
       onMessages={() => navigation.getParent()?.navigate('BusinessMessages')}
     >
-      <View style={tw`px-5 pb-3`}>
+      <View style={tw`px-gutter-wide pb-3`}>
         <MarketplaceCheckoutBanner style={tw`mb-3`} />
         <BusinessStatStrip
           items={[
@@ -215,23 +215,23 @@ export default function OrdersScreen() {
         <ScrollView horizontal {...horizontalScrollProps} showsHorizontalScrollIndicator={false} style={tw`mt-3`}>
           <View style={tw`flex-row gap-2 pr-4`}>
             {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
-              <TouchableOpacity
+              <PressableScale
                 key={status}
                 onPress={() => dispatch(setOrdersFilter(status))}
-                style={tw`px-3.5 py-2 rounded-full ${
+                style={tw`px-3.5 py-2 rounded-chip ${
                   statusFilter === status
                     ? 'bg-emerald-600'
-                    : 'bg-[#EAE4D6]/80 border border-stone-200/60'
+                    : 'bg-raised/80 border border-line/60'
                 }`}
               >
                 <Text
                   style={tw`text-sm font-semibold ${
-                    statusFilter === status ? 'text-white' : 'text-stone-600'
+                    statusFilter === status ? 'text-white' : 'text-ink-2'
                   }`}
                 >
                   {status === 'pending' ? 'To fulfill' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </View>
         </ScrollView>
@@ -244,7 +244,7 @@ export default function OrdersScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderOrder}
         contentContainerStyle={[
-          tw`px-5 pt-1`,
+          tw`px-gutter-wide pt-1`,
           filteredOrders.length === 0 ? tw`flex-grow` : null,
           { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
         ]}

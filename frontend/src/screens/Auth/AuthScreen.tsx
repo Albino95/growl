@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,6 +13,7 @@ import {
   UIManager,
   AccessibilityInfo,
 } from 'react-native';
+import PressableScale from '../../components/ui/PressableScale';
 import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Screen from '../../components/ui/Screen';
@@ -51,7 +51,8 @@ import {
   normalizeInviteCode,
   subscribePendingInviteCode,
 } from '../../services/storage/pendingInvite';
-import tw from '../../lib/tw';
+import tw, { theme, getColorSchemeName } from '../../lib/tw';
+import { radius } from '../../theme/tokens';
 
 // LayoutAnimation is opt-in on Android's legacy renderer; Fabric ignores (and warns on) this.
 if (
@@ -166,7 +167,7 @@ function AuthAtmosphere() {
       />
       <View
         style={[
-          tw`absolute rounded-full bg-[#EAE4D6]`,
+          tw`absolute rounded-full bg-raised`,
           { width: 220, height: 220, top: 180, left: -110, opacity: 0.7 },
         ]}
       />
@@ -182,7 +183,7 @@ function AuthAtmosphere() {
 
 function FieldLabel({ children }: { children: string }) {
   return (
-    <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1.5 ml-0.5`}>
+    <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5 ml-0.5`}>
       {children}
     </Text>
   );
@@ -220,14 +221,14 @@ function InlineBanner({ banner }: { banner: Banner }) {
   const isError = banner.tone === 'error';
   return (
     <FadeIn
-      style={tw`flex-row items-start mb-4 px-3.5 py-3 rounded-2xl border ${
+      style={tw`flex-row items-start mb-4 px-3.5 py-3 rounded-card border ${
         isError ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
       }`}
     >
       <Ionicons
         name={isError ? 'alert-circle' : 'checkmark-circle'}
         size={18}
-        color={isError ? '#DC2626' : '#059669'}
+        color={isError ? theme.colors.danger : '#059669'}
         style={tw`mt-px`}
       />
       <Text
@@ -267,10 +268,10 @@ function RuleRow({ label, ok, reducedMotion }: { label: string; ok: boolean; red
         <Ionicons
           name={ok ? 'checkmark-circle' : 'ellipse-outline'}
           size={16}
-          color={ok ? '#059669' : '#A8A29E'}
+          color={ok ? '#059669' : theme.colors.iconMuted}
         />
       </Animated.View>
-      <Text style={tw`ml-2 text-xs ${ok ? 'text-emerald-700' : 'text-stone-500'}`}>{label}</Text>
+      <Text style={tw`ml-2 text-xs ${ok ? 'text-emerald-700' : 'text-ink-3'}`}>{label}</Text>
     </View>
   );
 }
@@ -285,7 +286,7 @@ function PasswordRules({
   style?: object;
 }) {
   return (
-    <View style={[tw`bg-[#EAE4D6]/70 border border-stone-200/60 rounded-2xl p-3`, style]}>
+    <View style={[tw`bg-raised/70 border border-line/60 rounded-card p-3`, style]}>
       {status.map((rule) => (
         <RuleRow key={rule.key} label={rule.label} ok={rule.ok} reducedMotion={reducedMotion} />
       ))}
@@ -294,7 +295,7 @@ function PasswordRules({
 }
 
 function inputBorder(hasError: boolean) {
-  return hasError ? 'border-red-500' : 'border-stone-200/80';
+  return hasError ? 'border-red-500' : 'border-line/80';
 }
 
 export default function AuthScreen() {
@@ -936,7 +937,7 @@ export default function AuthScreen() {
   const accessoryId = formInputAccessoryProps().inputAccessoryViewID;
 
   const devHint = (text: string) => (
-    <Text style={tw`text-xs text-amber-900 bg-amber-50 border border-amber-100 p-3 rounded-2xl mb-4`}>
+    <Text style={tw`text-xs text-amber-900 bg-amber-50 border border-amber-100 p-3 rounded-card mb-4`}>
       {text}
     </Text>
   );
@@ -959,26 +960,26 @@ export default function AuthScreen() {
           onSubmitEditing={opts.onSubmit}
           value={email}
           onChangeText={onEmailChange}
-          style={tw`border ${inputBorder(!!emailError)} bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-4 text-base text-stone-900`}
-          placeholderTextColor="#6B645E"
+          style={tw`border ${inputBorder(!!emailError)} bg-card rounded-card py-3.5 pl-11 pr-4 text-base text-ink`}
+          placeholderTextColor={theme.colors.ink3}
           accessibilityLabel={opts.label ?? 'Email'}
         />
-        <Ionicons name="mail-outline" size={20} color="#6B645E" style={tw`absolute left-4 top-4`} />
+        <Ionicons name="mail-outline" size={20} color={theme.colors.ink3} style={tw`absolute left-4 top-4`} />
       </Animated.View>
       <FieldError message={emailError} />
     </View>
   );
 
   const eyeToggle = (
-    <TouchableOpacity
+    <PressableScale
       onPress={() => setShowPassword((v) => !v)}
       style={tw`absolute right-3 top-3.5 p-1`}
       hitSlop={{ top: 7, bottom: 7, left: 7, right: 7 }}
       accessibilityRole="button"
       accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
     >
-      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color="#6B645E" />
-    </TouchableOpacity>
+      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={theme.colors.ink3} />
+    </PressableScale>
   );
 
   // ---------------- step bodies ----------------
@@ -999,13 +1000,13 @@ export default function AuthScreen() {
         disabled={busy}
         loading={busy}
       />
-      <TouchableOpacity
+      <PressableScale
         onPress={() => goToStep('auth')}
         style={tw`mt-4 py-3 items-center`}
         accessibilityRole="button"
       >
         <Text style={tw`text-emerald-700 font-semibold`}>Back to sign in</Text>
-      </TouchableOpacity>
+      </PressableScale>
     </>
   );
 
@@ -1044,8 +1045,8 @@ export default function AuthScreen() {
             autoCorrect={false}
             returnKeyType="go"
             onSubmitEditing={() => void handleResetPassword()}
-            style={tw`border ${inputBorder(!!passwordError)} bg-[#FFFcf7] rounded-2xl py-3.5 pl-4 pr-12 text-base text-stone-900`}
-            placeholderTextColor="#6B645E"
+            style={tw`border ${inputBorder(!!passwordError)} bg-card rounded-card py-3.5 pl-4 pr-12 text-base text-ink`}
+            placeholderTextColor={theme.colors.ink3}
             accessibilityLabel="New password"
           />
           {eyeToggle}
@@ -1064,23 +1065,23 @@ export default function AuthScreen() {
           success={success}
         />
       </View>
-      <TouchableOpacity
+      <PressableScale
         onPress={() => goToStep('forgot')}
         disabled={cooldown > 0}
         style={tw`mt-4 py-3 items-center`}
         accessibilityRole="button"
         accessibilityState={{ disabled: cooldown > 0 }}
       >
-        <Text style={tw`font-semibold ${cooldown > 0 ? 'text-stone-500' : 'text-emerald-700'}`}>
+        <Text style={tw`font-semibold ${cooldown > 0 ? 'text-ink-3' : 'text-emerald-700'}`}>
           {resendLabel}
         </Text>
-      </TouchableOpacity>
+      </PressableScale>
     </>
   );
 
   const verifyBody = (
     <>
-      <Text style={tw`text-stone-600 mb-5 leading-5`}>
+      <Text style={tw`text-ink-2 mb-5 leading-5`}>
         We sent a 6-digit code to{' '}
         <Text style={tw`font-semibold text-stone-800`}>{email.trim().toLowerCase()}</Text>. It stays
         valid for 24 hours, so you can leave and come back.
@@ -1110,25 +1111,25 @@ export default function AuthScreen() {
           success={success}
         />
       </View>
-      <TouchableOpacity
+      <PressableScale
         onPress={() => void handleResendVerification()}
         disabled={busy || cooldown > 0}
         style={tw`mt-4 py-3 items-center`}
         accessibilityRole="button"
         accessibilityState={{ disabled: busy || cooldown > 0 }}
       >
-        <Text style={tw`font-semibold ${cooldown > 0 ? 'text-stone-500' : 'text-emerald-700'}`}>
+        <Text style={tw`font-semibold ${cooldown > 0 ? 'text-ink-3' : 'text-emerald-700'}`}>
           {resendLabel}
         </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
+      </PressableScale>
+      <PressableScale
         onPress={() => goToStep('auth')}
         style={tw`py-3 items-center`}
         accessibilityRole="button"
       >
-        <Text style={tw`text-stone-500 font-semibold`}>Back to sign in</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
+        <Text style={tw`text-ink-3 font-semibold`}>Back to sign in</Text>
+      </PressableScale>
+      <PressableScale
         onPress={() => {
           void clearPendingVerification();
           goToStep('auth');
@@ -1140,8 +1141,8 @@ export default function AuthScreen() {
         style={tw`py-2 items-center`}
         accessibilityRole="button"
       >
-        <Text style={tw`text-stone-600 text-sm`}>Use a different email</Text>
-      </TouchableOpacity>
+        <Text style={tw`text-ink-2 text-sm`}>Use a different email</Text>
+      </PressableScale>
     </>
   );
 
@@ -1181,14 +1182,14 @@ export default function AuthScreen() {
               autoCorrect={false}
               returnKeyType="go"
               onSubmitEditing={() => void handleEmailAuth()}
-              style={tw`border ${inputBorder(!!passwordError)} bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-12 text-base text-stone-900`}
-              placeholderTextColor="#6B645E"
+              style={tw`border ${inputBorder(!!passwordError)} bg-card rounded-card py-3.5 pl-11 pr-12 text-base text-ink`}
+              placeholderTextColor={theme.colors.ink3}
               accessibilityLabel="Password"
             />
             <Ionicons
               name="lock-closed-outline"
               size={20}
-              color="#6B645E"
+              color={theme.colors.ink3}
               style={tw`absolute left-4 top-4`}
             />
             {eyeToggle}
@@ -1200,11 +1201,11 @@ export default function AuthScreen() {
       {isSignUp && password.length > 0 ? (
         <PasswordRules status={passwordRuleStatus} reducedMotion={reducedMotion} style={tw`mt-3 mb-4`} />
       ) : isSignUp ? (
-        <Text style={tw`text-xs text-stone-500 mb-4 mt-2`}>
+        <Text style={tw`text-xs text-ink-3 mb-4 mt-2`}>
           Use 12+ characters with upper, lower, number, and symbol.
         </Text>
       ) : (
-        <TouchableOpacity
+        <PressableScale
           onPress={() => goToStep('forgot')}
           style={tw`self-end mb-2 py-2`}
           hitSlop={{ left: 8, right: 8 }}
@@ -1212,7 +1213,7 @@ export default function AuthScreen() {
           accessibilityLabel="Forgot password"
         >
           <Text style={tw`text-sm font-semibold text-emerald-700`}>Forgot password?</Text>
-        </TouchableOpacity>
+        </PressableScale>
       )}
 
       {isSignUp ? (
@@ -1229,23 +1230,23 @@ export default function AuthScreen() {
                 autoCorrect={false}
                 maxLength={16}
                 returnKeyType="done"
-                style={tw`border border-stone-200/80 bg-[#FFFcf7] rounded-2xl py-3.5 pl-11 pr-4 text-base text-stone-900 tracking-widest`}
-                placeholderTextColor="#6B645E"
+                style={tw`border border-line/80 bg-card rounded-card py-3.5 pl-11 pr-4 text-base text-ink tracking-widest`}
+                placeholderTextColor={theme.colors.ink3}
                 accessibilityLabel="Invite code, optional"
               />
               <Ionicons
                 name="gift-outline"
                 size={20}
-                color="#6B645E"
+                color={theme.colors.ink3}
                 style={tw`absolute left-4 top-4`}
               />
             </View>
-            <Text style={tw`text-xs text-stone-500 mt-1.5`}>
+            <Text style={tw`text-xs text-ink-3 mt-1.5`}>
               You’ll be friends with whoever invited you.
             </Text>
           </View>
         ) : (
-          <TouchableOpacity
+          <PressableScale
             onPress={() => {
               animateNextLayout(reducedRef.current);
               setShowInvite(true);
@@ -1255,7 +1256,7 @@ export default function AuthScreen() {
             accessibilityLabel="Have an invite code?"
           >
             <Text style={tw`text-sm font-semibold text-emerald-700`}>Have an invite code?</Text>
-          </TouchableOpacity>
+          </PressableScale>
         )
       ) : null}
 
@@ -1268,25 +1269,25 @@ export default function AuthScreen() {
       />
 
       {!isSignUp && featureFlags.showDemoAccounts ? (
-        <View style={tw`mt-5 px-3.5 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/60`}>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <View style={tw`mt-5 px-3.5 py-3 rounded-card bg-raised/80 border border-line/60`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
             Demo
           </Text>
-          <Text style={tw`text-xs text-stone-500 mb-2.5`}>Password for all: GrowlDemo123!</Text>
+          <Text style={tw`text-xs text-ink-3 mb-2.5`}>Password for all: GrowlDemo123!</Text>
           <View style={tw`flex-row gap-2`}>
             {DEMO_ACCOUNTS.map((item) => (
-              <TouchableOpacity
+              <PressableScale
                 key={item.email}
                 disabled={busy}
                 onPress={() => handleDemoSignIn(item.email)}
                 accessibilityRole="button"
                 accessibilityLabel={`Sign in as demo ${item.label}`}
-                style={tw`flex-1 py-2 rounded-xl bg-[#FFFcf7] border border-stone-200/80 items-center ${
+                style={tw`flex-1 py-2 rounded-control bg-card border border-line/80 items-center ${
                   busy ? 'opacity-50' : ''
                 }`}
               >
                 <Text style={tw`text-xs font-bold text-emerald-800`}>{item.label}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </View>
         </View>
@@ -1297,9 +1298,9 @@ export default function AuthScreen() {
   const socialRow = showSocialAuth ? (
     <View>
       <View style={tw`flex-row items-center my-7`}>
-        <View style={tw`flex-1 h-px bg-stone-200`} />
-        <Text style={tw`mx-4 text-stone-500 text-sm`}>or continue with</Text>
-        <View style={tw`flex-1 h-px bg-stone-200`} />
+        <View style={tw`flex-1 h-px bg-line`} />
+        <Text style={tw`mx-4 text-ink-3 text-sm`}>or continue with</Text>
+        <View style={tw`flex-1 h-px bg-line`} />
       </View>
 
       {showApple && Platform.OS === 'ios' ? (
@@ -1316,7 +1317,12 @@ export default function AuthScreen() {
                 ? AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
                 : AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
             }
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            buttonStyle={
+              // Black on cream; white on the night palette (Apple HIG contrast).
+              getColorSchemeName() === 'dark'
+                ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+            }
             cornerRadius={16}
             style={{ width: '100%', height: 50 }}
             onPress={() => void handleApple()}
@@ -1327,34 +1333,34 @@ export default function AuthScreen() {
       {showGoogle || showFacebook ? (
         <View style={tw`flex-row gap-3 mb-2`}>
           {showGoogle ? (
-            <TouchableOpacity
+            <PressableScale
               onPress={() => void handleGoogle()}
               disabled={busy}
               accessibilityRole="button"
               accessibilityLabel="Continue with Google"
               accessibilityState={{ disabled: busy }}
-              style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7] ${
+              style={tw`flex-1 flex-row items-center justify-center border border-line/80 rounded-card py-3.5 bg-card ${
                 busy ? 'opacity-50' : ''
               }`}
             >
               <Ionicons name="logo-google" size={20} color="#4285F4" />
               <Text style={tw`ml-2 font-semibold text-stone-800`}>Google</Text>
-            </TouchableOpacity>
+            </PressableScale>
           ) : null}
           {showFacebook ? (
-            <TouchableOpacity
+            <PressableScale
               onPress={() => void handleFacebook()}
               disabled={busy}
               accessibilityRole="button"
               accessibilityLabel="Continue with Facebook"
               accessibilityState={{ disabled: busy }}
-              style={tw`flex-1 flex-row items-center justify-center border border-stone-200/80 rounded-2xl py-3.5 bg-[#FFFcf7] ${
+              style={tw`flex-1 flex-row items-center justify-center border border-line/80 rounded-card py-3.5 bg-card ${
                 busy ? 'opacity-50' : ''
               }`}
             >
               <Ionicons name="logo-facebook" size={20} color="#1877F2" />
               <Text style={tw`ml-2 font-semibold text-stone-800`}>Facebook</Text>
-            </TouchableOpacity>
+            </PressableScale>
           ) : null}
         </View>
       ) : null}
@@ -1375,7 +1381,7 @@ export default function AuthScreen() {
           <ScrollView
             ref={scrollRef}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={tw`flex-grow px-5 pt-2 pb-10`}
+            contentContainerStyle={tw`flex-grow px-gutter-wide pt-2 pb-10`}
             showsVerticalScrollIndicator={false}
           >
             <View style={tw`max-w-md w-full self-center`}>
@@ -1396,7 +1402,7 @@ export default function AuthScreen() {
                   >
                     <Image
                       source={require('../../../assets/icon.png')}
-                      style={{ width: 52, height: 52, borderRadius: 12 }}
+                      style={{ width: 52, height: 52, borderRadius: radius.control }}
                       accessibilityLabel="Grow! mark"
                     />
                   </Animated.View>
@@ -1418,7 +1424,7 @@ export default function AuthScreen() {
                   <Text style={tw`text-xl font-semibold text-stone-800 mt-4`} accessibilityRole="header">
                     {shownCopy.title}
                   </Text>
-                  <Text style={tw`text-sm text-stone-500 mt-2 leading-5`}>{shownCopy.subtitle}</Text>
+                  <Text style={tw`text-sm text-ink-3 mt-2 leading-5`}>{shownCopy.subtitle}</Text>
                 </Animated.View>
               </Animated.View>
 

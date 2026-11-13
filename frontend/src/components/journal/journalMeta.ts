@@ -1,4 +1,5 @@
 import type { JournalMood } from '../../services/api/journal';
+import { SEMANTIC, type ColorSchemeName } from '../../theme/palette';
 
 export const MOOD_META: Record<
   JournalMood,
@@ -16,6 +17,26 @@ export const MOOD_META: Record<
   sad: { label: 'Sad', glyph: '\u{1F327}\u{FE0F}', color: '#64748B', wash: '#F1F5F9' },
   anxious: { label: 'Anxious', glyph: '💭', color: '#9333EA', wash: '#F3E8FF' },
 };
+
+function blendHex(fg: string, bg: string, alpha: number): string {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [a, b] = [p(fg), p(bg)];
+  return `#${a
+    .map((v, i) => Math.round(v * alpha + b[i] * (1 - alpha)).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`;
+}
+
+/**
+ * Mood wash for a surface behind ink text. Light: the pastel from MOOD_META
+ * (unchanged). Dark: the mood hue at ~22% over the night card, so `text-ink`
+ * (light in dark) stays readable while the hue still reads.
+ */
+export function moodWash(mood: JournalMood, scheme: ColorSchemeName): string {
+  const meta = MOOD_META[mood];
+  if (scheme !== 'dark') return meta.wash;
+  return blendHex(meta.color, SEMANTIC.dark.card, 0.22);
+}
 
 export const PRIMARY_MOODS: JournalMood[] = [
   'calm',

@@ -3,12 +3,12 @@ import {
   View,
   TextInput,
   Text,
-  Pressable,
   Keyboard,
   Platform,
   InputAccessoryView,
 } from 'react-native';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 const CAPTION_ACCESSORY_ID = 'composer-caption-done';
 
@@ -31,20 +31,20 @@ export default function ComposerCaption({
   const nearLimit = caption.length >= Math.floor(maxLength * 0.9);
 
   return (
-    <View style={tw`px-4 pb-2`}>
+    <View style={tw`px-gutter pb-2`}>
       <View style={tw`flex-row items-center justify-between mb-1`}>
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-white/60 uppercase`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-white/60 uppercase`}>
           Caption
         </Text>
-        <Pressable
+        <PressableScale
           onPress={() => Keyboard.dismiss()}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Done writing caption"
-          style={tw`px-3 py-1.5 rounded-full bg-white/15`}
+          style={tw`px-3 py-1.5 rounded-chip bg-white/15`}
         >
           <Text style={tw`text-white text-xs font-bold`}>Done</Text>
-        </Pressable>
+        </PressableScale>
       </View>
       <TextInput
         ref={inputRef}
@@ -69,9 +69,9 @@ export default function ComposerCaption({
       {Platform.OS === 'ios' ? (
         <InputAccessoryView nativeID={CAPTION_ACCESSORY_ID}>
           <View style={tw`bg-[#1C1917] border-t border-white/10 px-4 py-2 flex-row justify-end`}>
-            <Pressable onPress={() => Keyboard.dismiss()} hitSlop={8}>
+            <PressableScale onPress={() => Keyboard.dismiss()} hitSlop={8}>
               <Text style={tw`text-emerald-400 font-bold text-base`}>Done</Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </InputAccessoryView>
       ) : null}

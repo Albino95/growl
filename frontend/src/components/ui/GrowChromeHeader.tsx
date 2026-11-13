@@ -74,7 +74,7 @@ export default function GrowChromeHeader({ right, leftAccessory, style }: Props)
   return (
     <View
       style={[
-        tw`px-4 py-2.5 flex-row items-center justify-between bg-surface-page border-b border-stone-200/50`,
+        tw`px-gutter py-2.5 flex-row items-center justify-between bg-page border-b border-line/50`,
         style,
       ]}
     >
@@ -107,7 +107,7 @@ export default function GrowChromeHeader({ right, leftAccessory, style }: Props)
           </Animated.View>
         </Pressable>
         {hint ? (
-          <Text style={tw`ml-2 text-[11px] font-semibold text-emerald-700`}>{hint}</Text>
+          <Text style={tw`ml-2 text-caption font-semibold text-emerald-700`}>{hint}</Text>
         ) : null}
       </View>
       {right ? <View style={tw`flex-row items-center gap-2`}>{right}</View> : null}

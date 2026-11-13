@@ -3,6 +3,8 @@ import { Animated, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { useColorSchemeName } from '../../lib/tw';
+import { radius, type } from '../../theme/tokens';
 
 /**
  * Small non-blocking pill under the status bar while the device is offline.
@@ -13,6 +15,8 @@ export default function OfflineBanner() {
   const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
+  // Light: ink pill on cream. Dark: lifted night-soil pill + hairline (matches Toast).
+  const dark = useColorSchemeName() === 'dark';
 
   useEffect(() => {
     if (isOffline) setMounted(true);
@@ -30,7 +34,7 @@ export default function OfflineBanner() {
   return (
     <Animated.View
       pointerEvents="none"
-      style={[styles.wrap, { top: insets.top + 6, opacity }]}
+      style={[styles.wrap, dark ? styles.wrapDark : null, { top: insets.top + 6, opacity }]}
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
     >
@@ -53,12 +57,17 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: radius.chip,
     backgroundColor: 'rgba(28,25,23,0.88)',
+  },
+  wrapDark: {
+    backgroundColor: 'rgba(46,42,38,0.96)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   text: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: type.footnote.fontSize,
     fontWeight: '600',
   },
 });

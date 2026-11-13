@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { dateKeyFromIso, journalMoodFromCheckin, MOOD_META } from './journalMeta';
+import { dateKeyFromIso, journalMoodFromCheckin, MOOD_META, moodWash } from './journalMeta';
 
 describe('dateKeyFromIso (device-local day)', () => {
   const prevTz = process.env.TZ;
@@ -47,5 +47,19 @@ describe('journalMoodFromCheckin', () => {
       const key = journalMoodFromCheckin(m);
       expect(key && MOOD_META[key]).toBeTruthy();
     }
+  });
+});
+
+describe('moodWash', () => {
+  it('keeps the light pastel unchanged', () => {
+    expect(moodWash('happy', 'light')).toBe(MOOD_META.happy.wash);
+  });
+
+  it('returns a dark tint of the mood hue in dark', () => {
+    const dark = moodWash('happy', 'dark');
+    expect(dark).toMatch(/^#[0-9A-F]{6}$/);
+    // Luminance stays low enough for light ink on top.
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(dark.slice(i, i + 2), 16));
+    expect(Math.max(r, g, b)).toBeLessThan(80);
   });
 });

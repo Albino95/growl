@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import { uploadMediaFile } from '../../services/api/media';
 import { waterSeed, type GrowthSeed } from '../../services/api/seeds';
@@ -136,23 +136,23 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
           style={tw`flex-1`}
           accessibilityLabel="Dismiss"
         />
-        <View style={tw`bg-[#FFFcf7] rounded-t-3xl px-5 pt-3 pb-10 max-h-[88%]`}>
+        <View style={tw`bg-card rounded-t-sheet px-gutter-wide pt-3 pb-10 max-h-[88%]`}>
           <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Check in
             </Text>
-            <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>{seed.title}</Text>
+            <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>{seed.title}</Text>
             <View style={tw`flex-row items-center mt-2 mb-4`}>
               <View style={tw`px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100`}>
                 <Text style={tw`text-xs font-bold text-emerald-800`}>Day {days}</Text>
               </View>
-              <Text style={tw`text-xs text-stone-500 ml-2`}>since you planted this seed</Text>
+              <Text style={tw`text-xs text-ink-3 ml-2`}>since you planted this seed</Text>
             </View>
 
             {requireMetric ? (
               <View style={tw`mb-4`}>
-                <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
                   {schema?.checkInLabel || 'Today’s number'}
                   {schema?.unitLabel ? ` (${schema.unitLabel})` : ''}
                 </Text>
@@ -165,11 +165,11 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
                       ? `Last: ${seed.metric_current}${schema?.unitLabel ? ` ${schema.unitLabel}` : ''}`
                       : 'e.g. 72.4'
                   }
-                  placeholderTextColor="#6B645E"
-                  style={tw`bg-[#EAE4D6] px-4 py-3.5 rounded-2xl text-stone-900 text-[18px] font-semibold border border-stone-200`}
+                  placeholderTextColor={theme.colors.placeholder}
+                  style={tw`bg-raised px-4 py-3.5 rounded-card text-ink text-callout font-semibold border border-line`}
                 />
                 {seed.metric_start != null && seed.metric_target != null ? (
-                  <Text style={tw`text-xs text-stone-500 mt-1.5`}>
+                  <Text style={tw`text-xs text-ink-3 mt-1.5`}>
                     Path: {seed.metric_start}
                     {schema?.unitLabel ? ` ${schema.unitLabel}` : ''} → {seed.metric_target}
                     {schema?.unitLabel ? ` ${schema.unitLabel}` : ''}
@@ -178,15 +178,15 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
               </View>
             ) : null}
 
-            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+            <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
               Evidence {requirePhoto ? '(required)' : '(optional)'}
             </Text>
-            <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
+            <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
               {schema?.hint || 'A quick photo keeps this honest for you and your witnesses.'}
             </Text>
 
             {photoUri ? (
-              <View style={tw`mb-3 rounded-2xl overflow-hidden border border-stone-200`}>
+              <View style={tw`mb-3 rounded-card overflow-hidden border border-line`}>
                 <Image source={{ uri: photoUri }} style={tw`w-full h-44`} resizeMode="cover" />
                 <PressableScale
                   onPress={() => setPhotoUri(null)}
@@ -201,39 +201,39 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
                 <PressableScale
                   onPress={() => void takePhoto()}
                   feedback="open"
-                  style={tw`flex-1 py-3.5 rounded-2xl bg-stone-900 items-center flex-row justify-center gap-2`}
+                  style={tw`flex-1 py-3.5 rounded-card bg-ink items-center flex-row justify-center gap-2`}
                 >
-                  <Ionicons name="camera-outline" size={18} color="#fff" />
-                  <Text style={tw`text-white font-bold`}>Camera</Text>
+                  <Ionicons name="camera-outline" size={18} color={theme.colors.page} />
+                  <Text style={tw`text-page font-bold`}>Camera</Text>
                 </PressableScale>
                 <PressableScale
                   onPress={() => void pickPhoto()}
                   feedback="open"
-                  style={tw`flex-1 py-3.5 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center flex-row justify-center gap-2`}
+                  style={tw`flex-1 py-3.5 rounded-card bg-raised border border-line items-center flex-row justify-center gap-2`}
                 >
-                  <Ionicons name="images-outline" size={18} color="#1C1917" />
-                  <Text style={tw`text-stone-900 font-bold`}>Library</Text>
+                  <Ionicons name="images-outline" size={18} color={theme.colors.ink} />
+                  <Text style={tw`text-ink font-bold`}>Library</Text>
                 </PressableScale>
               </View>
             )}
 
-            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+            <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
               Note
             </Text>
             <TextInput
               value={note}
               onChangeText={setNote}
               placeholder="How did it feel?"
-              placeholderTextColor="#6B645E"
+              placeholderTextColor={theme.colors.placeholder}
               multiline
-              style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[15px] min-h-[72px] mb-5`}
+              style={tw`bg-card border border-line rounded-card px-4 py-3 text-ink text-body min-h-[72px] mb-5`}
             />
 
             <PressableScale
               onPress={() => void submit()}
               disabled={busy}
               feedback={false}
-              style={tw`py-4 rounded-2xl bg-emerald-600 items-center flex-row justify-center gap-2 ${
+              style={tw`py-4 rounded-card bg-emerald-600 items-center flex-row justify-center gap-2 ${
                 busy ? 'opacity-60' : ''
               }`}
             >
@@ -242,7 +242,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
               ) : (
                 <Ionicons name="water" size={18} color="#fff" />
               )}
-              <Text style={tw`text-white font-bold text-[16px]`}>
+              <Text style={tw`text-white font-bold text-callout`}>
                 {busy ? 'Watering…' : 'Testify & water'}
               </Text>
             </PressableScale>

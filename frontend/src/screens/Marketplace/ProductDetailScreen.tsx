@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import Skeleton from '../../components/ui/Skeleton';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
@@ -133,49 +133,49 @@ export default function ProductDetailScreen() {
     const previewImage = preview?.imageUrl ? resolveProductImageUri(preview.imageUrl) : '';
     return (
       <SafeAreaView
-        style={tw`flex-1 bg-surface-page`}
+        style={tw`flex-1 bg-page`}
         edges={['top']}
         accessibilityLabel="Loading product"
         accessibilityState={{ busy: true }}
       >
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-surface-card`}>
-          <TouchableOpacity
+        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
+          <PressableScale
             onPress={() => navigation.goBack()}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <Ionicons name="arrow-back" size={24} color="#1C1917" />
-          </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-stone-900`}>Product</Text>
-          <Ionicons name="heart-outline" size={24} color="#1C1917" />
+            <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
+          </PressableScale>
+          <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
+          <Ionicons name="heart-outline" size={24} color={theme.colors.ink} />
         </View>
-        <View style={tw`bg-surface-subtle`}>
+        <View style={tw`bg-raised`}>
           {previewImage ? (
             <GrowImage source={{ uri: previewImage }} style={{ width, height: 384 }} contentFit="cover" />
           ) : (
             <Skeleton style={{ width, height: 384 }} />
           )}
         </View>
-        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-surface-card border border-stone-200/80 rounded-2xl`}>
+        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-card border border-line/80 rounded-card`}>
           <View style={tw`flex-row items-center mb-4`}>
             <Skeleton style={tw`w-8 h-8 rounded-full mr-2`} />
             {preview?.sellerName ? (
-              <Text style={tw`text-sm text-stone-600`}>Sold by {preview.sellerName}</Text>
+              <Text style={tw`text-sm text-ink-2`}>Sold by {preview.sellerName}</Text>
             ) : (
               <Skeleton style={tw`h-3.5 w-28 rounded`} />
             )}
           </View>
           {preview?.title ? (
-            <Text style={tw`text-2xl font-bold text-stone-900 mb-2`}>{preview.title}</Text>
+            <Text style={tw`text-2xl font-bold text-ink mb-2`}>{preview.title}</Text>
           ) : (
-            <Skeleton style={tw`h-7 w-3/4 rounded-lg mb-2`} />
+            <Skeleton style={tw`h-7 w-3/4 rounded-control mb-2`} />
           )}
           <View style={tw`flex-row items-center mb-4`}>
             {typeof preview?.price === 'number' ? (
               <Text style={tw`text-3xl font-bold text-brand-700`}>${preview.price.toFixed(2)}</Text>
             ) : (
-              <Skeleton style={tw`h-9 w-28 rounded-lg`} />
+              <Skeleton style={tw`h-9 w-28 rounded-control`} />
             )}
           </View>
           <Skeleton style={tw`h-5 w-28 rounded mb-3`} />
@@ -183,8 +183,8 @@ export default function ProductDetailScreen() {
           <Skeleton style={tw`h-3.5 w-full rounded mb-2`} />
           <Skeleton style={tw`h-3.5 w-2/3 rounded mb-6`} />
           <View style={tw`flex-row mb-6`}>
-            <Skeleton style={tw`h-7 w-20 rounded-full mr-2`} />
-            <Skeleton style={tw`h-7 w-24 rounded-full`} />
+            <Skeleton style={tw`h-7 w-20 rounded-chip mr-2`} />
+            <Skeleton style={tw`h-7 w-24 rounded-chip`} />
           </View>
         </View>
       </SafeAreaView>
@@ -193,16 +193,16 @@ export default function ProductDetailScreen() {
 
   if (!product) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+      <SafeAreaView style={tw`flex-1 bg-page`}>
         <View style={tw`flex-1 items-center justify-center px-6`}>
-          <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
-          <Text style={tw`mt-4 text-lg font-semibold text-stone-900`}>Product not found</Text>
-          <TouchableOpacity
+          <Ionicons name="alert-circle-outline" size={64} color={theme.colors.danger} />
+          <Text style={tw`mt-4 text-lg font-semibold text-ink`}>Product not found</Text>
+          <PressableScale
             onPress={() => navigation.goBack()}
-            style={tw`mt-6 px-6 py-3 bg-brand-600 rounded-2xl`}
+            style={tw`mt-6 px-6 py-3 bg-brand-600 rounded-card`}
           >
             <Text style={tw`text-white font-semibold`}>Go Back</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </SafeAreaView>
     );
@@ -218,22 +218,22 @@ export default function ProductDetailScreen() {
     .filter(Boolean);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false} {...verticalScrollProps}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-surface-card`}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="arrow-back" size={24} color="#1C1917" />
-          </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-stone-900`}>Product</Text>
-          <TouchableOpacity
+        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
+          <PressableScale onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
+          </PressableScale>
+          <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
+          <PressableScale
             onPress={() => setSaved(!saved)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name={saved ? 'heart' : 'heart-outline'} size={24} color={saved ? '#DC2626' : '#1C1917'} />
-          </TouchableOpacity>
+            <Ionicons name={saved ? 'heart' : 'heart-outline'} size={24} color={saved ? theme.colors.danger : theme.colors.ink} />
+          </PressableScale>
         </View>
 
-        <View style={tw`bg-surface-subtle`}>
+        <View style={tw`bg-raised`}>
           {productImages.length > 0 ? (
             <>
               <ScrollView
@@ -256,7 +256,7 @@ export default function ProductDetailScreen() {
                         { width, height: 384 },
                       ]}
                     >
-                      <Ionicons name="image-outline" size={40} color="#A8A29E" />
+                      <Ionicons name="image-outline" size={40} color={theme.colors.iconMuted} />
                     </View>
                   ) : (
                     <GrowImage
@@ -288,13 +288,13 @@ export default function ProductDetailScreen() {
             </>
           ) : (
             <View style={[tw`items-center justify-center bg-stone-200`, { height: 384 }]}>
-              <Ionicons name="image-outline" size={40} color="#A8A29E" />
+              <Ionicons name="image-outline" size={40} color={theme.colors.iconMuted} />
             </View>
           )}
         </View>
 
         {/* Product Info */}
-        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-surface-card border border-stone-200/80 rounded-2xl`}>
+        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-card border border-line/80 rounded-card`}>
           {/* Business Info */}
           {product.business && (
             <View style={tw`flex-row items-center mb-4`}>
@@ -306,27 +306,27 @@ export default function ProductDetailScreen() {
                     product.business.avatar
                   )
                 )}
-                style={tw`w-8 h-8 rounded-full mr-2 bg-surface-subtle`}
+                style={tw`w-8 h-8 rounded-full mr-2 bg-raised`}
               />
-              <Text style={tw`text-sm text-stone-600`}>
+              <Text style={tw`text-sm text-ink-2`}>
                 Sold by {product.business.username || 'Business'}
               </Text>
             </View>
           )}
 
           {/* Product Name */}
-          <Text style={tw`text-2xl font-bold text-stone-900 mb-2`}>{product.name}</Text>
+          <Text style={tw`text-2xl font-bold text-ink mb-2`}>{product.name}</Text>
 
           {/* Price */}
           <View style={tw`flex-row items-center mb-4`}>
             <Text style={tw`text-3xl font-bold text-brand-700`}>${product.price.toFixed(2)}</Text>
             {product.stock > 0 && (
-              <View style={tw`ml-4 px-3 py-1 bg-[#ECFDF5] rounded-full`}>
+              <View style={tw`ml-4 px-3 py-1 bg-emerald-50 rounded-chip`}>
                 <Text style={tw`text-sm font-medium text-brand-800`}>In stock</Text>
               </View>
             )}
             {product.stock === 0 && (
-              <View style={tw`ml-4 px-3 py-1 bg-red-100 rounded-full`}>
+              <View style={tw`ml-4 px-3 py-1 bg-red-100 rounded-chip`}>
                 <Text style={tw`text-sm font-medium text-red-700`}>Out of Stock</Text>
               </View>
             )}
@@ -335,23 +335,23 @@ export default function ProductDetailScreen() {
           {/* Description */}
           {product.description && (
             <View style={tw`mb-6`}>
-              <Text style={tw`text-lg font-semibold text-stone-900 mb-2`}>Description</Text>
-              <Text style={tw`text-stone-600 leading-6`}>{product.description}</Text>
+              <Text style={tw`text-lg font-semibold text-ink mb-2`}>Description</Text>
+              <Text style={tw`text-ink-2 leading-6`}>{product.description}</Text>
             </View>
           )}
 
           {/* Category Tags */}
           <View style={tw`flex-row flex-wrap mb-6`}>
             {product.category && (
-              <View style={tw`px-3 py-1 bg-surface-subtle border border-stone-200/60 rounded-full mr-2 mb-2`}>
-                <Text style={tw`text-sm text-stone-700`}>
+              <View style={tw`px-3 py-1 bg-raised border border-line/60 rounded-chip mr-2 mb-2`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   {product.category.charAt(0).toUpperCase() + product.category.slice(1)}
                 </Text>
               </View>
             )}
             {product.subcategory && (
-              <View style={tw`px-3 py-1 bg-surface-subtle border border-stone-200/60 rounded-full mr-2 mb-2`}>
-                <Text style={tw`text-sm text-stone-700`}>
+              <View style={tw`px-3 py-1 bg-raised border border-line/60 rounded-chip mr-2 mb-2`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   {product.subcategory.charAt(0).toUpperCase() + product.subcategory.slice(1)}
                 </Text>
               </View>
@@ -360,37 +360,37 @@ export default function ProductDetailScreen() {
 
           {/* Quantity Selector */}
           <View style={tw`mb-6`}>
-            <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Quantity</Text>
+            <Text style={tw`text-lg font-semibold text-ink mb-3`}>Quantity</Text>
             <View style={tw`flex-row items-center`}>
-              <TouchableOpacity
+              <PressableScale
                 onPress={() => setQuantity(Math.max(1, quantity - 1))}
-                style={tw`w-10 h-10 items-center justify-center border border-stone-200/80 bg-surface-page rounded-2xl`}
+                style={tw`w-10 h-10 items-center justify-center border border-line/80 bg-page rounded-card`}
               >
-                <Ionicons name="remove" size={20} color="#57534E" />
-              </TouchableOpacity>
-              <Text style={tw`mx-6 text-lg font-semibold text-stone-900`}>{quantity}</Text>
-              <TouchableOpacity
+                <Ionicons name="remove" size={20} color={theme.colors.ink2} />
+              </PressableScale>
+              <Text style={tw`mx-6 text-lg font-semibold text-ink`}>{quantity}</Text>
+              <PressableScale
                 onPress={() => setQuantity(Math.min(product.stock, quantity + 1))}
                 disabled={quantity >= product.stock}
-                style={tw`w-10 h-10 items-center justify-center border border-stone-200/80 bg-surface-page rounded-2xl ${
+                style={tw`w-10 h-10 items-center justify-center border border-line/80 bg-page rounded-card ${
                   quantity >= product.stock ? 'opacity-50' : ''
                 }`}
               >
-                <Ionicons name="add" size={20} color="#57534E" />
-              </TouchableOpacity>
-              <Text style={tw`ml-4 text-sm text-stone-600`}>
+                <Ionicons name="add" size={20} color={theme.colors.ink2} />
+              </PressableScale>
+              <Text style={tw`ml-4 text-sm text-ink-2`}>
                 {product.stock} available
               </Text>
             </View>
           </View>
 
           {/* Shipping Info */}
-          <View style={tw`bg-surface-subtle border border-stone-200/60 rounded-2xl p-4 mb-6`}>
+          <View style={tw`bg-raised border border-line/60 rounded-card p-4 mb-6`}>
             <View style={tw`flex-row items-center mb-2`}>
-              <Ionicons name="car-outline" size={20} color="#059669" />
-              <Text style={tw`ml-2 font-semibold text-stone-900`}>Shipping</Text>
+              <Ionicons name="car-outline" size={20} color={theme.colors.brand} />
+              <Text style={tw`ml-2 font-semibold text-ink`}>Shipping</Text>
             </View>
-            <Text style={tw`text-sm text-stone-600`}>
+            <Text style={tw`text-sm text-ink-2`}>
               Free shipping on orders over $50. Estimated delivery: 3-5 business days.
             </Text>
           </View>
@@ -402,8 +402,7 @@ export default function ProductDetailScreen() {
                 {relatedProducts.map((item) => {
                   const thumb = resolveProductImageUri(item.image_url, item.images);
                   return (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
+                    <PressableScale
                       key={item.id}
                       onPress={() =>
                         (navigation as { navigate: (a: string, b: object) => void }).navigate(
@@ -411,24 +410,24 @@ export default function ProductDetailScreen() {
                           { productId: item.id, preview: { title: item.name, imageUrl: thumb, price: item.price, sellerName: item.business?.username } }
                         )
                       }
-                      style={tw`w-36 mr-3 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}
+                      style={tw`w-36 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
                     >
                       {thumb ? (
-                        <GrowImage source={{ uri: thumb }} style={tw`w-full h-40 bg-surface-subtle`} contentFit="cover" />
+                        <GrowImage source={{ uri: thumb }} style={tw`w-full h-40 bg-raised`} contentFit="cover" />
                       ) : (
-                        <View style={tw`w-full h-40 bg-surface-subtle items-center justify-center`}>
-                          <Ionicons name="image-outline" size={28} color="#A8A29E" />
+                        <View style={tw`w-full h-40 bg-raised items-center justify-center`}>
+                          <Ionicons name="image-outline" size={28} color={theme.colors.iconMuted} />
                         </View>
                       )}
                       <View style={tw`p-2`}>
-                        <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
+                        <Text style={tw`text-sm font-semibold text-ink`} numberOfLines={2}>
                           {item.name}
                         </Text>
                         <Text style={tw`text-sm font-bold text-brand-700 mt-1`}>
                           ${item.price.toFixed(2)}
                         </Text>
                       </View>
-                    </TouchableOpacity>
+                    </PressableScale>
                   );
                 })}
               </ScrollView>
@@ -438,10 +437,10 @@ export default function ProductDetailScreen() {
       </ScrollView>
 
       {/* Bottom Action Bar */}
-      <View style={tw`border-t border-stone-200/80 bg-surface-card px-4 py-3 pb-6`}>
+      <View style={tw`border-t border-line/80 bg-card px-gutter py-3 pb-6`}>
         {!paymentsEnabled ? (
-          <View style={tw`px-3 py-3 rounded-2xl bg-stone-100 border border-stone-200/80 mb-2`}>
-            <Text style={tw`text-sm text-stone-600 text-center`}>
+          <View style={tw`px-3 py-3 rounded-card bg-raised border border-line/80 mb-2`}>
+            <Text style={tw`text-sm text-ink-2 text-center`}>
               Catalog browsing only — checkout is not enabled in this release.
             </Text>
           </View>

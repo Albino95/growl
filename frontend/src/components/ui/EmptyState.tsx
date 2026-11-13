@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PrimaryButton from './PrimaryButton';
 import FadeInUp from './FadeInUp';
 
@@ -17,13 +17,13 @@ export default function EmptyState({ icon, title, description, actionLabel, onAc
   return (
     <FadeInUp style={tw`items-center justify-center py-12 px-6`}>
       <View
-        style={tw`w-16 h-16 rounded-full bg-stone-100 items-center justify-center mb-4 border border-stone-200`}
+        style={tw`w-16 h-16 rounded-chip bg-raised items-center justify-center mb-4 border border-line`}
       >
-        <Ionicons name={icon} size={30} color="#A8A29E" />
+        <Ionicons name={icon} size={30} color={theme.colors.iconMuted} />
       </View>
-      <Text style={tw`text-stone-900 font-semibold text-lg text-center`}>{title}</Text>
+      <Text style={tw`text-ink text-callout font-semibold text-center`}>{title}</Text>
       {description ? (
-        <Text style={tw`text-muted mt-2 text-center text-sm leading-5 max-w-sm`}>
+        <Text style={tw`text-ink-2 mt-2 text-center text-body max-w-sm`}>
           {description}
         </Text>
       ) : null}

@@ -54,29 +54,29 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
 
   return (
     <View
-      style={tw`mb-2.5 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border ${
-        done ? 'border-emerald-200' : 'border-stone-200/80'
+      style={tw`mb-2.5 px-3.5 py-3 rounded-card bg-card border ${
+        done ? 'border-emerald-200' : 'border-line/80'
       }`}
       accessible={!canMarkDone || done}
       accessibilityLabel={`${item.title}. ${done ? 'Done' : 'To do'}${due ? `. Due ${due}` : ''}`}
     >
       <View style={tw`flex-row items-center justify-between`}>
-        <Text style={tw`font-bold text-stone-900 flex-1`} numberOfLines={2}>
+        <Text style={tw`font-bold text-ink flex-1`} numberOfLines={2}>
           {item.title}
         </Text>
-        <View style={tw`ml-2 px-2 py-0.5 rounded-full flex-row items-center ${done ? 'bg-emerald-50' : 'bg-[#EAE4D6]'}`}>
-          {done ? <Ionicons name="checkmark" size={11} color="#065F46" style={tw`mr-0.5`} /> : null}
-          <Text style={tw`text-[11px] font-semibold ${done ? 'text-emerald-800' : 'text-stone-600'}`}>
+        <View style={tw`ml-2 px-2 py-0.5 rounded-full flex-row items-center ${done ? 'bg-emerald-50' : 'bg-raised'}`}>
+          {done ? <Ionicons name="checkmark" size={11} color={tw.color('emerald-800')} style={tw`mr-0.5`} /> : null}
+          <Text style={tw`text-caption font-semibold ${done ? 'text-emerald-800' : 'text-ink-2'}`}>
             {done ? 'Done' : 'To do'}
           </Text>
         </View>
       </View>
 
       {extra?.detail ? (
-        <Text style={tw`text-sm text-stone-600 mt-1 leading-5`}>{extra.detail}</Text>
+        <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>{extra.detail}</Text>
       ) : null}
 
-      <Text style={tw`text-xs mt-1 ${overdue ? 'text-[#E11D48]' : 'text-stone-500'}`}>
+      <Text style={tw`text-xs mt-1 ${overdue ? 'text-rose-600' : 'text-ink-3'}`}>
         {[
           due ? `${overdue ? 'Overdue · was due' : 'Due'} ${due}` : null,
           completed ? `Done ${completed}` : null,
@@ -89,18 +89,18 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
       {item.last_photo ? (
         <Image
           source={{ uri: resolvePostMediaUri(item.last_photo) }}
-          style={tw`w-full h-36 rounded-xl mt-2 bg-[#EAE4D6]`}
+          style={tw`w-full h-36 rounded-control mt-2 bg-raised`}
           contentFit="cover"
           accessibilityLabel={isCoach ? 'Photo from your client' : 'Your photo'}
         />
       ) : null}
 
       {extra?.lastNote ? (
-        <View style={tw`mt-2 px-3 py-2 rounded-xl bg-[#F3EEE4]`}>
-          <Text style={tw`text-[11px] font-bold tracking-widest text-stone-500 uppercase`}>
+        <View style={tw`mt-2 px-3 py-2 rounded-control bg-page`}>
+          <Text style={tw`text-caption font-bold tracking-widest text-ink-3 uppercase`}>
             {isCoach ? 'Client note' : 'Your note'}
           </Text>
-          <Text style={tw`text-sm text-stone-700 mt-0.5 leading-5`}>{extra.lastNote}</Text>
+          <Text style={tw`text-sm text-ink-2 mt-0.5 leading-5`}>{extra.lastNote}</Text>
         </View>
       ) : null}
 
@@ -109,7 +109,7 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
           onPress={() => onMarkDone(item)}
           accessibilityRole="button"
           accessibilityLabel={`Mark ${item.title} done`}
-          style={tw`mt-2.5 py-2.5 rounded-xl bg-emerald-600 flex-row items-center justify-center gap-1.5`}
+          style={tw`mt-2.5 py-2.5 rounded-control bg-emerald-600 flex-row items-center justify-center gap-1.5`}
         >
           <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
           <Text style={tw`text-white font-bold text-sm`}>Mark done</Text>
@@ -117,7 +117,7 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
       ) : null}
 
       {isCoach && !done ? (
-        <Text style={tw`text-xs text-stone-500 mt-1.5`}>
+        <Text style={tw`text-xs text-ink-3 mt-1.5`}>
           Waiting for your client to mark this done.
         </Text>
       ) : null}

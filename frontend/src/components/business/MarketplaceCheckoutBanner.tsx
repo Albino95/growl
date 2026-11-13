@@ -38,10 +38,10 @@ export default function MarketplaceCheckoutBanner({ style }: { style?: StyleProp
 
   return (
     <View
-      style={[tw`flex-row items-start bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5`, style]}
+      style={[tw`flex-row items-start bg-amber-50 border border-amber-200 rounded-control px-3 py-2.5`, style]}
       accessibilityRole="alert"
     >
-      <Ionicons name="information-circle-outline" size={18} color="#B45309" style={tw`mr-2 mt-0.5`} />
+      <Ionicons name="information-circle-outline" size={18} color={tw.color('amber-700')} style={tw`mr-2 mt-0.5`} />
       <Text style={tw`flex-1 text-sm text-amber-900`}>
         Marketplace checkout isn't live yet — customers can browse but not buy.
       </Text>

@@ -5,13 +5,12 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import EmptyState from '../../components/ui/EmptyState';
 import PressableScale from '../../components/ui/PressableScale';
@@ -46,6 +45,11 @@ function timeAgo(iso: string): string {
   return `${days}d`;
 }
 
+/** Rose ink for hearts / asks — scheme-aware (rose-600 lightens in dark). Call in render. */
+function roseInk(): string {
+  return tw.color('rose-600') ?? '#E11D48';
+}
+
 function metaForType(type: string): {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
@@ -60,47 +64,47 @@ function metaForType(type: string): {
       return {
         icon: 'people-outline',
         label: 'Friends',
-        tint: '#059669',
+        tint: theme.colors.brand,
         chipBg: 'bg-emerald-50',
         chipText: 'text-emerald-800',
-        rail: '#059669',
+        rail: theme.colors.brand,
       };
     case 'endorsement_received':
     case 'endorsement_accepted':
       return {
         icon: 'ribbon',
         label: 'Endorsed',
-        tint: '#059669',
+        tint: theme.colors.brand,
         chipBg: 'bg-emerald-50',
         chipText: 'text-emerald-800',
-        rail: '#059669',
+        rail: theme.colors.brand,
       };
     case 'endorsement_request':
       return {
         icon: 'ribbon-outline',
         label: 'Ask',
-        tint: '#E11D48',
-        chipBg: 'bg-[#FFF1F0]',
-        chipText: 'text-[#E11D48]',
-        rail: '#F97066',
+        tint: roseInk(),
+        chipBg: 'bg-energy-50',
+        chipText: 'text-rose-600',
+        rail: theme.colors.energy,
       };
     case 'post_like':
       return {
         icon: 'heart',
         label: 'Like',
-        tint: '#E11D48',
-        chipBg: 'bg-[#FFF1F0]',
-        chipText: 'text-[#E11D48]',
-        rail: '#F97066',
+        tint: roseInk(),
+        chipBg: 'bg-energy-50',
+        chipText: 'text-rose-600',
+        rail: theme.colors.energy,
       };
     case 'post_comment':
       return {
         icon: 'chatbubble',
         label: 'Comment',
-        tint: '#059669',
+        tint: theme.colors.brand,
         chipBg: 'bg-emerald-50',
         chipText: 'text-emerald-800',
-        rail: '#059669',
+        rail: theme.colors.brand,
       };
     case 'instructor_claim':
     case 'coaching_inquiry':
@@ -110,39 +114,39 @@ function metaForType(type: string): {
       return {
         icon: 'school',
         label: type === 'coaching_homework' ? 'Homework' : 'Coaching',
-        tint: '#059669',
+        tint: theme.colors.brand,
         chipBg: 'bg-emerald-50',
         chipText: 'text-emerald-800',
-        rail: '#059669',
+        rail: theme.colors.brand,
       };
     case 'group_join':
     case 'group_invite':
       return {
         icon: 'people',
         label: 'Circle',
-        tint: '#059669',
+        tint: theme.colors.brand,
         chipBg: 'bg-emerald-50',
         chipText: 'text-emerald-800',
-        rail: '#059669',
+        rail: theme.colors.brand,
       };
     case 'app_review':
     case 'app_review_reply':
       return {
         icon: 'chatbubble-ellipses',
         label: type === 'app_review_reply' ? 'Reply' : 'Review',
-        tint: '#F97066',
-        chipBg: 'bg-[#FFF1F0]',
-        chipText: 'text-[#E11D48]',
-        rail: '#F97066',
+        tint: theme.colors.energy,
+        chipBg: 'bg-energy-50',
+        chipText: 'text-rose-600',
+        rail: theme.colors.energy,
       };
     default:
       return {
         icon: 'notifications-outline',
         label: 'Grow!',
-        tint: '#57534E',
-        chipBg: 'bg-[#EAE4D6]',
-        chipText: 'text-stone-700',
-        rail: '#D6D3D1',
+        tint: theme.colors.ink2,
+        chipBg: 'bg-raised',
+        chipText: 'text-ink-2',
+        rail: tw.color('stone-300') ?? '#D6D3D1',
       };
   }
 }
@@ -352,16 +356,18 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
-          <Pressable
+          <PressableScale
             onPress={() => navigation.goBack()}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
             accessibilityLabel="Back"
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
-          </Pressable>
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
+          </PressableScale>
         }
         right={
           unread > 0 ? (
@@ -384,6 +390,8 @@ export default function NotificationsScreen() {
                   });
               }}
               feedback={false}
+              hitSlop={8}
+              accessibilityRole="button"
             >
               <Text style={tw`text-sm font-semibold text-emerald-700`}>Mark all read</Text>
             </PressableScale>
@@ -391,36 +399,36 @@ export default function NotificationsScreen() {
         }
       />
 
-      <FadeInUp style={tw`px-5 pt-3 pb-4`}>
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+      <FadeInUp style={tw`px-gutter-wide pt-3 pb-4`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
           Activity
         </Text>
         <View style={tw`flex-row items-end justify-between mt-0.5`}>
-          <Text style={tw`text-[28px] font-bold text-stone-900 leading-8`}>Notifications</Text>
+          <Text style={tw`text-display font-extrabold text-ink`}>Notifications</Text>
           {unread > 0 ? (
             <View style={tw`px-2.5 py-1 rounded-full bg-energy-600 mb-0.5`}>
-              <Text style={tw`text-[11px] font-bold text-white`}>{unread} new</Text>
+              <Text style={tw`text-caption font-bold text-white`}>{unread} new</Text>
             </View>
           ) : (
-            <View style={tw`px-2.5 py-1 rounded-full bg-[#EAE4D6] mb-0.5`}>
-              <Text style={tw`text-[11px] font-bold text-stone-600`}>Caught up</Text>
+            <View style={tw`px-2.5 py-1 rounded-full bg-raised mb-0.5`}>
+              <Text style={tw`text-caption font-bold text-ink-2`}>Caught up</Text>
             </View>
           )}
         </View>
-        <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5`}>
+        <Text style={tw`text-body text-ink-3 mt-1.5`}>
           Friends, endorsement asks, and moments on your paths — respond without leaving the feed.
         </Text>
       </FadeInUp>
 
       {loading ? (
-        <View style={tw`flex-1 px-4`}>
+        <View style={tw`flex-1 px-gutter`}>
           <SkeletonList variant="notification" count={6} />
         </View>
       ) : (
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`px-4 pb-28 ${items.length === 0 ? 'flex-1' : ''}`}
+          contentContainerStyle={tw`px-gutter pb-28 ${items.length === 0 ? 'flex-1' : ''}`}
           refreshControl={
             <RefreshControl {...refresh} />
           }
@@ -429,7 +437,7 @@ export default function NotificationsScreen() {
           ListFooterComponent={
             loadingMore ? (
               <View style={tw`py-4 items-center`}>
-                <ActivityIndicator color="#059669" />
+                <ActivityIndicator color={theme.colors.brand} />
               </View>
             ) : null
           }
@@ -459,12 +467,12 @@ export default function NotificationsScreen() {
               <PressableScale
                 onPress={() => void openItem(item)}
                 feedback="open"
-                style={tw`mb-3 rounded-[22px] border overflow-hidden ${
+                style={tw`mb-3 rounded-sheet border overflow-hidden ${
                   actionable
-                    ? 'bg-[#FFFcf7] border-[#FECACA]'
+                    ? 'bg-card border-red-200'
                     : item.unread
-                      ? 'bg-[#FFFcf7] border-emerald-200/90'
-                      : 'bg-[#FFFcf7] border-stone-200/80'
+                      ? 'bg-card border-emerald-200/90'
+                      : 'bg-card border-line/80'
                 }`}
               >
                 <View style={tw`flex-row`}>
@@ -472,16 +480,17 @@ export default function NotificationsScreen() {
                     style={{
                       width: 5,
                       backgroundColor: actionable
-                        ? '#F97066'
+                        ? theme.colors.energy
                         : item.unread
                           ? meta.rail
-                          : '#E7E5E4',
+                          : theme.colors.line,
                     }}
                   />
                   <View style={tw`flex-1`}>
                     {actionable ? <View style={tw`h-1 bg-energy-600`} /> : null}
-                    <View style={tw`px-3.5 py-3.5 flex-row items-start`}>
-                      <Pressable
+                    <View style={tw`p-4 flex-row items-start`}>
+                      <PressableScale
+                        pressedScale={0.92}
                         onPress={(e) => {
                           e.stopPropagation?.();
                           openActorProfile(item);
@@ -493,15 +502,15 @@ export default function NotificationsScreen() {
                       >
                         <GrowImage
                           source={avatarSource(avatar)}
-                          style={tw`w-12 h-12 rounded-full bg-[#EAE4D6]`}
+                          style={tw`w-12 h-12 rounded-full bg-raised`}
                           contentFit="cover"
                         />
                         <View
                           style={[
-                            tw`absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full items-center justify-center border-2 border-[#FFFcf7]`,
+                            tw`absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full items-center justify-center border-2 border-card`,
                             {
                               backgroundColor:
-                                meta.tint === '#E11D48' ? '#FFF1F0' : '#ECFDF5',
+                                meta.chipBg === 'bg-energy-50' ? theme.colors.energySoft : theme.colors.brandSoft,
                             },
                           ]}
                         >
@@ -509,28 +518,28 @@ export default function NotificationsScreen() {
                         </View>
                         {item.unread ? (
                           <View
-                            style={tw`absolute -top-0.5 -left-0.5 w-2.5 h-2.5 rounded-full bg-energy-600 border-2 border-[#FFFcf7]`}
+                            style={tw`absolute -top-0.5 -left-0.5 w-2.5 h-2.5 rounded-full bg-energy-600 border-2 border-card`}
                           />
                         ) : null}
-                      </Pressable>
+                      </PressableScale>
 
                       <View style={tw`flex-1`}>
                         <View style={tw`flex-row items-center justify-between mb-1.5`}>
                           <View style={tw`px-2 py-0.5 rounded-full ${meta.chipBg}`}>
-                            <Text style={tw`text-[11px] font-bold ${meta.chipText}`}>
+                            <Text style={tw`text-caption font-bold ${meta.chipText}`}>
                               {meta.label}
                             </Text>
                           </View>
-                          <Text style={tw`text-[11px] text-stone-500`}>
+                          <Text style={tw`text-caption text-ink-3`}>
                             {timeAgo(item.created_at)}
                           </Text>
                         </View>
-                        <Text style={tw`text-[15px] font-semibold text-stone-900 leading-5`}>
+                        <Text style={tw`text-body font-semibold text-ink leading-5`}>
                           {item.title}
                         </Text>
                         {item.body ? (
                           <Text
-                            style={tw`text-sm text-stone-500 mt-1 leading-5`}
+                            style={tw`text-sm text-ink-3 mt-1 leading-5`}
                             numberOfLines={3}
                           >
                             {item.body}
@@ -538,11 +547,11 @@ export default function NotificationsScreen() {
                         ) : null}
 
                         {preview && !actionable ? (
-                          <View style={tw`mt-3 flex-row items-center rounded-2xl overflow-hidden border border-stone-200/80 bg-[#F3EEE4]`}>
+                          <View style={tw`mt-3 flex-row items-center rounded-card overflow-hidden border border-line/80 bg-page`}>
                             {previewImage ? (
                               <GrowImage
                                 source={{ uri: previewImage }}
-                                style={tw`w-[72px] h-[72px] bg-[#EAE4D6]`}
+                                style={tw`w-[72px] h-[72px] bg-raised`}
                                 contentFit="cover"
                               />
                             ) : (
@@ -552,7 +561,7 @@ export default function NotificationsScreen() {
                                     ? 'bg-emerald-50'
                                     : preview.kind === 'group'
                                       ? 'bg-emerald-50'
-                                      : 'bg-[#EAE4D6]'
+                                      : 'bg-raised'
                                 }`}
                               >
                                 <Text style={tw`text-2xl`}>
@@ -565,7 +574,7 @@ export default function NotificationsScreen() {
                               </View>
                             )}
                             <View style={tw`flex-1 px-3 py-2.5`}>
-                              <Text style={tw`text-[11px] font-bold tracking-widest text-stone-500 uppercase`}>
+                              <Text style={tw`text-caption font-bold tracking-widest text-ink-3 uppercase`}>
                                 {preview.kind === 'post'
                                   ? 'Post'
                                   : preview.kind === 'seed'
@@ -575,7 +584,7 @@ export default function NotificationsScreen() {
                                       : 'Person'}
                               </Text>
                               <Text
-                                style={tw`text-sm font-semibold text-stone-900 mt-0.5`}
+                                style={tw`text-sm font-semibold text-ink mt-0.5`}
                                 numberOfLines={2}
                               >
                                 {preview.title}
@@ -586,18 +595,18 @@ export default function NotificationsScreen() {
 
                         {actionable ? (
                           <View
-                            style={tw`mt-3.5 rounded-2xl overflow-hidden border border-[#FECACA] bg-[#FFF1F0]`}
+                            style={tw`mt-3.5 rounded-card overflow-hidden border border-red-200 bg-energy-50`}
                           >
-                            <View style={tw`px-3.5 py-3`}>
+                            <View style={tw`p-3`}>
                               <View style={tw`flex-row items-center mb-1`}>
-                                <Ionicons name="ribbon" size={14} color="#E11D48" />
+                                <Ionicons name="ribbon" size={14} color={roseInk()} />
                                 <Text
-                                  style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase ml-1.5`}
+                                  style={tw`text-caption font-semibold tracking-widest text-rose-600 uppercase ml-1.5`}
                                 >
                                   Endorsement ask
                                 </Text>
                               </View>
-                              <Text style={tw`text-sm text-stone-700 mt-1 leading-5`}>
+                              <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>
                                 They share a growth path with you. One tap helps unlock their
                                 Instructor Hub — peer trust, no purchase.
                               </Text>
@@ -605,19 +614,19 @@ export default function NotificationsScreen() {
                                 <PressableScale
                                   onPress={() => void onRespondRequest(item, 'accepted')}
                                   disabled={busyId === item.id}
-                                  style={tw`flex-1 py-3 rounded-xl bg-emerald-600 items-center flex-row justify-center gap-1.5 ${
+                                  style={tw`flex-1 py-3 rounded-control bg-emerald-600 items-center flex-row justify-center gap-1.5 ${
                                     busyId === item.id ? 'opacity-60' : ''
                                   }`}
                                 >
-                                  <Ionicons name="ribbon" size={16} color="#fff" />
+                                  <Ionicons name="ribbon" size={16} color="#FFFFFF" />
                                   <Text style={tw`text-white font-bold text-sm`}>Endorse</Text>
                                 </PressableScale>
                                 <PressableScale
                                   onPress={() => void onRespondRequest(item, 'declined')}
                                   disabled={busyId === item.id}
-                                  style={tw`px-4 py-3 rounded-xl bg-white border border-stone-200 items-center`}
+                                  style={tw`px-4 py-3 rounded-control bg-card border border-line items-center`}
                                 >
-                                  <Text style={tw`text-stone-700 font-semibold text-sm`}>
+                                  <Text style={tw`text-ink-2 font-semibold text-sm`}>
                                     Not now
                                   </Text>
                                 </PressableScale>

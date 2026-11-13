@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import { getOrders, type Order } from '../../services/api/marketplace';
 import { CategoryCapsule } from '../../components/ui/CategoryCapsule';
 import { alertMessage } from '../../utils/confirmDialog';
@@ -86,48 +87,48 @@ export default function UserOrdersScreen() {
   ).length;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+    <SafeAreaView style={tw`flex-1 bg-page`}>
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={tw`pb-10`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.brand} />}
       >
-        <View style={tw`px-4 pt-3 pb-2`}>
+        <View style={tw`px-gutter pt-3 pb-2`}>
           <View style={tw`flex-row items-center mb-4`}>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => navigation.goBack()}
-              style={tw`w-10 h-10 rounded-full bg-white border border-stone-200 items-center justify-center mr-3`}
+              style={tw`w-10 h-10 rounded-full bg-card border border-line items-center justify-center mr-3`}
               accessibilityLabel="Go back"
             >
-              <Ionicons name="arrow-back" size={20} color="#1C1917" />
-            </TouchableOpacity>
+              <Ionicons name="arrow-back" size={20} color={theme.colors.ink} />
+            </PressableScale>
             <View style={tw`flex-1`}>
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
                 Grow!
               </Text>
-              <Text style={tw`text-2xl font-bold text-stone-900`}>My Orders</Text>
+              <Text style={tw`text-2xl font-bold text-ink`}>My Orders</Text>
             </View>
           </View>
 
-          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4 mb-4`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          <View style={tw`bg-raised border border-line/80 rounded-card p-4 mb-4`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
               Your shop activity
             </Text>
             <View style={tw`flex-row mt-3`}>
               <View style={tw`flex-1 pr-3`}>
-                <Text style={tw`text-xs text-stone-500`}>Spent</Text>
-                <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>
+                <Text style={tw`text-xs text-ink-3`}>Spent</Text>
+                <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>
                   ${totalSpent.toFixed(2)}
                 </Text>
               </View>
               <View style={tw`w-px bg-stone-300/70 mx-1`} />
               <View style={tw`flex-1 px-3`}>
-                <Text style={tw`text-xs text-stone-500`}>Orders</Text>
-                <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>{orders.length}</Text>
+                <Text style={tw`text-xs text-ink-3`}>Orders</Text>
+                <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>{orders.length}</Text>
               </View>
               <View style={tw`w-px bg-stone-300/70 mx-1`} />
               <View style={tw`flex-1 pl-3`}>
-                <Text style={tw`text-xs text-stone-500`}>In progress</Text>
+                <Text style={tw`text-xs text-ink-3`}>In progress</Text>
                 <Text style={tw`text-2xl font-bold text-emerald-700 mt-0.5`}>{activeCount}</Text>
               </View>
             </View>
@@ -153,28 +154,28 @@ export default function UserOrdersScreen() {
           </ScrollView>
         </View>
 
-        <View style={tw`px-4 pt-3`}>
+        <View style={tw`px-gutter pt-3`}>
           {loading && orders.length === 0 ? (
             <View style={tw`items-center justify-center py-16`}>
-              <Text style={tw`text-stone-500`}>Loading orders...</Text>
+              <Text style={tw`text-ink-3`}>Loading orders...</Text>
             </View>
           ) : filteredOrders.length === 0 ? (
             <View style={tw`items-center justify-center py-16 px-6`}>
               <View style={tw`w-16 h-16 rounded-full bg-emerald-600/10 items-center justify-center mb-4`}>
-                <Ionicons name="bag-handle-outline" size={32} color="#059669" />
+                <Ionicons name="bag-handle-outline" size={32} color={theme.colors.brand} />
               </View>
-              <Text style={tw`text-lg font-bold text-stone-900 text-center`}>
+              <Text style={tw`text-lg font-bold text-ink text-center`}>
                 {statusFilter === 'all' ? 'No orders yet' : `No ${statusFilter} orders`}
               </Text>
-              <Text style={tw`text-sm text-stone-500 text-center mt-2 leading-5`}>
+              <Text style={tw`text-sm text-ink-3 text-center mt-2 leading-5`}>
                 When you check out from Grow! Shop, your orders will show up here.
               </Text>
-              <TouchableOpacity
+              <PressableScale
                 onPress={() => navigation.navigate('Marketplace' as never)}
-                style={tw`mt-5 px-6 py-3.5 bg-emerald-600 rounded-2xl`}
+                style={tw`mt-5 px-6 py-3.5 bg-emerald-600 rounded-card`}
               >
                 <Text style={tw`text-white font-semibold`}>Browse Shop</Text>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           ) : (
             filteredOrders.map((order) => {
@@ -192,43 +193,43 @@ export default function UserOrdersScreen() {
               return (
                 <View
                   key={order.id}
-                  style={tw`bg-white border border-stone-200/80 rounded-2xl p-4 mb-3`}
+                  style={tw`bg-card border border-line/80 rounded-card p-4 mb-3`}
                 >
                   <View style={tw`flex-row items-start justify-between mb-3`}>
                     <View style={tw`flex-1 pr-3`}>
-                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase`}>
+                      <Text style={tw`text-caption font-semibold tracking-wider text-ink-3 uppercase`}>
                         Order · {order.id.slice(-8).toUpperCase()}
                       </Text>
-                      <Text style={tw`text-xl font-bold text-stone-900 mt-1`}>
+                      <Text style={tw`text-xl font-bold text-ink mt-1`}>
                         ${order.total.toFixed(2)}
                       </Text>
                       <View style={tw`flex-row items-center mt-1.5`}>
-                        <Ionicons name="calendar-outline" size={14} color="#A8A29E" />
-                        <Text style={tw`text-xs text-stone-500 ml-1`}>{orderDate}</Text>
+                        <Ionicons name="calendar-outline" size={14} color={theme.colors.iconMuted} />
+                        <Text style={tw`text-xs text-ink-3 ml-1`}>{orderDate}</Text>
                       </View>
                     </View>
                     <View style={tw`items-end gap-1.5`}>
-                      <View style={tw`flex-row items-center px-2.5 py-1.5 rounded-full ${meta.chip}`}>
-                        <Ionicons name={meta.icon} size={14} color="#065F46" style={tw`mr-1`} />
+                      <View style={tw`flex-row items-center px-2.5 py-1.5 rounded-chip ${meta.chip}`}>
+                        <Ionicons name={meta.icon} size={14} color={tw.color('emerald-800')} style={tw`mr-1`} />
                         <Text style={tw`text-xs font-semibold ${meta.tint}`}>{meta.label}</Text>
                       </View>
                       {(() => {
                         const paid = (order.payment_status || '').toLowerCase() === 'paid';
                         return (
                           <View
-                            style={tw`flex-row items-center px-2.5 py-1 rounded-full ${
-                              paid ? 'bg-brand-50' : 'bg-stone-100'
+                            style={tw`flex-row items-center px-2.5 py-1 rounded-chip ${
+                              paid ? 'bg-brand-50' : 'bg-raised'
                             }`}
                           >
                             <Ionicons
                               name={paid ? 'card' : 'card-outline'}
                               size={12}
-                              color={paid ? '#059669' : '#6B645E'}
+                              color={paid ? theme.colors.brand : theme.colors.ink3}
                               style={tw`mr-1`}
                             />
                             <Text
-                              style={tw`text-[11px] font-semibold ${
-                                paid ? 'text-brand-700' : 'text-stone-600'
+                              style={tw`text-caption font-semibold ${
+                                paid ? 'text-brand-700' : 'text-ink-2'
                               }`}
                             >
                               {paid ? 'Paid' : 'Unpaid'}
@@ -239,33 +240,33 @@ export default function UserOrdersScreen() {
                     </View>
                   </View>
 
-                  <View style={tw`border-t border-stone-100 pt-3`}>
+                  <View style={tw`border-t border-line pt-3`}>
                     {order.items && order.items.length > 0 ? (
                       order.items.map((item: OrderItem, idx: number) => (
                         <View
                           key={item.id || idx}
                           style={tw`flex-row items-center justify-between mb-2`}
                         >
-                          <Text style={tw`text-sm text-stone-600 flex-1 pr-3`} numberOfLines={2}>
+                          <Text style={tw`text-sm text-ink-2 flex-1 pr-3`} numberOfLines={2}>
                             {item.quantity}× {item.product_name || 'Product'}
                           </Text>
-                          <Text style={tw`text-sm font-semibold text-stone-900`}>
+                          <Text style={tw`text-sm font-semibold text-ink`}>
                             ${(item.quantity * item.price).toFixed(2)}
                           </Text>
                         </View>
                       ))
                     ) : (
-                      <Text style={tw`text-sm text-stone-500`}>No items listed</Text>
+                      <Text style={tw`text-sm text-ink-3`}>No items listed</Text>
                     )}
                   </View>
 
                   {shippingAddress ? (
-                    <View style={tw`border-t border-stone-100 pt-3 mt-1`}>
-                      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase mb-1`}>
+                    <View style={tw`border-t border-line pt-3 mt-1`}>
+                      <Text style={tw`text-caption font-semibold tracking-wider text-ink-3 uppercase mb-1`}>
                         Ship to
                       </Text>
-                      <Text style={tw`text-sm text-stone-700`}>{shippingAddress.name}</Text>
-                      <Text style={tw`text-sm text-stone-600`}>
+                      <Text style={tw`text-sm text-ink-2`}>{shippingAddress.name}</Text>
+                      <Text style={tw`text-sm text-ink-2`}>
                         {shippingAddress.street}
                         {shippingAddress.city
                           ? `\n${shippingAddress.city}, ${shippingAddress.state} ${shippingAddress.zip}`
@@ -275,12 +276,12 @@ export default function UserOrdersScreen() {
                   ) : null}
 
                   {order.status === 'shipped' ? (
-                    <TouchableOpacity
-                      style={tw`mt-3 flex-row items-center justify-center py-2.5 rounded-xl bg-emerald-50`}
+                    <PressableScale
+                      style={tw`mt-3 flex-row items-center justify-center py-2.5 rounded-control bg-emerald-50`}
                     >
-                      <Ionicons name="navigate-outline" size={16} color="#059669" />
+                      <Ionicons name="navigate-outline" size={16} color={theme.colors.brand} />
                       <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Track shipment</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ) : null}
                 </View>
               );

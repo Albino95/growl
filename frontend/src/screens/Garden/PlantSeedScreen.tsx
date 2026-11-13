@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
@@ -154,7 +154,7 @@ export default function PlantSeedScreen() {
 
   if (planted) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
         <View style={tw`flex-1 items-center justify-center px-8`}>
           <Animated.View
             style={{
@@ -180,13 +180,13 @@ export default function PlantSeedScreen() {
               <SeedPlantVisual stage="seed" progress={0.08} size={128} pulseKey={1} />
             </View>
           </Animated.View>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase mt-12`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase mt-12`}>
             Grow!
           </Text>
-          <Text style={tw`text-2xl font-bold text-stone-900 mt-1 text-center`}>
+          <Text style={tw`text-2xl font-bold text-ink mt-1 text-center`}>
             You planted a seed
           </Text>
-          <Text style={tw`text-sm text-stone-500 mt-2 text-center leading-5`}>
+          <Text style={tw`text-sm text-ink-3 mt-2 text-center leading-5`}>
             Check in with numbers and photo evidence — watch it grow into your Garden.
           </Text>
         </View>
@@ -196,24 +196,24 @@ export default function PlantSeedScreen() {
 
   if (pathOptions.length === 0) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
         <GrowChromeHeader
           leftAccessory={
             <PressableScale
               onPress={() => navigation.goBack()}
               feedback="close"
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
             >
-              <Ionicons name="close" size={18} color="#1C1917" />
+              <Ionicons name="close" size={18} color={theme.colors.ink} />
             </PressableScale>
           }
         />
         <View style={tw`flex-1 px-6 justify-center items-center`}>
-          <View style={tw`w-16 h-16 rounded-2xl bg-emerald-50 items-center justify-center mb-4`}>
-            <Ionicons name="trail-sign-outline" size={28} color="#059669" />
+          <View style={tw`w-16 h-16 rounded-card bg-emerald-50 items-center justify-center mb-4`}>
+            <Ionicons name="trail-sign-outline" size={28} color={theme.colors.brand} />
           </View>
-          <Text style={tw`text-xl font-bold text-stone-900 text-center`}>Pick growth paths first</Text>
-          <Text style={tw`text-sm text-stone-500 mt-2 text-center leading-5`}>
+          <Text style={tw`text-xl font-bold text-ink text-center`}>Pick growth paths first</Text>
+          <Text style={tw`text-sm text-ink-3 mt-2 text-center leading-5`}>
             Seeds only grow on paths you’ve chosen. Update Paths on your profile, then come plant.
           </Text>
           <PressableScale
@@ -222,7 +222,7 @@ export default function PlantSeedScreen() {
               navigateFromRoot(navigation, 'EditProfile');
             }}
             feedback="open"
-            style={tw`mt-6 px-6 py-3.5 rounded-2xl bg-emerald-600`}
+            style={tw`mt-6 px-6 py-3.5 rounded-card bg-emerald-600`}
           >
             <Text style={tw`text-white font-bold`}>Open profile paths</Text>
           </PressableScale>
@@ -232,15 +232,15 @@ export default function PlantSeedScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
             onPress={() => navigation.goBack()}
             feedback="close"
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           >
-            <Ionicons name="close" size={18} color="#1C1917" />
+            <Ionicons name="close" size={18} color={theme.colors.ink} />
           </PressableScale>
         }
       />
@@ -248,20 +248,20 @@ export default function PlantSeedScreen() {
         style={tw`flex-1`}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={tw`px-5 pb-32`} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={tw`px-gutter-wide pb-32`} keyboardShouldPersistTaps="handled">
           <FadeInUp>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Plant a seed
             </Text>
-            <Text style={tw`text-[28px] font-bold text-stone-900 mt-0.5 leading-8`}>
+            <Text style={tw`text-display font-bold text-ink mt-0.5 leading-8`}>
               From your paths
             </Text>
-            <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5 mb-5`}>
+            <Text style={tw`text-sm text-ink-3 mt-1.5 leading-5 mb-5`}>
               Only goals on your growth paths — with real numbers you’ll prove at check-in.
             </Text>
           </FadeInUp>
 
-          <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+          <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
             Your path
           </Text>
           <View style={tw`flex-row flex-wrap gap-2 mb-5`}>
@@ -277,20 +277,20 @@ export default function PlantSeedScreen() {
                     setStartText('');
                     setTargetText('');
                   }}
-                  style={tw`px-3.5 py-2.5 rounded-2xl border flex-row items-center ${
+                  style={tw`px-3.5 py-2.5 rounded-card border flex-row items-center ${
                     active
                       ? 'bg-emerald-600 border-emerald-600'
-                      : 'bg-[#FFFcf7] border-stone-200'
+                      : 'bg-card border-line'
                   }`}
                 >
                   <Ionicons
                     name={(parent.icon || 'leaf-outline') as keyof typeof Ionicons.glyphMap}
                     size={14}
-                    color={active ? '#fff' : '#059669'}
+                    color={active ? '#fff' : theme.colors.brand}
                     style={tw`mr-1.5`}
                   />
                   <Text
-                    style={tw`text-sm font-semibold ${active ? 'text-white' : 'text-stone-700'}`}
+                    style={tw`text-sm font-semibold ${active ? 'text-white' : 'text-ink-2'}`}
                   >
                     {parent.label}
                   </Text>
@@ -301,7 +301,7 @@ export default function PlantSeedScreen() {
 
           {pathOpt ? (
             <FadeInUp key={pathOpt.parent.key}>
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
                 Goal
               </Text>
               <View style={tw`flex-row flex-wrap gap-2 mb-5`}>
@@ -319,13 +319,13 @@ export default function PlantSeedScreen() {
                       }}
                       style={tw`px-3.5 py-2 rounded-full border ${
                         active
-                          ? 'bg-stone-900 border-stone-900'
-                          : 'bg-[#EAE4D6] border-stone-200'
+                          ? 'bg-ink border-ink'
+                          : 'bg-raised border-line'
                       }`}
                     >
                       <Text
                         style={tw`text-sm font-semibold ${
-                          active ? 'text-white' : 'text-stone-700'
+                          active ? 'text-page' : 'text-ink-2'
                         }`}
                       >
                         {s.label}
@@ -339,13 +339,13 @@ export default function PlantSeedScreen() {
 
           {subKey && schema ? (
             <FadeInUp key={`meta-${subKey}`}>
-              <View style={tw`rounded-2xl bg-[#FFFcf7] border border-stone-200/80 p-4 mb-4`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-bloom-ink uppercase`}>
+              <View style={tw`rounded-card bg-card border border-line/80 p-4 mb-4`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-bloom-ink uppercase`}>
                   Goal essence
                 </Text>
-                <Text style={tw`text-sm text-stone-600 mt-1 leading-5 mb-4`}>{schema.hint}</Text>
+                <Text style={tw`text-sm text-ink-2 mt-1 leading-5 mb-4`}>{schema.hint}</Text>
 
-                <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5`}>
+                <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5`}>
                   {schema.startLabel}
                   {schema.unitLabel ? ` (${schema.unitLabel})` : ''}
                 </Text>
@@ -354,11 +354,11 @@ export default function PlantSeedScreen() {
                   onChangeText={setStartText}
                   keyboardType="decimal-pad"
                   placeholder="e.g. 82"
-                  placeholderTextColor="#6B645E"
-                  style={tw`bg-[#EAE4D6] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[16px] font-semibold mb-3`}
+                  placeholderTextColor={theme.colors.placeholder}
+                  style={tw`bg-raised border border-line rounded-card px-4 py-3 text-ink text-callout font-semibold mb-3`}
                 />
 
-                <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5`}>
+                <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5`}>
                   {schema.targetLabel}
                   {schema.unitLabel ? ` (${schema.unitLabel})` : ''}
                 </Text>
@@ -367,35 +367,35 @@ export default function PlantSeedScreen() {
                   onChangeText={setTargetText}
                   keyboardType="decimal-pad"
                   placeholder="e.g. 74"
-                  placeholderTextColor="#6B645E"
-                  style={tw`bg-[#EAE4D6] border border-stone-200 rounded-2xl px-4 py-3 text-stone-900 text-[16px] font-semibold mb-1`}
+                  placeholderTextColor={theme.colors.placeholder}
+                  style={tw`bg-raised border border-line rounded-card px-4 py-3 text-ink text-callout font-semibold mb-1`}
                 />
               </View>
 
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
                 Name it
               </Text>
               <TextInput
                 value={title}
                 onChangeText={setTitle}
                 placeholder="e.g. Summer shape-up"
-                placeholderTextColor="#6B645E"
-                style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 text-[16px] mb-4`}
+                placeholderTextColor={theme.colors.placeholder}
+                style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink text-body mb-4`}
               />
 
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
                 Goal in detail
               </Text>
-              <Text style={tw`text-sm text-stone-500 mb-2 leading-5`}>
+              <Text style={tw`text-sm text-ink-3 mb-2 leading-5`}>
                 Why this matters, deadline, or how you’ll measure success beyond the numbers.
               </Text>
               <TextInput
                 value={detail}
                 onChangeText={setDetail}
                 placeholder="e.g. Drop to 74kg by June for my sister’s wedding — weigh-ins every Monday"
-                placeholderTextColor="#6B645E"
+                placeholderTextColor={theme.colors.placeholder}
                 multiline
-                style={tw`bg-[#FFFcf7] border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 text-[15px] min-h-[96px] mb-6`}
+                style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink text-body min-h-[96px] mb-6`}
               />
               <View style={tw`items-center mb-4`}>
                 <SeedPlantVisual stage="seed" progress={0} size={100} />
@@ -405,13 +405,13 @@ export default function PlantSeedScreen() {
         </ScrollView>
 
         <View
-          style={tw`absolute left-0 right-0 bottom-0 px-5 pb-8 pt-3 bg-surface-page border-t border-stone-200/60`}
+          style={tw`absolute left-0 right-0 bottom-0 px-gutter-wide pb-8 pt-3 bg-page border-t border-line/60`}
         >
           <PressableScale
             onPress={() => void onPlant()}
             disabled={!parentKey || !subKey || busy}
             feedback={false}
-            style={tw`py-4 rounded-2xl bg-emerald-600 items-center flex-row justify-center gap-2 ${
+            style={tw`py-4 rounded-card bg-emerald-600 items-center flex-row justify-center gap-2 ${
               !parentKey || !subKey || busy ? 'opacity-50' : ''
             }`}
           >
@@ -420,7 +420,7 @@ export default function PlantSeedScreen() {
             ) : (
               <Ionicons name="leaf" size={18} color="#fff" />
             )}
-            <Text style={tw`text-white font-bold text-[16px]`}>
+            <Text style={tw`text-white font-bold text-callout`}>
               {busy ? 'Planting…' : 'Plant this seed'}
             </Text>
           </PressableScale>

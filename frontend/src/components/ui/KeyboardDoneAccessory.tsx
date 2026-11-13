@@ -1,6 +1,8 @@
 import React from 'react';
-import { InputAccessoryView, Keyboard, Platform, Pressable, Text, View } from 'react-native';
-import tw from '../../lib/tw';
+import { InputAccessoryView, Keyboard, Platform, Text, View } from 'react-native';
+import tw, { theme } from '../../lib/tw';
+import { type } from '../../theme/tokens';
+import PressableScale from './PressableScale';
 
 /** Shared nativeID for form fields that should share one iOS Done bar. */
 export const FORM_KEYBOARD_DONE_ID = 'grow-form-keyboard-done';
@@ -16,19 +18,22 @@ export function KeyboardDoneAccessory({
     <InputAccessoryView nativeID={nativeID}>
       <View
         style={[
-          tw`px-4 py-2.5 flex-row justify-end border-t`,
-          { backgroundColor: '#F3EEE4', borderTopColor: '#E7E5E4' },
+          tw`px-gutter py-2.5 flex-row justify-end border-t`,
+          { backgroundColor: theme.colors.page, borderTopColor: theme.colors.line },
         ]}
       >
-        <Pressable
+        <PressableScale
+          pressedScale={0.9}
           onPress={() => Keyboard.dismiss()}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Done"
-          style={tw`px-3 py-1.5 rounded-full bg-brand-50`}
+          style={tw`px-3 py-1.5 rounded-chip bg-brand-50`}
         >
-          <Text style={{ color: '#059669', fontWeight: '700', fontSize: 16 }}>Done</Text>
-        </Pressable>
+          <Text style={{ color: theme.colors.leafInk, fontWeight: '700', fontSize: type.callout.fontSize }}>
+            Done
+          </Text>
+        </PressableScale>
       </View>
     </InputAccessoryView>
   );

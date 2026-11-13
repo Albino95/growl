@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import type { InstructorOffering } from '../../services/api/instructor';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
@@ -100,20 +100,20 @@ export default function ProposalComposeSheet({
         style={tw`flex-1 justify-end bg-black/40`}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-4 pb-8`}>
+        <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
-            <Text style={tw`text-lg font-bold text-stone-900`}>Send a proposal</Text>
+            <Text style={tw`text-lg font-bold text-ink`}>Send a proposal</Text>
             <PressableScale
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={8}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised items-center justify-center`}
             >
-              <Ionicons name="close" size={18} color="#1C1917" />
+              <Ionicons name="close" size={18} color={theme.colors.ink} />
             </PressableScale>
           </View>
-          <Text style={tw`text-sm text-stone-500 mb-4 leading-5`}>
+          <Text style={tw`text-sm text-ink-3 mb-4 leading-5`}>
             Trial is {trial} day{trial === 1 ? '' : 's'} from your offer. No charge in this chat —
             you’ll confirm the plan together first.
           </Text>
@@ -124,14 +124,14 @@ export default function ProposalComposeSheet({
             <Field label="€ / week" value={weekly} onChange={setWeekly} />
           </View>
 
-          <View style={tw`px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80 mb-3`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          <View style={tw`px-3.5 py-3 rounded-card bg-card border border-line/80 mb-3`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
               Total
             </Text>
-            <Text style={tw`text-xl font-bold text-stone-900 mt-0.5`}>
+            <Text style={tw`text-xl font-bold text-ink mt-0.5`}>
               {total != null ? formatCurrency(total, currency) : '—'}
             </Text>
-            <Text style={tw`text-xs text-stone-500 mt-0.5`}>Written total for the plan</Text>
+            <Text style={tw`text-xs text-ink-3 mt-0.5`}>Written total for the plan</Text>
           </View>
 
           {showError && !parsed.ok ? (
@@ -142,9 +142,9 @@ export default function ProposalComposeSheet({
             value={note}
             onChangeText={setNote}
             placeholder="Note for the client (optional)"
-            placeholderTextColor="#6B645E"
+            placeholderTextColor={theme.colors.placeholder}
             multiline
-            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[72px] mb-4`}
+            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-4`}
           />
 
           <PressableScale
@@ -161,7 +161,7 @@ export default function ProposalComposeSheet({
               });
             }}
             disabled={busy}
-            style={tw`py-3.5 rounded-2xl bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
+            style={tw`py-3.5 rounded-card bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
           >
             {busy ? (
               <ActivityIndicator color="#fff" />
@@ -186,14 +186,14 @@ function Field({
 }) {
   return (
     <View style={tw`flex-1`}>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1`}>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1`}>
         {label}
       </Text>
       <TextInput
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
-        style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-2.5 text-[15px] text-stone-900`}
+        style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 text-body text-ink`}
       />
     </View>
   );

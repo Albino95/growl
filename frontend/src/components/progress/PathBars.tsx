@@ -16,7 +16,7 @@ export default function PathBars({ data, limit = 6 }: Props) {
   const rows = [...data].filter((d) => d.count > 0).sort((a, b) => b.count - a.count).slice(0, limit);
   if (!rows.length) {
     return (
-      <Text style={tw`text-xs text-stone-500`}>
+      <Text style={tw`text-xs text-ink-3`}>
         Post or check in on a path and it will show up here.
       </Text>
     );
@@ -37,12 +37,12 @@ export default function PathBars({ data, limit = 6 }: Props) {
           >
             <View style={tw`flex-row items-center mb-1`}>
               <Ionicons name={meta.icon} size={13} color={color} />
-              <Text style={tw`text-xs font-semibold text-stone-700 ml-1.5 flex-1`} numberOfLines={1}>
+              <Text style={tw`text-xs font-semibold text-ink-2 ml-1.5 flex-1`} numberOfLines={1}>
                 {label}
               </Text>
-              <Text style={tw`text-xs text-stone-500`}>{r.count}</Text>
+              <Text style={tw`text-xs text-ink-3`}>{r.count}</Text>
             </View>
-            <View style={tw`h-2.5 bg-[#EAE4D6] rounded-full overflow-hidden`}>
+            <View style={tw`h-2.5 bg-raised rounded-full overflow-hidden`}>
               <View
                 style={{
                   height: '100%',

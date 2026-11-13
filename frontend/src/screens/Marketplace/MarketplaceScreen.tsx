@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
@@ -217,7 +217,7 @@ export default function MarketplaceScreen() {
   })();
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <View style={tw`flex-1`}>
         <GrowChromeHeader
           right={
@@ -228,11 +228,11 @@ export default function MarketplaceScreen() {
                   setFilterOpen(true);
                 }}
                 feedback={false}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
                 accessibilityRole="button"
                 accessibilityLabel="Open filters"
               >
-                <Ionicons name="options-outline" size={17} color="#059669" />
+                <Ionicons name="options-outline" size={17} color={theme.colors.brand} />
               </PressableScale>
               <PressableScale
                 onPress={() => {
@@ -241,19 +241,19 @@ export default function MarketplaceScreen() {
                   rootNavigation.navigate('UserOrders' as never);
                 }}
                 feedback={false}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
                 accessibilityRole="button"
                 accessibilityLabel="Your orders"
               >
-                <Ionicons name="receipt-outline" size={17} color="#059669" />
+                <Ionicons name="receipt-outline" size={17} color={theme.colors.brand} />
               </PressableScale>
             </>
           }
         />
 
-        <FadeInUp style={tw`px-5 pt-3 pb-2`}>
-          <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Shop</Text>
-          <Text style={tw`text-sm text-stone-500 mb-2`}>
+        <FadeInUp style={tw`px-gutter-wide pt-3 pb-2`}>
+          <Text style={tw`text-lg font-bold text-ink mb-0.5`}>Shop</Text>
+          <Text style={tw`text-sm text-ink-3 mb-2`}>
             Gear ranked for your growth paths — filter with the capsules below.
           </Text>
         </FadeInUp>
@@ -275,14 +275,14 @@ export default function MarketplaceScreen() {
           ref={listRef}
           data={searchFiltered}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`px-4 pt-3 pb-24`}
+          contentContainerStyle={tw`px-gutter pt-3 pb-24`}
           {...feedListPerformanceProps}
           refreshControl={
             <RefreshControl {...refresh} refreshing={refresh.refreshing || isLoading} />
           }
           ListHeaderComponent={
             <>
-              <FadeInUp style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
+              <FadeInUp style={tw`mb-4 rounded-card overflow-hidden bg-emerald-600 px-5 py-5`}>
                 <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
                 <Text style={tw`text-emerald-100 text-sm mt-1`}>
                   Products ranked by your interests and community picks.
@@ -296,27 +296,27 @@ export default function MarketplaceScreen() {
               {hasActiveFilters && (
                 <View style={tw`flex-row flex-wrap mt-2`}>
                   {inStockOnly ? (
-                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
                       <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
                     </View>
                   ) : null}
                   {onMyPathsOnly ? (
-                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
                       <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
                     </View>
                   ) : null}
                   {minPrice != null ? (
-                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
                       <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
                     </View>
                   ) : null}
                   {maxPrice != null ? (
-                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
                       <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
                     </View>
                   ) : null}
                   {sortBy !== 'relevance' ? (
-                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
                       <Text style={tw`text-xs text-emerald-800 font-medium`}>
                         {sortBy === 'price_asc'
                           ? 'Price ↑'
@@ -345,7 +345,7 @@ export default function MarketplaceScreen() {
                           key={item.id}
                           feedback="open"
                           pressedScale={0.97}
-                          style={tw`w-40 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
+                          style={tw`w-40 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
                           onPress={() => {
                             const rootNavigation = navigation.getParent() || navigation;
                             (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
@@ -357,7 +357,7 @@ export default function MarketplaceScreen() {
                           {productImage ? (
                             <Image
                               source={{ uri: productImage }}
-                              style={tw`w-full h-48 bg-stone-100`}
+                              style={tw`w-full h-48 bg-raised`}
                               contentFit="cover"
                               onError={() => {
                                 setFailedProductImages((prev) =>
@@ -366,23 +366,23 @@ export default function MarketplaceScreen() {
                               }}
                             />
                           ) : (
-                            <View style={tw`w-full h-48 bg-stone-100 items-center justify-center`}>
-                              <Ionicons name="image-outline" size={iconSize.lg} color="#A8A29E" />
+                            <View style={tw`w-full h-48 bg-raised items-center justify-center`}>
+                              <Ionicons name="image-outline" size={iconSize.lg} color={theme.colors.iconMuted} />
                             </View>
                           )}
                           <View style={tw`p-2.5`}>
-                            <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
+                            <Text style={tw`text-sm font-semibold text-ink`} numberOfLines={2}>
                               {item.name}
                             </Text>
                             <Text style={tw`text-base font-bold text-brand-700 mt-1`}>
                               ${item.price.toFixed(2)}
                             </Text>
                             {item.matchLabel ? (
-                              <Text style={tw`text-[11px] text-brand-700 mt-0.5`} numberOfLines={1}>
+                              <Text style={tw`text-caption text-brand-700 mt-0.5`} numberOfLines={1}>
                                 {item.matchLabel}
                               </Text>
                             ) : item.isNew ? (
-                              <Text style={tw`text-[11px] text-violet-600 mt-0.5`}>New</Text>
+                              <Text style={tw`text-caption text-violet-600 mt-0.5`}>New</Text>
                             ) : null}
                           </View>
                         </PressableScale>
@@ -406,7 +406,7 @@ export default function MarketplaceScreen() {
             const productImage = productThumb(item);
             return (
               <PressableScale
-                style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4 mb-3`}
+                style={tw`bg-card border border-line/80 rounded-card p-4 mb-3`}
                 feedback="open"
                 pressedScale={0.985}
                 onPress={() => {
@@ -421,7 +421,7 @@ export default function MarketplaceScreen() {
                   {productImage ? (
                     <Image
                       source={{ uri: productImage }}
-                      style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 96, height: 120 }]}
+                      style={[tw`rounded-control mr-3 bg-raised`, { width: 96, height: 120 }]}
                       contentFit="cover"
                       transition={150}
                       onError={() => {
@@ -433,33 +433,33 @@ export default function MarketplaceScreen() {
                   ) : (
                     <View
                       style={[
-                        tw`rounded-xl mr-3 bg-stone-100 items-center justify-center`,
+                        tw`rounded-control mr-3 bg-raised items-center justify-center`,
                         { width: 96, height: 120 },
                       ]}
                     >
-                      <Ionicons name="image-outline" size={24} color="#A8A29E" />
+                      <Ionicons name="image-outline" size={24} color={theme.colors.iconMuted} />
                     </View>
                   )}
                   <View style={tw`flex-1`}>
-                    <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
+                    <Text style={tw`text-base font-semibold text-ink mb-1`} numberOfLines={2}>
                       {item.name}
                     </Text>
-                    <Text style={tw`text-sm text-stone-500 mb-2`} numberOfLines={2}>
+                    <Text style={tw`text-sm text-ink-3 mb-2`} numberOfLines={2}>
                       {item.description || 'Tap for details'}
                     </Text>
                     <View style={tw`flex-row items-center justify-between`}>
                       <View style={tw`flex-row items-center flex-wrap gap-1`}>
                         {item.isNew ? (
-                          <View style={tw`px-2 py-0.5 bg-violet-50 rounded-full`}>
+                          <View style={tw`px-2 py-0.5 bg-violet-50 rounded-chip`}>
                             <Text style={tw`text-xs font-medium text-violet-700`}>New</Text>
                           </View>
                         ) : null}
                         {item.stock > 0 ? (
-                          <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-full`}>
+                          <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-chip`}>
                             <Text style={tw`text-xs font-medium text-emerald-800`}>In stock</Text>
                           </View>
                         ) : (
-                          <View style={tw`px-2 py-0.5 bg-red-50 rounded-full`}>
+                          <View style={tw`px-2 py-0.5 bg-red-50 rounded-chip`}>
                             <Text style={tw`text-xs font-medium text-red-700`}>Sold out</Text>
                           </View>
                         )}
@@ -518,21 +518,21 @@ export default function MarketplaceScreen() {
 
       <AnimatedBottomSheet visible={filterOpen} onClose={() => setFilterOpen(false)}>
         {({ close }) => (
-          <View style={tw`px-5 pt-1 pb-2`}>
+          <View style={tw`px-gutter-wide pt-1 pb-2`}>
             <View style={tw`flex-row items-center justify-between mb-4`}>
               <View>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
                   Grow! Shop
                 </Text>
-                <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
+                <Text style={tw`text-lg font-bold text-ink`}>Filters</Text>
               </View>
               <PressableScale onPress={close} feedback={false} accessibilityRole="button" accessibilityLabel="Close filters">
-                <Ionicons name="close" size={24} color="#6B7280" />
+                <Ionicons name="close" size={24} color={theme.colors.ink3} />
               </PressableScale>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-line/80`}>
                 <Text style={tw`text-base text-stone-800`}>In stock only</Text>
                 <Switch
                   value={inStockOnly}
@@ -540,15 +540,15 @@ export default function MarketplaceScreen() {
                     feedback.toggle();
                     setInStockOnly(v);
                   }}
-                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
-                  thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
+                  trackColor={{ false: theme.colors.line, true: tw.color('emerald-200') }}
+                  thumbColor={inStockOnly ? theme.colors.brand : '#F5F5F4'}
                 />
               </View>
 
-              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-line/80`}>
                 <View style={tw`flex-1 pr-4`}>
                   <Text style={tw`text-base text-stone-800`}>On my growth paths</Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>Only products in your interest areas</Text>
+                  <Text style={tw`text-xs text-ink-3 mt-0.5`}>Only products in your interest areas</Text>
                 </View>
                 <Switch
                   value={onMyPathsOnly}
@@ -556,12 +556,12 @@ export default function MarketplaceScreen() {
                     feedback.toggle();
                     setOnMyPathsOnly(v);
                   }}
-                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
-                  thumbColor={onMyPathsOnly ? '#059669' : '#F5F5F4'}
+                  trackColor={{ false: theme.colors.line, true: tw.color('emerald-200') }}
+                  thumbColor={onMyPathsOnly ? theme.colors.brand : '#F5F5F4'}
                 />
               </View>
 
-              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Sort by</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mt-4 mb-2`}>Sort by</Text>
               <View style={tw`flex-row flex-wrap`}>
                 {(
                   [
@@ -578,13 +578,13 @@ export default function MarketplaceScreen() {
                       setSortBy(opt.key);
                     }}
                     feedback={false}
-                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                      sortBy === opt.key ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                      sortBy === opt.key ? 'bg-emerald-600' : 'bg-card border border-line'
                     }`}
                   >
                     <Text
                       style={tw`text-sm font-medium ${
-                        sortBy === opt.key ? 'text-white' : 'text-stone-600'
+                        sortBy === opt.key ? 'text-white' : 'text-ink-2'
                       }`}
                     >
                       {opt.label}
@@ -593,7 +593,7 @@ export default function MarketplaceScreen() {
                 ))}
               </View>
 
-              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Min price</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mt-4 mb-2`}>Min price</Text>
               <View style={tw`flex-row flex-wrap`}>
                 <PressableScale
                   onPress={() => {
@@ -601,12 +601,12 @@ export default function MarketplaceScreen() {
                     setMinPrice(null);
                   }}
                   feedback={false}
-                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                    minPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                  style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                    minPrice == null ? 'bg-emerald-600' : 'bg-card border border-line'
                   }`}
                 >
                   <Text
-                    style={tw`text-sm font-medium ${minPrice == null ? 'text-white' : 'text-stone-600'}`}
+                    style={tw`text-sm font-medium ${minPrice == null ? 'text-white' : 'text-ink-2'}`}
                   >
                     Any
                   </Text>
@@ -619,13 +619,13 @@ export default function MarketplaceScreen() {
                       setMinPrice(tier);
                     }}
                     feedback={false}
-                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                      minPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                      minPrice === tier ? 'bg-emerald-600' : 'bg-card border border-line'
                     }`}
                   >
                     <Text
                       style={tw`text-sm font-medium ${
-                        minPrice === tier ? 'text-white' : 'text-stone-600'
+                        minPrice === tier ? 'text-white' : 'text-ink-2'
                       }`}
                     >
                       ${tier}+
@@ -634,7 +634,7 @@ export default function MarketplaceScreen() {
                 ))}
               </View>
 
-              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mt-4 mb-2`}>Max price</Text>
               <View style={tw`flex-row flex-wrap`}>
                 <PressableScale
                   onPress={() => {
@@ -642,12 +642,12 @@ export default function MarketplaceScreen() {
                     setMaxPrice(null);
                   }}
                   feedback={false}
-                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                    maxPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                  style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                    maxPrice == null ? 'bg-emerald-600' : 'bg-card border border-line'
                   }`}
                 >
                   <Text
-                    style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-stone-600'}`}
+                    style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-ink-2'}`}
                   >
                     Any
                   </Text>
@@ -660,13 +660,13 @@ export default function MarketplaceScreen() {
                       setMaxPrice(tier);
                     }}
                     feedback={false}
-                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                      maxPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                      maxPrice === tier ? 'bg-emerald-600' : 'bg-card border border-line'
                     }`}
                   >
                     <Text
                       style={tw`text-sm font-medium ${
-                        maxPrice === tier ? 'text-white' : 'text-stone-600'
+                        maxPrice === tier ? 'text-white' : 'text-ink-2'
                       }`}
                     >
                       Under ${tier}
@@ -685,7 +685,7 @@ export default function MarketplaceScreen() {
                   close();
                 }}
                 feedback={false}
-                style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center mb-2`}
+                style={tw`mt-2 py-3.5 bg-emerald-600 rounded-card items-center mb-2`}
               >
                 <Text style={tw`text-white font-semibold`}>Show results</Text>
               </PressableScale>

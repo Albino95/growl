@@ -3,15 +3,15 @@ import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import PressableScale from '../ui/PressableScale';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import type { FriendSummary } from '../../services/api/friends';
 import type { ProfilePreview } from '../../app/navigation/RootNavigator';
@@ -99,20 +99,23 @@ export default function ConnectionsListSheet({
       presentationStyle="pageSheet"
       onRequestClose={resetAndClose}
     >
-      <SafeAreaView edges={['top', 'bottom']} style={tw`flex-1 bg-[#F3EEE4]`}>
-        <View style={tw`px-5 pt-3 pb-2 border-b border-stone-200/80 bg-[#FFFcf7]`}>
+      <SafeAreaView edges={['top', 'bottom']} style={tw`flex-1 bg-page`}>
+        <View style={tw`px-gutter-wide pt-3 pb-2 border-b border-line/80 bg-card`}>
           <View style={tw`flex-row items-center justify-between`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-xl font-bold text-stone-900`}>{title}</Text>
-              <Text style={tw`text-sm text-stone-500 mt-0.5`}>{subtitle}</Text>
+              <Text style={tw`text-xl font-bold text-ink`}>{title}</Text>
+              <Text style={tw`text-sm text-ink-3 mt-0.5`}>{subtitle}</Text>
             </View>
-            <TouchableOpacity
+            <PressableScale
               onPress={resetAndClose}
               hitSlop={12}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+              pressedScale={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
-              <Ionicons name="close" size={22} color="#57534E" />
-            </TouchableOpacity>
+              <Ionicons name="close" size={22} color={theme.colors.ink2} />
+            </PressableScale>
           </View>
 
           <View style={tw`mt-3`}>
@@ -133,11 +136,11 @@ export default function ConnectionsListSheet({
             {FILTERS.map((f) => {
               const selected = accountFilter === f.key;
               return (
-                <TouchableOpacity
+                <PressableScale
                   key={f.key}
                   onPress={() => setAccountFilter(f.key)}
-                  style={tw`mr-2 px-3.5 py-2 rounded-2xl border ${
-                    selected ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-stone-200'
+                  style={tw`mr-2 px-3.5 py-2 rounded-card border ${
+                    selected ? 'bg-emerald-600 border-emerald-600' : 'bg-card border-line'
                   }`}
                 >
                   <Text
@@ -145,7 +148,7 @@ export default function ConnectionsListSheet({
                   >
                     {f.label}
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
               );
             })}
           </ScrollView>
@@ -155,9 +158,9 @@ export default function ConnectionsListSheet({
               {filtered.length} of {users.length}{' '}
               {filtered.length === 1 ? 'person' : 'people'}
             </Text>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => setSort((s) => (s === 'recent' ? 'az' : 'recent'))}
-              style={tw`flex-row items-center px-2.5 py-1.5 rounded-full bg-[#EAE4D6]`}
+              style={tw`flex-row items-center px-2.5 py-1.5 rounded-chip bg-raised`}
             >
               <Ionicons
                 name={sort === 'az' ? 'text-outline' : 'time-outline'}
@@ -167,7 +170,7 @@ export default function ConnectionsListSheet({
               <Text style={tw`text-xs font-semibold text-emerald-800 ml-1`}>
                 {sort === 'az' ? 'A–Z' : 'Recent'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
 
@@ -177,8 +180,8 @@ export default function ConnectionsListSheet({
           </View>
         ) : users.length === 0 ? (
           <View style={tw`py-16 px-8 items-center`}>
-            <Ionicons name="people-outline" size={48} color="#A8A29E" />
-            <Text style={tw`text-stone-600 text-center mt-4 leading-5`}>
+            <Ionicons name="people-outline" size={48} color={theme.colors.iconMuted} />
+            <Text style={tw`text-ink-2 text-center mt-4 leading-5`}>
               {mode === 'following'
                 ? 'No connections yet. Pick growth categories to auto-link with others in the same areas.'
                 : 'No followers yet. When others share your growth categories, they connect with you.'}
@@ -186,8 +189,8 @@ export default function ConnectionsListSheet({
           </View>
         ) : filtered.length === 0 ? (
           <View style={tw`py-16 px-8 items-center`}>
-            <Ionicons name="search-outline" size={40} color="#A8A29E" />
-            <Text style={tw`text-stone-600 text-center mt-4 leading-5`}>
+            <Ionicons name="search-outline" size={40} color={theme.colors.iconMuted} />
+            <Text style={tw`text-ink-2 text-center mt-4 leading-5`}>
               No matches{query.trim() ? ` for “${query.trim()}”` : ''}. Try another filter or clear
               search.
             </Text>
@@ -199,12 +202,12 @@ export default function ConnectionsListSheet({
             contentContainerStyle={tw`pb-6`}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
-              <TouchableOpacity
+              <PressableScale
                 onPress={() => onSelectUser(item.id, { username: item.username, avatarUrl: item.avatar })}
-                style={tw`flex-row items-center px-5 py-3.5 border-b border-[#EAE4D6] bg-[#FFFcf7]/active:bg-[#EAE4D6]`}
+                style={tw`flex-row items-center px-gutter-wide py-3.5 border-b border-line bg-card`}
               >
                 <View
-                  style={tw`w-12 h-12 rounded-full overflow-hidden bg-[#ECFDF5] mr-3 border border-stone-200/70`}
+                  style={tw`w-12 h-12 rounded-full overflow-hidden bg-emerald-50 mr-3 border border-line/70`}
                 >
                   <Image
                     source={avatarSource(resolveAvatarUri(item.id, item.username, item.avatar))}
@@ -213,11 +216,11 @@ export default function ConnectionsListSheet({
                   />
                 </View>
                 <View style={tw`flex-1`}>
-                  <Text style={tw`text-base font-semibold text-stone-900`}>{item.username}</Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>{roleLabel(item)}</Text>
+                  <Text style={tw`text-base font-semibold text-ink`}>{item.username}</Text>
+                  <Text style={tw`text-xs text-ink-3 mt-0.5`}>{roleLabel(item)}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#A8A29E" />
-              </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.iconMuted} />
+              </PressableScale>
             )}
           />
         )}

@@ -3,13 +3,11 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   RefreshControl,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,7 +43,7 @@ import {
 import ProposalComposeSheet from '../../components/instructor/ProposalComposeSheet';
 import { COACHING_ACTIVE_STATUS, COACHING_BILLING_NOTE } from '../../constants/coaching';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
-import tw from '../../lib/tw';
+import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
 import EmptyState from '../../components/ui/EmptyState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
@@ -184,6 +182,8 @@ export default function MessagesScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<MessagesRouteParams, 'Messages'>>();
   const { user } = useAuth();
+  const c = useThemeColors();
+  const scheme = useColorSchemeName();
 
   const [inboxTab, setInboxTab] = useState<InboxTab>('friends');
   const [selectedConversation, setSelectedConversation] = useState<ActiveConversation | null>(null);
@@ -606,10 +606,26 @@ export default function MessagesScreen() {
 
   if (selectedConversation) {
     const canSend = !!messageText.trim() && !sending;
-    const wall = wallTheme(wallById[selectedConversation.id]);
-    const darkWall = wall.id === 'dusk' || wall.id === 'ink';
-    const chrome = darkWall ? '#FFFcf7' : '#1C1917';
-    const chromeMuted = darkWall ? '#A8A29E' : '#6B645E';
+    const baseWall = wallTheme(wallById[selectedConversation.id], scheme);
+    // The default Linen wash follows the app theme (cream by day, night soil in dark);
+    // the other walls are fixed palettes the user picked on purpose.
+    const isLinen = baseWall.id === 'linen';
+    const wall = isLinen
+      ? {
+          ...baseWall,
+          page: c.page,
+          header: c.page,
+          peerBubble: c.card,
+          peerBorder: scheme === 'dark' ? c.line : baseWall.peerBorder,
+          peerText: c.ink,
+          meta: c.ink3,
+          composer: c.card,
+        }
+      : baseWall;
+    const darkWall = !!wall.dark || (isLinen && scheme === 'dark');
+    const chrome = isLinen ? c.ink : darkWall ? '#FFFcf7' : '#1C1917';
+    const chromeMuted = isLinen ? c.ink3 : darkWall ? '#A8A29E' : '#6B645E';
+    const chip = isLinen ? c.raised : darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6';
     return (
       <SafeAreaView style={[tw`flex-1`, { backgroundColor: wall.page }]} edges={['top']}>
         <KeyboardAvoidingView
@@ -619,20 +635,24 @@ export default function MessagesScreen() {
         >
           <View
             style={[
-              tw`px-4 py-2.5 flex-row items-center`,
+              tw`px-gutter py-2.5 flex-row items-center`,
               { backgroundColor: wall.header, borderBottomColor: darkWall ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.06)', borderBottomWidth: 1 },
             ]}
           >
             <PressableScale
               onPress={() => setSelectedConversation(null)}
+              pressedScale={0.9}
+              hitSlop={8}
+              accessibilityLabel="Back"
               style={[
                 tw`mr-3 w-10 h-10 rounded-full items-center justify-center`,
-                { backgroundColor: darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6' },
+                { backgroundColor: chip },
               ]}
             >
               <Ionicons name="arrow-back" size={20} color={chrome} />
             </PressableScale>
-            <Pressable
+            <PressableScale
+              pressedScale={0.98}
               onPress={() => {
                 const root = navigation.getParent() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', {
@@ -651,10 +671,10 @@ export default function MessagesScreen() {
                 />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={{ fontWeight: '700', color: chrome, fontSize: 16 }} numberOfLines={1}>
+                <Text style={[tw`text-callout font-bold`, { color: chrome }]} numberOfLines={1}>
                   {selectedConversation.peer.username}
                 </Text>
-                <Text style={{ fontSize: 12, color: chromeMuted, marginTop: 2 }}>
+                <Text style={[tw`text-footnote mt-0.5`, { color: chromeMuted }]}>
                   {thread?.inquiry
                     ? 'Coaching · tap for profile'
                     : selectedConversation.coaching
@@ -662,15 +682,17 @@ export default function MessagesScreen() {
                       : 'Friend · tap for profile'}
                 </Text>
               </View>
-            </Pressable>
+            </PressableScale>
             <PressableScale
               onPress={() => {
                 feedback.open();
                 setWallOpen(true);
               }}
+              pressedScale={0.9}
+              hitSlop={8}
               style={[
                 tw`w-10 h-10 rounded-full items-center justify-center`,
-                { backgroundColor: darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6' },
+                { backgroundColor: chip },
               ]}
               accessibilityLabel="Change chat background"
             >
@@ -679,12 +701,12 @@ export default function MessagesScreen() {
           </View>
 
           {thread?.inquiry ? (
-            <View style={tw`mx-4 mt-3 px-3.5 py-3 rounded-2xl bg-emerald-50 border border-emerald-100`}>
+            <View style={tw`mx-gutter mt-3 p-3 rounded-card bg-emerald-50 border border-emerald-100`}>
               {thread.contract?.status === 'active' ? (
                 <>
-                  <Text style={tw`text-sm font-bold text-stone-900`}>{COACHING_ACTIVE_STATUS}</Text>
-                  <Text style={tw`text-xs text-stone-600 mt-0.5`}>{COACHING_BILLING_NOTE}</Text>
-                  <Text style={tw`text-xs text-stone-600 mt-0.5`}>
+                  <Text style={tw`text-sm font-bold text-ink`}>{COACHING_ACTIVE_STATUS}</Text>
+                  <Text style={tw`text-xs text-ink-2 mt-0.5`}>{COACHING_BILLING_NOTE}</Text>
+                  <Text style={tw`text-xs text-ink-2 mt-0.5`}>
                     {thread.contract.weeks} wk · {thread.contract.sessions_per_week}× · €
                     {thread.contract.weekly_fee_eur}/week
                   </Text>
@@ -694,15 +716,15 @@ export default function MessagesScreen() {
                         contractId: thread.contract!.id,
                       })
                     }
-                    style={tw`mt-2 py-2 rounded-xl bg-emerald-600 items-center`}
+                    style={tw`mt-2 py-2 rounded-control bg-emerald-600 items-center`}
                   >
                     <Text style={tw`text-white font-bold text-sm`}>Open plan</Text>
                   </PressableScale>
                 </>
               ) : thread.proposal?.status === 'sent' && thread.role === 'client' ? (
                 <>
-                  <Text style={tw`text-sm font-bold text-stone-900`}>Proposal waiting</Text>
-                  <Text style={tw`text-xs text-stone-600 mt-0.5`}>
+                  <Text style={tw`text-sm font-bold text-ink`}>Proposal waiting</Text>
+                  <Text style={tw`text-xs text-ink-2 mt-0.5`}>
                     {thread.proposal.weeks} wk · {thread.proposal.sessions_per_week}× · €
                     {thread.proposal.weekly_fee_eur}/week · €{thread.proposal.total_eur} total
                     {thread.proposal.trial_days ? ` · ${thread.proposal.trial_days}-day trial` : ''}
@@ -711,32 +733,32 @@ export default function MessagesScreen() {
                     <PressableScale
                       onPress={() => void handleAcceptProposal()}
                       disabled={proposalBusy}
-                      style={tw`flex-1 py-2 rounded-xl bg-emerald-600 items-center`}
+                      style={tw`flex-1 py-2 rounded-control bg-emerald-600 items-center`}
                     >
                       <Text style={tw`text-white font-bold text-sm`}>Accept</Text>
                     </PressableScale>
                     <PressableScale
                       onPress={() => void handleDeclineProposal()}
                       disabled={proposalBusy}
-                      style={tw`flex-1 py-2 rounded-xl bg-[#EAE4D6] items-center`}
+                      style={tw`flex-1 py-2 rounded-control bg-raised items-center`}
                     >
-                      <Text style={tw`text-stone-800 font-bold text-sm`}>Decline</Text>
+                      <Text style={tw`text-ink font-bold text-sm`}>Decline</Text>
                     </PressableScale>
                   </View>
                 </>
               ) : thread.proposal?.status === 'sent' && thread.role === 'instructor' ? (
-                <Text style={tw`text-sm text-stone-700`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   Proposal sent · waiting for {selectedConversation.peer.username}
                 </Text>
               ) : thread.role === 'instructor' ? (
                 <PressableScale
                   onPress={() => setComposeOpen(true)}
-                  style={tw`py-2 rounded-xl bg-emerald-600 items-center`}
+                  style={tw`py-2 rounded-control bg-emerald-600 items-center`}
                 >
                   <Text style={tw`text-white font-bold text-sm`}>Send a proposal</Text>
                 </PressableScale>
               ) : (
-                <Text style={tw`text-sm text-stone-700`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   Talk first. Your coach can send a written plan after you discuss.
                 </Text>
               )}
@@ -744,7 +766,7 @@ export default function MessagesScreen() {
           ) : null}
 
           {loadingMessages && selectedConversation.messages.length === 0 ? (
-            <View style={tw`flex-1 px-4 pt-4`}>
+            <View style={tw`flex-1 px-gutter pt-4`}>
               <SkeletonCard variant="message" />
               <SkeletonCard variant="message" />
             </View>
@@ -753,7 +775,7 @@ export default function MessagesScreen() {
               ref={threadListRef}
               data={selectedConversation.messages}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={tw`px-4 py-3 pb-4`}
+              contentContainerStyle={tw`px-gutter py-3 pb-4`}
               {...verticalScrollProps}
               onScrollBeginDrag={() => {
                 setPickerId(null);
@@ -769,10 +791,10 @@ export default function MessagesScreen() {
               }}
               ListHeaderComponent={
                 selectedConversation.has_older ? (
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => void loadOlderMessages()}
                     disabled={loadingOlder}
-                    style={tw`self-center my-2 px-4 py-2 rounded-full ${
+                    style={tw`self-center my-2 px-4 py-2 rounded-chip ${
                       darkWall ? 'bg-white/10' : 'bg-black/5'
                     }`}
                     accessibilityRole="button"
@@ -781,11 +803,11 @@ export default function MessagesScreen() {
                     {loadingOlder ? (
                       <ActivityIndicator size="small" color={wall.meta} />
                     ) : (
-                      <Text style={[tw`text-[13px] font-semibold`, { color: wall.meta }]}>
+                      <Text style={[tw`text-footnote font-semibold`, { color: wall.meta }]}>
                         Load earlier messages
                       </Text>
                     )}
-                  </TouchableOpacity>
+                  </PressableScale>
                 ) : null
               }
               renderItem={({ item, index }) => {
@@ -801,15 +823,14 @@ export default function MessagesScreen() {
                         <View
                           style={[
                             tw`px-3 py-1 rounded-full`,
-                            { backgroundColor: darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6' },
+                            { backgroundColor: chip },
                           ]}
                         >
                           <Text
-                            style={{
-                              fontSize: 11,
-                              fontWeight: '600',
-                              color: darkWall ? '#E7E5E4' : '#57534E',
-                            }}
+                            style={[
+                              tw`text-caption font-semibold`,
+                              { color: isLinen ? c.ink2 : darkWall ? '#E7E5E4' : '#57534E' },
+                            ]}
                           >
                             {formatDayLabel(item.created_at)}
                           </Text>
@@ -826,7 +847,8 @@ export default function MessagesScreen() {
                         }}
                       />
                     ) : null}
-                    <Pressable
+                    <PressableScale
+                      pressedScale={0.98}
                       onPress={() => {
                         if (failed) {
                           retryFailed(item.id);
@@ -853,7 +875,7 @@ export default function MessagesScreen() {
                     >
                       <View
                         style={[
-                          tw`rounded-[22px] px-3.5 py-2.5`,
+                          tw`rounded-sheet px-3.5 py-2.5`,
                           item.is_own
                             ? {
                                 backgroundColor: failed ? '#EF4444' : wall.ownBubble,
@@ -871,21 +893,19 @@ export default function MessagesScreen() {
                           <HeartBurst triggerKey={burstKey} size={56} />
                         ) : null}
                         <Text
-                          style={{
-                            fontSize: 15,
-                            lineHeight: 21,
-                            color: item.is_own ? wall.ownText : wall.peerText,
-                          }}
+                          style={[
+                            tw`text-body`,
+                            { lineHeight: 21, color: item.is_own ? wall.ownText : wall.peerText },
+                          ]}
                         >
                           {item.body}
                         </Text>
                         <View style={tw`flex-row items-center justify-end mt-1`}>
                           <Text
-                            style={{
-                              fontSize: 11,
-                              marginRight: 4,
-                              color: item.is_own ? 'rgba(255,255,255,0.75)' : wall.meta,
-                            }}
+                            style={[
+                              tw`text-caption font-normal mr-1`,
+                              { color: item.is_own ? 'rgba(255,255,255,0.75)' : wall.meta },
+                            ]}
                           >
                             {failed ? 'Tap to retry' : formatMessageTime(item.created_at)}
                           </Text>
@@ -896,7 +916,7 @@ export default function MessagesScreen() {
                           ) : null}
                         </View>
                       </View>
-                    </Pressable>
+                    </PressableScale>
                     <ReactionChips
                       reactions={item.reactions}
                       own={item.is_own}
@@ -911,12 +931,12 @@ export default function MessagesScreen() {
                   <View
                     style={[
                       tw`w-14 h-14 rounded-full items-center justify-center mb-3`,
-                      { backgroundColor: darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6' },
+                      { backgroundColor: chip },
                     ]}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={24} color="#059669" />
+                    <Ionicons name="chatbubble-ellipses-outline" size={24} color={c.brand} />
                   </View>
-                  <Text style={{ color: chromeMuted, textAlign: 'center', lineHeight: 20 }}>
+                  <Text style={[tw`text-body text-center`, { color: chromeMuted }]}>
                     No messages yet. Say hello — keep it kind.{'\n'}
                     Double-tap a note for ❤️ · hold for more.
                   </Text>
@@ -927,7 +947,7 @@ export default function MessagesScreen() {
 
           <View
             style={[
-              tw`px-4 pt-2 pb-3`,
+              tw`px-gutter pt-2 pb-3`,
               {
                 backgroundColor: wall.page,
                 borderTopColor: darkWall ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.06)',
@@ -938,7 +958,7 @@ export default function MessagesScreen() {
             <View style={tw`flex-row items-end gap-2`}>
               <View
                 style={[
-                  tw`flex-1 flex-row items-end border rounded-3xl px-3.5 py-1 min-h-[48px]`,
+                  tw`flex-1 flex-row items-end border rounded-sheet px-3.5 py-1 min-h-[48px]`,
                   {
                     backgroundColor: wall.composer,
                     borderColor: darkWall ? 'rgba(255,255,255,0.08)' : 'rgba(28,25,23,0.08)',
@@ -954,14 +974,15 @@ export default function MessagesScreen() {
                   maxLength={MESSAGE_MAX_LENGTH}
                   multiline
                   style={[
-                    tw`flex-1 text-[15px] max-h-28 py-2.5`,
+                    tw`flex-1 text-body max-h-28 py-2.5`,
                     { color: wall.peerText },
                   ]}
                   placeholderTextColor={wall.meta}
                   textAlignVertical="top"
                 />
               </View>
-              <TouchableOpacity
+              <PressableScale
+                pressedScale={0.9}
                 onPress={() => {
                   if (!canSend) return;
                   void handleSendMessage();
@@ -976,22 +997,22 @@ export default function MessagesScreen() {
                 style={[
                   tw`w-12 h-12 rounded-full items-center justify-center`,
                   {
-                    backgroundColor: canSend ? '#059669' : darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6',
+                    backgroundColor: canSend ? c.brand : chip,
                     opacity: sending ? 0.6 : 1,
                   },
                 ]}
                 accessibilityLabel="Send message"
               >
                 {sending ? (
-                  <ActivityIndicator color={canSend ? '#fff' : '#6B645E'} />
+                  <ActivityIndicator color={canSend ? '#FFFFFF' : chromeMuted} />
                 ) : (
                   <Ionicons
                     name="send"
                     size={18}
-                    color={canSend ? '#FFFFFF' : '#A8A29E'}
+                    color={canSend ? '#FFFFFF' : isLinen ? c.iconMuted : '#A8A29E'}
                   />
                 )}
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </View>
           <KeyboardDoneAccessory />
@@ -1014,25 +1035,27 @@ export default function MessagesScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
-          <TouchableOpacity
+          <PressableScale
             onPress={goBackRoot}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
             accessibilityLabel="Back"
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
-          </TouchableOpacity>
+            <Ionicons name="arrow-back" size={18} color={c.ink} />
+          </PressableScale>
         }
       />
 
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+      <View style={tw`px-gutter-wide pt-3 pb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
           Messages
         </Text>
-        <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>Inbox</Text>
-        <Text style={tw`text-sm text-stone-500 mt-1 mb-3`}>
+        <Text style={tw`text-title font-bold text-ink mt-0.5`}>Inbox</Text>
+        <Text style={tw`text-body text-ink-3 mt-1 mb-3`}>
           Friends, coaches, and shop support — each in its own lane.
         </Text>
 
@@ -1042,7 +1065,7 @@ export default function MessagesScreen() {
           placeholder="Search a name or last message…"
         />
 
-        <View style={tw`flex-row gap-5 border-b border-stone-200/80`}>
+        <View style={tw`flex-row gap-5 border-b border-line/80`}>
           {(
             [
               { key: 'friends' as const, label: 'Friends' },
@@ -1053,7 +1076,7 @@ export default function MessagesScreen() {
             const active = inboxTab === tab.key;
             const unread = laneCounts.unread[tab.key];
             return (
-              <Pressable
+              <PressableScale
                 key={tab.key}
                 onPress={() => {
                   feedback.select();
@@ -1064,8 +1087,8 @@ export default function MessagesScreen() {
                 }`}
               >
                 <Text
-                  style={tw`text-[15px] ${
-                    active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
+                  style={tw`text-body ${
+                    active ? 'text-ink font-bold' : 'text-ink-3 font-medium'
                   }`}
                 >
                   {tab.label}
@@ -1073,45 +1096,45 @@ export default function MessagesScreen() {
                 {unread > 0 ? (
                   <View
                     style={tw`ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center ${
-                      active ? 'bg-emerald-600' : 'bg-[#F97066]'
+                      active ? 'bg-emerald-600' : 'bg-energy-600'
                     }`}
                   >
-                    <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>
+                    <Text maxFontSizeMultiplier={1.3} style={tw`text-caption font-bold text-white`}>
                       {unread}
                     </Text>
                   </View>
                 ) : null}
-              </Pressable>
+              </PressableScale>
             );
           })}
         </View>
       </View>
 
       {listError ? (
-        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100`}>
+        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-control bg-red-50 border border-red-100`}>
           <Text style={tw`text-sm text-red-700`}>{listError}</Text>
         </View>
       ) : null}
 
       {loadingConversations && conversations.length === 0 ? (
-        <View style={tw`flex-1 px-5 pt-2`}>
+        <View style={tw`flex-1 px-gutter-wide pt-2`}>
           <SkeletonList variant="inbox" count={5} />
         </View>
       ) : (
         <FlatList
           data={filteredConversations}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+          contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl {...refresh} />
           }
           renderItem={({ item }) => (
             <PressableScale
               onPress={() => void openConversation(item)}
-              style={tw`flex-row items-center py-3.5 border-b border-stone-200/60`}
+              style={tw`flex-row items-center py-3.5 border-b border-line/60`}
             >
               <View style={tw`relative`}>
-                <View style={tw`w-14 h-14 rounded-full overflow-hidden border border-emerald-100 bg-[#ECFDF5]`}>
+                <View style={tw`w-14 h-14 rounded-full overflow-hidden border border-emerald-100 bg-emerald-50`}>
                   <GrowAvatar
                     userId={item.peer.id}
                     username={item.peer.username}
@@ -1120,33 +1143,33 @@ export default function MessagesScreen() {
                   />
                 </View>
                 {item.unread ? (
-                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#FFFcf7]`} />
+                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card`} />
                 ) : null}
               </View>
               <View style={tw`flex-1 ml-3`}>
                 <View style={tw`flex-row items-center justify-between mb-0.5`}>
                   <Text
-                    style={tw`font-bold ${item.unread ? 'text-stone-900' : 'text-stone-800'}`}
+                    style={tw`font-bold text-ink`}
                     numberOfLines={1}
                   >
                     {item.peer.username}
                   </Text>
-                  <Text style={tw`text-xs text-stone-500 ml-2`}>
+                  <Text style={tw`text-xs text-ink-3 ml-2`}>
                     {formatRelativeTime(item.last_message_at)}
                   </Text>
                 </View>
                 <View style={tw`flex-row items-center`}>
                   {item.coaching || item.peer.is_instructor ? (
                     <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-emerald-50`}>
-                      <Text style={tw`text-[11px] font-bold text-emerald-800`}>Coach</Text>
+                      <Text style={tw`text-caption font-bold text-emerald-800`}>Coach</Text>
                     </View>
                   ) : item.peer.is_business ? (
-                    <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-[#EAE4D6]`}>
-                      <Text style={tw`text-[11px] font-bold text-stone-700`}>Shop</Text>
+                    <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-raised`}>
+                      <Text style={tw`text-caption font-bold text-ink-2`}>Shop</Text>
                     </View>
                   ) : null}
                   <Text
-                    style={tw`flex-1 text-sm ${item.unread ? 'text-stone-800 font-medium' : 'text-stone-500'}`}
+                    style={tw`flex-1 text-sm ${item.unread ? 'text-ink font-medium' : 'text-ink-3'}`}
                     numberOfLines={1}
                   >
                     {item.last_message

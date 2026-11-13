@@ -3,11 +3,11 @@
  * Contract: docs/GROWTH_SYSTEM.md § Challenges.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, ScrollView, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -53,8 +53,8 @@ function DayGrid({ days, today }: { days: ChallengeDetail['days']; today: string
         return (
           <View
             key={d.day}
-            style={tw`m-1 w-8 h-8 rounded-lg items-center justify-center ${
-              d.done ? 'bg-emerald-600' : future ? 'bg-stone-100' : 'bg-[#EAE4D6]'
+            style={tw`m-1 w-8 h-8 rounded-control items-center justify-center ${
+              d.done ? 'bg-emerald-600' : future ? 'bg-raised/50' : 'bg-raised'
             } ${isToday ? 'border-2 border-emerald-700' : ''}`}
             accessibilityLabel={`Day ${i + 1}${d.done ? ', done' : future ? ', upcoming' : ''}${
               isToday ? ', today' : ''
@@ -63,7 +63,7 @@ function DayGrid({ days, today }: { days: ChallengeDetail['days']; today: string
             {d.done ? (
               <Ionicons name="leaf" size={iconSize.xs} color="#FFFFFF" />
             ) : (
-              <Text style={tw`text-[11px] font-semibold ${future ? 'text-stone-300' : 'text-stone-500'}`}>
+              <Text style={tw`text-caption font-semibold ${future ? 'text-ink-3/50' : 'text-ink-3'}`}>
                 {i + 1}
               </Text>
             )}
@@ -176,28 +176,32 @@ export default function ChallengeDetailScreen() {
 
   const today = localDayKey();
   const header = (
-    <View style={tw`flex-row items-center justify-between px-4 pt-2 pb-2`}>
-      <Pressable
+    <View style={tw`flex-row items-center justify-between px-gutter pt-2 pb-2`}>
+      <PressableScale
         onPress={goBack}
-        style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+        pressedScale={0.9}
+        hitSlop={8}
+        style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
         accessibilityRole="button"
         accessibilityLabel="Go back"
       >
-        <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
-      </Pressable>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>Challenge</Text>
+        <Ionicons name="arrow-back" size={iconSize.sm} color={theme.colors.ink} />
+      </PressableScale>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>Challenge</Text>
       {detail?.joined ? (
-        <Pressable
+        <PressableScale
           onPress={() => {
             feedback.open();
             setShareOpen(true);
           }}
-          style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+          pressedScale={0.9}
+          hitSlop={8}
+          style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           accessibilityRole="button"
           accessibilityLabel="Share challenge"
         >
-          <Ionicons name="share-outline" size={iconSize.sm} color="#1C1917" />
-        </Pressable>
+          <Ionicons name="share-outline" size={iconSize.sm} color={theme.colors.ink} />
+        </PressableScale>
       ) : (
         <View style={tw`w-9`} />
       )}
@@ -206,7 +210,7 @@ export default function ChallengeDetailScreen() {
 
   if (loading && !detail) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
         {header}
         <View style={tw`flex-1 items-center justify-center`}>
           <GrowLoader label="Loading challenge" />
@@ -217,7 +221,7 @@ export default function ChallengeDetailScreen() {
 
   if (!detail) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
         {header}
         <View style={tw`flex-1 justify-center px-6`}>
           <ErrorState
@@ -241,45 +245,45 @@ export default function ChallengeDetailScreen() {
   const others = c.leaderboard ?? [];
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       {header}
       <ScrollView
-        contentContainerStyle={tw`px-5 pb-16`}
+        contentContainerStyle={tw`px-gutter-wide pb-16`}
         refreshControl={<RefreshControl {...refresh} />}
       >
         {error ? (
-          <Pressable
+          <PressableScale
             onPress={() => void refresh.onRefresh()}
-            style={tw`mb-3 px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 flex-row items-center`}
+            style={tw`mb-3 px-4 py-2.5 rounded-card bg-amber-50 border border-amber-200 flex-row items-center`}
           >
-            <Ionicons name="cloud-offline-outline" size={16} color="#B45309" />
+            <Ionicons name="cloud-offline-outline" size={16} color={tw.color("amber-700")} />
             <Text style={tw`ml-2 flex-1 text-xs text-amber-800`}>{error}</Text>
             <Text style={tw`text-xs font-bold text-amber-800`}>Retry</Text>
-          </Pressable>
+          </PressableScale>
         ) : null}
 
         <FadeInUp>
           <View style={tw`items-center pt-2`}>
-            <View style={tw`w-20 h-20 rounded-3xl bg-emerald-50 border border-emerald-100 items-center justify-center`}>
+            <View style={tw`w-20 h-20 rounded-sheet bg-emerald-50 border border-emerald-100 items-center justify-center`}>
               <Text style={tw`text-5xl`}>{c.emoji || '🌱'}</Text>
             </View>
-            <Text style={tw`mt-4 text-2xl font-bold text-stone-900 text-center`}>{c.title}</Text>
+            <Text style={tw`mt-4 text-2xl font-bold text-ink text-center`}>{c.title}</Text>
             <Text style={tw`mt-1 text-xs font-semibold text-emerald-700 uppercase tracking-widest`}>
               {getCategoryLabel(c.path)} · {c.target_days} of {c.duration_days} days
             </Text>
             {c.description ? (
-              <Text style={tw`mt-3 text-base text-stone-600 text-center leading-6`}>{c.description}</Text>
+              <Text style={tw`mt-3 text-base text-ink-2 text-center leading-6`}>{c.description}</Text>
             ) : null}
           </View>
         </FadeInUp>
 
         {c.completed ? (
-          <View style={tw`mt-6 p-5 rounded-3xl bg-[#FFF1F0] border border-[#F97066]/30 items-center`}>
+          <View style={tw`mt-6 p-5 rounded-sheet bg-energy-50 border border-energy-600/30 items-center`}>
             <Animated.Text style={[tw`text-3xl`, { transform: [{ scale: treeScale }] }]}>🌳</Animated.Text>
-            <Text style={tw`mt-2 text-lg font-bold text-stone-900 text-center`}>
+            <Text style={tw`mt-2 text-lg font-bold text-ink text-center`}>
               You finished {c.title} 🌳
             </Text>
-            <Text style={tw`mt-1 text-sm text-stone-600 text-center`}>
+            <Text style={tw`mt-1 text-sm text-ink-2 text-center`}>
               {c.target_days} days of showing up. That’s real growth — be proud of it.
             </Text>
             <PrimaryButton
@@ -295,18 +299,18 @@ export default function ChallengeDetailScreen() {
         ) : null}
 
         {c.joined ? (
-          <View style={tw`mt-6 p-5 rounded-3xl bg-[#FFFcf7] border border-stone-200/80`}>
+          <View style={tw`mt-6 p-5 rounded-sheet bg-card border border-line/80`}>
             <View style={tw`flex-row items-end justify-between`}>
               <View>
-                <Text style={tw`text-4xl font-bold text-stone-900`}>
+                <Text style={tw`text-4xl font-bold text-ink`}>
                   {shown}
-                  <Text style={tw`text-lg font-semibold text-stone-500`}> / {c.target_days}</Text>
+                  <Text style={tw`text-lg font-semibold text-ink-3`}> / {c.target_days}</Text>
                 </Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>days on this path</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>days on this path</Text>
               </View>
               {left ? (
-                <View style={tw`px-3 py-1 rounded-full ${ended ? 'bg-stone-100' : 'bg-emerald-50'}`}>
-                  <Text style={tw`text-xs font-bold ${ended ? 'text-stone-500' : 'text-emerald-700'}`}>{left}</Text>
+                <View style={tw`px-3 py-1 rounded-full ${ended ? 'bg-raised' : 'bg-emerald-50'}`}>
+                  <Text style={tw`text-xs font-bold ${ended ? 'text-ink-3' : 'text-emerald-700'}`}>{left}</Text>
                 </View>
               ) : null}
             </View>
@@ -318,7 +322,7 @@ export default function ChallengeDetailScreen() {
               style={tw`mt-4`}
             />
             {!c.completed ? (
-              <Text style={tw`mt-3 text-xs text-stone-500`}>
+              <Text style={tw`mt-3 text-xs text-ink-3`}>
                 Post or check in on {getCategoryLabel(c.path)} to grow a day. Any day counts — no
                 need to be perfect.
               </Text>
@@ -331,9 +335,9 @@ export default function ChallengeDetailScreen() {
             ) : null}
           </View>
         ) : (
-          <View style={tw`mt-6 p-5 rounded-3xl bg-[#FFFcf7] border border-stone-200/80`}>
-            <Text style={tw`text-base font-bold text-stone-900`}>Ready when you are</Text>
-            <Text style={tw`mt-1 text-sm text-stone-600`}>
+          <View style={tw`mt-6 p-5 rounded-sheet bg-card border border-line/80`}>
+            <Text style={tw`text-base font-bold text-ink`}>Ready when you are</Text>
+            <Text style={tw`mt-1 text-sm text-ink-2`}>
               Grow on {getCategoryLabel(c.path)} on {c.target_days} days within {c.duration_days}.
               Rest days are fine — every day you show up counts.
             </Text>
@@ -343,23 +347,23 @@ export default function ChallengeDetailScreen() {
 
         {c.joined && others.length > 0 ? (
           <View style={tw`mt-6`}>
-            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+            <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
               Friends on this challenge
             </Text>
-            <View style={tw`rounded-3xl bg-[#FFFcf7] border border-stone-200/80 px-4`}>
+            <View style={tw`rounded-sheet bg-card border border-line/80 px-4`}>
               {others.map((p, i) => (
                 <PressableScale
                   key={p.user_id}
                   disabled={p.is_me}
                   onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: p.user_id, preview: { username: p.username, avatarUrl: p.avatar } })}
-                  style={tw`flex-row items-center py-3 ${i < others.length - 1 ? 'border-b border-stone-200/70' : ''}`}
+                  style={tw`flex-row items-center py-3 ${i < others.length - 1 ? 'border-b border-line/70' : ''}`}
                   accessibilityLabel={`${p.is_me ? 'You' : p.username}, ${p.progress} of ${c.target_days} days`}
                 >
-                  <Text style={tw`w-6 text-xs font-bold text-stone-500`}>{i + 1}</Text>
+                  <Text style={tw`w-6 text-xs font-bold text-ink-3`}>{i + 1}</Text>
                   <GrowAvatar userId={p.user_id} username={p.username} uri={p.avatar} size={36} />
                   <View style={tw`flex-1 ml-3`}>
                     <Text
-                      style={tw`text-sm font-semibold ${p.is_me ? 'text-emerald-700' : 'text-stone-900'}`}
+                      style={tw`text-sm font-semibold ${p.is_me ? 'text-emerald-700' : 'text-ink'}`}
                       numberOfLines={1}
                     >
                       {p.is_me ? 'You' : p.username}
@@ -372,14 +376,14 @@ export default function ChallengeDetailScreen() {
                       style={tw`mt-1.5`}
                     />
                   </View>
-                  <Text style={tw`ml-3 text-xs font-bold ${p.is_me ? 'text-emerald-700' : 'text-stone-600'}`}>
+                  <Text style={tw`ml-3 text-xs font-bold ${p.is_me ? 'text-emerald-700' : 'text-ink-2'}`}>
                     {Math.min(p.progress, c.target_days)}/{c.target_days}
                   </Text>
                 </PressableScale>
               ))}
             </View>
             {others.length === 1 ? (
-              <Text style={tw`mt-2 text-xs text-stone-500`}>
+              <Text style={tw`mt-2 text-xs text-ink-3`}>
                 Invite a friend to grow alongside you.
               </Text>
             ) : null}
@@ -399,18 +403,18 @@ export default function ChallengeDetailScreen() {
                 }}
               />
             ) : null}
-            <Pressable
+            <PressableScale
               onPress={() => void onLeave()}
               disabled={busy}
               style={tw`mt-4 py-2 px-4`}
               accessibilityRole="button"
             >
               {busy ? (
-                <ActivityIndicator color="#6B645E" />
+                <ActivityIndicator color={theme.colors.ink3} />
               ) : (
-                <Text style={tw`text-sm font-semibold text-stone-500`}>Leave challenge</Text>
+                <Text style={tw`text-sm font-semibold text-ink-3`}>Leave challenge</Text>
               )}
-            </Pressable>
+            </PressableScale>
           </View>
         ) : null}
       </ScrollView>

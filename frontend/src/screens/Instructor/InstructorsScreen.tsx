@@ -3,7 +3,7 @@ import { View, Text, FlatList, RefreshControl, ActivityIndicator } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import { useRefresh } from '../../hooks/useRefresh';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -73,7 +73,7 @@ export default function InstructorsScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
@@ -81,9 +81,9 @@ export default function InstructorsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back"
             hitSlop={8}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
+            <Ionicons name="arrow-back" size={iconSize.sm} color={theme.colors.ink} />
           </PressableScale>
         }
         right={
@@ -109,11 +109,11 @@ export default function InstructorsScreen() {
         }
         ListHeaderComponent={
           <FadeInUp>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-3`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-3`}>
               Instructors
             </Text>
-            <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>Find a coach</Text>
-            <Text style={tw`text-sm text-stone-500 mt-1.5 mb-4 leading-5`}>
+            <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>Find a coach</Text>
+            <Text style={tw`text-sm text-ink-3 mt-1.5 mb-4 leading-5`}>
               Talk first. Then a written weekly plan. Reviews open after 4 completed weeks together.
             </Text>
             {user?.isInstructor ? (
@@ -121,16 +121,16 @@ export default function InstructorsScreen() {
                 onPress={() =>
                   getRootNavigator(navigation)?.navigate('Individual', { screen: 'Instructor' })
                 }
-                style={tw`mb-4 px-4 py-3.5 rounded-2xl bg-emerald-50 border border-emerald-100 flex-row items-center`}
+                style={tw`mb-4 px-4 py-3.5 rounded-card bg-emerald-50 border border-emerald-100 flex-row items-center`}
               >
                 <View style={tw`w-9 h-9 rounded-full bg-emerald-600 items-center justify-center mr-3`}>
                   <Ionicons name="school" size={16} color="#fff" />
                 </View>
                 <View style={tw`flex-1`}>
-                  <Text style={tw`font-bold text-stone-900`}>Your Instructor Hub</Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>Students, offer, homework</Text>
+                  <Text style={tw`font-bold text-ink`}>Your Instructor Hub</Text>
+                  <Text style={tw`text-xs text-ink-3 mt-0.5`}>Students, offer, homework</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={iconSize.sm} color="#A8A29E" />
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={theme.colors.iconMuted} />
               </PressableScale>
             ) : null}
           </FadeInUp>
@@ -165,7 +165,7 @@ export default function InstructorsScreen() {
             <FadeInUp delay={Math.min(index * 40, 160)}>
               <PressableScale
                 onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: item.id, preview: { username: item.username, avatarUrl: item.avatar } })}
-                style={tw`mb-3 px-4 py-4 rounded-3xl bg-[#FFFcf7] border border-stone-200/80`}
+                style={tw`mb-3 px-4 py-4 rounded-sheet bg-card border border-line/80`}
               >
                 <View style={tw`flex-row items-center`}>
                   <GrowAvatar
@@ -176,34 +176,34 @@ export default function InstructorsScreen() {
                     style={tw`mr-3`}
                   />
                   <View style={tw`flex-1`}>
-                    <Text style={tw`text-lg font-bold text-stone-900`} numberOfLines={1}>
+                    <Text style={tw`text-lg font-bold text-ink`} numberOfLines={1}>
                       {item.username}
                     </Text>
-                    <Text style={tw`text-[13px] text-stone-500 mt-0.5`} numberOfLines={2}>
+                    <Text style={tw`text-footnote text-ink-3 mt-0.5`} numberOfLines={2}>
                       {item.teaching_headline || `Teaching ${path}`}
                     </Text>
                     {item.rating_count && item.rating_avg ? (
                       <View style={tw`flex-row items-center mt-1.5`}>
                         <StarRow value={item.rating_avg} />
-                        <Text style={tw`text-xs text-stone-500 ml-1.5`}>
+                        <Text style={tw`text-xs text-ink-3 ml-1.5`}>
                           {item.rating_avg} · {item.rating_count}
                         </Text>
                       </View>
                     ) : (
-                      <Text style={tw`text-[11px] text-stone-500 mt-1`}>
+                      <Text style={tw`text-caption text-ink-3 mt-1`}>
                         Reviews after 4 completed weeks
                       </Text>
                     )}
                   </View>
                 </View>
                 <View style={tw`flex-row items-center justify-between mt-3`}>
-                  <Text style={tw`text-[13px] font-semibold text-emerald-800 flex-1`} numberOfLines={1}>
+                  <Text style={tw`text-footnote font-semibold text-emerald-800 flex-1`} numberOfLines={1}>
                     {offer || path}
                   </Text>
                   <PressableScale
                     onPress={() => void onReachOut(item)}
                     disabled={busyId === item.id}
-                    style={tw`ml-2 px-3 py-2 rounded-xl bg-emerald-600`}
+                    style={tw`ml-2 px-3 py-2 rounded-control bg-emerald-600`}
                   >
                     {busyId === item.id ? (
                       <ActivityIndicator color="#fff" />

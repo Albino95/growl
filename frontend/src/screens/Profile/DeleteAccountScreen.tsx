@@ -3,15 +3,15 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Modal,
   Pressable,
 } from 'react-native';
+import PressableScale from '../../components/ui/PressableScale';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { useAuth } from '../../store/hooks';
 import { exportAccountData, deleteAccount } from '../../services/api/privacy';
 import { resetNavigationToAuth } from '../../app/navigation/rootNavigation';
@@ -70,53 +70,53 @@ export default function DeleteAccountScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white border-b border-stone-200`}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </TouchableOpacity>
-        <Text style={tw`text-lg font-semibold text-stone-900`}>Delete Account</Text>
+    <SafeAreaView style={tw`flex-1 bg-page`}>
+      <View style={tw`flex-row items-center justify-between px-gutter py-3 bg-card border-b border-line`}>
+        <PressableScale onPress={() => navigation.goBack()} pressedScale={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back">
+          <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
+        </PressableScale>
+        <Text style={tw`text-lg font-semibold text-ink`}>Delete Account</Text>
         <View style={tw`w-6`} />
       </View>
 
       <ScrollView contentContainerStyle={tw`p-4`}>
-        <Text style={tw`text-sm text-stone-600 mb-6`}>
+        <Text style={tw`text-sm text-ink-2 mb-6`}>
           You can download a copy of your data or permanently delete your account. Deletion removes your profile,
           posts, and personal information subject to legal retention requirements.
         </Text>
 
-        <TouchableOpacity
+        <PressableScale
           onPress={() => void handleExport()}
           disabled={exporting || deleting}
-          style={tw`bg-white border border-stone-200 rounded-xl p-4 mb-4 flex-row items-center`}
+          style={tw`bg-card border border-line rounded-control p-4 mb-4 flex-row items-center`}
         >
           <Ionicons name="download-outline" size={22} color="#059669" />
           <View style={tw`ml-3 flex-1`}>
-            <Text style={tw`font-semibold text-stone-900`}>Export my data</Text>
-            <Text style={tw`text-xs text-stone-500 mt-1`}>Request a copy of your account information</Text>
+            <Text style={tw`font-semibold text-ink`}>Export my data</Text>
+            <Text style={tw`text-xs text-ink-3 mt-1`}>Request a copy of your account information</Text>
           </View>
           {exporting ? <ActivityIndicator size="small" color="#059669" /> : null}
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity
+        <PressableScale
           onPress={openDeleteConfirm}
           disabled={exporting || deleting}
-          style={tw`bg-red-50 border border-red-200 rounded-xl p-4 flex-row items-center`}
+          style={tw`bg-red-50 border border-red-200 rounded-control p-4 flex-row items-center`}
         >
-          <Ionicons name="trash-outline" size={22} color="#DC2626" />
+          <Ionicons name="trash-outline" size={22} color={theme.colors.danger} />
           <View style={tw`ml-3 flex-1`}>
             <Text style={tw`font-semibold text-red-700`}>Delete my account</Text>
             <Text style={tw`text-xs text-red-600/80 mt-1`}>Permanently remove your account and sign out</Text>
           </View>
-          {deleting ? <ActivityIndicator size="small" color="#DC2626" /> : null}
-        </TouchableOpacity>
+          {deleting ? <ActivityIndicator size="small" color={theme.colors.danger} /> : null}
+        </PressableScale>
       </ScrollView>
 
       <Modal visible={confirmOpen} transparent animationType="fade" onRequestClose={() => setConfirmOpen(false)}>
         <Pressable style={tw`flex-1 bg-black/40 justify-center px-6`} onPress={() => setConfirmOpen(false)}>
-          <Pressable style={tw`bg-white rounded-2xl p-5`} onPress={(e) => e.stopPropagation()}>
-            <Text style={tw`text-lg font-bold text-stone-900 mb-2`}>Delete account?</Text>
-            <Text style={tw`text-sm text-stone-600 mb-4`}>
+          <Pressable style={tw`bg-card rounded-card p-5`} onPress={(e) => e.stopPropagation()}>
+            <Text style={tw`text-lg font-bold text-ink mb-2`}>Delete account?</Text>
+            <Text style={tw`text-sm text-ink-2 mb-4`}>
               This permanently schedules deletion of your account and personal data. This cannot be undone.
             </Text>
             <Text style={tw`text-sm font-medium text-stone-800 mb-2`}>
@@ -128,7 +128,7 @@ export default function DeleteAccountScreen() {
               autoCapitalize="characters"
               autoCorrect={false}
               placeholder="DELETE"
-              style={tw`mb-4 bg-stone-50 rounded-xl`}
+              style={tw`mb-4 bg-raised rounded-control`}
             />
             <View style={tw`flex-row gap-3`}>
               <View style={tw`flex-1`}>
@@ -140,7 +140,7 @@ export default function DeleteAccountScreen() {
                   onPress={() => void performDelete()}
                   disabled={confirmText.trim() !== 'DELETE' || deleting}
                   loading={deleting}
-                  style={{ backgroundColor: '#DC2626' }}
+                  style={{ backgroundColor: theme.colors.danger }}
                 />
               </View>
             </View>

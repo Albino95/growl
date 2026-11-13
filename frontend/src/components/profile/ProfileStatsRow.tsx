@@ -12,8 +12,8 @@ type StatProps = {
 function Stat({ label, value, onPress }: StatProps) {
   const inner = (
     <>
-      <Text style={tw`text-lg font-bold text-stone-900`}>{value}</Text>
-      <Text style={tw`text-xs text-stone-500 mt-0.5`}>{label}</Text>
+      <Text style={tw`text-lg font-bold text-ink`}>{value}</Text>
+      <Text style={tw`text-xs text-ink-3 mt-0.5`}>{label}</Text>
     </>
   );
   if (onPress) {
@@ -48,12 +48,12 @@ export default function ProfileStatsRow({
 }: Props) {
   return (
     <View
-      style={tw`flex-row border border-stone-200/80 rounded-2xl bg-[#FFFcf7] overflow-hidden`}
+      style={tw`flex-row border border-line/80 rounded-card bg-card overflow-hidden`}
     >
       <Stat label="Posts" value={postsCount} />
-      <View style={tw`w-px bg-stone-200/80 my-2.5`} />
+      <View style={tw`w-px bg-line/80 my-2.5`} />
       <Stat label="Following" value={followingCount} onPress={onPressFollowing} />
-      <View style={tw`w-px bg-stone-200/80 my-2.5`} />
+      <View style={tw`w-px bg-line/80 my-2.5`} />
       <Stat label="Followers" value={followersCount} onPress={onPressFollowers} />
     </View>
   );

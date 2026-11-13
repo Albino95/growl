@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch, Pressable } from 'react-native';
+import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
+import PressableScale from '../../components/ui/PressableScale';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { haptic } from '../../theme/haptics';
 import { previewSound } from '../../utils/interactionFeedback';
 import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -28,23 +29,23 @@ function Row({
   danger?: boolean;
 }) {
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={onPress}
-      style={tw`flex-row items-center py-3.5 border-b border-stone-200/80`}
+      style={tw`flex-row items-center py-3.5 border-b border-line/80`}
     >
       <View
         style={tw`w-9 h-9 rounded-full items-center justify-center mr-3 ${
-          danger ? 'bg-red-50' : 'bg-[#EAE4D6]'
+          danger ? 'bg-red-50' : 'bg-raised'
         }`}
       >
-        <Ionicons name={icon} size={18} color={danger ? '#DC2626' : '#059669'} />
+        <Ionicons name={icon} size={18} color={danger ? theme.colors.danger : '#059669'} />
       </View>
       <View style={tw`flex-1 pr-2`}>
-        <Text style={tw`font-semibold ${danger ? 'text-red-700' : 'text-stone-900'}`}>{label}</Text>
-        {subtitle ? <Text style={tw`text-xs text-stone-500 mt-0.5`}>{subtitle}</Text> : null}
+        <Text style={tw`font-semibold ${danger ? 'text-red-700' : 'text-ink'}`}>{label}</Text>
+        {subtitle ? <Text style={tw`text-xs text-ink-3 mt-0.5`}>{subtitle}</Text> : null}
       </View>
-      <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-    </TouchableOpacity>
+      <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
+    </PressableScale>
   );
 }
 
@@ -104,31 +105,34 @@ export default function SettingsScreen() {
   const setSoundEnabled = useUiPrefsStore((s) => s.setSoundEnabled);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
-          <Pressable
+          <PressableScale
             onPress={() => navigation.goBack()}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+            accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
-          </Pressable>
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
+          </PressableScale>
         }
       />
 
       <ScrollView
-        contentContainerStyle={[tw`px-5 pt-4`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+        contentContainerStyle={[tw`px-gutter-wide pt-4`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
       >
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
           Account
         </Text>
-        <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5 mb-4`}>Settings</Text>
+        <Text style={tw`text-2xl font-bold text-ink mt-0.5 mb-4`}>Settings</Text>
 
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
           Profile
         </Text>
-        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-card border border-line/80 rounded-card px-4 mb-5`}>
           <Row
             icon="person-outline"
             label="Edit profile"
@@ -149,14 +153,14 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
           Feedback
         </Text>
-        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
-          <View style={tw`flex-row items-center justify-between py-3.5 border-b border-stone-200/80`}>
+        <View style={tw`bg-card border border-line/80 rounded-card px-4 mb-5`}>
+          <View style={tw`flex-row items-center justify-between py-3.5 border-b border-line/80`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`font-semibold text-stone-900`}>Sounds</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+              <Text style={tw`font-semibold text-ink`}>Sounds</Text>
+              <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                 Gentle chimes for check-ins, milestones and sharing. Follows your silent switch.
               </Text>
             </View>
@@ -169,14 +173,14 @@ export default function SettingsScreen() {
                 // Turning sounds on previews the check-in chime.
                 if (v) previewSound('bloom');
               }}
-              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
+              trackColor={{ false: tw.color('stone-300'), true: tw.color('emerald-200') }}
               thumbColor={soundEnabled ? '#059669' : '#F5F5F4'}
             />
           </View>
           <View style={tw`flex-row items-center justify-between py-3.5`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`font-semibold text-stone-900`}>Haptics</Text>
-              <Text style={tw`text-xs text-stone-500 mt-0.5`}>Subtle taps you can feel.</Text>
+              <Text style={tw`font-semibold text-ink`}>Haptics</Text>
+              <Text style={tw`text-xs text-ink-3 mt-0.5`}>Subtle taps you can feel.</Text>
             </View>
             <Switch
               accessibilityLabel="Haptics"
@@ -186,17 +190,17 @@ export default function SettingsScreen() {
                 // Confirm "on" with the tick itself; turning haptics off stays silent.
                 if (v) haptic('selection');
               }}
-              trackColor={{ false: '#D6D3D1', true: '#A7F3D0' }}
+              trackColor={{ false: tw.color('stone-300'), true: tw.color('emerald-200') }}
               thumbColor={hapticsEnabled ? '#059669' : '#F5F5F4'}
             />
           </View>
           {DARK_MODE_READY ? <AppearanceRow /> : null}
         </View>
 
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
           Teaching
         </Text>
-        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-card border border-line/80 rounded-card px-4 mb-5`}>
           <Row
             icon="search-outline"
             label="Find instructors"
@@ -217,10 +221,10 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
           Commerce
         </Text>
-        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-card border border-line/80 rounded-card px-4 mb-5`}>
           <Row
             icon="storefront-outline"
             label="Shop"
@@ -242,10 +246,10 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
           Support
         </Text>
-        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 mb-5`}>
+        <View style={tw`bg-card border border-line/80 rounded-card px-4 mb-5`}>
           <Row
             icon="chatbubble-ellipses-outline"
             label="Review Grow!"

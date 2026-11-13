@@ -8,7 +8,7 @@ import { levelEmoji } from './LevelProgressCard';
 export default function LevelPill({ level }: { level: Pick<GrowthLevel, 'n' | 'name' | 'points'> }) {
   return (
     <View
-      style={tw`flex-row items-center self-start px-2.5 py-1 rounded-full bg-[#ECFDF5] border border-emerald-200`}
+      style={tw`flex-row items-center self-start px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200`}
       accessible
       accessibilityLabel={`Growth level ${level.name}, ${level.points} points`}
     >

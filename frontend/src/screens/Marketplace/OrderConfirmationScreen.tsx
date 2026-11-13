@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getOrder, type Order } from '../../services/api/marketplace';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
@@ -71,19 +71,19 @@ export default function OrderConfirmationScreen() {
     subtitle =
       'Return here after paying in the browser. Open My orders to see payment status.';
     icon = 'card-outline';
-    iconColor = '#059669';
+    iconColor = theme.colors.brand;
     iconBg = 'bg-brand-50';
   } else if (isCancelled) {
     title = 'Payment cancelled';
     subtitle = 'No charge was completed. You can try checkout again from your cart.';
     icon = 'close-circle-outline';
-    iconColor = '#DC2626';
+    iconColor = theme.colors.danger;
     iconBg = 'bg-red-50';
   } else if (isPaid) {
     title = 'Payment confirmed';
     subtitle = 'Your order is paid. The seller will prepare shipment next.';
     icon = 'checkmark-circle';
-    iconColor = '#059669';
+    iconColor = theme.colors.brand;
     iconBg = 'bg-brand-50';
   } else if (polls >= MAX_POLLS) {
     title = 'Payment pending';
@@ -95,26 +95,26 @@ export default function OrderConfirmationScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+    <SafeAreaView style={tw`flex-1 bg-page`}>
       <View style={tw`flex-1 px-6 justify-center`}>
-        <View style={tw`bg-surface-card border border-stone-200/80 rounded-3xl p-6 items-center`}>
-          <View style={tw`w-16 h-16 rounded-2xl items-center justify-center mb-4 ${iconBg}`}>
+        <View style={tw`bg-card border border-line/80 rounded-sheet p-6 items-center`}>
+          <View style={tw`w-16 h-16 rounded-card items-center justify-center mb-4 ${iconBg}`}>
             {stillWaiting ? (
-              <ActivityIndicator size="large" color="#059669" />
+              <ActivityIndicator size="large" color={theme.colors.brand} />
             ) : (
               <Ionicons name={icon} size={36} color={iconColor} />
             )}
           </View>
-          <Text style={tw`text-2xl font-bold text-stone-900 text-center mb-2`}>{title}</Text>
-          <Text style={tw`text-sm text-stone-500 text-center leading-5 mb-4`}>{subtitle}</Text>
+          <Text style={tw`text-2xl font-bold text-ink text-center mb-2`}>{title}</Text>
+          <Text style={tw`text-sm text-ink-3 text-center leading-5 mb-4`}>{subtitle}</Text>
 
           {orderId ? (
-            <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase mb-1`}>
+            <Text style={tw`text-caption font-semibold tracking-wider text-ink-3 uppercase mb-1`}>
               Order · {orderId.slice(-8).toUpperCase()}
             </Text>
           ) : null}
           {sessionId ? (
-            <Text style={tw`text-[11px] text-stone-500 mb-3`} numberOfLines={1}>
+            <Text style={tw`text-caption text-ink-3 mb-3`} numberOfLines={1}>
               Session {sessionId.slice(0, 18)}…
             </Text>
           ) : null}

@@ -32,17 +32,18 @@ export function stageEmoji(stage: string): string {
   }
 }
 
-export function stageAccent(stage: string): { ring: string; wash: string } {
+/** ring = brand stroke (same in both schemes); wash = light hex; washTw = tw colour key for the disc (scheme-aware). */
+export function stageAccent(stage: string): { ring: string; wash: string; washTw: string } {
   switch (stage) {
     case 'sprout':
-      return { ring: '#34D399', wash: '#ECFDF5' };
+      return { ring: '#34D399', wash: '#ECFDF5', washTw: 'emerald-50' };
     case 'sapling':
-      return { ring: '#059669', wash: '#D1FAE5' };
+      return { ring: '#059669', wash: '#D1FAE5', washTw: 'emerald-100' };
     case 'tree':
-      return { ring: '#047857', wash: '#A7F3D0' };
+      return { ring: '#047857', wash: '#A7F3D0', washTw: 'emerald-200' };
     case 'mature':
-      return { ring: '#F97066', wash: '#FFF1F0' };
+      return { ring: '#F97066', wash: '#FFF1F0', washTw: 'energy-50' };
     default:
-      return { ring: '#A8A29E', wash: '#EAE4D6' };
+      return { ring: '#A8A29E', wash: '#EAE4D6', washTw: 'raised' };
   }
 }

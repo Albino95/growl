@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ReelVideoPlayer } from '../ui/VideoEditor';
@@ -8,6 +8,7 @@ import { COMPOSER_COPY } from '../../hooks/composerConfig';
 import type { MediaComposer } from '../../hooks/useMediaComposer';
 import PublishingOverlay from './PublishingOverlay';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = {
   composer: MediaComposer;
@@ -43,7 +44,7 @@ export default function ComposerMediaStage({ composer, badge }: Props) {
     <View style={tw`flex-1 min-h-0 items-center justify-center bg-black`} onLayout={onLayout}>
       {box.width > 0 ? (
         <View
-          style={[tw`overflow-hidden bg-stone-950`, { width: box.width, height: box.height }]}
+          style={[tw`overflow-hidden bg-[#0C0A09]`, { width: box.width, height: box.height }]}
         >
           {isVideo ? (
             previewArmed ? (
@@ -79,15 +80,16 @@ export default function ComposerMediaStage({ composer, badge }: Props) {
           ) : null}
           {canPlay ? (
             <View pointerEvents="box-none" style={tw`absolute bottom-4 left-0 right-0 items-center z-20`}>
-              <Pressable
+              <PressableScale
+                pressedScale={0.9}
                 onPress={composer.play}
                 style={tw`w-12 h-12 rounded-full bg-black/70 items-center justify-center border border-white/20`}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Play clip"
               >
-                <Ionicons name="play" size={22} color="#fff" />
-              </Pressable>
+                <Ionicons name="play" size={22} color="#FFFFFF" />
+              </PressableScale>
             </View>
           ) : null}
           {publishing ? (

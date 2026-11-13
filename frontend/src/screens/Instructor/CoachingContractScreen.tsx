@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import ErrorState from '../../components/ui/ErrorState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -162,7 +162,7 @@ export default function CoachingContractScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
@@ -170,16 +170,16 @@ export default function CoachingContractScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back"
             hitSlop={8}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={iconSize.sm} color="#1C1917" />
+            <Ionicons name="arrow-back" size={iconSize.sm} color={theme.colors.ink} />
           </PressableScale>
         }
       />
 
       {loading && !contract ? (
         <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" />
+          <ActivityIndicator color={theme.colors.brand} />
         </View>
       ) : contract ? (
         <ScrollView
@@ -191,29 +191,29 @@ export default function CoachingContractScreen() {
                 setRefreshing(true);
                 void load();
               }}
-              tintColor="#059669"
+              tintColor={theme.colors.brand}
             />
           }
         >
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-3`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-3`}>
             Coaching plan
           </Text>
-          <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>
+          <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>
             {isCoach ? contract.client?.username : contract.instructor?.username}
           </Text>
-          <Text style={tw`text-sm text-stone-500 mt-1`}>
+          <Text style={tw`text-sm text-ink-3 mt-1`}>
             {contract.status === 'active' ? COACHING_ACTIVE_STATUS : contract.status}
           </Text>
           {contract.status === 'active' ? (
-            <Text style={tw`text-xs text-stone-500 mt-1 leading-4`}>{COACHING_BILLING_NOTE}</Text>
+            <Text style={tw`text-xs text-ink-3 mt-1 leading-4`}>{COACHING_BILLING_NOTE}</Text>
           ) : null}
 
-          <View style={tw`mt-4 px-4 py-3.5 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
-            <Text style={tw`text-[16px] font-bold text-stone-900`}>
+          <View style={tw`mt-4 px-4 py-3.5 rounded-card bg-card border border-line/80`}>
+            <Text style={tw`text-callout font-bold text-ink`}>
               {contract.weeks} week{contract.weeks === 1 ? '' : 's'} · {contract.sessions_per_week}× /
               week · {formatCurrency(contract.weekly_fee_eur, contract.currency)}/week
             </Text>
-            <Text style={tw`text-sm text-stone-600 mt-1`}>
+            <Text style={tw`text-sm text-ink-2 mt-1`}>
               {formatCurrency(contract.total_eur, contract.currency)} total
               {contract.trial_days ? ` · ${contract.trial_days}-day trial` : ''}
             </Text>
@@ -223,7 +223,7 @@ export default function CoachingContractScreen() {
             {isCoach && contract.status === 'active' ? (
               <PressableScale
                 onPress={() => setAssignOpen(true)}
-                style={tw`flex-1 py-3 rounded-2xl bg-emerald-600 items-center`}
+                style={tw`flex-1 py-3 rounded-card bg-emerald-600 items-center`}
               >
                 <Text style={tw`text-white font-bold`}>Assign homework</Text>
               </PressableScale>
@@ -233,15 +233,15 @@ export default function CoachingContractScreen() {
                 onPress={() => void onComplete()}
                 disabled={busy}
                 accessibilityState={{ disabled: busy }}
-                style={tw`flex-1 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center ${busy ? 'opacity-60' : ''}`}
+                style={tw`flex-1 py-3 rounded-card bg-raised border border-line items-center ${busy ? 'opacity-60' : ''}`}
               >
-                <Text style={tw`text-stone-800 font-bold`}>Mark complete</Text>
+                <Text style={tw`text-ink font-bold`}>Mark complete</Text>
               </PressableScale>
             ) : null}
           </View>
 
-          <View style={tw`mt-3 px-4 py-3.5 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          <View style={tw`mt-3 px-4 py-3.5 rounded-card bg-card border border-line/80`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
               {isCoach ? 'Rate this client' : 'Review this coach'}
             </Text>
             {review?.eligible ? (
@@ -249,16 +249,16 @@ export default function CoachingContractScreen() {
                 {review.mine ? (
                   <View style={tw`flex-row items-center mt-2`}>
                     <StarRow value={review.mine.stars} />
-                    <Text style={tw`text-xs text-stone-500 ml-2`}>Your review</Text>
+                    <Text style={tw`text-xs text-ink-3 ml-2`}>Your review</Text>
                   </View>
                 ) : (
-                  <Text style={tw`text-sm text-stone-600 mt-1.5`}>
+                  <Text style={tw`text-sm text-ink-2 mt-1.5`}>
                     {review.weeks_completed} weeks completed. You can write a review.
                   </Text>
                 )}
                 <PressableScale
                   onPress={() => setReviewOpen(true)}
-                  style={tw`mt-2.5 py-2.5 rounded-xl bg-emerald-600 items-center`}
+                  style={tw`mt-2.5 py-2.5 rounded-control bg-emerald-600 items-center`}
                 >
                   <Text style={tw`text-white font-bold text-sm`}>
                     {review.mine ? 'Update review' : isCoach ? 'Rate follow-through' : 'Write a review'}
@@ -266,18 +266,18 @@ export default function CoachingContractScreen() {
                 </PressableScale>
               </>
             ) : (
-              <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5`}>
+              <Text style={tw`text-sm text-ink-3 mt-1.5 leading-5`}>
                 Reviews open after {review?.weeks_needed || 4} completed weeks together.
                 {review ? ` You have ${review.weeks_completed}.` : ''}
               </Text>
             )}
           </View>
 
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-6 mb-2`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-6 mb-2`}>
             Homework trace
           </Text>
           {assignments.length === 0 ? (
-            <Text style={tw`text-sm text-stone-500 leading-5`}>
+            <Text style={tw`text-sm text-ink-3 leading-5`}>
               {isCoach
                 ? 'Assign homework for this client. They mark it done with a photo or a note.'
                 : 'Your coach will add homework here. Mark it done with a photo or a note when you finish.'}
@@ -298,27 +298,27 @@ export default function CoachingContractScreen() {
               <PressableScale
                 key={item.id}
                 onPress={() => navigateFromRoot(navigation, 'SeedDetail', { seedId: item.seed_id })}
-                style={tw`mb-2.5 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                style={tw`mb-2.5 px-3.5 py-3 rounded-card bg-card border border-line/80`}
               >
                 <View style={tw`flex-row items-center justify-between`}>
-                  <Text style={tw`font-bold text-stone-900 flex-1`} numberOfLines={1}>
+                  <Text style={tw`font-bold text-ink flex-1`} numberOfLines={1}>
                     {item.title}
                   </Text>
                   <View
                     style={tw`ml-2 px-2 py-0.5 rounded-full ${
-                      item.status === 'done' ? 'bg-emerald-50' : 'bg-[#EAE4D6]'
+                      item.status === 'done' ? 'bg-emerald-50' : 'bg-raised'
                     }`}
                   >
                     <Text
-                      style={tw`text-[11px] font-semibold ${
-                        item.status === 'done' ? 'text-emerald-800' : 'text-stone-600'
+                      style={tw`text-caption font-semibold ${
+                        item.status === 'done' ? 'text-emerald-800' : 'text-ink-2'
                       }`}
                     >
                       {item.status === 'done' ? 'Done' : 'Assigned'}
                     </Text>
                   </View>
                 </View>
-                <Text style={tw`text-xs text-stone-500 mt-1`}>
+                <Text style={tw`text-xs text-ink-3 mt-1`}>
                   {item.seed.stage || 'seed'}
                   {item.seed.category_key
                     ? ` · ${getCategoryLabel(item.seed.category_key)}`
@@ -328,7 +328,7 @@ export default function CoachingContractScreen() {
                 {item.last_photo ? (
                   <Image
                     source={{ uri: resolvePostMediaUri(item.last_photo, item.seed.category_key ?? undefined, item.seed_id) }}
-                    style={tw`w-full h-28 rounded-xl mt-2 bg-[#EAE4D6]`}
+                    style={tw`w-full h-28 rounded-control mt-2 bg-raised`}
                     contentFit="cover"
                   />
                 ) : null}
@@ -354,30 +354,30 @@ export default function CoachingContractScreen() {
           style={tw`flex-1 justify-end bg-black/40`}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-4 pb-8`}>
-            <Text style={tw`text-lg font-bold text-stone-900 mb-1`}>Assign homework</Text>
-            <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>
+          <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
+            <Text style={tw`text-lg font-bold text-ink mb-1`}>Assign homework</Text>
+            <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
               Add a task your client can check off with a photo or note.
             </Text>
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="This week’s practice"
-              placeholderTextColor="#6B645E"
-              style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 mb-2`}
+              placeholderTextColor={theme.colors.placeholder}
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink mb-2`}
             />
             <TextInput
               value={detail}
               onChangeText={setDetail}
               placeholder="What good looks like"
-              placeholderTextColor="#6B645E"
+              placeholderTextColor={theme.colors.placeholder}
               multiline
-              style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[72px] mb-4`}
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-4`}
             />
             <PressableScale
               onPress={() => void onAssign()}
               disabled={busy}
-              style={tw`py-3.5 rounded-2xl bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
+              style={tw`py-3.5 rounded-card bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
             >
               {busy ? (
                 <ActivityIndicator color="#fff" />
@@ -386,7 +386,7 @@ export default function CoachingContractScreen() {
               )}
             </PressableScale>
             <PressableScale onPress={() => setAssignOpen(false)} style={tw`py-3 items-center mt-1`}>
-              <Text style={tw`text-stone-500 font-semibold`}>Cancel</Text>
+              <Text style={tw`text-ink-3 font-semibold`}>Cancel</Text>
             </PressableScale>
           </View>
         </KeyboardAvoidingView>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import tw, { theme } from '../../lib/tw';
 import { badgeVisual } from './badgeMeta';
 
 type Props = {
@@ -31,7 +32,7 @@ export default function BadgeIcon({ id, size = 56, locked = false, tier = 'commo
         width: face,
         height: face,
         borderRadius: face / 2,
-        backgroundColor: locked ? '#E7E2D6' : v.tint,
+        backgroundColor: locked ? theme.colors.raised : v.tint,
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
@@ -56,7 +57,7 @@ export default function BadgeIcon({ id, size = 56, locked = false, tier = 'commo
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: face * 0.48, opacity: 0.22 }}>{v.emoji}</Text>
           <View style={{ position: 'absolute', bottom: -face * 0.02 }}>
-            <Ionicons name="lock-closed" size={Math.max(10, face * 0.22)} color="#A8A29E" />
+            <Ionicons name="lock-closed" size={Math.max(10, face * 0.22)} color={theme.colors.iconMuted} />
           </View>
         </View>
       ) : (
@@ -74,10 +75,10 @@ export default function BadgeIcon({ id, size = 56, locked = false, tier = 'commo
           borderRadius: size / 2,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: locked ? '#F3EEE4' : rare ? RARE_RING_OUTER : v.soft,
+          backgroundColor: locked ? theme.colors.page : rare ? RARE_RING_OUTER : v.soft,
           borderWidth: locked ? 1.5 : 0,
           borderStyle: locked ? 'dashed' : 'solid',
-          borderColor: '#D6CFC0',
+          borderColor: tw.color('stone-300'),
         },
         style,
       ]}

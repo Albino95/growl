@@ -18,7 +18,7 @@ import {
   type AudioStatus,
 } from 'expo-audio';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { breathe, easing as motionEasing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
@@ -347,9 +347,12 @@ export default function GardenScreen() {
   });
 
   if (mode === 'relax') {
+    // Relax is a fixed night sanctuary in BOTH schemes: colours here are
+    // literal (arbitrary hex / emerald-600 fill) so dark-mode remaps of
+    // stone/emerald never touch it.
     return (
       <SafeAreaView style={tw`flex-1 bg-[#0B1210]`} edges={['top', 'bottom']}>
-        <View style={tw`px-5 pt-2 flex-row items-center justify-between`}>
+        <View style={tw`px-gutter-wide pt-2 flex-row items-center justify-between`}>
           <PressableScale
             onPress={() => {
               setMode('grove');
@@ -364,7 +367,7 @@ export default function GardenScreen() {
             <Ionicons name="close" size={18} color="#fff" />
           </PressableScale>
           <View style={tw`flex-row items-center gap-2`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-400 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-[#34D399] uppercase`}>
               Relax
             </Text>
             {musicOn ? <EqualizerBars active color="#6EE7B7" /> : null}
@@ -385,7 +388,7 @@ export default function GardenScreen() {
           </PressableScale>
         </View>
 
-        <ScrollView contentContainerStyle={tw`px-5 pb-12`} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={tw`px-gutter-wide pb-12`} showsVerticalScrollIndicator={false}>
           <View style={tw`items-center mt-6 mb-8`}>
             <View style={{ width: w * 0.58, height: w * 0.58, alignItems: 'center', justifyContent: 'center' }}>
               <Animated.View
@@ -426,20 +429,20 @@ export default function GardenScreen() {
                     {Math.floor(breathLeft / 60)}:{String(breathLeft % 60).padStart(2, '0')}
                   </Text>
                 ) : (
-                  <Text style={tw`text-emerald-300 text-sm mt-3 font-semibold`}>Your grove rests</Text>
+                  <Text style={tw`text-[#6EE7B7] text-sm mt-3 font-semibold`}>Your grove rests</Text>
                 )}
               </Animated.View>
             </View>
 
             {activeMeditation ? (
               <View style={tw`mt-6 w-full px-1`}>
-                <Text style={tw`text-emerald-400 text-[11px] font-bold tracking-widest uppercase text-center`}>
+                <Text style={tw`text-[#34D399] text-caption font-bold tracking-widest uppercase text-center`}>
                   Voice · {activeMeditation.teacher}
                 </Text>
                 <Text style={tw`text-white text-xl font-semibold mt-2 text-center`}>
                   {activeMeditation.title}
                 </Text>
-                <Text style={tw`text-stone-400 text-sm mt-2 text-center leading-5`}>
+                <Text style={tw`text-[#A8A29E] text-sm mt-2 text-center leading-5`}>
                   Close your eyes. A real teacher will guide you — not a generated voice.
                 </Text>
 
@@ -460,8 +463,8 @@ export default function GardenScreen() {
                   />
                 </Pressable>
                 <View style={tw`flex-row justify-between mt-1.5`}>
-                  <Text style={tw`text-[11px] text-stone-500`}>{formatClock(voicePos)}</Text>
-                  <Text style={tw`text-[11px] text-stone-500`}>
+                  <Text style={tw`text-caption text-[#8A8178]`}>{formatClock(voicePos)}</Text>
+                  <Text style={tw`text-caption text-[#8A8178]`}>
                     {voiceDur > 0 ? formatClock(voiceDur) : `${activeMeditation.minutes} min`}
                   </Text>
                 </View>
@@ -475,7 +478,7 @@ export default function GardenScreen() {
                     onPress={() => void toggleVoice()}
                     disabled={voiceLoading}
                     feedback="select"
-                    style={tw`px-5 py-3 rounded-xl bg-emerald-700 flex-row items-center`}
+                    style={tw`px-5 py-3 rounded-control bg-emerald-600 flex-row items-center`}
                   >
                     {voiceLoading ? (
                       <ActivityIndicator color="#fff" />
@@ -499,12 +502,12 @@ export default function GardenScreen() {
                       void duckAmbient(0.55);
                     }}
                     feedback="close"
-                    style={tw`px-4 py-3 rounded-xl bg-white/10`}
+                    style={tw`px-4 py-3 rounded-control bg-white/10`}
                   >
                     <Text style={tw`text-white font-semibold`}>End</Text>
                   </PressableScale>
                 </View>
-                <Text style={tw`text-[11px] text-stone-600 mt-3 text-center`}>
+                <Text style={tw`text-caption text-[#78716C] mt-3 text-center`}>
                   {activeMeditation.teacher} · {activeMeditation.license}
                 </Text>
               </View>
@@ -513,7 +516,7 @@ export default function GardenScreen() {
                 <Text style={tw`text-white text-xl font-bold mt-8 text-center`}>
                   Be still for a moment
                 </Text>
-                <Text style={tw`text-stone-400 text-sm mt-2 text-center leading-5 px-2`}>
+                <Text style={tw`text-[#A8A29E] text-sm mt-2 text-center leading-5 px-2`}>
                   Rain under a human voice. Guided sessions unlock from your 3rd tree —
                   recorded teachers, never generated speech.
                 </Text>
@@ -522,7 +525,7 @@ export default function GardenScreen() {
           </View>
 
           <View style={tw`flex-row items-center justify-between mb-2`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-[#8A8178] uppercase`}>
               Soundscape
             </Text>
             <PressableScale
@@ -535,9 +538,9 @@ export default function GardenScreen() {
                 }
               }}
               feedback={false}
-              style={tw`px-3 py-1.5 rounded-full ${musicOn ? 'bg-emerald-700' : 'bg-white/10'}`}
+              style={tw`px-3 py-1.5 rounded-full ${musicOn ? 'bg-emerald-600' : 'bg-white/10'}`}
             >
-              <Text style={tw`text-xs font-bold ${musicOn ? 'text-white' : 'text-stone-400'}`}>
+              <Text style={tw`text-xs font-bold ${musicOn ? 'text-white' : 'text-[#A8A29E]'}`}>
                 {musicOn ? 'Playing' : 'Play music'}
               </Text>
             </PressableScale>
@@ -561,9 +564,9 @@ export default function GardenScreen() {
                     void playSoundscape(s.id, true);
                   }}
                   feedback={false}
-                  style={tw`mr-2.5 px-3.5 py-3 rounded-2xl border min-w-[120px] ${
+                  style={tw`mr-2.5 px-3.5 py-3 rounded-card border min-w-[120px] ${
                     active
-                      ? 'bg-emerald-800 border-emerald-400'
+                      ? 'bg-[#065F46] border-[#34D399]'
                       : 'bg-white/5 border-white/10'
                   } ${locked ? 'opacity-40' : ''}`}
                 >
@@ -575,13 +578,13 @@ export default function GardenScreen() {
                     />
                     <Text
                       style={tw`ml-1.5 text-xs font-bold ${
-                        active ? 'text-emerald-200' : 'text-stone-300'
+                        active ? 'text-[#A7F3D0]' : 'text-[#D6D3D1]'
                       }`}
                     >
                       {s.label}
                     </Text>
                   </View>
-                  <Text style={tw`text-[11px] text-stone-500`}>
+                  <Text style={tw`text-caption text-[#8A8178]`}>
                     {locked ? `Need ${s.treesRequired} trees` : s.hint}
                   </Text>
                 </PressableScale>
@@ -589,7 +592,7 @@ export default function GardenScreen() {
             })}
           </ScrollView>
 
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-[#8A8178] uppercase mb-2`}>
             Breathe
           </Text>
           <View style={tw`flex-row gap-2 mb-6`}>
@@ -603,16 +606,16 @@ export default function GardenScreen() {
                 }}
                 disabled={breathLeft > 0 || maturedCount < 3 || voicePlaying}
                 feedback={false}
-                style={tw`flex-1 py-3 rounded-2xl border border-emerald-800/60 bg-emerald-950/60 items-center ${
+                style={tw`flex-1 py-3 rounded-card border border-[#065F46]/60 bg-[#022C22]/60 items-center ${
                   maturedCount < 3 || breathLeft > 0 || voicePlaying ? 'opacity-40' : ''
                 }`}
               >
-                <Text style={tw`text-emerald-300 font-bold`}>{sec / 60} min</Text>
+                <Text style={tw`text-[#6EE7B7] font-bold`}>{sec / 60} min</Text>
               </PressableScale>
             ))}
           </View>
 
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-[#8A8178] uppercase mb-2`}>
             Guided voice
           </Text>
           {GUIDED_MEDITATIONS.map((m) => {
@@ -624,17 +627,17 @@ export default function GardenScreen() {
                 onPress={() => void startMeditation(m)}
                 disabled={locked}
                 feedback={false}
-                style={tw`mb-2 px-3.5 py-3.5 rounded-2xl border flex-row items-center ${
+                style={tw`mb-2 px-3.5 py-3.5 rounded-card border flex-row items-center ${
                   locked
                     ? 'bg-white/5 border-white/10 opacity-45'
                     : playingThis
-                      ? 'bg-emerald-800/80 border-emerald-400/60'
-                      : 'bg-emerald-950/50 border-emerald-800/50'
+                      ? 'bg-[#065F46]/80 border-[#34D399]/60'
+                      : 'bg-[#022C22]/50 border-[#065F46]/50'
                 }`}
               >
                 <View
-                  style={tw`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
-                    locked ? 'bg-white/10' : 'bg-emerald-700'
+                  style={tw`w-10 h-10 rounded-control items-center justify-center mr-3 ${
+                    locked ? 'bg-white/10' : 'bg-emerald-600'
                   }`}
                 >
                   <Ionicons
@@ -645,7 +648,7 @@ export default function GardenScreen() {
                 </View>
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-sm font-bold text-white`}>{m.title}</Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                  <Text style={tw`text-xs text-[#8A8178] mt-0.5`}>
                     {m.minutes} min · {m.teacher}
                     {locked ? ` · unlock at ${m.treesRequired} trees` : ''}
                   </Text>
@@ -662,15 +665,15 @@ export default function GardenScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
             onPress={() => navigation.goBack()}
             feedback="close"
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
           </PressableScale>
         }
         right={
@@ -678,9 +681,9 @@ export default function GardenScreen() {
             <PressableScale
               onPress={() => navigateFromRoot(navigation, 'Circles')}
               feedback="open"
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
             >
-              <Ionicons name="people-outline" size={16} color="#1C1917" />
+              <Ionicons name="people-outline" size={16} color={theme.colors.ink} />
             </PressableScale>
             <PressableScale
               onPress={() => {
@@ -688,49 +691,49 @@ export default function GardenScreen() {
                 setMode('relax');
               }}
               feedback={false}
-              style={tw`px-3 py-2 rounded-full bg-stone-900 flex-row items-center`}
+              style={tw`px-3 py-2 rounded-full bg-ink flex-row items-center`}
             >
-              <Ionicons name="moon-outline" size={14} color="#fff" />
-              <Text style={tw`text-white text-xs font-bold ml-1`}>Relax</Text>
+              <Ionicons name="moon-outline" size={14} color={theme.colors.page} />
+              <Text style={tw`text-page text-xs font-bold ml-1`}>Relax</Text>
             </PressableScale>
           </View>
         }
       />
 
       <ScrollView
-        contentContainerStyle={tw`px-5 pb-28`}
+        contentContainerStyle={tw`px-gutter-wide pb-28`}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#059669" />
+          <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={theme.colors.brand} />
         }
       >
         <FadeInUp>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
             Garden
           </Text>
-          <Text style={tw`text-[28px] font-bold text-stone-900 mt-0.5 leading-8`}>Your grove</Text>
-          <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5 mb-5`}>
+          <Text style={tw`text-display font-bold text-ink mt-0.5 leading-8`}>Your grove</Text>
+          <Text style={tw`text-sm text-ink-3 mt-1.5 leading-5 mb-5`}>
             Mature trees unlock human-voice meditations. Circles keep the grove social.
           </Text>
         </FadeInUp>
 
         {loading ? (
-          <ActivityIndicator color="#059669" style={tw`py-12`} />
+          <ActivityIndicator color={theme.colors.brand} style={tw`py-12`} />
         ) : (
           <>
-            <View style={tw`rounded-[28px] overflow-hidden border border-stone-200/80 bg-[#FFFcf7] mb-5`}>
+            <View style={tw`rounded-hero overflow-hidden border border-line/80 bg-card mb-5`}>
               <View style={tw`h-1.5 bg-emerald-600`} />
-              <View style={[tw`px-4 py-6 min-h-[220px]`, { backgroundColor: '#ECFDF5' }]}>
+              <View style={tw`px-4 py-6 min-h-[220px] bg-emerald-50`}>
                 {trees.length === 0 ? (
                   <View style={tw`items-center py-6`}>
                     <SeedPlantVisual stage="seed" progress={0} size={72} />
-                    <Text style={tw`text-lg font-bold text-stone-900 mt-8`}>Empty earth</Text>
-                    <Text style={tw`text-sm text-stone-500 mt-1 text-center leading-5 px-4`}>
+                    <Text style={tw`text-lg font-bold text-ink mt-8`}>Empty earth</Text>
+                    <Text style={tw`text-sm text-ink-3 mt-1 text-center leading-5 px-4`}>
                       Water a seed with evidence until it’s ready, then call it home.
                     </Text>
                     <PressableScale
                       onPress={() => navigateFromRoot(navigation, 'PlantSeed')}
                       feedback="open"
-                      style={tw`mt-4 px-5 py-3 rounded-xl bg-emerald-600`}
+                      style={tw`mt-4 px-5 py-3 rounded-control bg-emerald-600`}
                     >
                       <Text style={tw`text-white font-bold`}>Plant a seed</Text>
                     </PressableScale>
@@ -753,7 +756,7 @@ export default function GardenScreen() {
                             shared={t.ownership === 'shared'}
                           />
                           <Text
-                            style={tw`text-[11px] font-semibold text-stone-800 mt-7 text-center`}
+                            style={tw`text-caption font-semibold text-ink mt-7 text-center`}
                             numberOfLines={2}
                           >
                             {t.title}
@@ -768,7 +771,7 @@ export default function GardenScreen() {
 
             {growing.length > 0 ? (
               <View style={tw`mb-5`}>
-                <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+                <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
                   Still growing
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -789,13 +792,13 @@ export default function GardenScreen() {
                         resting={s.status === 'resting'}
                       />
                       <Text
-                        style={tw`text-[11px] font-semibold text-stone-800 mt-7 text-center`}
+                        style={tw`text-caption font-semibold text-ink mt-7 text-center`}
                         numberOfLines={2}
                       >
                         {s.title}
                       </Text>
                       {s.metric_current != null && s.metric_target != null ? (
-                        <Text style={tw`text-[11px] text-bloom-ink font-bold mt-0.5`}>
+                        <Text style={tw`text-caption text-bloom-ink font-bold mt-0.5`}>
                           {s.metric_current}/{s.metric_target}
                           {s.metric_unit ? ` ${s.metric_unit}` : ''}
                         </Text>
@@ -808,7 +811,7 @@ export default function GardenScreen() {
 
             <View style={tw`mb-5`}>
               <View style={tw`flex-row items-center justify-between mb-3`}>
-                <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+                <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase`}>
                   Your circles
                 </Text>
                 <PressableScale
@@ -822,18 +825,18 @@ export default function GardenScreen() {
                 <PressableScale
                   onPress={() => navigateFromRoot(navigation, 'Circles')}
                   feedback="open"
-                  style={tw`px-3.5 py-3.5 rounded-2xl border border-stone-200/80 bg-[#FFFcf7] flex-row items-center`}
+                  style={tw`px-3.5 py-3.5 rounded-card border border-line/80 bg-card flex-row items-center`}
                 >
-                  <View style={tw`w-10 h-10 rounded-xl bg-emerald-50 items-center justify-center mr-3`}>
-                    <Ionicons name="people-outline" size={18} color="#059669" />
+                  <View style={tw`w-10 h-10 rounded-control bg-emerald-50 items-center justify-center mr-3`}>
+                    <Ionicons name="people-outline" size={18} color={theme.colors.brand} />
                   </View>
                   <View style={tw`flex-1`}>
-                    <Text style={tw`text-sm font-bold text-stone-900`}>Find a circle of 10</Text>
-                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                    <Text style={tw`text-sm font-bold text-ink`}>Find a circle of 10</Text>
+                    <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                       We’ll seat you nearby, by matching, or at random.
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#A8A29E" />
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.iconMuted} />
                 </PressableScale>
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -844,9 +847,9 @@ export default function GardenScreen() {
                         navigateFromRoot(navigation, 'CircleDetail', { groupId: c.id })
                       }
                       feedback="open"
-                      style={tw`mr-2.5 px-3.5 py-3 rounded-2xl border border-stone-200/80 bg-[#FFFcf7] min-w-[148px]`}
+                      style={tw`mr-2.5 px-3.5 py-3 rounded-card border border-line/80 bg-card min-w-[148px]`}
                     >
-                      <Text style={tw`text-sm font-bold text-stone-900`} numberOfLines={2}>
+                      <Text style={tw`text-sm font-bold text-ink`} numberOfLines={2}>
                         {c.name}
                       </Text>
                       <View style={tw`mt-2`}>
@@ -858,7 +861,7 @@ export default function GardenScreen() {
               )}
             </View>
 
-            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
               Unlocks · {maturedCount} tree{maturedCount === 1 ? '' : 's'}
             </Text>
             {UNLOCKS.map((u) => {
@@ -866,26 +869,26 @@ export default function GardenScreen() {
               return (
                 <View
                   key={u.trees}
-                  style={tw`mb-2 px-3.5 py-3 rounded-2xl border flex-row items-center ${
+                  style={tw`mb-2 px-3.5 py-3 rounded-card border flex-row items-center ${
                     unlocked
                       ? 'bg-emerald-50 border-emerald-100'
-                      : 'bg-[#FFFcf7] border-stone-200/80'
+                      : 'bg-card border-line/80'
                   }`}
                 >
                   <View
-                    style={tw`w-9 h-9 rounded-xl items-center justify-center mr-3 ${
-                      unlocked ? 'bg-emerald-600' : 'bg-[#EAE4D6]'
+                    style={tw`w-9 h-9 rounded-control items-center justify-center mr-3 ${
+                      unlocked ? 'bg-emerald-600' : 'bg-raised'
                     }`}
                   >
                     <Ionicons
                       name={unlocked ? 'checkmark' : 'lock-closed'}
                       size={16}
-                      color={unlocked ? '#fff' : '#78716C'}
+                      color={unlocked ? '#fff' : theme.colors.ink3}
                     />
                   </View>
                   <View style={tw`flex-1`}>
-                    <Text style={tw`text-sm font-bold text-stone-900`}>{u.label}</Text>
-                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                    <Text style={tw`text-sm font-bold text-ink`}>{u.label}</Text>
+                    <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                       {u.hint}
                       {!unlocked ? ` · need ${u.trees}` : ''}
                     </Text>
@@ -897,14 +900,14 @@ export default function GardenScreen() {
         )}
       </ScrollView>
 
-      <View style={tw`absolute left-0 right-0 bottom-0 px-5 pb-8 pt-2`}>
+      <View style={tw`absolute left-0 right-0 bottom-0 px-gutter-wide pb-8 pt-2`}>
         <PressableScale
           onPress={() => navigateFromRoot(navigation, 'PlantSeed')}
           feedback="open"
-          style={tw`py-4 rounded-2xl bg-emerald-600 items-center flex-row justify-center gap-2`}
+          style={tw`py-4 rounded-card bg-emerald-600 items-center flex-row justify-center gap-2`}
         >
           <Ionicons name="add-circle-outline" size={18} color="#fff" />
-          <Text style={tw`text-white font-bold text-[16px]`}>Plant a seed</Text>
+          <Text style={tw`text-white font-bold text-callout`}>Plant a seed</Text>
         </PressableScale>
       </View>
     </SafeAreaView>

@@ -13,7 +13,8 @@ import MarketplaceScreen from '../../../screens/Marketplace/MarketplaceScreen';
 import CreateActionSheet, {
   type CreateAction,
 } from '../../../components/navigation/CreateActionSheet';
-import tw, { theme } from '../../../lib/tw';
+import tw, { theme, useColorSchemeName } from '../../../lib/tw';
+import { radius } from '../../../theme/tokens';
 import { iconSize } from '../../../theme/icons';
 import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
@@ -76,6 +77,7 @@ function DockTabButton({
   const dotScale = useRef(new Animated.Value(isActive ? 1 : 0)).current;
   const labelOpacity = useRef(new Animated.Value(isActive ? 1 : 0.72)).current;
   const reduced = useReducedMotion();
+  const dark = useColorSchemeName() === 'dark';
   const mounted = useRef(false);
 
   useEffect(() => {
@@ -121,7 +123,7 @@ function DockTabButton({
           <Ionicons
             name={isActive ? tab.activeIcon : tab.inactiveIcon}
             size={iconSize.md}
-            color={isActive ? theme.colors.brand : theme.colors.textSubtle}
+            color={isActive ? theme.colors.brand : theme.colors.iconMuted}
           />
         </Animated.View>
         <Animated.View
@@ -132,7 +134,8 @@ function DockTabButton({
               fontSize: 11,
               lineHeight: 13,
               fontWeight: isActive ? '600' : '400',
-              color: isActive ? theme.colors.brand : theme.colors.textMuted,
+              // Night: the lighter leaf ink keeps the 11px active label legible on the dark dock.
+              color: isActive ? (dark ? theme.colors.leafInk : theme.colors.brand) : theme.colors.textMuted,
             }}
             numberOfLines={1}
             maxFontSizeMultiplier={1.3}
@@ -160,6 +163,7 @@ function DockTabButton({
 export default function IndividualTabs() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const dark = useColorSchemeName() === 'dark';
   const [createOpen, setCreateOpen] = useState(false);
   const tabNavRef = useRef<{ navigate: (name: string, params?: object) => void } | null>(null);
   const tutorialHydrated = useDemoTutorialStore((s) => s.hydrated);
@@ -257,7 +261,16 @@ export default function IndividualTabs() {
               pointerEvents="box-none"
               style={[styles.dockWrap, { paddingBottom: bottomPad }]}
             >
-              <View style={styles.dock}>
+              <View
+                style={[
+                  styles.dock,
+                  {
+                    backgroundColor: theme.colors.card,
+                    // Light keeps the barely-there ink hairline; night needs the solid line token.
+                    borderColor: dark ? theme.colors.line : 'rgba(28,25,23,0.08)',
+                  },
+                ]}
+              >
                 <View style={[tw`flex-1 flex-row`, { height: TAB_HEIGHT }]}>
                   {DOCK_LEFT.map((tab) => (
                     <DockTabButton
@@ -349,7 +362,7 @@ export default function IndividualTabs() {
 
       {showTutorial ? (
         <View
-          style={[StyleSheet.absoluteFill, { zIndex: 40, backgroundColor: '#F3EEE4' }]}
+          style={[StyleSheet.absoluteFill, { zIndex: 40, backgroundColor: theme.colors.page }]}
           pointerEvents="auto"
         >
           <DemoTutorial />
@@ -372,12 +385,10 @@ const styles = StyleSheet.create({
   dock: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFcf7',
-    borderRadius: 28,
+    borderRadius: radius.hero,
     paddingVertical: 6,
     paddingHorizontal: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(28,25,23,0.08)',
     ...Platform.select({
       ios: {
         shadowColor: '#1C1917',

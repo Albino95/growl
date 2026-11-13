@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   TextInput,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -14,7 +13,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import { verticalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import {
   getFeedPostComments,
@@ -263,7 +263,7 @@ export default function CommentsScreen({
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <View ref={kavWrapRef} style={tw`flex-1`} onLayout={measureKbOffset} collapsable={false}>
       <FadeInUp distance={10} style={tw`flex-1`}>
         <KeyboardAvoidingView
@@ -271,20 +271,24 @@ export default function CommentsScreen({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? kbOffset : 0}
         >
-          <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-[#FFFcf7]`}>
-            <TouchableOpacity
+          <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
+            <PressableScale
+              pressedScale={0.9}
               onPress={() => {
                 feedback.close();
                 onClose();
               }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Close comments"
             >
-              <Ionicons name="close" size={28} color="#44403C" />
-            </TouchableOpacity>
-            <Text style={tw`text-lg font-semibold text-stone-900`}>Comments</Text>
+              <Ionicons name="close" size={28} color={theme.colors.ink2} />
+            </PressableScale>
+            <Text style={tw`text-callout font-semibold text-ink`}>Comments</Text>
             <View style={tw`w-7`} />
           </View>
 
-          <View style={tw`px-4 py-3 border-b border-stone-200/60 bg-[#EAE4D6]/70`}>
+          <View style={tw`px-gutter py-3 border-b border-line/60 bg-raised/70`}>
             <View style={tw`flex-row items-start`}>
               <View style={tw`w-8 h-8 rounded-full bg-emerald-100 items-center justify-center mr-3`}>
                 <Text style={tw`text-xs font-bold text-emerald-800`}>
@@ -292,29 +296,29 @@ export default function CommentsScreen({
                 </Text>
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-sm font-semibold text-stone-900 mb-1`}>{postUsername}</Text>
-                <Text style={tw`text-sm text-stone-700`}>{postCaption}</Text>
+                <Text style={tw`text-sm font-semibold text-ink mb-1`}>{postUsername}</Text>
+                <Text style={tw`text-sm text-ink-2`}>{postCaption}</Text>
               </View>
             </View>
           </View>
 
           {!loading && loadError && (
-            <View style={tw`mx-4 mt-3 mb-1 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
+            <View style={tw`mx-4 mt-3 mb-1 px-3 py-3 rounded-control border border-red-200 bg-red-50`}>
               <View style={tw`flex-row items-center`}>
-                <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+                <Ionicons name="alert-circle-outline" size={18} color={theme.colors.danger} />
                 <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>{loadError}</Text>
-                <TouchableOpacity
+                <PressableScale
                   onPress={() => void loadComments()}
-                  style={tw`ml-2 px-3 py-1.5 rounded-full bg-red-600`}
+                  style={tw`ml-2 px-3 py-1.5 rounded-chip bg-[#DC2626]`}
                 >
                   <Text style={tw`text-xs font-semibold text-white`}>Retry</Text>
-                </TouchableOpacity>
+                </PressableScale>
               </View>
             </View>
           )}
 
           {loading ? (
-            <View style={tw`flex-1 px-4 pt-4`}>
+            <View style={tw`flex-1 px-gutter pt-4`}>
               <SkeletonList variant="comment" count={5} />
             </View>
           ) : (
@@ -322,7 +326,7 @@ export default function CommentsScreen({
               ref={listRef}
               data={comments}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={tw`px-4 py-3 pb-6`}
+              contentContainerStyle={tw`px-gutter py-3 pb-6`}
               {...verticalScrollProps}
               {...feedListPerformanceProps}
               // Older pages prepend; keep the reader's place and auto-load near the top.
@@ -336,21 +340,21 @@ export default function CommentsScreen({
               }}
               ListHeaderComponent={
                 hasOlder ? (
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => void loadOlderComments()}
                     disabled={loadingOlder}
-                    style={tw`self-center mb-3 px-4 py-2 rounded-full bg-[#EAE4D6]`}
+                    style={tw`self-center mb-3 px-4 py-2 rounded-chip bg-raised`}
                     accessibilityRole="button"
                     accessibilityLabel="Load earlier comments"
                   >
                     {loadingOlder ? (
-                      <ActivityIndicator size="small" color="#6B645E" />
+                      <ActivityIndicator size="small" color={theme.colors.ink3} />
                     ) : (
-                      <Text style={tw`text-xs font-semibold text-stone-600`}>
+                      <Text style={tw`text-xs font-semibold text-ink-2`}>
                         Load earlier comments
                       </Text>
                     )}
-                  </TouchableOpacity>
+                  </PressableScale>
                 ) : null
               }
               renderItem={({ item }) => {
@@ -363,7 +367,8 @@ export default function CommentsScreen({
                     style={[tw`flex-row items-start mb-4`, item.pending ? { opacity: 0.6 } : null]}
                     accessibilityState={{ busy: !!item.pending }}
                   >
-                    <TouchableOpacity
+                    <PressableScale
+                      pressedScale={0.9}
                       onPress={() => {
                         if (item.user_id !== user?.id) {
                           const rootNavigation = navigation.getParent() || navigation;
@@ -376,10 +381,10 @@ export default function CommentsScreen({
                         style={tw`w-8 h-8 rounded-full mr-3 bg-stone-200`}
                         contentFit="cover"
                       />
-                    </TouchableOpacity>
+                    </PressableScale>
                     <View style={tw`flex-1`}>
-                      <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl rounded-tl-sm px-3 py-2 mb-1`}>
-                        <TouchableOpacity
+                      <View style={tw`bg-card border border-line/80 rounded-card rounded-tl-sm px-3 py-2 mb-1`}>
+                        <PressableScale
                           onPress={() => {
                             if (item.user_id !== user?.id) {
                               const rootNavigation = navigation.getParent() || navigation;
@@ -387,30 +392,30 @@ export default function CommentsScreen({
                             }
                           }}
                         >
-                          <Text style={tw`text-sm font-semibold text-stone-900 mb-0.5`}>{uname}</Text>
-                        </TouchableOpacity>
-                        <Text style={tw`text-sm text-stone-800`}>{item.content}</Text>
+                          <Text style={tw`text-sm font-semibold text-ink mb-0.5`}>{uname}</Text>
+                        </PressableScale>
+                        <Text style={tw`text-sm text-ink`}>{item.content}</Text>
                       </View>
                       {item.failed ? (
-                        <TouchableOpacity
+                        <PressableScale
                           onPress={() => retrySendComment(item)}
                           style={tw`flex-row items-center ml-2`}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           accessibilityRole="button"
                           accessibilityLabel="Couldn't send. Tap to retry"
                         >
-                          <Ionicons name="alert-circle" size={14} color="#DC2626" />
+                          <Ionicons name="alert-circle" size={14} color={theme.colors.danger} />
                           <Text style={tw`ml-1 text-xs font-semibold text-red-700`}>
                             Couldn’t send · Tap to retry
                           </Text>
-                        </TouchableOpacity>
+                        </PressableScale>
                       ) : (
                       <View style={tw`flex-row items-center ml-2`}>
-                        <Text style={tw`text-xs text-stone-500`}>
+                        <Text style={tw`text-xs text-ink-3`}>
                           {item.pending ? 'Sending…' : formatCommentTime(item.created_at)}
                         </Text>
                         {canDelete ? (
-                          <TouchableOpacity
+                          <PressableScale
                             onPress={() => void deleteComment(item)}
                             disabled={deletingId === item.id}
                             style={tw`ml-3`}
@@ -419,11 +424,11 @@ export default function CommentsScreen({
                             accessibilityLabel="Delete comment"
                           >
                             {deletingId === item.id ? (
-                              <ActivityIndicator size="small" color="#A8A29E" />
+                              <ActivityIndicator size="small" color={theme.colors.iconMuted} />
                             ) : (
-                              <Text style={tw`text-xs font-semibold text-stone-500`}>Delete</Text>
+                              <Text style={tw`text-xs font-semibold text-ink-3`}>Delete</Text>
                             )}
-                          </TouchableOpacity>
+                          </PressableScale>
                         ) : null}
                       </View>
                       )}
@@ -433,8 +438,8 @@ export default function CommentsScreen({
               }}
               ListEmptyComponent={
                 <View style={tw`items-center justify-center py-12`}>
-                  <Ionicons name="chatbubbles-outline" size={64} color="#D6D3D1" />
-                  <Text style={tw`text-stone-500 mt-4 text-center`}>
+                  <Ionicons name="chatbubbles-outline" size={64} color={theme.colors.iconMuted} />
+                  <Text style={tw`text-ink-3 mt-4 text-center`}>
                     No comments yet. Be the first to comment!
                   </Text>
                 </View>
@@ -442,9 +447,9 @@ export default function CommentsScreen({
             />
           )}
 
-          <View style={tw`border-t border-stone-200/80 bg-[#FFFcf7] px-4 py-3`}>
+          <View style={tw`border-t border-line/80 bg-card px-gutter py-3`}>
             <View style={tw`flex-row items-end`}>
-              <View style={tw`flex-1 bg-[#EAE4D6] rounded-full px-4 py-2 max-h-24 mr-2`}>
+              <View style={tw`flex-1 bg-raised rounded-chip px-4 py-2 max-h-24 mr-2`}>
                 <TextInput
                   {...formInputAccessoryProps({ multiline: true })}
                   placeholder="Add a comment..."
@@ -457,22 +462,23 @@ export default function CommentsScreen({
                   returnKeyType="send"
                   submitBehavior="submit"
                   onSubmitEditing={handleSendComment}
-                  style={tw`text-sm text-stone-900`}
-                  placeholderTextColor="#6B645E"
+                  style={tw`text-sm text-ink`}
+                  placeholderTextColor={theme.colors.placeholder}
                 />
               </View>
               {commentText.trim() ? (
-                <TouchableOpacity
+                <PressableScale
+                  pressedScale={0.9}
                   onPress={handleSendComment}
                   style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center`}
                   accessibilityRole="button"
                   accessibilityLabel="Send comment"
                 >
                   <Ionicons name="send" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
+                </PressableScale>
               ) : (
                 <View style={tw`w-10 h-10 items-center justify-center`}>
-                  <Ionicons name="camera-outline" size={22} color="#D6D3D1" />
+                  <Ionicons name="camera-outline" size={22} color={theme.colors.iconMuted} />
                 </View>
               )}
             </View>

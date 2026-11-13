@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { haptic } from '../../theme/haptics';
 import { duration, easing, pop, press, spring, stagger, timing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
@@ -9,7 +9,6 @@ import { useReducedMotion } from '../../hooks/useReducedMotion';
 export type FeedReaction = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
 const HEART_ACTIVE = '#F97066';
-const HEART_IDLE_LIGHT = '#57534E';
 const HEART_IDLE_DARK = '#FFFFFF';
 
 type Props = {
@@ -33,7 +32,7 @@ function ReactionGlyph({
   tone?: 'light' | 'dark';
 }) {
   const active = hasLiked || reaction != null;
-  const outlineColor = tone === 'dark' ? HEART_IDLE_DARK : HEART_IDLE_LIGHT;
+  const outlineColor = tone === 'dark' ? HEART_IDLE_DARK : theme.colors.icon;
   if (!active) {
     return <Ionicons name="heart-outline" size={26} color={outlineColor} />;
   }
@@ -171,7 +170,7 @@ export function ReactionPickerBar({
   return (
     <Animated.View
       style={[
-        tw`flex-row items-center rounded-2xl border border-stone-200/90 bg-[#FFFcf7] px-2.5 py-2`,
+        tw`flex-row items-center rounded-card border border-line/90 bg-card px-2.5 py-2`,
         {
           shadowColor: '#1C1917',
           shadowOpacity: 0.08,
@@ -204,7 +203,7 @@ export function ReactionPickerBar({
             onPick(item.key);
           }}
           style={({ pressed }) => [
-            tw`mx-0.5 h-10 w-10 items-center justify-center rounded-xl`,
+            tw`mx-0.5 h-10 w-10 items-center justify-center rounded-control`,
             pressed ? tw`bg-energy-50` : null,
           ]}
         >

@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
 import { runShake } from './authMotion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
@@ -73,19 +73,19 @@ function Digit({
     return () => loop.stop();
   }, [active, char, caret, reducedMotion]);
 
-  const borderColor = hasError ? '#DC2626' : active ? '#059669' : 'rgba(214,211,209,0.8)';
+  const borderColor = hasError ? theme.colors.danger : active ? '#059669' : tw.color('stone-300');
   const scale = reducedMotion ? 1 : pop.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] });
 
   return (
     <View
       style={[
-        tw`flex-1 rounded-2xl bg-[#FFFcf7] items-center justify-center`,
+        tw`flex-1 rounded-card bg-card items-center justify-center`,
         { height: 56, borderWidth: active || hasError ? 1.5 : 1, borderColor },
       ]}
     >
       {char ? (
         <Animated.Text
-          style={[tw`text-2xl font-semibold text-stone-900`, { opacity: pop, transform: [{ scale }] }]}
+          style={[tw`text-2xl font-semibold text-ink`, { opacity: pop, transform: [{ scale }] }]}
         >
           {char}
         </Animated.Text>

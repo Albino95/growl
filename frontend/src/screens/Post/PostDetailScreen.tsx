@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   Modal,
@@ -17,7 +16,8 @@ import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
 import { toast } from '../../state/useToastStore';
@@ -103,7 +103,7 @@ export default function PostDetailScreen() {
 
   const renderReactionIcon = () => {
     const active = post.hasLiked || post.reaction != null;
-    if (!active) return <Ionicons name="heart-outline" size={28} color="#374151" />;
+    if (!active) return <Ionicons name="heart-outline" size={28} color={theme.colors.icon} />;
     const r = post.reaction || 'love';
     switch (r) {
       case 'like':
@@ -217,21 +217,27 @@ export default function PostDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-card`} edges={['top']}>
       <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200 bg-white`}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#374151" />
-          </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-stone-900`}>Post</Text>
-          <TouchableOpacity onPress={openShareCard} hitSlop={10} accessibilityLabel="Share post">
-            <Ionicons name="ellipsis-horizontal" size={24} color="#57534E" />
-          </TouchableOpacity>
+        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line bg-card`}>
+          <PressableScale
+            pressedScale={0.9}
+            onPress={() => navigation.goBack()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.icon} />
+          </PressableScale>
+          <Text style={tw`text-callout font-semibold text-ink`}>Post</Text>
+          <PressableScale pressedScale={0.9} onPress={openShareCard} hitSlop={10} accessibilityLabel="Share post">
+            <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.icon} />
+          </PressableScale>
         </View>
 
         <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
-          <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100`}>
-            <TouchableOpacity style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
+          <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line`}>
+            <PressableScale style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
               <GrowAvatar
                 userId={post.userId}
                 username={post.username}
@@ -240,13 +246,13 @@ export default function PostDetailScreen() {
                 style={tw`mr-3`}
               />
               <View style={tw`flex-1`}>
-                <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
-                <Text style={tw`text-xs text-stone-500`}>
+                <Text style={tw`font-bold text-ink text-base`}>{post.username}</Text>
+                <Text style={tw`text-xs text-ink-3`}>
                   {post.timestamp ||
                     (post.createdAt ? new Date(post.createdAt).toLocaleDateString() : '')}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
 
           <View style={tw`w-full bg-stone-50`}>
@@ -258,10 +264,11 @@ export default function PostDetailScreen() {
             />
           </View>
 
-          <View style={tw`px-4 py-3 border-b border-stone-100`}>
+          <View style={tw`px-gutter py-3 border-b border-line`}>
             <View style={tw`flex-row items-center justify-between mb-3`}>
               <View style={tw`flex-row items-center`}>
-                <TouchableOpacity
+                <PressableScale
+                  pressedScale={0.9}
                   onPress={() => void toggleLike()}
                   onLongPress={() => setShowReactionPicker(!showReactionPicker)}
                   style={tw`mr-3`}
@@ -270,48 +277,48 @@ export default function PostDetailScreen() {
                   accessibilityState={{ selected: !!post.hasLiked || post.reaction != null }}
                 >
                   {renderReactionIcon()}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowComments(true)} style={tw`mr-3`}>
-                  <Ionicons name="chatbubble-outline" size={26} color="#374151" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={openShareCard} accessibilityLabel="Share post card">
-                  <Ionicons name="paper-plane-outline" size={26} color="#059669" />
-                </TouchableOpacity>
+                </PressableScale>
+                <PressableScale pressedScale={0.9} onPress={() => setShowComments(true)} style={tw`mr-3`}>
+                  <Ionicons name="chatbubble-outline" size={26} color={theme.colors.icon} />
+                </PressableScale>
+                <PressableScale pressedScale={0.9} onPress={openShareCard} accessibilityLabel="Share post card">
+                  <Ionicons name="paper-plane-outline" size={26} color={theme.colors.brand} />
+                </PressableScale>
               </View>
-              <TouchableOpacity>
-                <Ionicons name="bookmark-outline" size={26} color="#374151" />
-              </TouchableOpacity>
+              <PressableScale pressedScale={0.9}>
+                <Ionicons name="bookmark-outline" size={26} color={theme.colors.icon} />
+              </PressableScale>
             </View>
 
             {showReactionPicker && (
-              <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-stone-200 z-10`}>
-                <TouchableOpacity onPress={() => void setReaction('like')} style={tw`mx-1`}>
+              <View style={tw`absolute left-4 top-12 bg-card rounded-chip px-3 py-2 flex-row items-center shadow-lg border border-line z-10`}>
+                <PressableScale pressedScale={0.9} onPress={() => void setReaction('like')} style={tw`mx-1`}>
                   <Text style={tw`text-2xl`}>👍</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('love')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale pressedScale={0.9} onPress={() => void setReaction('love')} style={tw`mx-1`}>
                   <Text style={tw`text-2xl`}>❤️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('laugh')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale pressedScale={0.9} onPress={() => void setReaction('laugh')} style={tw`mx-1`}>
                   <Text style={tw`text-2xl`}>😂</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('wow')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale pressedScale={0.9} onPress={() => void setReaction('wow')} style={tw`mx-1`}>
                   <Text style={tw`text-2xl`}>😮</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('support')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale pressedScale={0.9} onPress={() => void setReaction('support')} style={tw`mx-1`}>
                   <Text style={tw`text-2xl`}>💪</Text>
-                </TouchableOpacity>
+                </PressableScale>
               </View>
             )}
 
-            <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
+            <Text style={tw`font-bold text-ink mb-2 text-base`}>
               {post.likes} {post.likes === 1 ? 'like' : 'likes'}
             </Text>
 
             <View style={tw`mb-2 flex-row flex-wrap`}>
-              <TouchableOpacity onPress={navigateToProfile}>
-                <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
-              </TouchableOpacity>
-              <Text style={tw`text-stone-900 text-base`}> {post.caption}</Text>
+              <PressableScale onPress={navigateToProfile}>
+                <Text style={tw`font-bold text-ink text-base`}>{post.username}</Text>
+              </PressableScale>
+              <Text style={tw`text-ink text-base`}> {post.caption}</Text>
             </View>
 
             {post.daysUntilDecay !== undefined && (
@@ -320,13 +327,13 @@ export default function PostDetailScreen() {
               </View>
             )}
 
-            <TouchableOpacity onPress={() => setShowComments(true)} style={tw`mt-2`}>
-              <Text style={tw`text-stone-500 text-sm`}>
+            <PressableScale onPress={() => setShowComments(true)} style={tw`mt-2`}>
+              <Text style={tw`text-ink-3 text-sm`}>
                 {post.comments > 0
                   ? `View all ${post.comments} ${post.comments === 1 ? 'comment' : 'comments'}`
                   : 'Add a comment…'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

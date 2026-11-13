@@ -18,6 +18,8 @@ export type ChatWallTheme = {
   composer: string;
   header: string;
   swatch: string;
+  /** True when the wall is a dark surface (chrome, reactions and composer use dark styles). */
+  dark?: boolean;
 };
 
 export const CHAT_WALLS: ChatWallTheme[] = [
@@ -90,6 +92,7 @@ export const CHAT_WALLS: ChatWallTheme[] = [
     composer: '#3A3632',
     header: '#2A2724',
     swatch: '#44403C',
+    dark: true,
   },
   {
     id: 'ink',
@@ -104,11 +107,52 @@ export const CHAT_WALLS: ChatWallTheme[] = [
     composer: '#1F2937',
     header: '#111827',
     swatch: '#0F172A',
+    dark: true,
   },
 ];
 
-export function wallTheme(id?: ChatWallId | null): ChatWallTheme {
-  return CHAT_WALLS.find((w) => w.id === id) || CHAT_WALLS[0];
+/**
+ * Night versions of the light walls, used when the app is in dark mode so a
+ * picked wall keeps its hue without a bright panel inside a dark app.
+ * Own bubbles keep their colour; peer text and meta pass AA on the peer bubble.
+ */
+const NIGHT_WALLS: Partial<Record<ChatWallId, Partial<ChatWallTheme>>> = {
+  sage: {
+    page: '#14201A',
+    peerBubble: '#1E2D25',
+    peerBorder: 'rgba(167,196,160,0.14)',
+    peerText: '#E3F1E3',
+    ownBubble: '#059669',
+    meta: '#9DB89A',
+    composer: '#1E2D25',
+    header: '#14201A',
+  },
+  mist: {
+    page: '#161A20',
+    peerBubble: '#212731',
+    peerBorder: 'rgba(148,163,184,0.14)',
+    peerText: '#E8EDF3',
+    ownBubble: '#475569',
+    meta: '#94A3B8',
+    composer: '#212731',
+    header: '#161A20',
+  },
+  coral: {
+    page: '#221514',
+    peerBubble: '#321F1D',
+    peerBorder: 'rgba(249,112,102,0.16)',
+    peerText: '#FBE9E7',
+    ownBubble: '#E11D48',
+    meta: '#F4A39B',
+    composer: '#321F1D',
+    header: '#221514',
+  },
+};
+
+export function wallTheme(id?: ChatWallId | null, scheme: 'light' | 'dark' = 'light'): ChatWallTheme {
+  const base = CHAT_WALLS.find((w) => w.id === id) || CHAT_WALLS[0];
+  const night = scheme === 'dark' ? NIGHT_WALLS[base.id] : undefined;
+  return night ? { ...base, ...night, dark: true } : base;
 }
 
 type State = {

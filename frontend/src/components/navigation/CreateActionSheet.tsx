@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Modal, Pressable, Text, View, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import { feedback } from '../../utils/interactionFeedback';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
 
@@ -97,7 +98,7 @@ function ActionRow({
 
   return (
     <Animated.View style={{ opacity, transform: [{ translateY }] }}>
-      <Pressable
+      <PressableScale
         onPress={() => {
           feedback.open();
           onSelect(action.key);
@@ -105,20 +106,18 @@ function ActionRow({
         accessibilityRole="button"
         accessibilityLabel={action.title}
         accessibilityHint={action.subtitle}
-        style={({ pressed }) => [
-          tw`flex-row items-center rounded-2xl px-4 py-3.5 mb-2 border border-stone-200`,
-          { backgroundColor: pressed ? '#F5F0E8' : '#FFFFFF' },
-        ]}
+        pressedScale={0.98}
+        style={tw`flex-row items-center rounded-card bg-card px-4 py-3.5 mb-2 border border-line`}
       >
-        <View style={tw`w-11 h-11 rounded-full bg-stone-900 items-center justify-center`}>
-          <Ionicons name={action.icon} size={20} color="#FFFFFF" />
+        <View style={tw`w-11 h-11 rounded-full bg-ink items-center justify-center`}>
+          <Ionicons name={action.icon} size={20} color={theme.colors.page} />
         </View>
         <View style={tw`ml-3 flex-1`}>
-          <Text style={tw`text-stone-900 font-semibold`}>{action.title}</Text>
-          <Text style={tw`text-xs text-stone-500 mt-0.5`}>{action.subtitle}</Text>
+          <Text style={tw`text-body text-ink font-semibold`}>{action.title}</Text>
+          <Text style={tw`text-footnote text-ink-3 mt-0.5`}>{action.subtitle}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-      </Pressable>
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
+      </PressableScale>
     </Animated.View>
   );
 }
@@ -163,7 +162,7 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
         />
         <Animated.View
           style={[
-            tw`bg-[#FFFcf7] rounded-t-3xl px-5 pt-3 pb-8 border-t border-stone-200`,
+            tw`bg-card rounded-t-sheet px-gutter-wide pt-3 pb-8 border-t border-line`,
             {
               zIndex: 2,
               opacity: sheetOpacity,
@@ -171,11 +170,11 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
             },
           ]}
         >
-          <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-1`} accessibilityRole="header">
+          <View style={tw`w-10 h-1 rounded-chip bg-stone-300 self-center mb-4`} />
+          <Text style={tw`text-callout font-semibold text-ink mb-1`} accessibilityRole="header">
             Create
           </Text>
-          <Text style={tw`text-sm text-stone-500 mb-4`}>
+          <Text style={tw`text-body text-ink-3 mb-4`}>
             Post, reel, story, or journal — Shop stays in the tab bar.
           </Text>
 

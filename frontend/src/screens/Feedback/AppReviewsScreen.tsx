@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import PrimaryButton from '../../components/ui/PrimaryButton';
@@ -70,20 +70,20 @@ function ReviewCard({
   };
 
   return (
-    <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 py-3.5 mb-3`}>
+    <View style={tw`bg-card border border-line/80 rounded-card px-4 py-3.5 mb-3`}>
       <View style={tw`flex-row items-center justify-between mb-1.5`}>
-        <Text style={tw`font-semibold text-stone-900`}>{review.author.username}</Text>
-        <Text style={tw`text-[11px] text-stone-500`}>{timeAgo(review.created_at)}</Text>
+        <Text style={tw`font-semibold text-ink`}>{review.author.username}</Text>
+        <Text style={tw`text-caption text-ink-3`}>{timeAgo(review.created_at)}</Text>
       </View>
       <StarRow value={review.stars} size={14} />
-      <Text style={tw`text-stone-700 leading-5 mt-2`}>{review.body}</Text>
+      <Text style={tw`text-ink-2 leading-5 mt-2`}>{review.body}</Text>
       {review.email ? (
-        <Text style={tw`text-[11px] text-stone-500 mt-1`}>{review.email}</Text>
+        <Text style={tw`text-caption text-ink-3 mt-1`}>{review.email}</Text>
       ) : null}
 
       {review.reply ? (
-        <View style={tw`mt-3 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5`}>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-800 uppercase`}>
+        <View style={tw`mt-3 bg-emerald-50 border border-emerald-100 rounded-control px-3 py-2.5`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-emerald-800 uppercase`}>
             {review.reply.from}
           </Text>
           <Text style={tw`text-stone-800 leading-5 mt-1`}>{review.reply.body}</Text>
@@ -94,15 +94,15 @@ function ReviewCard({
             value={draft}
             onChangeText={setDraft}
             placeholder="Thanks for the feedback — we’ll look at this…"
-            placeholderTextColor="#6B645E"
+            placeholderTextColor={theme.colors.ink3}
             multiline
-            style={tw`min-h-[72px] bg-[#F3EEE4] rounded-xl px-3 py-2.5 text-stone-800`}
+            style={tw`min-h-[72px] bg-page rounded-control px-3 py-2.5 text-stone-800`}
           />
           <PressableScale
             feedback="success"
             onPress={() => void sendReply()}
             disabled={busy}
-            style={tw`mt-2 self-end bg-emerald-600 rounded-full px-4 py-2 ${busy ? 'opacity-60' : ''}`}
+            style={tw`mt-2 self-end bg-emerald-600 rounded-chip px-4 py-2 ${busy ? 'opacity-60' : ''}`}
           >
             <Text style={tw`text-white font-semibold text-sm`}>
               {busy ? 'Sending…' : review.reply ? 'Update reply' : 'Reply'}
@@ -186,15 +186,19 @@ export default function AppReviewsScreen() {
   const wall = reviews.filter((r) => (canReply ? true : r.id !== mine?.id));
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
             feedback="close"
             onPress={() => navigation.goBack()}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
           </PressableScale>
         }
       />
@@ -210,21 +214,21 @@ export default function AppReviewsScreen() {
         ) : (
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[tw`px-5 pt-3`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+            contentContainerStyle={[tw`px-gutter-wide pt-3`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           >
             <FadeInUp>
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                 We’re listening
               </Text>
-              <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>Review Grow!</Text>
-              <Text style={tw`text-stone-500 leading-5 mt-1.5`}>
+              <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>Review Grow!</Text>
+              <Text style={tw`text-ink-3 leading-5 mt-1.5`}>
                 Tell us what’s working and what hurt. We read every note and reply here first.
                 After we’ve sat with it, if we made it right, we’ll ask you for a public App Store note.
               </Text>
               {summary.count > 0 ? (
                 <View style={tw`flex-row items-center mt-3`}>
                   <StarRow value={summary.avg || 0} />
-                  <Text style={tw`text-sm text-stone-600 ml-2`}>
+                  <Text style={tw`text-sm text-ink-2 ml-2`}>
                     {summary.avg?.toFixed(1) || '—'} · {summary.count}{' '}
                     {summary.count === 1 ? 'review' : 'reviews'}
                   </Text>
@@ -232,11 +236,11 @@ export default function AppReviewsScreen() {
               ) : null}
             </FadeInUp>
 
-            <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-4 py-4 mt-5`}>
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            <View style={tw`bg-card border border-line/80 rounded-card px-4 py-4 mt-5`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                 {mine ? 'Your review' : 'Leave a review'}
               </Text>
-              <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-2`}>
+              <Text style={tw`text-lg font-bold text-ink mt-0.5 mb-2`}>
                 {mine ? 'You can update this anytime' : 'Be honest. Be kind. Be specific.'}
               </Text>
               <StarPicker value={stars} onChange={setStars} />
@@ -244,9 +248,9 @@ export default function AppReviewsScreen() {
                 value={body}
                 onChangeText={setBody}
                 placeholder="The journal felt calm, but I couldn’t find instructors…"
-                placeholderTextColor="#6B645E"
+                placeholderTextColor={theme.colors.ink3}
                 multiline
-                style={tw`min-h-[110px] bg-[#F3EEE4] rounded-xl px-3 py-3 text-stone-800`}
+                style={tw`min-h-[110px] bg-page rounded-control px-3 py-3 text-stone-800`}
               />
               <PrimaryButton
                 label={saving ? 'Saving…' : mine ? 'Update review' : 'Send review'}
@@ -257,21 +261,21 @@ export default function AppReviewsScreen() {
             </View>
 
             {mine?.reply ? (
-              <View style={tw`mt-4 bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3.5`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-800 uppercase`}>
+              <View style={tw`mt-4 bg-emerald-50 border border-emerald-100 rounded-card px-4 py-3.5`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-800 uppercase`}>
                   We sat with this
                 </Text>
                 <Text style={tw`text-stone-800 leading-5 mt-1.5`}>{mine.reply.body}</Text>
                 {Platform.OS === 'ios' ? (
                   <>
-                    <Text style={tw`text-sm text-stone-600 leading-5 mt-3`}>
+                    <Text style={tw`text-sm text-ink-2 leading-5 mt-3`}>
                       If that helped — even a little — a public note on the App Store tells other
                       people we show up. No pressure. Only if it feels fair.
                     </Text>
                     <PressableScale
                       feedback="send"
                       onPress={() => void openAppStoreReview()}
-                      style={tw`mt-3 py-3 rounded-2xl bg-emerald-600 items-center`}
+                      style={tw`mt-3 py-3 rounded-card bg-emerald-600 items-center`}
                     >
                       <Text style={tw`text-white font-bold`}>Leave an App Store note</Text>
                     </PressableScale>
@@ -282,10 +286,10 @@ export default function AppReviewsScreen() {
 
             {canReply && inbox.length > 0 ? (
               <View style={tw`mt-7`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                   Inbox
                 </Text>
-                <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>
+                <Text style={tw`text-lg font-bold text-ink mt-0.5 mb-3`}>
                   Waiting for a thank-you
                 </Text>
                 {inbox.map((review) => (
@@ -302,15 +306,15 @@ export default function AppReviewsScreen() {
             ) : null}
 
             <View style={tw`mt-7`}>
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                 Community
               </Text>
-              <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>
+              <Text style={tw`text-lg font-bold text-ink mt-0.5 mb-3`}>
                 What people are saying
               </Text>
               {wall.length === 0 ? (
-                <View style={tw`bg-[#EAE4D6] rounded-2xl px-4 py-6 items-center`}>
-                  <Text style={tw`text-stone-600 text-center`}>
+                <View style={tw`bg-raised rounded-card px-4 py-6 items-center`}>
+                  <Text style={tw`text-ink-2 text-center`}>
                     First one in? Be the person who tells us something useful.
                   </Text>
                 </View>

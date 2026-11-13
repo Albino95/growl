@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, type LayoutChangeEvent } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
 import { feedback } from '../../utils/interactionFeedback';
 import {
   HEAT_COLORS,
@@ -44,6 +44,12 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
   const legend: (keyof typeof HEAT_COLORS)[] = [0, 1, 2, 3, 4];
+  // Fills keep brand greens; the empty step and rest days follow the scheme.
+  const colors = useThemeColors();
+  const dark = useColorSchemeName() === 'dark';
+  const heatColor = (s: keyof typeof HEAT_COLORS) => (s === 0 ? colors.raised : HEAT_COLORS[s]);
+  const restFill = dark ? (tw.color('amber-50') ?? REST_COLOR) : REST_COLOR;
+  const restBorder = dark ? (tw.color('amber-200') ?? REST_BORDER) : REST_BORDER;
 
   return (
     <View onLayout={onLayout}>
@@ -52,7 +58,7 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
           <View style={{ width: LABEL_W }}>
             {ROW_LABELS.map((l, i) => (
               <View key={i} style={{ height: cell, marginBottom: i < 6 ? GAP : 0, justifyContent: 'center' }}>
-                <Text style={tw`text-[11px] text-stone-500`}>{l}</Text>
+                <Text style={tw`text-caption text-ink-3`}>{l}</Text>
               </View>
             ))}
           </View>
@@ -62,7 +68,7 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
                 const shade = c.future ? null : heatShade(c.data);
                 const isSel = selected?.day === c.day;
                 const bg =
-                  shade === null ? 'transparent' : shade === 'rest' ? REST_COLOR : HEAT_COLORS[shade];
+                  shade === null ? 'transparent' : shade === 'rest' ? restFill : heatColor(shade);
                 return (
                   <Pressable
                     key={c.day}
@@ -82,7 +88,7 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
                       backgroundColor: bg,
                       borderWidth: c.isToday || isSel ? 2 : shade === 'rest' ? 1 : 0,
                       borderStyle: shade === 'rest' && !c.isToday && !isSel ? 'dashed' : 'solid',
-                      borderColor: isSel ? '#F97066' : c.isToday ? '#1C1917' : REST_BORDER,
+                      borderColor: isSel ? '#F97066' : c.isToday ? colors.ink : restBorder,
                     }}
                   />
                 );
@@ -95,10 +101,10 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
       )}
 
       <View style={tw`flex-row items-center justify-between mt-2.5`}>
-        <Text style={tw`text-xs text-stone-600 flex-1 pr-2`} numberOfLines={2}>
+        <Text style={tw`text-xs text-ink-2 flex-1 pr-2`} numberOfLines={2}>
           {selected ? (
             <>
-              <Text style={tw`font-semibold text-stone-800`}>{prettyDay(selected.day)}</Text>
+              <Text style={tw`font-semibold text-ink`}>{prettyDay(selected.day)}</Text>
               {` · ${describeDay(selected.data)}`}
             </>
           ) : (
@@ -111,22 +117,22 @@ export default function ActivityHeatmap({ days, today, weeks = 13 }: Props) {
               width: 10,
               height: 10,
               borderRadius: 3,
-              backgroundColor: REST_COLOR,
+              backgroundColor: restFill,
               borderWidth: 1,
               borderStyle: 'dashed',
-              borderColor: REST_BORDER,
+              borderColor: restBorder,
               marginRight: 3,
             }}
           />
-          <Text style={tw`text-[11px] text-stone-500 mr-2`}>rest</Text>
-          <Text style={tw`text-[11px] text-stone-500 mr-1`}>less</Text>
+          <Text style={tw`text-caption text-ink-3 mr-2`}>rest</Text>
+          <Text style={tw`text-caption text-ink-3 mr-1`}>less</Text>
           {legend.map((s) => (
             <View
               key={s}
-              style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: HEAT_COLORS[s], marginRight: 2 }}
+              style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: heatColor(s), marginRight: 2 }}
             />
           ))}
-          <Text style={tw`text-[11px] text-stone-500 ml-0.5`}>more</Text>
+          <Text style={tw`text-caption text-ink-3 ml-0.5`}>more</Text>
         </View>
       </View>
     </View>

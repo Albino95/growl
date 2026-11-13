@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
@@ -99,36 +99,36 @@ function CircleCard({
   const where = placeLabel(group);
   const vibe = vibeLabel(group);
   return (
-    <View style={tw`mb-2.5 rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden`}>
-      <View style={tw`h-1 ${full ? 'bg-[#F97066]' : 'bg-emerald-600'}`} />
-      <View style={tw`px-3.5 py-3.5 flex-row items-center`}>
+    <View style={tw`mb-2.5 rounded-sheet border border-line/80 bg-card overflow-hidden`}>
+      <View style={tw`h-1 ${full ? 'bg-energy-600' : 'bg-emerald-600'}`} />
+      <View style={tw`p-4 flex-row items-center`}>
         <PressableScale onPress={onOpen} feedback="open" style={tw`flex-1`}>
           <View style={tw`flex-row items-center`}>
-            <View style={tw`w-11 h-11 rounded-2xl bg-emerald-50 items-center justify-center mr-3`}>
-              <Ionicons name={meta.icon} size={20} color="#059669" />
+            <View style={tw`w-11 h-11 rounded-card bg-emerald-50 items-center justify-center mr-3`}>
+              <Ionicons name={meta.icon} size={20} color={theme.colors.brand} />
             </View>
             <View style={tw`flex-1`}>
               <View style={tw`flex-row items-center mb-0.5`}>
                 <View
                   style={tw`px-1.5 py-0.5 rounded-full mr-1.5 ${
-                    full ? 'bg-[#FFF1F0]' : group.member_count <= 1 ? 'bg-[#EAE4D6]' : 'bg-emerald-50'
+                    full ? 'bg-energy-50' : group.member_count <= 1 ? 'bg-raised' : 'bg-emerald-50'
                   }`}
                 >
                   <Text
-                    style={tw`text-[11px] font-bold uppercase ${
-                      full ? 'text-[#E11D48]' : group.member_count <= 1 ? 'text-stone-600' : 'text-emerald-800'
+                    style={tw`text-caption font-bold uppercase ${
+                      full ? 'text-rose-600' : group.member_count <= 1 ? 'text-ink-2' : 'text-emerald-800'
                     }`}
                   >
                     {vibe}
                   </Text>
                 </View>
                 {where ? (
-                  <Text style={tw`text-[11px] text-stone-500 flex-1`} numberOfLines={1}>
+                  <Text style={tw`text-caption text-ink-3 flex-1`} numberOfLines={1}>
                     {where}
                   </Text>
                 ) : null}
               </View>
-              <Text style={tw`text-[15px] font-bold text-stone-900`} numberOfLines={1}>
+              <Text style={tw`text-body font-bold text-ink`} numberOfLines={1}>
                 {group.name}
               </Text>
             </View>
@@ -138,15 +138,15 @@ function CircleCard({
           </View>
         </PressableScale>
         {group.joined ? (
-          <PressableScale onPress={onOpen} feedback="open" style={tw`ml-2`}>
-            <Ionicons name="chevron-forward" size={16} color="#A8A29E" />
+          <PressableScale onPress={onOpen} feedback="open" pressedScale={0.9} hitSlop={8} style={tw`ml-2`}>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.iconMuted} />
           </PressableScale>
         ) : onJoin && !full ? (
           <PressableScale
             onPress={onJoin}
             disabled={joining}
             feedback="success"
-            style={tw`ml-2 px-3 py-2 rounded-xl bg-emerald-600 ${joining ? 'opacity-60' : ''}`}
+            style={tw`ml-2 px-3 py-2 rounded-control bg-emerald-600 ${joining ? 'opacity-60' : ''}`}
           >
             <Text style={tw`text-white text-xs font-bold`}>Sit</Text>
           </PressableScale>
@@ -343,15 +343,18 @@ export default function CirclesScreen() {
   }, [suggested, pathOptions, pathFilter, prefs, hasPlace]);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
             onPress={() => navigation.goBack()}
             feedback="close"
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            accessibilityLabel="Back"
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
           </PressableScale>
         }
         right={
@@ -369,12 +372,12 @@ export default function CirclesScreen() {
       />
 
       {loading ? (
-        <View style={tw`flex-1 px-5 pt-2`}>
+        <View style={tw`flex-1 px-gutter-wide pt-2`}>
           <SkeletonList variant="circle" count={5} />
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={tw`px-5 pb-28`}
+          contentContainerStyle={tw`px-gutter-wide pb-28`}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -382,27 +385,28 @@ export default function CirclesScreen() {
                 setRefreshing(true);
                 void load(true);
               }}
-              tintColor="#059669"
+              tintColor={theme.colors.brand}
+              colors={[theme.colors.brand]}
             />
           }
         >
           <FadeInUp>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Circles
             </Text>
-            <Text style={tw`text-[28px] font-bold text-stone-900 mt-0.5 leading-8`}>Grow together</Text>
-            <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5 mb-5`}>
+            <Text style={tw`text-display font-extrabold text-ink mt-0.5`}>Grow together</Text>
+            <Text style={tw`text-body text-ink-3 mt-1.5 mb-5`}>
               Filters change what you see. Each room is one table of 10 — not a row of other circles.
             </Text>
           </FadeInUp>
 
-          <View style={tw`rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden mb-4`}>
+          <View style={tw`rounded-sheet border border-line/80 bg-card overflow-hidden mb-4`}>
             <View style={tw`h-1 bg-emerald-600`} />
-            <View style={tw`px-3.5 pt-3.5 pb-4`}>
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            <View style={tw`p-4`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                 Seat by
               </Text>
-              <Text style={tw`text-xs text-stone-500 mt-1 mb-3`}>{selectedMatch.hint}</Text>
+              <Text style={tw`text-xs text-ink-3 mt-1 mb-3`}>{selectedMatch.hint}</Text>
               <View style={tw`flex-row flex-wrap justify-between`}>
                 {MATCH_OPTIONS.map((opt) => {
                   const on = prefs.match === opt.id;
@@ -414,12 +418,12 @@ export default function CirclesScreen() {
                         void savePrefs({ match: opt.id });
                       }}
                       feedback="select"
-                      style={tw`w-[48%] mb-2 px-3 py-3 rounded-2xl border ${
-                        on ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-stone-200'
+                      style={tw`w-[48%] mb-2 px-3 py-3 rounded-card border ${
+                        on ? 'bg-emerald-600 border-emerald-600' : 'bg-card border-line'
                       }`}
                     >
-                      <Ionicons name={opt.icon} size={16} color={on ? '#ECFDF5' : '#059669'} />
-                      <Text style={tw`text-xs font-bold mt-1.5 ${on ? 'text-white' : 'text-stone-800'}`}>
+                      <Ionicons name={opt.icon} size={16} color={on ? '#ECFDF5' : theme.colors.brand} />
+                      <Text style={tw`text-xs font-bold mt-1.5 ${on ? 'text-white' : 'text-ink'}`}>
                         {opt.label}
                       </Text>
                     </PressableScale>
@@ -427,15 +431,15 @@ export default function CirclesScreen() {
                 })}
               </View>
 
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mt-1`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-1`}>
                 Place — for Nearby and Mix
               </Text>
               {prefs.match === 'nearby' && !hasPlace ? (
-                <Text style={tw`text-xs text-[#E11D48] mt-1 mb-3`}>
+                <Text style={tw`text-xs text-rose-600 mt-1 mb-3`}>
                   Add a country or city so Nearby can actually filter.
                 </Text>
               ) : (
-                <Text style={tw`text-xs text-stone-500 mt-1 mb-3`}>
+                <Text style={tw`text-xs text-ink-3 mt-1 mb-3`}>
                   Optional. Matching ignores this. Nearby uses it as a hard lean.
                 </Text>
               )}
@@ -443,20 +447,20 @@ export default function CirclesScreen() {
                 <PressableScale
                   onPress={() => setCountryOpen(true)}
                   feedback="select"
-                  style={tw`flex-1 bg-white border border-stone-200 rounded-2xl px-3 py-3.5`}
+                  style={tw`flex-1 bg-card border border-line rounded-card px-3 py-3.5`}
                 >
-                  <Text style={tw`text-[11px] font-bold text-stone-500 uppercase`}>Country</Text>
+                  <Text style={tw`text-caption font-bold text-ink-3 uppercase`}>Country</Text>
                   <Text
                     style={tw`text-sm font-semibold mt-0.5 ${
-                      prefs.country ? 'text-stone-900' : 'text-stone-500'
+                      prefs.country ? 'text-ink' : 'text-ink-3'
                     }`}
                     numberOfLines={1}
                   >
                     {prefs.country || 'Anywhere'}
                   </Text>
                 </PressableScale>
-                <View style={tw`flex-1 bg-white border border-stone-200 rounded-2xl px-3 py-2.5`}>
-                  <Text style={tw`text-[11px] font-bold text-stone-500 uppercase`}>City</Text>
+                <View style={tw`flex-1 bg-card border border-line rounded-card px-3 py-2.5`}>
+                  <Text style={tw`text-caption font-bold text-ink-3 uppercase`}>City</Text>
                   <TextInput
                     value={cityDraft}
                     onChangeText={setCityDraft}
@@ -466,8 +470,8 @@ export default function CirclesScreen() {
                       void savePrefs({ city: next || null });
                     }}
                     placeholder="Optional"
-                    placeholderTextColor="#6B645E"
-                    style={tw`text-sm font-semibold text-stone-900 py-0.5`}
+                    placeholderTextColor={theme.colors.placeholder}
+                    style={tw`text-sm font-semibold text-ink py-0.5`}
                   />
                 </View>
               </View>
@@ -486,10 +490,10 @@ export default function CirclesScreen() {
                   }}
                   feedback="select"
                   style={tw`mr-2 px-3 py-2 rounded-full border ${
-                    on ? 'bg-stone-900 border-stone-900' : 'bg-white border-stone-200'
+                    on ? 'bg-ink border-ink' : 'bg-card border-line'
                   }`}
                 >
-                  <Text style={tw`text-xs font-bold ${on ? 'text-white' : 'text-stone-700'}`}>
+                  <Text style={tw`text-xs font-bold ${on ? 'text-page' : 'text-ink-2'}`}>
                     {k === 'all' ? 'All paths' : k === 'grove' ? 'Grove' : getCategoryLabel(k)}
                   </Text>
                 </PressableScale>
@@ -497,7 +501,7 @@ export default function CirclesScreen() {
             })}
           </ScrollView>
 
-          <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+          <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
             Yours
           </Text>
           {filteredMine.length === 0 ? (
@@ -520,21 +524,21 @@ export default function CirclesScreen() {
 
           {findable.length > 0 ? (
             <>
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3 mt-5`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3 mt-5`}>
                 Find on your paths
               </Text>
               {findable.map((g) => (
                 <FadeInUp key={g.id}>
                   <View
-                    style={tw`mb-2.5 rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden`}
+                    style={tw`mb-2.5 rounded-sheet border border-line/80 bg-card overflow-hidden`}
                   >
                     <View style={tw`h-1 bg-emerald-600`} />
-                    <View style={tw`px-3.5 py-3.5 flex-row items-center`}>
+                    <View style={tw`p-4 flex-row items-center`}>
                       <View style={tw`flex-1 pr-3`}>
-                        <Text style={tw`text-[15px] font-bold text-stone-900`} numberOfLines={1}>
+                        <Text style={tw`text-body font-bold text-ink`} numberOfLines={1}>
                           {g.path_key === 'grove' ? 'The Grove' : getCategoryLabel(g.path_key)}
                         </Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5 leading-4`} numberOfLines={2}>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5 leading-4`} numberOfLines={2}>
                           You’re not in this path yet. We’ll sit you in a live room, or open the first table.
                         </Text>
                       </View>
@@ -542,7 +546,7 @@ export default function CirclesScreen() {
                         onPress={() => void onPlace(g.path_key)}
                         disabled={placingKey === g.path_key}
                         feedback="success"
-                        style={tw`px-3 py-2 rounded-xl bg-emerald-600 ${
+                        style={tw`px-3 py-2 rounded-control bg-emerald-600 ${
                           placingKey === g.path_key ? 'opacity-60' : ''
                         }`}
                       >
@@ -557,11 +561,11 @@ export default function CirclesScreen() {
             </>
           ) : null}
 
-          <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3 mt-5`}>
+          <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3 mt-5`}>
             Open seats
           </Text>
           {openSeats.length === 0 ? (
-            <Text style={tw`text-sm text-stone-500 leading-5 mb-2`}>
+            <Text style={tw`text-body text-ink-3 mb-2`}>
               {prefs.match === 'nearby' && !hasPlace
                 ? 'Nearby needs a place first — or switch to Mix / Matching.'
                 : prefs.match === 'nearby'
@@ -607,26 +611,26 @@ export default function CirclesScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={tw`flex-1 justify-end bg-black/40`}
         >
-          <View style={tw`bg-[#F3EEE4] rounded-t-[28px] px-5 pt-4 pb-10`}>
+          <View style={tw`bg-page rounded-t-hero px-gutter-wide pt-4 pb-10`}>
             <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
-            <Text style={tw`text-lg font-bold text-stone-900`}>Start a circle</Text>
-            <Text style={tw`text-sm text-stone-500 mt-1 mb-4`}>
+            <Text style={tw`text-callout font-bold text-ink`}>Start a circle</Text>
+            <Text style={tw`text-body text-ink-3 mt-1 mb-4`}>
               Ten chairs on one of your paths. If the last person stands up, we put the chairs away.
             </Text>
             <TextInput
               value={name}
               onChangeText={setName}
               placeholder="Circle name"
-              placeholderTextColor="#6B645E"
-              style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 mb-3`}
+              placeholderTextColor={theme.colors.placeholder}
+              style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink mb-3`}
             />
             <TextInput
               value={desc}
               onChangeText={setDesc}
               placeholder="What do you practice here?"
-              placeholderTextColor="#6B645E"
+              placeholderTextColor={theme.colors.placeholder}
               multiline
-              style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3.5 text-stone-900 mb-3 min-h-[72px]`}
+              style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink mb-3 min-h-[72px]`}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-4`}>
               {pathOptions.map((k) => (
@@ -637,11 +641,11 @@ export default function CirclesScreen() {
                   style={tw`mr-2 px-3 py-2 rounded-full border ${
                     pathKey === k
                       ? 'bg-emerald-600 border-emerald-600'
-                      : 'bg-white border-stone-200'
+                      : 'bg-card border-line'
                   }`}
                 >
                   <Text
-                    style={tw`text-xs font-bold ${pathKey === k ? 'text-white' : 'text-stone-700'}`}
+                    style={tw`text-xs font-bold ${pathKey === k ? 'text-white' : 'text-ink-2'}`}
                   >
                     {k === 'grove' ? 'The Grove' : getCategoryLabel(k)}
                   </Text>
@@ -652,15 +656,15 @@ export default function CirclesScreen() {
               <PressableScale
                 onPress={() => setCreateOpen(false)}
                 feedback="close"
-                style={tw`flex-1 py-3.5 rounded-2xl bg-white border border-stone-200 items-center`}
+                style={tw`flex-1 py-3.5 rounded-card bg-card border border-line items-center`}
               >
-                <Text style={tw`font-semibold text-stone-700`}>Cancel</Text>
+                <Text style={tw`font-semibold text-ink-2`}>Cancel</Text>
               </PressableScale>
               <PressableScale
                 onPress={() => void onCreate()}
                 disabled={saving}
                 feedback="success"
-                style={tw`flex-1 py-3.5 rounded-2xl bg-emerald-600 items-center ${saving ? 'opacity-60' : ''}`}
+                style={tw`flex-1 py-3.5 rounded-card bg-emerald-600 items-center ${saving ? 'opacity-60' : ''}`}
               >
                 <Text style={tw`font-bold text-white`}>{saving ? 'Creating…' : 'Create'}</Text>
               </PressableScale>

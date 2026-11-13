@@ -7,7 +7,6 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   Share,
   TextInput,
   KeyboardAvoidingView,
@@ -17,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import { getMyInvite, redeemInvite, type MyInvite } from '../../services/api/growth';
 import { normalizeInviteCode } from '../../services/storage/pendingInvite';
 import PrimaryButton from '../../components/ui/PrimaryButton';
@@ -31,8 +31,8 @@ import { copyText, friendlyInviteError } from './inviteHelpers';
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <View style={tw`flex-1 items-center py-3`}>
-      <Text style={tw`text-2xl font-bold text-stone-900`}>{value}</Text>
-      <Text style={tw`text-xs text-stone-500 mt-0.5 text-center`}>{label}</Text>
+      <Text style={tw`text-2xl font-bold text-ink`}>{value}</Text>
+      <Text style={tw`text-xs text-ink-3 mt-0.5 text-center`}>{label}</Text>
     </View>
   );
 }
@@ -119,21 +119,23 @@ export default function InviteScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
-      <View style={tw`flex-row items-center px-4 pt-2 pb-2`}>
-        <Pressable
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+      <View style={tw`flex-row items-center px-gutter pt-2 pb-2`}>
+        <PressableScale
           onPress={() => navigation.goBack()}
-          style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+          pressedScale={0.9}
+          hitSlop={8}
+          style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={18} color="#1C1917" />
-        </Pressable>
+          <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
+        </PressableScale>
       </View>
 
       <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
-          contentContainerStyle={tw`px-5 pb-16`}
+          contentContainerStyle={tw`px-gutter-wide pb-16`}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -142,25 +144,25 @@ export default function InviteScreen() {
                 setRefreshing(true);
                 void load();
               }}
-              tintColor="#059669"
+              tintColor={theme.colors.brand}
             />
           }
         >
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
             Invite friends
           </Text>
-          <Text style={tw`text-2xl font-bold text-stone-900 mt-0.5`}>Grow with friends</Text>
-          <Text style={tw`text-base text-stone-600 mt-2 leading-6`}>
+          <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>Grow with friends</Text>
+          <Text style={tw`text-base text-ink-2 mt-2 leading-6`}>
             Growing is easier with people cheering you on. When a friend joins with your code, you’re
             connected right away — and once they start growing, you earn the Gardener badge 🌱
           </Text>
 
-          <View style={tw`mt-5 p-5 rounded-3xl bg-[#FFFcf7] border border-stone-200/80`}>
+          <View style={tw`mt-5 p-5 rounded-sheet bg-card border border-line/80`}>
             {loading && !invite ? (
               <SkeletonList variant="inbox" count={1} />
             ) : invite ? (
               <>
-                <Text style={tw`text-xs font-semibold text-stone-500 uppercase tracking-widest text-center`}>
+                <Text style={tw`text-xs font-semibold text-ink-3 uppercase tracking-widest text-center`}>
                   Your code
                 </Text>
                 <Text
@@ -170,7 +172,7 @@ export default function InviteScreen() {
                 >
                   {invite.code}
                 </Text>
-                <Text style={tw`mt-2 text-xs text-stone-500 text-center`} selectable numberOfLines={1}>
+                <Text style={tw`mt-2 text-xs text-ink-3 text-center`} selectable numberOfLines={1}>
                   {invite.url.replace(/^https?:\/\//, '')}
                 </Text>
                 <View style={tw`flex-row mt-5 gap-3`}>
@@ -183,15 +185,15 @@ export default function InviteScreen() {
                   />
                   <PrimaryButton label="Share" style={tw`flex-1`} onPress={() => void onShare()} />
                 </View>
-                <View style={tw`flex-row mt-4 border-t border-stone-200/80`}>
+                <View style={tw`flex-row mt-4 border-t border-line/80`}>
                   <Stat value={invite.invited_count} label="joined with your code" />
-                  <View style={tw`w-px bg-stone-200/80`} />
+                  <View style={tw`w-px bg-line/80`} />
                   <Stat value={invite.rewarded_count} label="already growing" />
                 </View>
               </>
             ) : (
               <View style={tw`items-center py-2`}>
-                <Text style={tw`text-sm text-stone-600 text-center`}>{error}</Text>
+                <Text style={tw`text-sm text-ink-2 text-center`}>{error}</Text>
                 <PrimaryButton
                   label="Try again"
                   variant="soft"
@@ -205,17 +207,17 @@ export default function InviteScreen() {
             )}
           </View>
 
-          <Text style={tw`mt-8 text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+          <Text style={tw`mt-8 text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
             Have a code?
           </Text>
-          <View style={tw`p-5 rounded-3xl bg-[#FFFcf7] border border-stone-200/80`}>
+          <View style={tw`p-5 rounded-sheet bg-card border border-line/80`}>
             {redeemed ? (
               <View style={tw`items-center`}>
                 <GrowAvatar username={redeemed.username} uri={redeemed.avatar} size={56} />
-                <Text style={tw`mt-3 text-base font-bold text-stone-900 text-center`}>
+                <Text style={tw`mt-3 text-base font-bold text-ink text-center`}>
                   You and {redeemed.username} are now friends 🌱
                 </Text>
-                <Text style={tw`mt-1 text-sm text-stone-600 text-center`}>
+                <Text style={tw`mt-1 text-sm text-ink-2 text-center`}>
                   Say hi, or grow together on a challenge.
                 </Text>
                 <PrimaryButton
@@ -227,7 +229,7 @@ export default function InviteScreen() {
               </View>
             ) : (
               <>
-                <Text style={tw`text-sm text-stone-600`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   A friend sent you a code? Enter it to connect with them.
                 </Text>
                 <TextInput
@@ -237,15 +239,15 @@ export default function InviteScreen() {
                     if (redeemError) setRedeemError(null);
                   }}
                   placeholder="e.g. 7K3Q9M2X"
-                  placeholderTextColor="#6B645E"
+                  placeholderTextColor={theme.colors.ink3}
                   autoCapitalize="characters"
                   autoCorrect={false}
                   maxLength={16}
                   returnKeyType="go"
                   onSubmitEditing={() => void onRedeem()}
                   style={tw`mt-3 border ${
-                    redeemError ? 'border-red-400' : 'border-stone-200/80'
-                  } bg-white rounded-2xl py-3.5 px-4 text-base font-semibold tracking-widest text-stone-900`}
+                    redeemError ? 'border-red-400' : 'border-line/80'
+                  } bg-card rounded-card py-3.5 px-4 text-base font-semibold tracking-widest text-ink`}
                   accessibilityLabel="Invite code"
                 />
                 {redeemError ? <Text style={tw`mt-2 text-xs text-red-600`}>{redeemError}</Text> : null}

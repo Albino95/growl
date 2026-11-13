@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import PressableScale from '../ui/PressableScale';
 import { StarRow } from './StarRating';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import {
   formatOfferLine,
   listInstructors,
@@ -64,7 +64,7 @@ export default function InstructorDiscoveryStrip({
   return (
     <View style={tw`mb-4`}>
       <View style={tw`flex-row items-center justify-between mb-2`}>
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
           {title}
         </Text>
         {onSeeAll ? (
@@ -87,13 +87,13 @@ export default function InstructorDiscoveryStrip({
               (person.categories[0] && getCategoryLabel(person.categories[0])) ||
               'Coach';
             return (
-              <Pressable
+              <PressableScale
                 key={person.id}
                 onPress={() => {
                   feedback.open();
                   onOpenProfile(person.id, { username: person.username, avatarUrl: person.avatar });
                 }}
-                style={tw`w-[168px] bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3`}
+                style={tw`w-[168px] bg-card border border-line/80 rounded-card px-3.5 py-3`}
               >
                 <View style={tw`flex-row items-center mb-2`}>
                   <GrowAvatar
@@ -104,39 +104,39 @@ export default function InstructorDiscoveryStrip({
                     style={tw`mr-2.5`}
                   />
                   <View style={tw`flex-1`}>
-                    <Text style={tw`font-bold text-stone-900 text-sm`} numberOfLines={1}>
+                    <Text style={tw`font-bold text-ink text-sm`} numberOfLines={1}>
                       {person.username}
                     </Text>
                     <View style={tw`flex-row items-center mt-0.5`}>
-                      <Ionicons name="school" size={11} color="#059669" />
-                      <Text style={tw`text-[11px] text-emerald-700 font-semibold ml-0.5`}>
+                      <Ionicons name="school" size={11} color={theme.colors.brand} />
+                      <Text style={tw`text-caption text-emerald-700 font-semibold ml-0.5`}>
                         Instructor
                       </Text>
                     </View>
                   </View>
                 </View>
-                <Text style={tw`text-xs text-stone-500 mb-1.5`} numberOfLines={2}>
+                <Text style={tw`text-xs text-ink-3 mb-1.5`} numberOfLines={2}>
                   {person.teaching_headline || `Teaching ${pathLabel}`}
                 </Text>
                 {person.rating_count && person.rating_avg ? (
                   <View style={tw`flex-row items-center mb-1`}>
                     <StarRow value={person.rating_avg} size={11} />
-                    <Text style={tw`text-[11px] text-stone-500 ml-1`}>{person.rating_avg}</Text>
+                    <Text style={tw`text-caption text-ink-3 ml-1`}>{person.rating_avg}</Text>
                   </View>
                 ) : null}
                 {formatOfferLine(person) ? (
-                  <Text style={tw`text-[11px] text-emerald-800 font-semibold mb-1.5`} numberOfLines={1}>
+                  <Text style={tw`text-caption text-emerald-800 font-semibold mb-1.5`} numberOfLines={1}>
                     {formatOfferLine(person)}
                   </Text>
                 ) : (
-                  <Text style={tw`text-[11px] text-stone-500 mb-1.5`}>{pathLabel}</Text>
+                  <Text style={tw`text-caption text-ink-3 mb-1.5`}>{pathLabel}</Text>
                 )}
                 <View style={tw`flex-row items-center justify-between`}>
-                  <Text style={tw`text-[11px] text-stone-500`}>
+                  <Text style={tw`text-caption text-ink-3`}>
                     {person.vote_count} endorse{person.vote_count === 1 ? '' : 's'}
                   </Text>
                   {onMessage ? (
-                    <Pressable
+                    <PressableScale
                       onPress={() => {
                         feedback.send();
                         onMessage(person);
@@ -144,12 +144,12 @@ export default function InstructorDiscoveryStrip({
                       hitSlop={8}
                     >
                       <Text style={tw`text-xs font-bold text-emerald-700`}>Reach out</Text>
-                    </Pressable>
+                    </PressableScale>
                   ) : (
                     <Text style={tw`text-xs font-bold text-emerald-700`}>View</Text>
                   )}
                 </View>
-              </Pressable>
+              </PressableScale>
             );
           })}
         </ScrollView>

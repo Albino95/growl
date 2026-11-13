@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import BadgeIcon from './BadgeIcon';
 import {
@@ -75,19 +75,19 @@ export default function BadgeRow({
       disabled={!handlePress}
       feedback="open"
       pressedScale={0.99}
-      style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl pt-3.5 pb-3`}
+      style={tw`bg-card border border-line/80 rounded-card pt-3.5 pb-3`}
       accessibilityRole={handlePress ? 'button' : undefined}
       accessibilityLabel={`${title}: ${sortedEarned.length} earned${handlePress ? '. Open all badges' : ''}`}
     >
-      <View style={tw`flex-row items-center justify-between px-4 mb-2.5`}>
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+      <View style={tw`flex-row items-center justify-between px-gutter mb-2.5`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
           {title}
           {sortedEarned.length > 0 ? ` · ${sortedEarned.length}` : ''}
         </Text>
         {handlePress ? (
           <View style={tw`flex-row items-center`}>
             <Text style={tw`text-xs font-semibold text-emerald-700 mr-0.5`}>See all</Text>
-            <Ionicons name="chevron-forward" size={14} color="#047857" />
+            <Ionicons name="chevron-forward" size={14} color={theme.colors.leafInk} />
           </View>
         ) : null}
       </View>
@@ -95,12 +95,12 @@ export default function BadgeRow({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={tw`px-4 gap-3`}
+        contentContainerStyle={tw`px-gutter gap-3`}
       >
         {sortedEarned.map((b) => (
           <View key={b.id} style={tw`items-center w-16`}>
             <BadgeIcon id={b.id} size={52} tier={tierOf(b.id)} />
-            <Text style={tw`text-[11px] text-stone-700 font-semibold mt-1 text-center`} numberOfLines={1}>
+            <Text style={tw`text-caption text-ink-2 font-semibold mt-1 text-center`} numberOfLines={1}>
               {nameOf(b.id)}
             </Text>
           </View>
@@ -108,7 +108,7 @@ export default function BadgeRow({
         {locked.map((b) => (
           <View key={b.id} style={tw`items-center w-16`}>
             <BadgeIcon id={b.id} size={52} locked />
-            <Text style={tw`text-[11px] text-stone-500 mt-1 text-center`} numberOfLines={1}>
+            <Text style={tw`text-caption text-ink-3 mt-1 text-center`} numberOfLines={1}>
               {b.name}
             </Text>
           </View>
@@ -116,18 +116,18 @@ export default function BadgeRow({
       </ScrollView>
 
       {withLocked && next ? (
-        <View style={tw`px-4 mt-3`}>
+        <View style={tw`px-gutter mt-3`}>
           <View style={tw`flex-row items-center justify-between mb-1`}>
-            <Text style={tw`text-xs text-stone-600`} numberOfLines={1}>
-              Next: <Text style={tw`font-semibold text-stone-800`}>{next.name}</Text>
+            <Text style={tw`text-xs text-ink-2`} numberOfLines={1}>
+              Next: <Text style={tw`font-semibold text-ink`}>{next.name}</Text>
             </Text>
-            <Text style={tw`text-xs text-stone-500`}>
+            <Text style={tw`text-xs text-ink-3`}>
               {Math.min(next.progress.current, next.progress.target)}/{next.progress.target}
             </Text>
           </View>
-          <View style={tw`h-1.5 bg-[#EAE4D6] rounded-full overflow-hidden`}>
+          <View style={tw`h-1.5 bg-raised rounded-full overflow-hidden`}>
             <View
-              style={[tw`h-full rounded-full bg-[#F97066]`, { width: `${Math.max(4, nextFrac * 100)}%` }]}
+              style={[tw`h-full rounded-full bg-energy-600`, { width: `${Math.max(4, nextFrac * 100)}%` }]}
             />
           </View>
         </View>

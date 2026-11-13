@@ -10,7 +10,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { theme } from '../../lib/tw';
+import { theme, getColorSchemeName } from '../../lib/tw';
 import { easing as motionEasing } from '../../theme/motion';
 import { triggerFeedback } from '../../utils/interactionFeedback';
 import { markFirstOpenSeen, resolveBootMode, type BootMode } from '../../utils/firstLaunch';
@@ -69,16 +69,19 @@ const PALETTE = {
     leaf: 'rgba(243,238,228,0.92)',
     status: 'light' as const,
   },
-  page: {
-    bg: theme.colors.page,
-    seed: '#059669',
-    smile: '#ECFDF5',
-    speck: '#F97066',
-    wordmark: theme.colors.brand,
-    message: theme.colors.textMuted,
-    stem: 'rgba(5,150,105,0.22)',
-    leaf: '#10B981',
-    status: 'dark' as const,
+  // Getter: scheme-aware colours must be read at render, not at import.
+  get page() {
+    return {
+      bg: theme.colors.page,
+      seed: '#059669',
+      smile: '#ECFDF5',
+      speck: '#F97066',
+      wordmark: theme.colors.brand,
+      message: theme.colors.textMuted,
+      stem: 'rgba(5,150,105,0.22)',
+      leaf: '#10B981',
+      status: (getColorSchemeName() === 'dark' ? 'light' : 'dark') as 'light' | 'dark',
+    };
   },
   dark: {
     bg: '#0A0A0A',
@@ -599,7 +602,7 @@ function BootSplash({
       accessibilityLabel="Grow! is opening"
       onLayout={handleRootLayout}
     >
-      {manageStatusBar ? <StatusBar style={exiting ? 'dark' : palette.status} /> : null}
+      {manageStatusBar ? <StatusBar style={exiting ? (getColorSchemeName() === 'dark' ? 'light' : 'dark') : palette.status} /> : null}
 
       {/* Emerald field (+ evening dusk tint). Fades off Home when signed in. */}
       <Animated.View

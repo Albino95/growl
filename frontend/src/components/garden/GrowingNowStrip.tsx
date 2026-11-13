@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import FadeInUp from '../ui/FadeInUp';
 import LiveHalo from '../circles/LiveHalo';
@@ -47,32 +47,32 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
 
   return (
     <FadeInUp style={tw`mt-3`}>
-      <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}>
+      <View style={tw`bg-card border border-line/80 rounded-card overflow-hidden`}>
         <View style={tw`h-1 bg-emerald-600`} />
-        <View style={tw`px-4 pt-3.5 pb-2 flex-row items-center justify-between`}>
+        <View style={tw`px-gutter pt-3.5 pb-2 flex-row items-center justify-between`}>
           <View>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Growing now
             </Text>
-            <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>Your seeds</Text>
+            <Text style={tw`text-lg font-bold text-ink mt-0.5`}>Your seeds</Text>
           </View>
           <View style={tw`flex-row items-center gap-1.5`}>
             <LiveHalo>
               <PressableScale
                 onPress={() => navigateFromRoot(navigation, 'Circles')}
                 feedback="open"
-                style={tw`px-3 py-2 rounded-xl bg-[#FFF1F0] border border-[#FECACA] flex-row items-center`}
+                style={tw`px-3 py-2 rounded-control bg-energy-50 border border-red-200 flex-row items-center`}
               >
-                <Ionicons name="people-outline" size={14} color="#E11D48" />
-                <Text style={tw`text-xs font-bold text-[#E11D48] ml-1`}>Circles</Text>
+                <Ionicons name="people-outline" size={14} color={tw.color("rose-600")} />
+                <Text style={tw`text-xs font-bold text-rose-600 ml-1`}>Circles</Text>
               </PressableScale>
             </LiveHalo>
             <PressableScale
               onPress={() => navigateFromRoot(navigation, 'Garden')}
               feedback="open"
-              style={tw`px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100 flex-row items-center`}
+              style={tw`px-3 py-2 rounded-control bg-emerald-50 border border-emerald-100 flex-row items-center`}
             >
-              <Ionicons name="leaf-outline" size={14} color="#059669" />
+              <Ionicons name="leaf-outline" size={14} color={theme.colors.brand} />
               <Text style={tw`text-xs font-bold text-emerald-800 ml-1`}>
                 Garden{matured > 0 ? ` · ${matured}` : ''}
               </Text>
@@ -81,10 +81,10 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
         </View>
 
         {loading ? (
-          <ActivityIndicator color="#059669" style={tw`py-8`} />
+          <ActivityIndicator color={theme.colors.brand} style={tw`py-8`} />
         ) : seeds.length === 0 ? (
-          <View style={tw`px-4 pb-4 pt-1`}>
-            <Text style={tw`text-sm text-stone-500 leading-5 mb-3`}>
+          <View style={tw`px-gutter pb-4 pt-1`}>
+            <Text style={tw`text-sm text-ink-3 leading-5 mb-3`}>
               Plant a goal from your paths — watch it grow into a tree in your Garden.
             </Text>
             <PressableScale
@@ -93,7 +93,7 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
                 else navigateFromRoot(navigation, 'PlantSeed');
               }}
               feedback="open"
-              style={tw`py-3 rounded-xl bg-emerald-600 items-center flex-row justify-center gap-2`}
+              style={tw`py-3 rounded-control bg-emerald-600 items-center flex-row justify-center gap-2`}
             >
               <Ionicons name="add-circle-outline" size={18} color="#fff" />
               <Text style={tw`text-white font-bold text-sm`}>Plant a seed</Text>
@@ -103,7 +103,7 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={tw`px-4 pb-6 pt-2 gap-4`}
+            contentContainerStyle={tw`px-gutter pb-6 pt-2 gap-4`}
             {...horizontalScrollProps}
           >
             {seeds.map((seed) => (
@@ -121,12 +121,12 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
                   resting={seed.status === 'resting'}
                 />
                 <Text
-                  style={tw`text-[12px] font-semibold text-stone-900 mt-6 text-center`}
+                  style={tw`text-caption font-semibold text-ink mt-6 text-center`}
                   numberOfLines={2}
                 >
                   {seed.title}
                 </Text>
-                <Text style={tw`text-[11px] text-stone-500 mt-0.5`} numberOfLines={1}>
+                <Text style={tw`text-caption text-ink-3 mt-0.5`} numberOfLines={1}>
                   {getCategoryLabel(`${seed.category_key}:${seed.subcategory_key}`)}
                 </Text>
               </PressableScale>
@@ -142,9 +142,9 @@ export default function GrowingNowStrip({ onPlantPress }: Props) {
               <View
                 style={tw`w-[72px] h-[72px] rounded-full border-2 border-dashed border-emerald-300 bg-emerald-50/50 items-center justify-center`}
               >
-                <Ionicons name="add" size={28} color="#059669" />
+                <Ionicons name="add" size={28} color={theme.colors.brand} />
               </View>
-              <Text style={tw`text-[12px] font-semibold text-emerald-800 mt-6`}>Plant</Text>
+              <Text style={tw`text-caption font-semibold text-leaf-ink mt-6`}>Plant</Text>
             </PressableScale>
           </ScrollView>
         )}

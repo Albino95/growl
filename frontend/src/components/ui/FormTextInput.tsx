@@ -6,7 +6,8 @@ import {
   StyleProp,
   TextStyle,
 } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import { type } from '../../theme/tokens';
 import { FORM_KEYBOARD_DONE_ID, formInputAccessoryProps } from './KeyboardDoneAccessory';
 
 type Props = TextInputProps & {
@@ -26,14 +27,15 @@ const FormTextInput = forwardRef<TextInputType, Props>(function FormTextInput(
   return (
     <TextInput
       ref={ref}
-      placeholderTextColor="#6B645E"
+      placeholderTextColor={theme.colors.placeholder}
       {...(accessory ?? {})}
       {...props}
       // Keep accessory id after props so callers can't accidentally strip Done.
       {...(accessory ? { inputAccessoryViewID: accessory.inputAccessoryViewID } : {})}
       style={[
-        tw`bg-surface-page border rounded-2xl px-4 py-3 text-[15px] text-stone-900`,
-        { borderColor: error ? '#F87171' : 'rgba(231,229,228,0.9)' },
+        tw`bg-page border rounded-card px-4 py-3 text-ink`,
+        // fontSize only: a lineHeight on single-line iOS inputs shifts the baseline.
+        { fontSize: type.body.fontSize, borderColor: error ? theme.colors.danger : theme.colors.line },
         style as StyleProp<TextStyle>,
       ]}
     />

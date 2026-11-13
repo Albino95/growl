@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, type LayoutChangeEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
+import { radius } from '../../theme/tokens';
 import PressableScale from '../ui/PressableScale';
 
 export type JournalMode = 'pages' | 'voices';
@@ -25,6 +26,8 @@ export default function JournalModeSwitcher({
 }: Props) {
   const slide = useRef(new Animated.Value(mode === 'pages' ? 0 : 1)).current;
   const [trackW, setTrackW] = useState(0);
+  const c = useThemeColors();
+  const scheme = useColorSchemeName();
 
   useEffect(() => {
     Animated.spring(slide, {
@@ -49,11 +52,11 @@ export default function JournalModeSwitcher({
     <View
       onLayout={onTrackLayout}
       style={[
-        tw`flex-row rounded-2xl p-1`,
+        tw`flex-row rounded-card p-1`,
         {
-          backgroundColor: '#EAE4D6',
+          backgroundColor: c.raised,
           borderWidth: 1,
-          borderColor: 'rgba(28,25,23,0.06)',
+          borderColor: scheme === 'dark' ? c.line : 'rgba(28,25,23,0.06)',
         },
       ]}
       accessibilityRole="tablist"
@@ -67,8 +70,8 @@ export default function JournalModeSwitcher({
             left: 4,
             width: pillWidth,
             bottom: 4,
-            borderRadius: 14,
-            backgroundColor: '#FFFcf7',
+            borderRadius: radius.control,
+            backgroundColor: c.card,
             borderWidth: 1,
             borderColor: 'rgba(5,150,105,0.35)',
             transform: [{ translateX }],
@@ -86,18 +89,18 @@ export default function JournalModeSwitcher({
         <Ionicons
           name="book-outline"
           size={15}
-          color={mode === 'pages' ? '#059669' : '#6B645E'}
+          color={mode === 'pages' ? c.brand : c.ink3}
         />
         <Text
-          style={tw`ml-1.5 text-[14px] ${
-            mode === 'pages' ? 'font-bold text-stone-900' : 'font-medium text-stone-500'
+          style={tw`ml-1.5 text-body ${
+            mode === 'pages' ? 'font-bold text-ink' : 'font-medium text-ink-3'
           }`}
         >
           Pages
         </Text>
         {reflectionsCount > 0 ? (
           <View style={tw`ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-energy-600 items-center justify-center`}>
-            <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-caption font-bold text-white`}>
               {reflectionsCount > 99 ? '99+' : reflectionsCount}
             </Text>
           </View>
@@ -114,11 +117,11 @@ export default function JournalModeSwitcher({
         <Ionicons
           name="radio-outline"
           size={15}
-          color={mode === 'voices' ? '#059669' : '#6B645E'}
+          color={mode === 'voices' ? c.brand : c.ink3}
         />
         <Text
-          style={tw`ml-1.5 text-[14px] ${
-            mode === 'voices' ? 'font-bold text-stone-900' : 'font-medium text-stone-500'
+          style={tw`ml-1.5 text-body ${
+            mode === 'voices' ? 'font-bold text-ink' : 'font-medium text-ink-3'
           }`}
         >
           Voices
@@ -126,10 +129,10 @@ export default function JournalModeSwitcher({
         {voicesCount > 0 ? (
           <View
             style={tw`ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center ${
-              mode === 'voices' ? 'bg-emerald-700' : 'bg-stone-400'
+              mode === 'voices' ? 'bg-emerald-600' : 'bg-stone-400'
             }`}
           >
-            <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-caption font-bold text-white`}>
               {voicesCount > 99 ? '99+' : voicesCount}
             </Text>
           </View>

@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import WeekDots from '../recap/WeekDots';
 import CountUpText from '../ui/CountUpText';
@@ -413,9 +413,9 @@ function TodayCard() {
   // ---------- Rest day ----------
   if (checkin?.rest && phase !== 'form') {
     return (
-      <View style={tw`mx-4 mb-3 px-4 py-3.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
+      <View style={tw`mx-gutter mb-3 px-4 py-3.5 rounded-card bg-emerald-50 border border-emerald-100`}>
         <View style={tw`flex-row items-center justify-between`}>
-          <Text style={tw`text-[15px] font-semibold text-emerald-900 flex-1 pr-3`}>
+          <Text style={tw`text-body font-semibold text-emerald-900 flex-1 pr-3`}>
             Rest is part of growing. Your streak is safe 🌿
           </Text>
           <WeekDots days={streak.week} size={8} />
@@ -435,7 +435,7 @@ function TodayCard() {
       reduceMotion ? 0 : v.interpolate({ inputRange: [0, 1], outputRange: [from, 0] });
     return (
       <View
-        style={tw`mx-4 mb-3 px-4 py-4 rounded-2xl bg-[#FFFcf7] border border-emerald-200/80`}
+        style={tw`mx-gutter mb-3 px-4 py-4 rounded-card bg-card border border-emerald-200/80`}
         accessible
         accessibilityLabel={[
           reply,
@@ -453,13 +453,13 @@ function TodayCard() {
               { transform: [{ scale: checkPop }] },
             ]}
           >
-            <Ionicons name="checkmark" size={20} color="#fff" />
+            <Ionicons name="checkmark" size={20} color="#FFFFFF" />
           </Animated.View>
           <Animated.View
             style={[tw`flex-1`, { opacity: replyIn, transform: [{ translateY: rise(replyIn, 6) }] }]}
           >
-            <Text style={tw`text-[15px] font-semibold text-stone-900 leading-5`}>{reply}</Text>
-            <Text style={tw`text-xs font-semibold text-[#E0584E] mt-1`}>
+            <Text style={tw`text-body font-semibold text-ink`}>{reply}</Text>
+            <Text style={tw`text-xs font-semibold text-energy-700 mt-1`}>
               {pointsAwarded > 0 ? (
                 <>
                   <CountUpText key={`p${replyRun}`} value={pointsAwarded} from={0} prefix="+" delay={180} />
@@ -488,7 +488,7 @@ function TodayCard() {
               {!reduceMotion ? <StreakBurst triggerKey={replyRun} delay={260} radius={30} /> : null}
               <Animated.Text
                 style={[
-                  tw`text-[30px] font-extrabold text-[#E0584E]`,
+                  tw`text-[30px] font-extrabold text-energy-700`,
                   { fontVariant: ['tabular-nums'], transform: [{ scale: streakPop }] },
                 ]}
               >
@@ -497,7 +497,7 @@ function TodayCard() {
             </View>
             <Animated.Text
               style={[
-                tw`flex-1 text-[14px] font-semibold text-emerald-900 leading-5`,
+                tw`flex-1 text-body font-semibold text-emerald-900`,
                 { opacity: milestoneIn, transform: [{ translateY: rise(milestoneIn, 4) }] },
               ]}
             >
@@ -517,19 +517,19 @@ function TodayCard() {
     const moodMeta = checkinMoodMeta(checkin.mood);
     const doneFollowup = followupLine || followupReply(checkin.followup);
     return (
-      <View style={tw`mx-4 mb-3`}>
+      <View style={tw`mx-gutter mb-3`}>
         <PressableScale
           feedback={false}
           onPress={onTogglePill}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
           accessibilityLabel={`Checked in. ${streakLabel(current)}${label ? `. ${label}` : ''}`}
-          style={tw`flex-row items-center px-3.5 py-2.5 rounded-full bg-emerald-50 border border-emerald-100`}
+          style={tw`flex-row items-center px-3.5 py-2.5 rounded-chip bg-emerald-50 border border-emerald-100`}
         >
           <View style={tw`w-5 h-5 rounded-full bg-emerald-600 items-center justify-center mr-2`}>
-            <Ionicons name="checkmark" size={13} color="#fff" />
+            <Ionicons name="checkmark" size={13} color="#FFFFFF" />
           </View>
-          <Text style={tw`flex-1 text-[13px] font-semibold text-emerald-900`} numberOfLines={1}>
+          <Text style={tw`flex-1 text-footnote font-semibold text-emerald-900`} numberOfLines={1}>
             Checked in · {streakLabel(current)}
             {label ? ` · ${label}` : ''}
           </Text>
@@ -537,17 +537,17 @@ function TodayCard() {
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
             size={14}
-            color="#047857"
+            color={theme.colors.leafInk}
             style={tw`ml-2`}
           />
         </PressableScale>
 
         {showFollowup && !followupLine ? (
-          <View style={tw`mt-2 px-4 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/70`}>
-            <Text style={tw`text-[14px] font-semibold text-stone-900`}>
+          <View style={tw`mt-2 px-4 py-3 rounded-card bg-card border border-line/70`}>
+            <Text style={tw`text-body font-semibold text-ink`}>
               {label ? `Did you grow in ${label} today?` : 'Did you take that small step today?'}
             </Text>
-            <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={2}>
+            <Text style={tw`text-xs text-ink-3 mt-0.5`} numberOfLines={2}>
               “{checkin.intention}”
             </Text>
             <View style={tw`flex-row gap-2 mt-2.5`}>
@@ -558,12 +558,12 @@ function TodayCard() {
                   disabled={saving}
                   onPress={() => void onFollowup(o.value)}
                   accessibilityRole="button"
-                  style={tw`flex-1 py-2 rounded-full items-center ${
-                    o.value === 'yes' ? 'bg-emerald-600' : 'bg-[#EAE4D6]'
+                  style={tw`flex-1 py-2 rounded-chip items-center ${
+                    o.value === 'yes' ? 'bg-emerald-600' : 'bg-raised'
                   }`}
                 >
                   <Text
-                    style={tw`text-[13px] font-semibold ${o.value === 'yes' ? 'text-white' : 'text-stone-800'}`}
+                    style={tw`text-footnote font-semibold ${o.value === 'yes' ? 'text-white' : 'text-ink'}`}
                   >
                     {o.label}
                   </Text>
@@ -578,16 +578,16 @@ function TodayCard() {
         ) : null}
 
         {expanded ? (
-          <View style={tw`mt-2 px-4 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/70`}>
+          <View style={tw`mt-2 px-4 py-3 rounded-card bg-card border border-line/70`}>
             {moodMeta ? (
-              <Text style={tw`text-xs text-stone-500`}>
+              <Text style={tw`text-xs text-ink-3`}>
                 Arrived feeling {moodMeta.glyph} {moodMeta.label.toLowerCase()}
               </Text>
             ) : null}
             {checkin.intention ? (
-              <Text style={tw`text-[15px] text-stone-900 mt-1 leading-5`}>“{checkin.intention}”</Text>
+              <Text style={tw`text-body text-ink mt-1`}>“{checkin.intention}”</Text>
             ) : (
-              <Text style={tw`text-sm text-stone-500 mt-1`}>No intention today — that’s fine.</Text>
+              <Text style={tw`text-sm text-ink-3 mt-1`}>No intention today — that’s fine.</Text>
             )}
             {doneFollowup ? (
               <Text style={tw`text-xs text-emerald-800 mt-1.5`}>{doneFollowup}</Text>
@@ -597,18 +597,18 @@ function TodayCard() {
                 feedback={false}
                 onPress={onWriteMore}
                 accessibilityRole="button"
-                style={tw`flex-1 py-2.5 rounded-xl bg-emerald-600 items-center flex-row justify-center gap-1.5`}
+                style={tw`flex-1 py-2.5 rounded-control bg-emerald-600 items-center flex-row justify-center gap-1.5`}
               >
-                <Ionicons name="book-outline" size={15} color="#fff" />
-                <Text style={tw`text-white font-semibold text-[13px]`}>Write more</Text>
+                <Ionicons name="book-outline" size={15} color="#FFFFFF" />
+                <Text style={tw`text-white font-semibold text-footnote`}>Write more</Text>
               </PressableScale>
               <PressableScale
                 feedback={false}
                 onPress={onEdit}
                 accessibilityRole="button"
-                style={tw`px-4 py-2.5 rounded-xl bg-[#EAE4D6] items-center`}
+                style={tw`px-4 py-2.5 rounded-control bg-raised items-center`}
               >
-                <Text style={tw`text-stone-800 font-semibold text-[13px]`}>Edit</Text>
+                <Text style={tw`text-ink font-semibold text-footnote`}>Edit</Text>
               </PressableScale>
             </View>
           </View>
@@ -618,42 +618,42 @@ function TodayCard() {
             feedback={false}
             onPress={onWriteMore}
             accessibilityRole="button"
-            style={tw`mt-2 flex-row items-center px-3.5 py-2.5 rounded-2xl ${
-              sundaySit ? 'bg-[#FFF1F0] border border-[#FECACA]/80' : 'bg-[#FFFcf7] border border-stone-200/70'
+            style={tw`mt-2 flex-row items-center px-3.5 py-2.5 rounded-card ${
+              sundaySit ? 'bg-energy-50 border border-red-200/80' : 'bg-card border border-line/70'
             }`}
           >
             <Ionicons
               name={sundaySit ? 'sunny-outline' : 'book-outline'}
               size={16}
-              color={sundaySit ? '#E0584E' : '#059669'}
+              color={sundaySit ? theme.colors.energy : theme.colors.brand}
             />
-            <Text style={tw`flex-1 ml-2 text-[13px] text-stone-700`} numberOfLines={1}>
+            <Text style={tw`flex-1 ml-2 text-footnote text-ink-2`} numberOfLines={1}>
               {sundaySit ? 'Sunday sit — a quiet page for the week' : 'Write more about today, privately'}
             </Text>
-            <Ionicons name="chevron-forward" size={14} color="#A8A29E" />
+            <Ionicons name="chevron-forward" size={14} color={theme.colors.iconMuted} />
           </PressableScale>
         ) : null}
-        {error ? <Text style={tw`text-xs text-stone-500 mt-1.5 px-2`}>{error}</Text> : null}
+        {error ? <Text style={tw`text-xs text-ink-3 mt-1.5 px-2`}>{error}</Text> : null}
       </View>
     );
   }
 
   // ---------- Form (not done yet / editing) ----------
   return (
-    <View style={tw`mx-4 mb-3 px-4 pt-4 pb-3.5 rounded-3xl bg-[#FFFcf7] border border-stone-200/70`}>
+    <View style={tw`mx-gutter mb-3 px-4 pt-4 pb-3.5 rounded-sheet bg-card border border-line/70`}>
       <View style={tw`flex-row items-start justify-between`}>
         <View style={tw`flex-1 pr-3`}>
-          <Animated.Text style={[tw`text-[17px] font-bold text-stone-900`, greetIn]}>
+          <Animated.Text style={[tw`text-callout font-bold text-ink`, greetIn]}>
             {greeting}
           </Animated.Text>
-          <Text style={tw`text-sm text-stone-500 mt-0.5`}>
+          <Text style={tw`text-sm text-ink-3 mt-0.5`}>
             {editing ? 'Update today’s check-in.' : 'How are you arriving today?'}
           </Text>
         </View>
         <View style={tw`items-end pt-1`}>
           <WeekDots days={streak.week} size={8} />
           {current > 0 ? (
-            <Text style={[tw`text-[11px] font-semibold text-[#E0584E] mt-1`, { fontVariant: ['tabular-nums'] }]}>
+            <Text style={[tw`text-caption font-semibold text-energy-700 mt-1`, { fontVariant: ['tabular-nums'] }]}>
               {streakLabel(current)}
             </Text>
           ) : null}
@@ -676,13 +676,13 @@ function TodayCard() {
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`Mood: ${m.label}`}
-                style={tw`items-center px-2 py-2 rounded-2xl min-w-[56px] ${
+                style={tw`items-center px-2 py-2 rounded-card min-w-[56px] ${
                   selected ? 'bg-emerald-50 border border-emerald-300' : 'border border-transparent'
                 }`}
               >
                 <Text style={tw`text-xl`}>{m.glyph}</Text>
                 <Text
-                  style={tw`text-[11px] mt-1 ${selected ? 'text-emerald-800 font-semibold' : 'text-stone-500'}`}
+                  style={tw`text-caption mt-1 ${selected ? 'text-emerald-800 font-semibold' : 'text-ink-3 font-medium'}`}
                 >
                   {m.label}
                 </Text>
@@ -694,7 +694,7 @@ function TodayCard() {
 
       {mood ? (
         <Animated.View style={[tw`mt-3`, revealStyle]}>
-          <Text style={tw`text-[13px] font-semibold text-stone-700 mb-2`}>Today I’ll grow in…</Text>
+          <Text style={tw`text-footnote font-semibold text-ink-2 mb-2`}>Today I’ll grow in…</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -710,11 +710,11 @@ function TodayCard() {
                   onPress={() => onPath(key)}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  style={tw`px-3 py-1.5 rounded-full ${
-                    selected ? 'bg-emerald-600' : 'bg-[#EAE4D6]'
+                  style={tw`px-3 py-1.5 rounded-chip ${
+                    selected ? 'bg-emerald-600' : 'bg-raised'
                   }`}
                 >
-                  <Text style={tw`text-[13px] font-semibold ${selected ? 'text-white' : 'text-stone-700'}`}>
+                  <Text style={tw`text-footnote font-semibold ${selected ? 'text-white' : 'text-ink-2'}`}>
                     {pathLabel(key)}
                   </Text>
                 </PressableScale>
@@ -726,12 +726,12 @@ function TodayCard() {
             value={intention}
             onChangeText={(t) => setIntention(t.replace(/\n/g, ' ').slice(0, INTENTION_MAX))}
             placeholder="One small step (optional)"
-            placeholderTextColor="#6B645E"
+            placeholderTextColor={theme.colors.placeholder}
             maxLength={INTENTION_MAX}
             returnKeyType="done"
             blurOnSubmit
             accessibilityLabel="Intention for today, optional"
-            style={tw`mt-3 px-3.5 py-2.5 rounded-xl bg-white border border-stone-200 text-[15px] text-stone-900`}
+            style={tw`mt-3 px-3.5 py-2.5 rounded-control bg-card border border-line text-body text-ink`}
           />
 
           <PressableScale
@@ -740,18 +740,18 @@ function TodayCard() {
             onPress={() => void onDone()}
             accessibilityRole="button"
             accessibilityLabel="Done, save check-in"
-            style={tw`mt-3 py-3 rounded-xl bg-emerald-600 items-center ${saving ? 'opacity-70' : ''}`}
+            style={tw`mt-3 py-3 rounded-control bg-emerald-600 items-center ${saving ? 'opacity-70' : ''}`}
           >
             {saving ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={tw`text-white font-bold text-[15px]`}>Done</Text>
+              <Text style={tw`text-white font-bold text-body`}>Done</Text>
             )}
           </PressableScale>
         </Animated.View>
       ) : null}
 
-      {error ? <Text style={tw`text-xs text-stone-500 mt-2`}>{error}</Text> : null}
+      {error ? <Text style={tw`text-xs text-ink-3 mt-2`}>{error}</Text> : null}
 
       <View style={tw`flex-row items-center justify-between mt-2.5`}>
         {editing ? (
@@ -766,7 +766,7 @@ function TodayCard() {
             }}
             hitSlop={8}
           >
-            <Text style={tw`text-xs font-semibold text-stone-500`}>Cancel</Text>
+            <Text style={tw`text-xs font-semibold text-ink-3`}>Cancel</Text>
           </PressableScale>
         ) : !checkin ? (
           <PressableScale
@@ -777,7 +777,7 @@ function TodayCard() {
             accessibilityState={{ disabled: restLeft <= 0 }}
             accessibilityLabel={`Rest today, ${restLeft} rest ${restLeft === 1 ? 'day' : 'days'} left`}
           >
-            <Text style={tw`text-xs font-semibold ${restLeft > 0 ? 'text-emerald-700' : 'text-stone-500'}`}>
+            <Text style={tw`text-xs font-semibold ${restLeft > 0 ? 'text-emerald-700' : 'text-ink-3'}`}>
               🌿 Rest today · {restLeft} left
             </Text>
           </PressableScale>
@@ -785,7 +785,7 @@ function TodayCard() {
           <View />
         )}
       </View>
-      {restNote ? <Text style={tw`text-xs text-stone-500 mt-1.5 leading-4`}>{restNote}</Text> : null}
+      {restNote ? <Text style={tw`text-xs text-ink-3 mt-1.5 leading-4`}>{restNote}</Text> : null}
     </View>
   );
 }

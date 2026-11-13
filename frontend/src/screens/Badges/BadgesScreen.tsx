@@ -82,10 +82,10 @@ export default function BadgesScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <ScreenHeader title="Badges" onBack={() => navigation.goBack()} backIcon="arrow-back" />
       {loading ? (
-        <View style={tw`px-4 pt-2`}>
+        <View style={tw`px-gutter pt-2`}>
           <SkeletonList variant="stats" count={1} />
           <SkeletonList variant="badges" count={2} />
         </View>
@@ -103,14 +103,14 @@ export default function BadgesScreen() {
         />
       ) : data ? (
         <ScrollView
-          contentContainerStyle={tw`px-4 pb-16 pt-2`}
+          contentContainerStyle={tw`px-gutter pb-16 pt-2`}
           refreshControl={
             <RefreshControl {...refresh} />
           }
         >
           <FadeInUp>
             <LevelProgressCard level={data.level} />
-            <Text style={tw`text-xs text-stone-500 mt-2 mb-1 px-1`}>
+            <Text style={tw`text-xs text-ink-3 mt-2 mb-1 px-1`}>
               <CountUpText value={earnedCount} /> of {tiles.length} badges earned · points can’t be spent, they just show
               how far you’ve grown.
             </Text>
@@ -121,7 +121,7 @@ export default function BadgesScreen() {
             if (!items.length) return null;
             return (
               <View key={cat} style={tw`mt-5`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2.5 px-1`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2.5 px-1`}>
                   {BADGE_CATEGORY_LABELS[cat]}
                 </Text>
                 <View style={tw`flex-row flex-wrap gap-2.5`}>
@@ -139,20 +139,20 @@ export default function BadgesScreen() {
         {selected ? (
           <View style={tw`items-center px-6 pt-2 pb-8`}>
             <BadgeIcon id={selected.id} size={96} tier={selected.tier} locked={!selected.earnedAt} />
-            <Text style={tw`text-xl font-bold text-stone-900 mt-3 text-center`}>{selected.name}</Text>
-            <Text style={tw`text-sm text-stone-600 mt-1 text-center leading-5`}>{selected.description}</Text>
+            <Text style={tw`text-xl font-bold text-ink mt-3 text-center`}>{selected.name}</Text>
+            <Text style={tw`text-sm text-ink-2 mt-1 text-center leading-5`}>{selected.description}</Text>
             <Text style={tw`text-xs font-semibold text-bloom-ink mt-2`}>
               +{selected.points} growth points{selected.tier === 'rare' ? ' · rare' : ''}
             </Text>
             {selected.earnedAt ? (
               <>
-                <Text style={tw`text-xs text-stone-500 mt-2`}>
+                <Text style={tw`text-xs text-ink-3 mt-2`}>
                   Earned {formatEarnedDate(selected.earnedAt)}
                 </Text>
                 <PressableScale
                   onPress={() => shareTile(selected)}
                   feedback="open"
-                  style={tw`mt-5 self-stretch py-3 rounded-2xl bg-emerald-600 items-center`}
+                  style={tw`mt-5 self-stretch py-3 rounded-card bg-emerald-600 items-center`}
                 >
                   <Text style={tw`text-white font-bold`}>Share this badge</Text>
                 </PressableScale>
@@ -160,7 +160,7 @@ export default function BadgesScreen() {
             ) : (
               <View style={tw`self-stretch mt-4`}>
                 <ProgressLine p={selected.progress} />
-                <Text style={tw`text-xs text-stone-500 mt-2 text-center`}>
+                <Text style={tw`text-xs text-ink-3 mt-2 text-center`}>
                   Not yet — and that’s fine. Every small step counts.
                 </Text>
               </View>
@@ -178,10 +178,10 @@ function ProgressLine({ p }: { p: { current: number; target: number } }) {
   const frac = progressFraction(p);
   return (
     <View>
-      <View style={tw`h-1.5 bg-[#EAE4D6] rounded-full overflow-hidden`}>
-        <View style={[tw`h-full rounded-full bg-[#F97066]`, { width: `${Math.max(frac > 0 ? 6 : 0, frac * 100)}%` }]} />
+      <View style={tw`h-1.5 bg-raised rounded-full overflow-hidden`}>
+        <View style={[tw`h-full rounded-full bg-energy-600`, { width: `${Math.max(frac > 0 ? 6 : 0, frac * 100)}%` }]} />
       </View>
-      <Text style={tw`text-[11px] text-stone-500 mt-1 text-center`}>
+      <Text style={tw`text-caption text-ink-3 mt-1 text-center`}>
         {Math.min(p.current, p.target)}/{p.target}
       </Text>
     </View>
@@ -194,8 +194,8 @@ function BadgeTile({ tile, width, onPress }: { tile: Tile; width: number; onPres
     <PressableScale
       onPress={onPress}
       style={[
-        tw`items-center rounded-2xl px-2 pt-3 pb-2.5 border ${
-          earned ? 'bg-[#FFFcf7] border-stone-200/80' : 'bg-[#F7F3EA] border-stone-200/50'
+        tw`items-center rounded-card px-2 pt-3 pb-2.5 border ${
+          earned ? 'bg-card border-line/80' : 'bg-page border-line/50'
         }`,
         { width },
       ]}
@@ -206,13 +206,13 @@ function BadgeTile({ tile, width, onPress }: { tile: Tile; width: number; onPres
     >
       <BadgeIcon id={tile.id} size={56} tier={tile.tier} locked={!earned} />
       <Text
-        style={tw`text-xs font-semibold mt-2 text-center ${earned ? 'text-stone-900' : 'text-stone-500'}`}
+        style={tw`text-xs font-semibold mt-2 text-center ${earned ? 'text-ink' : 'text-ink-3'}`}
         numberOfLines={1}
       >
         {tile.name}
       </Text>
       {earned ? (
-        <Text style={tw`text-[11px] text-emerald-700 mt-0.5`} numberOfLines={1}>
+        <Text style={tw`text-caption text-emerald-700 mt-0.5`} numberOfLines={1}>
           {formatEarnedDate(tile.earnedAt)}
         </Text>
       ) : (

@@ -7,7 +7,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { theme } from '../../lib/tw';
+import { theme, useColorSchemeName } from '../../lib/tw';
 import { easing, loopPeriod } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 
@@ -46,7 +46,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   /** Base bone color (defaults to the cream `subtle` surface). */
   color?: string;
-  /** Highlight band color. */
+  /** Highlight band color (defaults to a soft light sweep tuned per scheme). */
   highlight?: string;
 };
 
@@ -59,8 +59,11 @@ type Props = {
 export default function Skeleton({
   style,
   color = theme.colors.subtle,
-  highlight = 'rgba(255,255,255,0.55)',
+  highlight,
 }: Props) {
+  // A 55% white band glares on night-soil bones; dark gets a faint lift instead.
+  const dark = useColorSchemeName() === 'dark';
+  const bandColor = highlight ?? (dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)');
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
   const animate = !reduced && width > 0;
@@ -92,7 +95,7 @@ export default function Skeleton({
             styles.band,
             {
               width: band,
-              backgroundColor: highlight,
+              backgroundColor: bandColor,
               transform: [
                 {
                   translateX: progress.interpolate({

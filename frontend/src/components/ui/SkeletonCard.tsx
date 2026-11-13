@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import Skeleton from './Skeleton';
 
 export type SkeletonVariant =
@@ -28,8 +28,8 @@ function ShimmerBlock({ style }: { style: object }) {
 export default function SkeletonCard({ variant = 'post' }: Props) {
   if (variant === 'product') {
     return (
-      <View style={tw`bg-surface-card mb-3 rounded-2xl border border-stone-200/80 p-4 flex-row`}>
-        <ShimmerBlock style={tw`w-24 h-28 rounded-xl mr-3`} />
+      <View style={tw`bg-card mb-3 rounded-card border border-line p-4 flex-row`}>
+        <ShimmerBlock style={tw`w-24 h-28 rounded-control mr-3`} />
         <View style={tw`flex-1 justify-center`}>
           <ShimmerBlock style={tw`h-3 w-3/4 rounded mb-2`} />
           <ShimmerBlock style={tw`h-3 w-full rounded mb-2`} />
@@ -41,7 +41,7 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
 
   if (variant === 'inbox') {
     return (
-      <View style={tw`mb-2 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-3.5 flex-row items-center`}>
+      <View style={tw`mb-2 bg-card border border-line rounded-card px-3 py-3.5 flex-row items-center`}>
         <ShimmerBlock style={tw`w-14 h-14 rounded-full`} />
         <View style={tw`flex-1 ml-3`}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
@@ -56,7 +56,7 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
 
   if (variant === 'explore') {
     return (
-      <View style={tw`bg-white border border-stone-200/80 rounded-2xl overflow-hidden mb-3`}>
+      <View style={tw`bg-card border border-line rounded-card overflow-hidden mb-3`}>
         <ShimmerBlock style={tw`w-full h-52`} />
         <View style={tw`p-3.5`}>
           <View style={tw`flex-row items-center mb-2`}>
@@ -73,9 +73,9 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
   if (variant === 'notification') {
     return (
       <View
-        style={tw`mb-3 rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden flex-row`}
+        style={tw`mb-3 rounded-sheet border border-line bg-card overflow-hidden flex-row`}
       >
-        <View style={{ width: 5, backgroundColor: '#E7E5E4' }} />
+        <View style={{ width: 5, backgroundColor: theme.colors.line }} />
         <View style={tw`flex-1 px-3.5 py-3.5 flex-row items-start`}>
           <ShimmerBlock style={tw`w-12 h-12 rounded-full mr-3`} />
           <View style={tw`flex-1`}>
@@ -95,8 +95,8 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
     return (
       <View
         style={[
-          tw`mb-3 px-4 py-4 rounded-2xl bg-[#FFFcf7]`,
-          { borderWidth: 1, borderColor: 'rgba(28,25,23,0.06)' },
+          tw`mb-3 px-4 py-4 rounded-card bg-card`,
+          { borderWidth: 1, borderColor: theme.colors.line },
         ]}
       >
         <View style={tw`flex-row items-center justify-between mb-3`}>
@@ -113,11 +113,11 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
   if (variant === 'circle') {
     return (
       <View
-        style={tw`mb-2.5 rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden`}
+        style={tw`mb-2.5 rounded-sheet border border-line bg-card overflow-hidden`}
       >
-        <View style={tw`h-1 bg-stone-200`} />
+        <View style={tw`h-1 bg-line`} />
         <View style={tw`px-3.5 py-3.5 flex-row items-center`}>
-          <ShimmerBlock style={tw`w-11 h-11 rounded-2xl mr-3`} />
+          <ShimmerBlock style={tw`w-11 h-11 rounded-card mr-3`} />
           <View style={tw`flex-1`}>
             <ShimmerBlock style={tw`h-3 w-20 rounded-full mb-2`} />
             <ShimmerBlock style={tw`h-3.5 w-3/5 rounded mb-3`} />
@@ -135,7 +135,7 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
         <ShimmerBlock style={tw`h-3 w-24 rounded mb-3 ml-1`} />
         <View style={tw`flex-row flex-wrap gap-2.5`}>
           {Array.from({ length: 6 }, (_, i) => (
-            <ShimmerBlock key={i} style={tw`w-[30%] h-28 rounded-2xl`} />
+            <ShimmerBlock key={i} style={tw`w-[30%] h-28 rounded-card`} />
           ))}
         </View>
       </View>
@@ -146,10 +146,10 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
     return (
       <View style={tw`mb-4`}>
         <View style={tw`flex-row gap-3 mb-3`}>
-          <ShimmerBlock style={tw`flex-1 h-20 rounded-2xl`} />
-          <ShimmerBlock style={tw`flex-1 h-20 rounded-2xl`} />
+          <ShimmerBlock style={tw`flex-1 h-20 rounded-card`} />
+          <ShimmerBlock style={tw`flex-1 h-20 rounded-card`} />
         </View>
-        <ShimmerBlock style={tw`h-28 w-full rounded-2xl`} />
+        <ShimmerBlock style={tw`h-28 w-full rounded-card`} />
       </View>
     );
   }
@@ -159,7 +159,7 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
       <View style={tw`flex-row items-start mb-4`}>
         <ShimmerBlock style={tw`w-8 h-8 rounded-full mr-3`} />
         <View style={tw`flex-1`}>
-          <ShimmerBlock style={tw`h-16 w-full rounded-2xl mb-1.5`} />
+          <ShimmerBlock style={tw`h-16 w-full rounded-card mb-1.5`} />
           <ShimmerBlock style={tw`h-2.5 w-12 rounded ml-2`} />
         </View>
       </View>
@@ -170,20 +170,20 @@ export default function SkeletonCard({ variant = 'post' }: Props) {
     return (
       <View style={tw`mb-3`}>
         <View style={tw`flex-row justify-start mb-2.5`}>
-          <ShimmerBlock style={tw`h-11 w-48 rounded-2xl rounded-tl-md`} />
+          <ShimmerBlock style={tw`h-11 w-48 rounded-card rounded-tl-md`} />
         </View>
         <View style={tw`flex-row justify-end mb-2.5`}>
-          <ShimmerBlock style={tw`h-11 w-40 rounded-2xl rounded-tr-md`} />
+          <ShimmerBlock style={tw`h-11 w-40 rounded-card rounded-tr-md`} />
         </View>
         <View style={tw`flex-row justify-start`}>
-          <ShimmerBlock style={tw`h-14 w-56 rounded-2xl rounded-tl-md`} />
+          <ShimmerBlock style={tw`h-14 w-56 rounded-card rounded-tl-md`} />
         </View>
       </View>
     );
   }
 
   return (
-    <View style={tw`bg-surface-card mb-4 rounded-2xl border border-stone-200/80 overflow-hidden`}>
+    <View style={tw`bg-card mb-4 rounded-card border border-line overflow-hidden`}>
       <View style={tw`flex-row items-center px-4 py-3`}>
         <ShimmerBlock style={tw`w-11 h-11 rounded-full`} />
         <View style={tw`ml-3 flex-1`}>

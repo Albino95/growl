@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Chip from '../ui/Chip';
 import { getCategoryLabel } from '../../utils/categoryLabels';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = {
   visible: boolean;
@@ -28,25 +29,26 @@ export default function CategoryPicker({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={tw`flex-1 bg-black/50 justify-end`} onPress={onClose}>
         <Pressable
-          style={[tw`bg-white rounded-t-3xl px-4 pt-4`, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          style={[tw`bg-card rounded-t-sheet px-gutter pt-4`, { paddingBottom: Math.max(insets.bottom, 16) }]}
           onPress={(e) => e.stopPropagation()}
         >
           <View style={tw`flex-row items-center justify-between mb-4`}>
-            <Text style={tw`text-lg font-bold text-stone-900`}>Choose category</Text>
-            <Pressable
+            <Text style={tw`text-callout font-bold text-ink`}>Choose category</Text>
+            <PressableScale
+              pressedScale={0.9}
               onPress={onClose}
-              hitSlop={8}
+              hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel="Close categories"
             >
-              <Ionicons name="close" size={24} color="#6B645E" />
-            </Pressable>
+              <Ionicons name="close" size={24} color={theme.colors.ink3} />
+            </PressableScale>
           </View>
 
           {userCategories.length === 0 ? (
             <View style={tw`py-6 items-center`}>
-              <Ionicons name="grid-outline" size={40} color="#A8A29E" />
-              <Text style={tw`text-stone-600 text-center mt-3 px-4`}>
+              <Ionicons name="grid-outline" size={40} color={theme.colors.iconMuted} />
+              <Text style={tw`text-ink-2 text-center mt-3 px-4`}>
                 Add interests in your profile to choose a category.
               </Text>
             </View>

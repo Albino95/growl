@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import GrowLoader from '../ui/GrowLoader';
 import { feedback } from '../../utils/interactionFeedback';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = {
   icon: string;
@@ -47,24 +48,24 @@ export default function MediaSourcePicker({
             <Text style={tw`text-white/70 text-base text-center px-4 leading-6`}>{subtitle}</Text>
           </View>
           <View style={tw`flex-row gap-3 w-full`}>
-            <Pressable
+            <PressableScale
               onPress={onCamera}
               accessibilityRole="button"
               accessibilityLabel="Camera"
-              style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-brand-600`}
+              style={tw`flex-1 flex-row items-center justify-center rounded-card py-4 px-4 bg-brand-600`}
             >
               <Ionicons name="camera" size={22} color="#FFFFFF" style={tw`mr-2`} />
               <Text style={tw`font-semibold text-base text-white`}>Camera</Text>
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               onPress={onLibrary}
               accessibilityRole="button"
               accessibilityLabel="Library"
-              style={tw`flex-1 flex-row items-center justify-center rounded-2xl py-4 px-4 bg-white/15 border border-white/25`}
+              style={tw`flex-1 flex-row items-center justify-center rounded-card py-4 px-4 bg-white/15 border border-white/25`}
             >
               <Ionicons name="images" size={22} color="#FFFFFF" style={tw`mr-2`} />
               <Text style={tw`font-semibold text-base text-white`}>Library</Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </>
       )}

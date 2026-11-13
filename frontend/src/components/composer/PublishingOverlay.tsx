@@ -51,7 +51,7 @@ function SuccessMark() {
           { transform: [{ scale }] },
         ]}
       >
-        <Ionicons name="checkmark" size={32} color="#fff" />
+        <Ionicons name="checkmark" size={32} color="#FFFFFF" />
       </Animated.View>
     </View>
   );
@@ -76,7 +76,7 @@ export default function PublishingOverlay(props: Props) {
   if (props.variant === 'success') {
     return (
       <View
-        style={tw`absolute inset-0 z-50 bg-brand-900/95 items-center justify-center px-8`}
+        style={tw`absolute inset-0 z-50 bg-[#064E3B]/95 items-center justify-center px-8`}
         accessibilityLiveRegion="assertive"
       >
         <SuccessMark />

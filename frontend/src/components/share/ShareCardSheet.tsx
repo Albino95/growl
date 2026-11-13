@@ -13,7 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import { radius } from '../../theme/tokens';
 import AnimatedBottomSheet from '../ui/AnimatedBottomSheet';
 import PressableScale from '../ui/PressableScale';
 import { feedback } from '../../utils/interactionFeedback';
@@ -452,18 +453,18 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
           contentContainerStyle={tw`px-5 pb-4`}
           bounces={false}
         >
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
             {sheetKicker(payload.kind)}
           </Text>
-          <Text style={tw`text-[26px] font-bold text-stone-900 mt-0.5 leading-8`}>
+          <Text style={tw`text-display font-bold text-ink mt-0.5`}>
             {sheetTitle(payload.kind)}
           </Text>
-          <Text style={tw`text-sm text-stone-500 mt-1.5 mb-4 leading-5`}>
+          <Text style={tw`text-sm text-ink-3 mt-1.5 mb-4 leading-5`}>
             Drag the bar down to close · tap Share to Stories when it looks right.
           </Text>
 
           {growth ? (
-            <View style={tw`flex-row self-center mb-4 p-1 rounded-full bg-[#EAE4D6]`}>
+            <View style={tw`flex-row self-center mb-4 p-1 rounded-chip bg-raised`}>
               {(
                 [
                   ['story', 'Story 9:16'],
@@ -480,10 +481,10 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
                   }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: format === value }}
-                  style={tw`px-4 py-1.5 rounded-full ${format === value ? 'bg-white' : ''}`}
+                  style={tw`px-4 py-1.5 rounded-chip ${format === value ? 'bg-card' : ''}`}
                 >
                   <Text
-                    style={tw`text-xs font-semibold ${format === value ? 'text-stone-900' : 'text-stone-500'}`}
+                    style={tw`text-xs font-semibold ${format === value ? 'text-ink' : 'text-ink-3'}`}
                   >
                     {label}
                   </Text>
@@ -495,14 +496,15 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
           {/* Instagram 4:5 postcard — captured as JPEG */}
           <View {...cardPan.panHandlers}>
           <FadeInUp distance={16}>
-          <View style={[tw`self-center`, CARD_SHADOW, { borderRadius: 28 }]}>
+          <View style={[tw`self-center`, CARD_SHADOW, { borderRadius: radius.hero }]}>
             <ViewShot
               ref={shotRef}
               style={{
                 width: cardWidth,
                 height: cardHeight,
-                borderRadius: 28,
+                borderRadius: radius.hero,
                 overflow: 'hidden',
+                // Artwork exports as an image: fixed brand colours in every scheme.
                 backgroundColor: '#FFFcf7',
               }}
             >
@@ -894,16 +896,16 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
             onPress={() => void shareImage()}
             disabled={capturing}
             pressedScale={0.97}
-            style={tw`mt-5 py-4 rounded-2xl bg-emerald-600 items-center flex-row justify-center gap-2 ${
+            style={tw`mt-5 py-4 rounded-card bg-emerald-600 items-center flex-row justify-center gap-2 ${
               capturing ? 'opacity-70' : ''
             }`}
           >
             {capturing ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Ionicons name="logo-instagram" size={20} color="#fff" />
+              <Ionicons name="logo-instagram" size={20} color="#FFFFFF" />
             )}
-            <Text style={tw`text-white font-bold text-[16px]`}>
+            <Text style={tw`text-white font-bold text-callout`}>
               {capturing ? 'Preparing…' : 'Share to Stories'}
             </Text>
           </PressableScale>
@@ -912,23 +914,23 @@ export default function ShareCardSheet({ visible, onClose, payload }: Props) {
             <PressableScale
               onPress={() => void shareLink()}
               pressedScale={0.97}
-              style={tw`flex-1 py-3.5 rounded-2xl bg-[#EAE4D6] border border-stone-200/80 items-center flex-row justify-center gap-2`}
+              style={tw`flex-1 py-3.5 rounded-card bg-raised border border-line/80 items-center flex-row justify-center gap-2`}
             >
-              <Ionicons name="share-outline" size={18} color="#1C1917" />
-              <Text style={tw`text-stone-900 font-semibold`}>Link</Text>
+              <Ionicons name="share-outline" size={18} color={theme.colors.ink} />
+              <Text style={tw`text-ink font-semibold`}>Link</Text>
             </PressableScale>
             <PressableScale
               onPress={() => void copyLink()}
               pressedScale={0.97}
-              style={tw`flex-1 py-3.5 rounded-2xl bg-[#EAE4D6] border border-stone-200/80 items-center flex-row justify-center gap-2`}
+              style={tw`flex-1 py-3.5 rounded-card bg-raised border border-line/80 items-center flex-row justify-center gap-2`}
             >
-              <Ionicons name="link-outline" size={18} color="#1C1917" />
-              <Text style={tw`text-stone-900 font-semibold`}>Copy</Text>
+              <Ionicons name="link-outline" size={18} color={theme.colors.ink} />
+              <Text style={tw`text-ink font-semibold`}>Copy</Text>
             </PressableScale>
           </View>
 
           <PressableScale onPress={close} style={tw`mt-2 py-3 items-center`}>
-            <Text style={tw`text-stone-500 font-semibold`}>Not now</Text>
+            <Text style={tw`text-ink-3 font-semibold`}>Not now</Text>
           </PressableScale>
         </ScrollView>
         );

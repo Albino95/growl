@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
-import tw from '../../lib/tw';
+import { View, Text, ScrollView } from 'react-native';
+import tw, { useThemeColors } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import { horizontalScrollProps } from '../../constants/scroll';
 import GrowAvatar from '../ui/GrowAvatar';
 import { feedback } from '../../utils/interactionFeedback';
@@ -28,6 +29,7 @@ function isFresh(iso: string): boolean {
 
 /** Stories-like strip of friends with public journals — filter Voices by person. */
 export default function CirclePresenceStrip({ entries, selectedUserId, onSelect }: Props) {
+  const c = useThemeColors();
   const people = useMemo(() => {
     const map = new Map<string, VoicePerson>();
     for (const e of entries) {
@@ -55,7 +57,7 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
 
   return (
     <View style={tw`mb-3`}>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2.5`}>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2.5`}>
         In the circle
       </Text>
       <ScrollView
@@ -64,7 +66,7 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
         contentContainerStyle={tw`gap-3 pr-2`}
         showsHorizontalScrollIndicator={false}
       >
-        <Pressable
+        <PressableScale
           onPress={() => {
             feedback.select();
             onSelect(null);
@@ -75,26 +77,26 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
             style={tw`w-14 h-14 rounded-full items-center justify-center border-2 ${
               selectedUserId == null
                 ? 'bg-emerald-600 border-emerald-600'
-                : 'bg-[#EAE4D6] border-transparent'
+                : 'bg-raised border-transparent'
             }`}
           >
             <Text
               style={tw`text-xs font-bold ${
-                selectedUserId == null ? 'text-white' : 'text-stone-600'
+                selectedUserId == null ? 'text-white' : 'text-ink-2'
               }`}
             >
               All
             </Text>
           </View>
-          <Text style={tw`text-[11px] text-stone-500 mt-1.5`} numberOfLines={1}>
+          <Text style={tw`text-caption text-ink-3 mt-1.5`} numberOfLines={1}>
             Everyone
           </Text>
-        </Pressable>
+        </PressableScale>
 
         {people.map((p) => {
           const selected = selectedUserId === p.userId;
           return (
-            <Pressable
+            <PressableScale
               key={p.userId}
               onPress={() => {
                 feedback.select();
@@ -107,11 +109,7 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
                   tw`w-14 h-14 rounded-full p-[2px]`,
                   {
                     borderWidth: 2,
-                    borderColor: selected
-                      ? '#059669'
-                      : p.isFresh
-                        ? '#F97066'
-                        : 'rgba(28,25,23,0.08)',
+                    borderColor: selected ? c.brand : p.isFresh ? c.energy : c.line,
                   },
                 ]}
               >
@@ -123,14 +121,14 @@ export default function CirclePresenceStrip({ entries, selectedUserId, onSelect 
                 />
               </View>
               <Text
-                style={tw`text-[11px] mt-1.5 ${
-                  selected ? 'text-emerald-800 font-semibold' : 'text-stone-500'
+                style={tw`text-caption mt-1.5 ${
+                  selected ? 'text-emerald-800 font-semibold' : 'text-ink-3'
                 }`}
                 numberOfLines={1}
               >
                 {p.username.split(' ')[0]}
               </Text>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </ScrollView>

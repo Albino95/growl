@@ -6,7 +6,7 @@ import tw from '../../lib/tw';
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 const SIZE_MAP: Record<Size, { box: string; text: string }> = {
-  xs: { box: 'w-7 h-7', text: 'text-[11px]' },
+  xs: { box: 'w-7 h-7', text: 'text-caption' },
   sm: { box: 'w-9 h-9', text: 'text-xs' },
   md: { box: 'w-11 h-11', text: 'text-sm' },
   lg: { box: 'w-16 h-16', text: 'text-lg' },
@@ -34,8 +34,8 @@ export default function Avatar({ uri, name, size = 'md', style, ring = false }: 
   return (
     <View
       style={[
-        tw`${box} rounded-full overflow-hidden bg-brand-100 items-center justify-center ${
-          ring ? 'border-2 border-brand-500' : 'border border-stone-200'
+        tw`${box} rounded-chip overflow-hidden bg-brand-100 items-center justify-center ${
+          ring ? 'border-2 border-brand-500' : 'border border-line'
         }`,
         style,
       ]}

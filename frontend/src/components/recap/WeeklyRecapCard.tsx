@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import WeekDots from './WeekDots';
 import ShareCardSheet, { type ShareCardPayload } from '../share/ShareCardSheet';
@@ -58,13 +58,13 @@ function WeeklyRecapCard() {
   };
 
   return (
-    <View style={tw`mx-4 mb-3 px-4 pt-4 pb-4 rounded-3xl bg-[#F7F1E6] border border-[#EAE4D6]`}>
+    <View style={tw`mx-gutter mb-3 px-4 pt-4 pb-4 rounded-sheet bg-card border border-line`}>
       <View style={tw`flex-row items-start justify-between`}>
         <View style={tw`flex-1 pr-3`}>
-          <Text style={tw`text-[11px] tracking-[2px] uppercase text-[#E0584E] font-semibold`}>
+          <Text style={tw`text-caption tracking-[2px] uppercase text-energy-700 font-semibold`}>
             {recap.is_first_week ? 'Your first week' : 'Last week'}
           </Text>
-          <Text style={tw`text-[18px] font-bold text-stone-900 mt-0.5`}>Your week in growth</Text>
+          <Text style={tw`text-callout font-bold text-ink mt-0.5`}>Your week in growth</Text>
         </View>
         <PressableScale
           feedback={false}
@@ -73,7 +73,7 @@ function WeeklyRecapCard() {
           accessibilityRole="button"
           accessibilityLabel="Hide this week’s recap"
         >
-          <Ionicons name="close" size={18} color="#A8A29E" />
+          <Ionicons name="close" size={18} color={theme.colors.iconMuted} />
         </PressableScale>
       </View>
 
@@ -83,7 +83,7 @@ function WeeklyRecapCard() {
 
       {recap.empty ? (
         <>
-          <Text style={tw`text-[15px] text-stone-700 mt-3 leading-5`}>
+          <Text style={tw`text-body text-ink-2 mt-3 leading-5`}>
             {recap.reflection || 'A quiet week is still part of growing.'}
           </Text>
           <PressableScale
@@ -93,29 +93,29 @@ function WeeklyRecapCard() {
             style={tw`mt-3 self-start px-4 py-2.5 rounded-full bg-emerald-600 flex-row items-center gap-1.5`}
           >
             <Ionicons name="book-outline" size={15} color="#fff" />
-            <Text style={tw`text-white font-semibold text-[13px]`}>Write a journal line</Text>
+            <Text style={tw`text-white font-semibold text-footnote`}>Write a journal line</Text>
           </PressableScale>
         </>
       ) : (
         <>
           <View style={tw`flex-row flex-wrap gap-2 mt-3`}>
             {chips.map((c) => (
-              <View key={c} style={tw`px-3 py-1.5 rounded-full bg-white/80 border border-stone-200/70`}>
-                <Text style={tw`text-xs font-semibold text-stone-700`}>{c}</Text>
+              <View key={c} style={tw`px-3 py-1.5 rounded-full bg-card/80 border border-line/70`}>
+                <Text style={tw`text-xs font-semibold text-ink-2`}>{c}</Text>
               </View>
             ))}
           </View>
           {recap.reflection ? (
-            <Text style={tw`text-[15px] text-stone-700 mt-3 leading-5`}>{recap.reflection}</Text>
+            <Text style={tw`text-body text-ink-2 mt-3 leading-5`}>{recap.reflection}</Text>
           ) : null}
           <PressableScale
             feedback={false}
             onPress={share}
             accessibilityRole="button"
-            style={tw`mt-3 py-3 rounded-xl bg-[#F97066] items-center flex-row justify-center gap-2`}
+            style={tw`mt-3 py-3 rounded-control bg-energy-600 items-center flex-row justify-center gap-2`}
           >
             <Ionicons name="share-social-outline" size={16} color="#fff" />
-            <Text style={tw`text-white font-bold text-[14px]`}>Share my week</Text>
+            <Text style={tw`text-white font-bold text-body`}>Share my week</Text>
           </PressableScale>
         </>
       )}

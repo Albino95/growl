@@ -165,7 +165,7 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
               </View>
             ) : null}
 
-            <View style={tw`w-full bg-[#FFFcf7] rounded-3xl px-6 pt-8 pb-5 items-center border border-stone-200/80`}>
+            <View style={tw`w-full bg-card rounded-sheet px-6 pt-8 pb-5 items-center border border-line/80`}>
               <View style={{ width: MEDAL + 40, height: MEDAL + 40, alignItems: 'center', justifyContent: 'center' }}>
                 <Animated.View
                   pointerEvents="none"
@@ -184,20 +184,20 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
                 </Animated.View>
               </View>
 
-              <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase mt-3`}>
+              <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase mt-3`}>
                 New badge
               </Text>
               <Text
-                style={tw`text-2xl font-bold text-stone-900 text-center mt-1`}
+                style={tw`text-2xl font-bold text-ink text-center mt-1`}
                 accessibilityRole="header"
               >
                 You earned {badge.name} 🌱
               </Text>
               {badge.description ? (
-                <Text style={tw`text-sm text-stone-600 text-center mt-2 leading-5`}>{badge.description}</Text>
+                <Text style={tw`text-sm text-ink-2 text-center mt-2 leading-5`}>{badge.description}</Text>
               ) : null}
               {badge.points > 0 ? (
-                <View style={tw`mt-3 px-3 py-1 rounded-full bg-[#FFF1F0]`}>
+                <View style={tw`mt-3 px-3 py-1 rounded-full bg-energy-50`}>
                   <Text style={tw`text-sm font-bold text-bloom-ink`}>+{badge.points} growth points</Text>
                 </View>
               ) : null}
@@ -206,23 +206,23 @@ export default function BadgeCelebrationModal({ badge, remaining = 0, onShare, o
                 <PressableScale
                   onPress={() => finish(true)}
                   feedback={false}
-                  style={tw`flex-1 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200 items-center`}
+                  style={tw`flex-1 py-3 rounded-card bg-raised border border-line items-center`}
                   accessibilityRole="button"
                   accessibilityLabel={`Share ${badge.name}`}
                 >
-                  <Text style={tw`text-stone-800 font-bold`}>Share</Text>
+                  <Text style={tw`text-ink font-bold`}>Share</Text>
                 </PressableScale>
                 <PressableScale
                   onPress={() => finish(false)}
                   feedback={false}
-                  style={tw`flex-1 py-3 rounded-2xl bg-emerald-600 items-center`}
+                  style={tw`flex-1 py-3 rounded-card bg-emerald-600 items-center`}
                   accessibilityRole="button"
                 >
                   <Text style={tw`text-white font-bold`}>Nice!</Text>
                 </PressableScale>
               </View>
               {remaining > 0 ? (
-                <Text style={tw`text-xs text-stone-500 mt-3`}>
+                <Text style={tw`text-xs text-ink-3 mt-3`}>
                   {remaining} more badge{remaining === 1 ? '' : 's'} waiting
                 </Text>
               ) : null}

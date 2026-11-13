@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import tw from '../../lib/tw';
+import PressableScale from './PressableScale';
 
 type Props = {
   children: React.ReactNode;
@@ -29,7 +30,8 @@ export default class EditorErrorBoundary extends React.Component<Props, State> {
         <Text style={tw`text-stone-400 text-sm text-center mb-6`}>
           Your photo or clip is still here. Close and try Edit again.
         </Text>
-        <Pressable
+        <PressableScale
+          accessibilityRole="button"
           onPress={() => {
             this.setState({ failed: false });
             this.props.onClose();
@@ -37,7 +39,7 @@ export default class EditorErrorBoundary extends React.Component<Props, State> {
           style={tw`bg-brand-600 px-6 py-3 rounded-full`}
         >
           <Text style={tw`text-white font-bold`}>Back to draft</Text>
-        </Pressable>
+        </PressableScale>
       </View>
     );
   }

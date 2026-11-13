@@ -149,7 +149,7 @@ export default function AnimatedBottomSheet({
   const sheet = (
     <Animated.View
       style={[
-        tw`bg-[#FFFcf7] rounded-t-3xl border-t border-stone-200 w-full overflow-hidden`,
+        tw`bg-card rounded-t-sheet border-t border-line w-full overflow-hidden`,
         {
           maxHeight: maxH,
           paddingBottom: Math.max(insets.bottom, 12),
@@ -164,7 +164,7 @@ export default function AnimatedBottomSheet({
         accessibilityRole="adjustable"
         accessibilityLabel="Swipe down to close"
       >
-        <View style={tw`w-12 h-1.5 rounded-full bg-stone-400`} />
+        <View style={tw`w-12 h-1.5 rounded-chip bg-stone-400`} />
       </View>
       {body}
     </Animated.View>

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   Pressable,
   useWindowDimensions,
   RefreshControl,
@@ -39,6 +38,7 @@ import {
 import { haptic } from '../../theme/haptics';
 import GrowLoader from '../../components/ui/GrowLoader';
 import tw from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 
 type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
@@ -86,7 +86,7 @@ function ReelsHeader({
     >
       <View
         style={[
-          tw`mx-3 mb-1 flex-row items-center justify-between px-2 py-2 rounded-2xl`,
+          tw`mx-3 mb-1 flex-row items-center justify-between px-2 py-2 rounded-card`,
           {
             backgroundColor: 'rgba(0,0,0,0.45)',
             borderWidth: StyleSheet.hairlineWidth,
@@ -94,30 +94,32 @@ function ReelsHeader({
           },
         ]}
       >
-        <TouchableOpacity
+        <PressableScale
+          pressedScale={0.9}
           onPress={onBack}
           hitSlop={12}
           style={tw`w-10 h-10 rounded-full bg-white/10 items-center justify-center`}
           accessibilityLabel="Go back"
         >
           <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-        </TouchableOpacity>
+        </PressableScale>
         <View style={tw`items-center flex-1 px-2`}>
           <Text
-            style={tw`text-[11px] tracking-[3px] uppercase text-emerald-400 font-extrabold`}
+            style={tw`text-caption tracking-[3px] uppercase text-[#34D399] font-extrabold`}
           >
             Grow!
           </Text>
           <Text style={tw`text-white font-bold text-base -mt-0.5`}>{modeLabel}</Text>
         </View>
-        <TouchableOpacity
+        <PressableScale
+          pressedScale={0.9}
           onPress={onCreate}
           hitSlop={12}
           style={tw`w-10 h-10 rounded-full bg-brand-600 items-center justify-center`}
           accessibilityLabel="Create reel"
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        </PressableScale>
       </View>
     </View>
   );
@@ -133,10 +135,10 @@ function ReelsEmptyState({ onCreate }: { onCreate: () => void }) {
       <Text style={tw`text-white/60 text-center mb-8 leading-5`}>
         Record a video or edit a photo into a vertical clip — looks, text, and cinematic edges.
       </Text>
-      <TouchableOpacity onPress={onCreate} style={tw`bg-brand-600 px-6 py-3.5 rounded-full flex-row items-center gap-2`}>
-        <Ionicons name="add-circle-outline" size={20} color="#fff" />
+      <PressableScale onPress={onCreate} style={tw`bg-brand-600 px-6 py-3.5 rounded-chip flex-row items-center gap-2`}>
+        <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
         <Text style={tw`text-white font-bold text-base`}>Create Reel</Text>
-      </TouchableOpacity>
+      </PressableScale>
     </View>
   );
 }
@@ -605,10 +607,10 @@ export default function ReelsScreen() {
           </Pressable>
         </View>
 
-        <View style={tw`absolute bottom-0 left-0 right-0 pb-10 px-4`} pointerEvents="box-none">
+        <View style={tw`absolute bottom-0 left-0 right-0 pb-10 px-gutter`} pointerEvents="box-none">
           <View style={tw`flex-row items-end justify-between`}>
             <View style={tw`flex-1 mr-4`}>
-              <TouchableOpacity
+              <PressableScale
                 style={tw`flex-row items-center mb-3`}
                 onPress={() => {
                   const root = navigation.getParent?.() || navigation;
@@ -634,13 +636,13 @@ export default function ReelsScreen() {
                 />
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-white font-semibold`}>{username}</Text>
-                  <View style={tw`self-start mt-0.5 px-2 py-0.5 rounded-full bg-brand-600/30 border border-brand-500/40`}>
-                    <Text style={tw`text-emerald-200 text-[11px] font-semibold capitalize`}>
+                  <View style={tw`self-start mt-0.5 px-2 py-0.5 rounded-chip bg-brand-600/30 border border-brand-500/40`}>
+                    <Text style={tw`text-[#A7F3D0] text-caption font-semibold capitalize`}>
                       {item.category}
                     </Text>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </PressableScale>
               <Text style={tw`text-white`} numberOfLines={3}>
                 {item.caption || ' '}
               </Text>
@@ -668,7 +670,7 @@ export default function ReelsScreen() {
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(likes)}</Text>
               </View>
-              <TouchableOpacity
+              <PressableScale
                 style={tw`items-center`}
                 onPress={() => setCommentsPost(item)}
               >
@@ -676,7 +678,7 @@ export default function ReelsScreen() {
                   <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" />
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(comments)}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </View>
         </View>
@@ -751,7 +753,7 @@ export default function ReelsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#fff"
+            tintColor="#FFFFFF"
             progressViewOffset={80}
           />
         }

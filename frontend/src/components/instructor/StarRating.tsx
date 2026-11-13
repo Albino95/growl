@@ -21,7 +21,7 @@ export function StarRow({
           key={n}
           name={n <= rounded ? 'star' : 'star-outline'}
           size={size}
-          color={n <= rounded ? color : '#D6D3D1'}
+          color={n <= rounded ? color : (tw.color('stone-300') ?? '#D6D3D1')}
         />
       ))}
     </View>
@@ -40,7 +40,7 @@ export function StarPicker({
   return (
     <View style={tw`mb-3`}>
       {label ? (
-        <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1.5`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5`}>
           {label}
         </Text>
       ) : null}
@@ -59,7 +59,7 @@ export function StarPicker({
             <Ionicons
               name={n <= value ? 'star' : 'star-outline'}
               size={28}
-              color={n <= value ? '#D97706' : '#D6D3D1'}
+              color={n <= value ? '#D97706' : (tw.color('stone-300') ?? '#D6D3D1')}
             />
           </PressableScale>
         ))}

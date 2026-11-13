@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text } from 'react-native';
+import { Text } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
 import { useMediaComposer } from '../../hooks/useMediaComposer';
@@ -15,6 +15,7 @@ import ToolChipRow from '../../components/composer/ToolChipRow';
 import ReelCameraCapture from '../../components/ui/videoEditor/ReelCameraCapture';
 import { openReelsAtPost } from '../../utils/reelNavigation';
 import tw from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'CreateReel'> };
 
@@ -29,24 +30,24 @@ export default function CreateReelScreen({ navigation }: Props) {
   const successActions = (
     <>
       {published?.id ? (
-        <Pressable
+        <PressableScale
           onPress={() => {
             const postId = published.id;
             composer.exit(() => openReelsAtPost(navigation, postId, published));
           }}
           accessibilityRole="button"
-          style={tw`w-full bg-brand-600 py-3.5 rounded-2xl items-center mb-3`}
+          style={tw`w-full bg-brand-600 py-3.5 rounded-card items-center mb-3`}
         >
           <Text style={tw`text-white font-bold text-base`}>View in Reels</Text>
-        </Pressable>
+        </PressableScale>
       ) : null}
-      <Pressable
+      <PressableScale
         onPress={() => composer.exit()}
         accessibilityRole="button"
-        style={tw`w-full py-3.5 rounded-2xl items-center border border-white/25`}
+        style={tw`w-full py-3.5 rounded-card items-center border border-white/25`}
       >
         <Text style={tw`text-white font-semibold`}>Done</Text>
-      </Pressable>
+      </PressableScale>
     </>
   );
 

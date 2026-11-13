@@ -18,7 +18,7 @@ export default function MoodWeekBars({ data, height = 88, limit = 12 }: Props) {
   const weeks = data.slice(-limit);
   if (!weeks.some((w) => w.avg != null)) {
     return (
-      <Text style={tw`text-xs text-stone-500`}>
+      <Text style={tw`text-xs text-ink-3`}>
         Add a mood when you check in and your weeks will show up here.
       </Text>
     );
@@ -26,9 +26,9 @@ export default function MoodWeekBars({ data, height = 88, limit = 12 }: Props) {
   return (
     <View style={tw`flex-row`}>
       <View style={{ height, justifyContent: 'space-between', marginRight: 6 }}>
-        <Text style={tw`text-[11px]`}>{MOOD_FACES[4]}</Text>
-        <Text style={tw`text-[11px]`}>{MOOD_FACES[2]}</Text>
-        <Text style={tw`text-[11px]`}>{MOOD_FACES[0]}</Text>
+        <Text style={tw`text-caption`}>{MOOD_FACES[4]}</Text>
+        <Text style={tw`text-caption`}>{MOOD_FACES[2]}</Text>
+        <Text style={tw`text-caption`}>{MOOD_FACES[0]}</Text>
       </View>
       <View style={tw`flex-1 flex-row items-end justify-between`}>
         {weeks.map((w) => {
@@ -50,11 +50,11 @@ export default function MoodWeekBars({ data, height = 88, limit = 12 }: Props) {
                     backgroundColor: avg != null ? moodColor(avg) : 'transparent',
                     borderWidth: avg != null ? 0 : 1,
                     borderStyle: 'dashed',
-                    borderColor: '#D6CFC0',
+                    borderColor: tw.color('stone-300'),
                   }}
                 />
               </View>
-              <Text style={tw`text-[11px] text-stone-500 mt-1`}>{shortWeek(w.week)}</Text>
+              <Text style={tw`text-caption text-ink-3 mt-1`}>{shortWeek(w.week)}</Text>
             </View>
           );
         })}

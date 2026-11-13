@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, Alert, Animated } from 'react-native';
+import { View, Text, Alert, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import { iconSize } from '../../theme/icons';
 import { alertMessage } from '../../utils/confirmDialog';
 import GrowAvatar from '../ui/GrowAvatar';
-import { MOOD_META, growthPathFromTags } from './journalMeta';
+import { MOOD_META, growthPathFromTags, moodWash } from './journalMeta';
 import type { CircleJournalEntry, JournalMood } from '../../services/api/journal';
 import { feelJournalEntry, muteJournalAuthor } from '../../services/api/journal';
 import { feedback } from '../../utils/interactionFeedback';
@@ -34,6 +35,8 @@ export default function CircleJournalCard({
   onMuted,
 }: Props) {
   const [felt, setFelt] = useState(!!entry.feltThis);
+  const c = useThemeColors();
+  const scheme = useColorSchemeName();
   const [feeling, setFeeling] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
   const prevFelt = useRef(felt);
@@ -117,16 +120,17 @@ export default function CircleJournalCard({
   return (
     <View
       style={[
-        tw`mb-3 px-4 pt-4 pb-3 rounded-2xl`,
+        tw`mb-3 px-4 pt-4 pb-3 rounded-card`,
         {
-          backgroundColor: meta?.wash || '#FFFcf7',
+          backgroundColor: mood && meta ? moodWash(mood, scheme) : c.card,
           borderWidth: 1,
-          borderColor: 'rgba(28,25,23,0.06)',
+          borderColor: scheme === 'dark' ? c.line : 'rgba(28,25,23,0.06)',
         },
       ]}
     >
       <View style={tw`flex-row items-center mb-3`}>
-        <Pressable
+        <PressableScale
+          pressedScale={0.98}
           onPress={() => onOpenProfile(entry.user_id)}
           style={tw`flex-row items-center flex-1`}
         >
@@ -138,10 +142,10 @@ export default function CircleJournalCard({
             style={tw`mr-3`}
           />
           <View style={tw`flex-1`}>
-            <Text style={tw`font-bold text-stone-900`} numberOfLines={1}>
+            <Text style={tw`font-bold text-ink`} numberOfLines={1}>
               {entry.username}
             </Text>
-            <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+            <Text style={tw`text-xs text-ink-3 mt-0.5`}>
               {new Date(entry.created_at).toLocaleString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -151,72 +155,78 @@ export default function CircleJournalCard({
               {meta ? ` · ${meta.label}` : ''}
             </Text>
           </View>
-        </Pressable>
-        <Pressable onPress={onMore} hitSlop={10} style={tw`p-1`}>
-          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color="#6B645E" />
-        </Pressable>
+        </PressableScale>
+        <PressableScale
+          onPress={onMore}
+          pressedScale={0.9}
+          hitSlop={10}
+          accessibilityLabel="More options"
+          style={tw`p-1`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={c.ink3} />
+        </PressableScale>
       </View>
 
-      <Text style={tw`text-stone-900 text-[16px] leading-6`}>{excerpt}</Text>
+      <Text style={tw`text-ink text-callout font-normal`}>{excerpt}</Text>
 
       {path ? (
         <View style={tw`mt-3 self-start px-2.5 py-1 rounded-full bg-stone-900/5`}>
-          <Text style={tw`text-[11px] font-semibold text-stone-600`}>{pathLabel(path)}</Text>
+          <Text style={tw`text-caption font-semibold text-ink-2`}>{pathLabel(path)}</Text>
         </View>
       ) : null}
 
       <View style={tw`flex-row gap-2 mt-4`}>
-        <Pressable
+        <PressableScale
           onPress={() => void onFelt()}
           disabled={felt || feeling}
-          style={tw`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 border ${
-            felt ? 'bg-[#FFF1F0] border-[#FECACA]' : 'bg-white/70 border-stone-200'
+          style={tw`flex-1 py-2.5 rounded-control items-center flex-row justify-center gap-1.5 border ${
+            felt ? 'bg-energy-50 border-red-200' : 'bg-card/70 border-line'
           }`}
         >
           <Animated.View style={{ transform: [{ scale: heartScale }] }}>
             <Ionicons
               name={felt ? 'heart' : 'heart-outline'}
               size={iconSize.xs}
-              color={felt ? '#E11D48' : '#57534E'}
+              color={felt ? tw.color('rose-600') : c.ink2}
             />
           </Animated.View>
-          <Text style={tw`text-xs font-bold ${felt ? 'text-[#E11D48]' : 'text-stone-700'}`}>
+          <Text style={tw`text-xs font-bold ${felt ? 'text-rose-600' : 'text-ink-2'}`}>
             {felt ? 'You felt this' : 'Felt this'}
           </Text>
-        </Pressable>
-        <Pressable
+        </PressableScale>
+        <PressableScale
           onPress={() => {
             feedback.open();
             onReplyToLine?.(entry);
           }}
-          style={tw`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-1.5 bg-white border border-stone-200`}
+          style={tw`flex-1 py-2.5 rounded-control items-center flex-row justify-center gap-1.5 bg-card border border-line`}
         >
-          <Ionicons name="chatbubble-ellipses-outline" size={iconSize.xs} color="#1C1917" />
-          <Text style={tw`text-xs font-bold text-stone-800`}>Reply</Text>
-        </Pressable>
+          <Ionicons name="chatbubble-ellipses-outline" size={iconSize.xs} color={c.ink} />
+          <Text style={tw`text-xs font-bold text-ink`}>Reply</Text>
+        </PressableScale>
         {onShare ? (
-          <Pressable
+          <PressableScale
             onPress={() => {
               feedback.open();
               onShare(entry);
             }}
-            style={tw`w-11 py-2.5 rounded-xl items-center justify-center bg-white border border-stone-200`}
+            style={tw`w-11 py-2.5 rounded-control items-center justify-center bg-card border border-line`}
             accessibilityLabel="Share voice"
           >
-            <Ionicons name="share-outline" size={16} color="#059669" />
-          </Pressable>
+            <Ionicons name="share-outline" size={16} color={c.brand} />
+          </PressableScale>
         ) : null}
       </View>
       {entry.allowMessages !== false ? (
-        <Pressable
+        <PressableScale
           onPress={() => {
             feedback.send();
             onMessage(entry);
           }}
-          style={tw`mt-2 py-2.5 rounded-xl items-center bg-emerald-600`}
+          style={tw`mt-2 py-2.5 rounded-control items-center bg-emerald-600`}
         >
           <Text style={tw`text-xs font-bold text-white`}>Message about this</Text>
-        </Pressable>
+        </PressableScale>
       ) : null}
     </View>
   );

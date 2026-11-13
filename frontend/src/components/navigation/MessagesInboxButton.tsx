@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, Animated, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import { getUnreadMessageCount } from '../../services/api/messages';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
@@ -47,21 +47,24 @@ export default function MessagesInboxButton() {
     <PressableScale
       onPress={() => navigateFromRoot(navigation, 'Messages')}
       feedback="open"
-      style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+      pressedScale={0.9}
+      hitSlop={8}
+      accessibilityRole="button"
+      style={tw`w-9 h-9 rounded-full bg-raised border border-line items-center justify-center`}
       accessibilityLabel={count > 0 ? `Messages, ${count} unread` : 'Messages'}
     >
       <Animated.View style={{ transform: [{ scale: pulse }] }}>
         <Ionicons
           name={count > 0 ? 'chatbubbles' : 'chatbubbles-outline'}
           size={17}
-          color="#059669"
+          color={theme.colors.brand}
         />
       </Animated.View>
       {count > 0 ? (
         <View
-          style={tw`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-energy-600 items-center justify-center border-2 border-[#F3EEE4]`}
+          style={tw`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-chip bg-energy-600 items-center justify-center border-2 border-page`}
         >
-          <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>{count > 9 ? '9+' : count}</Text>
+          <Text maxFontSizeMultiplier={1.3} style={tw`text-caption font-bold text-white`}>{count > 9 ? '9+' : count}</Text>
         </View>
       ) : null}
     </PressableScale>

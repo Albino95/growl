@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import tw from '../../lib/tw';
+import tw, { theme, useColorSchemeName } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import SearchField from '../../components/ui/SearchField';
@@ -36,6 +36,7 @@ import {
   formatSectionTitle,
   growthPathFromTags,
   localDateKey,
+  moodWash,
   promptForDay,
 } from '../../components/journal/journalMeta';
 import {
@@ -98,22 +99,23 @@ function EntryCard({
   const meta = mood ? MOOD_META[mood] : null;
   const path = growthPathFromTags(entry.tags || []);
   const isPublic = entry.isPublic ?? entry.is_public;
+  const scheme = useColorSchemeName();
 
   return (
     <View
       style={[
-        tw`mb-3 px-4 py-4 rounded-2xl`,
+        tw`mb-3 p-4 rounded-card`,
         {
-          backgroundColor: meta?.wash || '#FFFcf7',
+          backgroundColor: mood && meta ? moodWash(mood, scheme) : theme.colors.card,
           borderWidth: 1,
-          borderColor: 'rgba(28,25,23,0.06)',
+          borderColor: scheme === 'dark' ? theme.colors.line : 'rgba(28,25,23,0.06)',
         },
       ]}
     >
       <View style={tw`flex-row items-center justify-between mb-2`}>
         <View style={tw`flex-row items-center flex-1`}>
           {meta ? <Text style={tw`text-base mr-2`}>{meta.glyph}</Text> : null}
-          <Text style={tw`text-xs text-stone-500`}>
+          <Text style={tw`text-xs text-ink-3`}>
             {new Date(entry.created_at).toLocaleTimeString('en-US', {
               hour: 'numeric',
               minute: '2-digit',
@@ -125,7 +127,7 @@ function EntryCard({
           <Ionicons
             name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
             size={iconSize.xs}
-            color="#6B645E"
+            color={theme.colors.ink3}
           />
           {isPublic && onShare ? (
             <PressableScale
@@ -135,7 +137,7 @@ function EntryCard({
               accessibilityRole="button"
               accessibilityLabel="Share voice card"
             >
-              <Ionicons name="share-outline" size={16} color="#059669" />
+              <Ionicons name="share-outline" size={16} color={theme.colors.brand} />
             </PressableScale>
           ) : null}
           <PressableScale
@@ -145,14 +147,14 @@ function EntryCard({
             accessibilityRole="button"
             accessibilityLabel="Delete entry"
           >
-            <Ionicons name="trash-outline" size={16} color="#A8A29E" />
+            <Ionicons name="trash-outline" size={16} color={theme.colors.iconMuted} />
           </PressableScale>
         </View>
       </View>
-      <Text style={tw`text-stone-900 text-[16px] leading-6`}>{entry.content}</Text>
+      <Text style={tw`text-ink text-callout font-normal`}>{entry.content}</Text>
       {path ? (
         <View style={tw`mt-3 self-start px-2.5 py-1 rounded-full bg-stone-900/5`}>
-          <Text style={tw`text-[11px] font-semibold text-stone-600`}>{pathLabel(path)}</Text>
+          <Text style={tw`text-caption font-semibold text-ink-2`}>{pathLabel(path)}</Text>
         </View>
       ) : null}
     </View>
@@ -160,6 +162,7 @@ function EntryCard({
 }
 
 export default function JournalScreen() {
+  const scheme = useColorSchemeName();
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const route = useRoute<RouteProp<IndividualTabsParamList, 'Journal'>>();
@@ -437,7 +440,7 @@ export default function JournalScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         right={
           <View style={tw`flex-row items-center gap-2`}>
@@ -445,33 +448,37 @@ export default function JournalScreen() {
               <PressableScale
                 feedback="open"
                 onPress={() => navigateFromRoot(navigation, 'Circles')}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                pressedScale={0.9}
+                hitSlop={8}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
                 accessibilityRole="button"
                 accessibilityLabel="Circles"
               >
-                <Ionicons name="people-outline" size={17} color="#059669" />
+                <Ionicons name="people-outline" size={17} color={theme.colors.brand} />
               </PressableScale>
             ) : null}
             <PressableScale
               feedback="open"
               onPress={openCompose}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              pressedScale={0.9}
+              hitSlop={8}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
               accessibilityRole="button"
               accessibilityLabel="New journal entry"
             >
-              <Ionicons name="pencil" size={17} color="#059669" />
+              <Ionicons name="pencil" size={17} color={theme.colors.brand} />
             </PressableScale>
           </View>
         }
       />
 
-      <View style={tw`px-5 pt-2 pb-2`}>
+      <View style={tw`px-gutter-wide pt-2 pb-2`}>
         <View style={tw`flex-row items-center justify-between mb-2`}>
           <View style={tw`flex-1 pr-3`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
               Journal
             </Text>
-            <Text style={tw`text-[22px] font-bold text-stone-900 mt-0.5`} numberOfLines={1}>
+            <Text style={tw`text-title font-bold text-ink mt-0.5`} numberOfLines={1}>
               {mode === 'pages' ? 'Your pages' : 'Voices'}
             </Text>
           </View>
@@ -479,10 +486,10 @@ export default function JournalScreen() {
             <PressableScale
               feedback="open"
               onPress={() => setReflectionsOpen(true)}
-              style={tw`px-3 py-2 rounded-full bg-[#FFF1F0] border border-[#FECACA] flex-row items-center`}
+              style={tw`px-3 py-2 rounded-full bg-energy-50 border border-red-200 flex-row items-center`}
             >
-              <Ionicons name="chatbubbles-outline" size={iconSize.xs} color="#E11D48" />
-              <Text style={tw`text-xs font-bold text-[#E11D48] ml-1`}>{reflections.length}</Text>
+              <Ionicons name="chatbubbles-outline" size={iconSize.xs} color={tw.color('rose-600')} />
+              <Text style={tw`text-xs font-bold text-rose-600 ml-1`}>{reflections.length}</Text>
             </PressableScale>
           ) : null}
         </View>
@@ -516,8 +523,8 @@ export default function JournalScreen() {
                   }`}
                 >
                   <Text
-                    style={tw`text-[15px] ${
-                      active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
+                    style={tw`text-body ${
+                      active ? 'text-ink font-bold' : 'text-ink-3 font-medium'
                     }`}
                   >
                     {tab.label}
@@ -527,19 +534,19 @@ export default function JournalScreen() {
             })}
           </View>
         ) : (
-          <Text style={tw`text-sm text-stone-500 mt-2.5`}>
+          <Text style={tw`text-body text-ink-3 mt-2.5`}>
             Sit with a friend’s note — reply to a line or message privately.
           </Text>
         )}
       </View>
 
       {mode === 'pages' && error ? (
-        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100`}>
+        <View style={tw`mx-gutter-wide mb-2 px-3 py-2 rounded-control bg-red-50 border border-red-100`}>
           <Text style={tw`text-sm text-red-700`}>{error}</Text>
         </View>
       ) : null}
       {mode === 'voices' && circleError ? (
-        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100`}>
+        <View style={tw`mx-gutter-wide mb-2 px-3 py-2 rounded-control bg-red-50 border border-red-100`}>
           <Text style={tw`text-sm text-red-700`}>{circleError}</Text>
         </View>
       ) : null}
@@ -556,7 +563,7 @@ export default function JournalScreen() {
             ref={voicesListRef}
             data={filteredCircleEntries}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={[tw`px-5 pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+            contentContainerStyle={[tw`px-gutter-wide pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
             {...feedListPerformanceProps}
             {...verticalScrollProps}
             refreshControl={
@@ -570,7 +577,7 @@ export default function JournalScreen() {
                   onSelect={setVoiceFilterUserId}
                 />
                 {voiceFilterUserId ? (
-                  <Text style={tw`text-sm text-stone-500 mb-3`}>
+                  <Text style={tw`text-sm text-ink-3 mb-3`}>
                     Showing one voice ·{' '}
                     <Text
                       style={tw`text-emerald-700 font-semibold`}
@@ -644,17 +651,17 @@ export default function JournalScreen() {
             style={tw`flex-1`}
             contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
             refreshControl={
-              <RefreshControl {...refresh} tintColor="#1C1917" />
+              <RefreshControl {...refresh} tintColor={theme.colors.ink} />
             }
             {...verticalScrollProps}
           >
             <View
               style={[
-                tw`mx-5 mt-1 mb-3 rounded-3xl px-5 pt-5 pb-5 overflow-hidden`,
+                tw`mx-gutter-wide mt-1 mb-3 rounded-sheet p-5 overflow-hidden`,
                 {
-                  backgroundColor: '#EAE4D6',
+                  backgroundColor: theme.colors.raised,
                   borderWidth: 1,
-                  borderColor: 'rgba(28,25,23,0.06)',
+                  borderColor: scheme === 'dark' ? theme.colors.line : 'rgba(28,25,23,0.06)',
                 },
               ]}
             >
@@ -667,17 +674,17 @@ export default function JournalScreen() {
               />
               <View style={tw`flex-row items-start justify-between mb-4`}>
                 <View style={tw`flex-1 pr-3`}>
-                  <Text style={tw`text-stone-500 text-sm`}>{formatHeroDate()}</Text>
-                  <Text style={tw`text-[22px] text-stone-900 mt-2 leading-7`}>{todayPrompt}</Text>
+                  <Text style={tw`text-ink-3 text-body`}>{formatHeroDate()}</Text>
+                  <Text style={tw`text-title text-ink mt-2 leading-7`}>{todayPrompt}</Text>
                 </View>
                 {streak > 0 ? (
                   <View style={tw`items-center`}>
                     <View
                       style={tw`w-14 h-14 rounded-full border-2 border-energy-600 items-center justify-center bg-energy-50`}
                     >
-                      <Text style={tw`text-lg font-bold text-bloom-ink`}>{streak}</Text>
+                      <Text style={tw`text-callout font-bold text-bloom-ink`}>{streak}</Text>
                     </View>
-                    <Text style={tw`text-[11px] text-bloom-ink mt-1 font-medium`}>day streak</Text>
+                    <Text style={tw`text-caption text-bloom-ink mt-1 font-medium`}>day streak</Text>
                   </View>
                 ) : null}
               </View>
@@ -694,10 +701,10 @@ export default function JournalScreen() {
               <PressableScale
                 feedback="open"
                 onPress={openCompose}
-                style={tw`mt-5 bg-stone-900 rounded-2xl py-3.5 items-center flex-row justify-center`}
+                style={tw`mt-5 bg-ink rounded-card py-3.5 items-center flex-row justify-center`}
               >
-                <Ionicons name="create-outline" size={iconSize.sm} color="#fff" />
-                <Text style={tw`text-white font-semibold ml-2`}>
+                <Ionicons name="create-outline" size={iconSize.sm} color={theme.colors.page} />
+                <Text style={tw`text-page font-semibold ml-2`}>
                   {todayEntries.length > 0 ? 'Write another entry' : "Write today's entry"}
                 </Text>
               </PressableScale>
@@ -707,16 +714,16 @@ export default function JournalScreen() {
               <PressableScale
                 feedback="open"
                 onPress={() => setReflectionsOpen(true)}
-                style={tw`mx-5 mb-3 px-4 py-3.5 rounded-2xl bg-[#FFFcf7] border border-stone-200/80 flex-row items-center`}
+                style={tw`mx-gutter-wide mb-3 p-4 rounded-card bg-card border border-line/80 flex-row items-center`}
               >
                 <View
-                  style={tw`w-10 h-10 rounded-full bg-[#FFF1F0] items-center justify-center mr-3`}
+                  style={tw`w-10 h-10 rounded-full bg-energy-50 items-center justify-center mr-3`}
                 >
-                  <Ionicons name="chatbubbles" size={iconSize.sm} color="#E11D48" />
+                  <Ionicons name="chatbubbles" size={iconSize.sm} color={tw.color('rose-600')} />
                 </View>
                 <View style={tw`flex-1 pr-2`}>
-                  <Text style={tw`text-[15px] font-bold text-stone-900`}>Reflections</Text>
-                  <Text style={tw`text-sm text-stone-500 mt-0.5`} numberOfLines={2}>
+                  <Text style={tw`text-body font-bold text-ink`}>Reflections</Text>
+                  <Text style={tw`text-sm text-ink-3 mt-0.5`} numberOfLines={2}>
                     {reflections.length > 0
                       ? `${reflections.length} ${
                           reflections.length === 1 ? 'person sat' : 'people sat'
@@ -726,7 +733,7 @@ export default function JournalScreen() {
                         } · replies will land here`}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={iconSize.sm} color="#A8A29E" />
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={theme.colors.iconMuted} />
               </PressableScale>
             )}
 
@@ -734,35 +741,35 @@ export default function JournalScreen() {
               <PressableScale
                 feedback="transition"
                 onPress={() => animateModeChange('voices')}
-                style={tw`mx-5 mb-3 px-4 py-3.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex-row items-center`}
+                style={tw`mx-gutter-wide mb-3 p-4 rounded-card bg-emerald-50 border border-emerald-200/80 flex-row items-center`}
               >
                 <View
                   style={tw`w-10 h-10 rounded-full bg-emerald-600 items-center justify-center mr-3`}
                 >
-                  <Ionicons name="radio" size={iconSize.sm} color="#fff" />
+                  <Ionicons name="radio" size={iconSize.sm} color="#FFFFFF" />
                 </View>
                 <View style={tw`flex-1 pr-2`}>
-                  <Text style={tw`text-[15px] font-bold text-emerald-900`}>New voices nearby</Text>
+                  <Text style={tw`text-body font-bold text-emerald-900`}>New voices nearby</Text>
                   <Text style={tw`text-sm text-emerald-800/80 mt-0.5`} numberOfLines={1}>
                     {circleEntries.length} public{' '}
                     {circleEntries.length === 1 ? 'note' : 'notes'} from your circle
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={iconSize.sm} color="#059669" />
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={theme.colors.brand} />
               </PressableScale>
             ) : null}
 
-            <View style={tw`px-5 mb-2`}>
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
+            <View style={tw`px-gutter-wide mb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
                 Today
               </Text>
               {isLoading && entries.length === 0 ? (
                 <SkeletonList variant="journal" count={2} />
               ) : todayEntries.length === 0 ? (
                 <View
-                  style={tw`py-6 px-4 rounded-2xl bg-white/50 border border-dashed border-stone-300`}
+                  style={tw`py-6 px-4 rounded-card bg-card/50 border border-dashed border-stone-300`}
                 >
-                  <Text style={tw`text-stone-600 text-center leading-6`}>
+                  <Text style={tw`text-ink-2 text-center leading-6`}>
                     No entry yet. A few honest lines are enough.
                   </Text>
                 </View>
@@ -792,9 +799,9 @@ export default function JournalScreen() {
             </View>
 
             {moodCounts.length > 0 ? (
-              <View style={tw`px-5 mt-2`}>
+              <View style={tw`px-gutter-wide mt-2`}>
                 <Text
-                  style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}
+                  style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}
                 >
                   Recent moods
                 </Text>
@@ -804,14 +811,14 @@ export default function JournalScreen() {
                       key={mood}
                       style={[
                         tw`flex-row items-center px-3 py-2 rounded-full`,
-                        { backgroundColor: MOOD_META[mood].wash },
+                        { backgroundColor: moodWash(mood, scheme) },
                       ]}
                     >
                       <Text style={tw`mr-1.5`}>{MOOD_META[mood].glyph}</Text>
-                      <Text style={tw`text-sm text-stone-700 font-medium`}>
+                      <Text style={tw`text-sm text-ink-2 font-medium`}>
                         {MOOD_META[mood].label}
                       </Text>
-                      <Text style={tw`text-xs text-stone-500 ml-1.5`}>{count}</Text>
+                      <Text style={tw`text-xs text-ink-3 ml-1.5`}>{count}</Text>
                     </View>
                   ))}
                 </View>
@@ -823,12 +830,12 @@ export default function JournalScreen() {
             ref={pagesListRef}
             sections={sections}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+            contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
             stickySectionHeadersEnabled
             {...feedListPerformanceProps}
             {...verticalScrollProps}
             refreshControl={
-              <RefreshControl {...refresh} tintColor="#1C1917" />
+              <RefreshControl {...refresh} tintColor={theme.colors.ink} />
             }
             ListHeaderComponent={
               <View style={tw`mb-2`}>
@@ -853,13 +860,13 @@ export default function JournalScreen() {
                         onPress={() => setVisibility(f.key)}
                         style={tw`px-3.5 py-1.5 rounded-full border ${
                           active
-                            ? 'bg-stone-900 border-stone-900'
-                            : 'bg-white/70 border-stone-200'
+                            ? 'bg-ink border-ink'
+                            : 'bg-card/70 border-line'
                         }`}
                       >
                         <Text
                           style={tw`text-sm ${
-                            active ? 'text-white font-semibold' : 'text-stone-600'
+                            active ? 'text-page font-semibold' : 'text-ink-2'
                           }`}
                         >
                           {f.label}
@@ -876,15 +883,15 @@ export default function JournalScreen() {
                       <Text style={tw`text-sm text-amber-900 mr-1`}>
                         {formatSectionTitle(focusDateKey)}
                       </Text>
-                      <Ionicons name="close" size={iconSize.xs} color="#92400E" />
+                      <Ionicons name="close" size={iconSize.xs} color={tw.color('amber-800')} />
                     </PressableScale>
                   ) : null}
                 </View>
               </View>
             }
             renderSectionHeader={({ section }) => (
-              <View style={tw`py-2 bg-[#F3EEE4]`}>
-                <Text style={tw`text-sm font-semibold text-stone-600`}>{section.title}</Text>
+              <View style={tw`py-2 bg-page`}>
+                <Text style={tw`text-sm font-semibold text-ink-2`}>{section.title}</Text>
               </View>
             )}
             renderItem={({ item }) => (

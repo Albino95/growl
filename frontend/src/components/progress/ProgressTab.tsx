@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import ErrorState from '../ui/ErrorState';
 import PressableScale from '../ui/PressableScale';
 import CountUpText from '../ui/CountUpText';
@@ -48,7 +48,7 @@ export default function ProgressTab({ username, userId, avatar, currentStreak, o
   }, [load, refreshKey]);
 
   if (state === 'loading' && !data) {
-    return <ActivityIndicator color="#059669" style={tw`py-10`} />;
+    return <ActivityIndicator color={theme.colors.brand} style={tw`py-10`} />;
   }
 
   if (!data) {
@@ -84,7 +84,7 @@ export default function ProgressTab({ username, userId, avatar, currentStreak, o
     );
 
   return (
-    <View style={tw`px-4 pt-4`}>
+    <View style={tw`px-gutter pt-4`}>
       <View style={tw`flex-row gap-2`}>
         <Stat label="Active days" value={data.total_active_days} hint={`last ${RANGE_DAYS} days`} />
         <Stat label="Longest streak" value={data.longest_streak} hint="days" />
@@ -106,7 +106,7 @@ export default function ProgressTab({ username, userId, avatar, currentStreak, o
       <PressableScale
         onPress={share}
         feedback="open"
-        style={tw`mt-4 flex-row items-center justify-center py-3 rounded-2xl bg-emerald-600`}
+        style={tw`mt-4 flex-row items-center justify-center py-3 rounded-card bg-emerald-600`}
         accessibilityRole="button"
         accessibilityLabel="Share your progress"
       >
@@ -120,23 +120,23 @@ export default function ProgressTab({ username, userId, avatar, currentStreak, o
 function Stat({ label, value, hint }: { label: string; value: number; hint: string }) {
   return (
     <View
-      style={tw`flex-1 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-3`}
+      style={tw`flex-1 bg-card border border-line/80 rounded-card px-3 py-3`}
       accessible
       accessibilityLabel={`${label}: ${value} ${hint}`}
     >
-      <Text style={tw`text-[11px] font-semibold tracking-wider text-stone-500 uppercase`} numberOfLines={1}>
+      <Text style={tw`text-caption font-semibold tracking-wider text-ink-3 uppercase`} numberOfLines={1}>
         {label}
       </Text>
-      <CountUpText style={tw`text-2xl font-bold text-stone-900 mt-0.5`} value={value} />
-      <Text style={tw`text-[11px] text-stone-500`}>{hint}</Text>
+      <CountUpText style={tw`text-2xl font-bold text-ink mt-0.5`} value={value} />
+      <Text style={tw`text-caption text-ink-3`}>{hint}</Text>
     </View>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={tw`mt-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-4`}>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-3`}>{title}</Text>
+    <View style={tw`mt-3 bg-card border border-line/80 rounded-card p-4`}>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-3`}>{title}</Text>
       {children}
     </View>
   );

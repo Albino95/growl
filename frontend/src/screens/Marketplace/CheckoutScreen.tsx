@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Image,
   Linking,
@@ -12,7 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import FormTextInput from '../../components/ui/FormTextInput';
@@ -60,8 +60,8 @@ type FieldKey = 'name' | 'street' | 'country' | 'state' | 'city' | 'zip';
 
 function fieldBorder(hasError: boolean) {
   return hasError
-    ? 'bg-surface-page border border-red-400 rounded-2xl px-4 py-3'
-    : 'bg-surface-page border border-stone-200/80 rounded-2xl px-4 py-3';
+    ? 'bg-page border border-red-400 rounded-card px-4 py-3'
+    : 'bg-page border border-line/80 rounded-card px-4 py-3';
 }
 
 export default function CheckoutScreen() {
@@ -383,7 +383,7 @@ export default function CheckoutScreen() {
 
   if (loading || !configLoaded) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`}>
+      <SafeAreaView style={tw`flex-1 bg-page`}>
         <BrandLoadingScreen variant="page" message="Loading checkout…" manageStatusBar={false} />
       </SafeAreaView>
     );
@@ -394,12 +394,12 @@ export default function CheckoutScreen() {
   const total = calculateTotal();
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-surface-card border-b border-stone-200/80`}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#1C1917" />
-        </TouchableOpacity>
-        <Text style={tw`text-lg font-semibold text-stone-900`}>Checkout</Text>
+    <SafeAreaView style={tw`flex-1 bg-page`}>
+      <View style={tw`flex-row items-center justify-between px-gutter py-3 bg-card border-b border-line/80`}>
+        <PressableScale onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
+        </PressableScale>
+        <Text style={tw`text-lg font-semibold text-ink`}>Checkout</Text>
         <View style={tw`w-6`} />
       </View>
 
@@ -411,7 +411,7 @@ export default function CheckoutScreen() {
         contentContainerStyle={tw`pb-4`}
       >
         {!paymentsEnabled && (
-          <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex-row items-center`}>
+          <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-card px-4 py-3 flex-row items-center`}>
             <Ionicons name="time-outline" size={20} color="#D97706" style={tw`mr-2`} />
             <Text style={tw`text-amber-800 text-sm font-medium flex-1`}>
               Catalog browsing only — payments / checkout are not enabled in this version.
@@ -420,15 +420,15 @@ export default function CheckoutScreen() {
         )}
 
         {formError ? (
-          <View style={tw`mx-4 mt-4 mb-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex-row items-start`}>
-            <Ionicons name="alert-circle" size={20} color="#DC2626" style={tw`mr-2 mt-0.5`} />
+          <View style={tw`mx-4 mt-4 mb-2 bg-red-50 border border-red-200 rounded-card px-4 py-3 flex-row items-start`}>
+            <Ionicons name="alert-circle" size={20} color={theme.colors.danger} style={tw`mr-2 mt-0.5`} />
             <Text style={tw`text-red-700 text-sm font-medium flex-1`}>{formError}</Text>
           </View>
         ) : null}
 
-        <View style={tw`mx-4 mt-4 mb-4 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}>
-          <View style={tw`px-4 py-3 border-b border-stone-200/80`}>
-            <Text style={tw`text-lg font-semibold text-stone-900`}>Order Items</Text>
+        <View style={tw`mx-4 mt-4 mb-4 bg-card border border-line/80 rounded-card overflow-hidden`}>
+          <View style={tw`px-4 py-3 border-b border-line/80`}>
+            <Text style={tw`text-lg font-semibold text-ink`}>Order Items</Text>
           </View>
           {cartItems.map((item, index) => {
             const productImage = item.product
@@ -438,26 +438,26 @@ export default function CheckoutScreen() {
             return (
               <View
                 key={index}
-                style={tw`px-4 py-4 flex-row ${isLast ? '' : 'border-b border-stone-200/60'}`}
+                style={tw`px-4 py-4 flex-row ${isLast ? '' : 'border-b border-line/60'}`}
               >
                 {item.product && (
                   <>
                     {productImage ? (
                       <Image
                         source={{ uri: productImage }}
-                        style={tw`w-16 h-16 rounded-2xl mr-4 bg-surface-subtle`}
+                        style={tw`w-16 h-16 rounded-card mr-4 bg-raised`}
                         resizeMode="cover"
                       />
                     ) : (
-                      <View style={tw`w-16 h-16 bg-surface-subtle border border-stone-200/60 rounded-2xl mr-4 items-center justify-center`}>
-                        <Ionicons name="image-outline" size={24} color="#A8A29E" />
+                      <View style={tw`w-16 h-16 bg-raised border border-line/60 rounded-card mr-4 items-center justify-center`}>
+                        <Ionicons name="image-outline" size={24} color={theme.colors.iconMuted} />
                       </View>
                     )}
                     <View style={tw`flex-1`}>
-                      <Text style={tw`text-base font-semibold text-stone-900 mb-1`}>
+                      <Text style={tw`text-base font-semibold text-ink mb-1`}>
                         {item.product.name}
                       </Text>
-                      <Text style={tw`text-sm text-stone-600 mb-2`}>
+                      <Text style={tw`text-sm text-ink-2 mb-2`}>
                         Quantity: {item.quantity}
                       </Text>
                       <Text style={tw`text-base font-bold text-brand-700`}>
@@ -471,9 +471,9 @@ export default function CheckoutScreen() {
           })}
         </View>
 
-        <View style={tw`mx-4 mb-4 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}>
-          <View style={tw`px-4 py-3 border-b border-stone-200/80`}>
-            <Text style={tw`text-lg font-semibold text-stone-900`}>Shipping Address</Text>
+        <View style={tw`mx-4 mb-4 bg-card border border-line/80 rounded-card overflow-hidden`}>
+          <View style={tw`px-4 py-3 border-b border-line/80`}>
+            <Text style={tw`text-lg font-semibold text-ink`}>Shipping Address</Text>
           </View>
           <View style={tw`px-4 py-4`}>
             <FormTextInput
@@ -508,17 +508,17 @@ export default function CheckoutScreen() {
               <View style={tw`mb-2`} />
             )}
 
-            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+            <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5 uppercase tracking-wide`}>
               Country
             </Text>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => setPicker('country')}
               disabled={!geoReady}
               style={tw`${fieldBorder(!!fieldErrors.country)} mb-1 flex-row items-center justify-between ${
                 !geoReady ? 'opacity-60' : ''
               }`}
             >
-              <Text style={tw`text-[15px] ${shipping.country ? 'text-stone-900' : 'text-stone-500'}`}>
+              <Text style={tw`text-body ${shipping.country ? 'text-ink' : 'text-ink-3'}`}>
                 {!geoReady
                   ? 'Loading countries…'
                   : shipping.country
@@ -526,11 +526,11 @@ export default function CheckoutScreen() {
                     : 'Select country'}
               </Text>
               {geoReady ? (
-                <Ionicons name="chevron-down" size={18} color="#6B645E" />
+                <Ionicons name="chevron-down" size={18} color={theme.colors.ink3} />
               ) : (
-                <ActivityIndicator size="small" color="#059669" />
+                <ActivityIndicator size="small" color={theme.colors.brand} />
               )}
-            </TouchableOpacity>
+            </PressableScale>
             {fieldErrors.country ? (
               <Text style={tw`text-red-600 text-xs mb-2`}>{fieldErrors.country}</Text>
             ) : (
@@ -539,21 +539,21 @@ export default function CheckoutScreen() {
 
             {needsState ? (
               <>
-                <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+                <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5 uppercase tracking-wide`}>
                   {regionLabel}
                 </Text>
-                <TouchableOpacity
+                <PressableScale
                   onPress={() => setPicker('state')}
                   disabled={!countryCode}
                   style={tw`${fieldBorder(!!fieldErrors.state)} mb-1 flex-row items-center justify-between ${
                     !countryCode ? 'opacity-50' : ''
                   }`}
                 >
-                  <Text style={tw`text-[15px] ${shipping.state ? 'text-stone-900' : 'text-stone-500'}`}>
+                  <Text style={tw`text-body ${shipping.state ? 'text-ink' : 'text-ink-3'}`}>
                     {shipping.state || `Select ${regionLabel.toLowerCase()}`}
                   </Text>
-                  <Ionicons name="chevron-down" size={18} color="#6B645E" />
-                </TouchableOpacity>
+                  <Ionicons name="chevron-down" size={18} color={theme.colors.ink3} />
+                </PressableScale>
                 {fieldErrors.state ? (
                   <Text style={tw`text-red-600 text-xs mb-2`}>{fieldErrors.state}</Text>
                 ) : (
@@ -562,7 +562,7 @@ export default function CheckoutScreen() {
               </>
             ) : countryCode ? (
               <>
-                <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+                <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5 uppercase tracking-wide`}>
                   {regionLabel} (optional)
                 </Text>
                 <FormTextInput
@@ -574,32 +574,32 @@ export default function CheckoutScreen() {
               </>
             ) : null}
 
-            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+            <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5 uppercase tracking-wide`}>
               City
             </Text>
             {citiesLoading ? (
               <View style={tw`${fieldBorder(false)} mb-3 flex-row items-center`}>
-                <ActivityIndicator size="small" color="#059669" />
-                <Text style={tw`ml-2 text-stone-500`}>Loading cities…</Text>
+                <ActivityIndicator size="small" color={theme.colors.brand} />
+                <Text style={tw`ml-2 text-ink-3`}>Loading cities…</Text>
               </View>
             ) : canPickCity ? (
               <>
-                <TouchableOpacity
+                <PressableScale
                   onPress={() => setPicker('city')}
                   disabled={needsState && !stateCode}
                   style={tw`${fieldBorder(!!fieldErrors.city)} mb-1 flex-row items-center justify-between ${
                     needsState && !stateCode ? 'opacity-50' : ''
                   }`}
                 >
-                  <Text style={tw`text-[15px] ${shipping.city ? 'text-stone-900' : 'text-stone-500'}`}>
+                  <Text style={tw`text-body ${shipping.city ? 'text-ink' : 'text-ink-3'}`}>
                     {shipping.city || 'Select city'}
                   </Text>
-                  <Ionicons name="chevron-down" size={18} color="#6B645E" />
-                </TouchableOpacity>
+                  <Ionicons name="chevron-down" size={18} color={theme.colors.ink3} />
+                </PressableScale>
                 {fieldErrors.city ? (
                   <Text style={tw`text-red-600 text-xs mb-1`}>{fieldErrors.city}</Text>
                 ) : null}
-                <TouchableOpacity
+                <PressableScale
                   onPress={() => {
                     setCityManual(true);
                     setShipping((prev) => ({ ...prev, city: '' }));
@@ -607,7 +607,7 @@ export default function CheckoutScreen() {
                   style={tw`mb-3 mt-1`}
                 >
                   <Text style={tw`text-sm text-brand-700 font-medium`}>City not listed? Enter it</Text>
-                </TouchableOpacity>
+                </PressableScale>
               </>
             ) : (
               <>
@@ -625,7 +625,7 @@ export default function CheckoutScreen() {
                   <Text style={tw`text-red-600 text-xs mb-1`}>{fieldErrors.city}</Text>
                 ) : null}
                 {cities.length > 0 ? (
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => {
                       setCityManual(false);
                       setShipping((prev) => ({ ...prev, city: '' }));
@@ -633,14 +633,14 @@ export default function CheckoutScreen() {
                     style={tw`mb-3 mt-1`}
                   >
                     <Text style={tw`text-sm text-brand-700 font-medium`}>Pick from city list</Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ) : (
                   <View style={tw`mb-3`} />
                 )}
               </>
             )}
 
-            <Text style={tw`text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide`}>
+            <Text style={tw`text-xs font-semibold text-ink-3 mb-1.5 uppercase tracking-wide`}>
               {zipLabel}
             </Text>
             <FormTextInput
@@ -659,18 +659,18 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        <View style={tw`mx-4 mb-4 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}>
-          <View style={tw`px-4 py-3 border-b border-stone-200/80`}>
-            <Text style={tw`text-lg font-semibold text-stone-900`}>Order Summary</Text>
+        <View style={tw`mx-4 mb-4 bg-card border border-line/80 rounded-card overflow-hidden`}>
+          <View style={tw`px-4 py-3 border-b border-line/80`}>
+            <Text style={tw`text-lg font-semibold text-ink`}>Order Summary</Text>
           </View>
           <View style={tw`px-4 py-4`}>
             <View style={tw`flex-row justify-between mb-2`}>
-              <Text style={tw`text-stone-600`}>Subtotal</Text>
-              <Text style={tw`text-stone-900 font-medium`}>${subtotal.toFixed(2)}</Text>
+              <Text style={tw`text-ink-2`}>Subtotal</Text>
+              <Text style={tw`text-ink font-medium`}>${subtotal.toFixed(2)}</Text>
             </View>
             <View style={tw`flex-row justify-between mb-2`}>
-              <Text style={tw`text-stone-600`}>Shipping</Text>
-              <Text style={tw`text-stone-900 font-medium`}>
+              <Text style={tw`text-ink-2`}>Shipping</Text>
+              <Text style={tw`text-ink font-medium`}>
                 {shippingCost === 0 ? 'Free' : `$${shippingCost.toFixed(2)}`}
               </Text>
             </View>
@@ -679,9 +679,9 @@ export default function CheckoutScreen() {
                 Free shipping on orders over $50!
               </Text>
             )}
-            <View style={tw`border-t border-stone-200/80 pt-3 mt-2`}>
+            <View style={tw`border-t border-line/80 pt-3 mt-2`}>
               <View style={tw`flex-row justify-between`}>
-                <Text style={tw`text-lg font-bold text-stone-900`}>Total</Text>
+                <Text style={tw`text-lg font-bold text-ink`}>Total</Text>
                 <Text style={tw`text-lg font-bold text-brand-700`}>${total.toFixed(2)}</Text>
               </View>
             </View>
@@ -689,14 +689,14 @@ export default function CheckoutScreen() {
         </View>
       </ScrollView>
 
-      <View style={tw`bg-surface-card border-t border-stone-200/80 px-4 py-4`}>
+      <View style={tw`bg-card border-t border-line/80 px-gutter py-4`}>
         <PrimaryButton
           label={paymentsEnabled ? 'Proceed to Payment' : 'Checkout Unavailable'}
           onPress={() => void handlePlaceOrder()}
           loading={processing}
           disabled={processing || cartItems.length === 0 || !paymentsEnabled}
         />
-        <Text style={tw`text-xs text-stone-500 text-center mt-2`}>
+        <Text style={tw`text-xs text-ink-3 text-center mt-2`}>
           By placing this order, you agree to our{' '}
           <Text
             style={tw`text-brand-700 underline`}

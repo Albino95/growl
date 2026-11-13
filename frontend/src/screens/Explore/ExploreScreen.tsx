@@ -8,11 +8,9 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
   ScrollView,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GrowImage from '../../components/ui/GrowImage';
@@ -38,7 +36,7 @@ import {
 import { rankDiscoverPeople, rankDiscoverReelPosts, type DiscoverPerson } from '../../utils/ranking';
 import { rankExploreRows, rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import { getProducts, type Product as ApiProduct } from '../../services/api/marketplace';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
 import {
   feedListPerformanceProps,
@@ -81,13 +79,13 @@ function SectionTitle({
 }) {
   return (
     <View style={tw`flex-row items-end justify-between mb-3 mt-1`}>
-      <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+      <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase`}>
         {title}
       </Text>
       {actionLabel && onAction ? (
-        <Pressable onPress={onAction} hitSlop={8}>
+        <PressableScale onPress={onAction} hitSlop={8}>
           <Text style={tw`text-sm font-semibold text-emerald-700`}>{actionLabel}</Text>
-        </Pressable>
+        </PressableScale>
       ) : null}
     </View>
   );
@@ -582,41 +580,40 @@ export default function ExploreScreen() {
     return (
       <View
         key={hit.id}
-        style={tw`flex-row items-center bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3 py-3 mb-2`}
+        style={tw`flex-row items-center bg-card border border-line/80 rounded-card px-3 py-3 mb-2`}
       >
-        <TouchableOpacity
-          activeOpacity={0.7}
+        <PressableScale
           onPress={() => openProfile(hit.id, { username: hit.username, avatarUrl: hit.avatar })}
           style={tw`flex-row items-center flex-1`}
         >
           <GrowAvatar userId={hit.id} username={hit.username} uri={hit.avatar} size={48} style={tw`mr-3`} />
           <View style={tw`flex-1`}>
-            <Text style={tw`font-bold text-stone-900`} numberOfLines={1}>
+            <Text style={tw`font-bold text-ink`} numberOfLines={1}>
               {hit.username}
             </Text>
-            <Text style={tw`text-xs text-stone-500 mt-0.5`} numberOfLines={1}>
+            <Text style={tw`text-xs text-ink-3 mt-0.5`} numberOfLines={1}>
               {roleLabel(hit)}
               {statusHint}
             </Text>
           </View>
-        </TouchableOpacity>
+        </PressableScale>
         {isFriend ? (
-          <Ionicons name="checkmark-circle" size={22} color="#059669" />
+          <Ionicons name="checkmark-circle" size={22} color={theme.colors.brand} />
         ) : isRequested ? (
           <SpringIn
             animate={justRequestedId === hit.id}
-            style={tw`bg-stone-100 border border-stone-200 px-3 py-2 rounded-xl`}
+            style={tw`bg-raised border border-line px-3 py-2 rounded-control`}
           >
-            <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
+            <Text style={tw`text-ink-2 text-xs font-bold`}>Requested</Text>
           </SpringIn>
         ) : (
-          <TouchableOpacity
+          <PressableScale
             onPress={() => void onAddFriend(hit.id)}
             disabled={busy}
-            style={tw`bg-emerald-600 px-3 py-2 rounded-xl ${busy ? 'opacity-60' : ''}`}
+            style={tw`bg-emerald-600 px-3 py-2 rounded-control ${busy ? 'opacity-60' : ''}`}
           >
             <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Request'}</Text>
-          </TouchableOpacity>
+          </PressableScale>
         )}
       </View>
     );
@@ -640,18 +637,18 @@ export default function ExploreScreen() {
         ).map((tab) => {
           const selected = searchTab === tab.key;
           return (
-            <TouchableOpacity
+            <PressableScale
               key={tab.key}
               onPress={() => setSearchTab(tab.key)}
-              style={tw`mr-2 px-3.5 py-2 rounded-2xl border ${
-                selected ? 'bg-emerald-600 border-emerald-600' : 'bg-[#FFFcf7] border-stone-200'
+              style={tw`mr-2 px-3.5 py-2 rounded-card border ${
+                selected ? 'bg-emerald-600 border-emerald-600' : 'bg-card border-line'
               }`}
             >
-              <Text style={tw`text-sm font-semibold ${selected ? 'text-white' : 'text-stone-800'}`}>
+              <Text style={tw`text-sm font-semibold ${selected ? 'text-white' : 'text-ink'}`}>
                 {tab.label}
                 {tab.count > 0 ? ` · ${tab.count}` : ''}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           );
         })}
       </ScrollView>
@@ -673,19 +670,19 @@ export default function ExploreScreen() {
           ).map((f) => {
             const selected = accountRole === f.key;
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={f.key}
                 onPress={() => setAccountRole(f.key)}
-                style={tw`mr-2 px-3 py-1.5 rounded-full border ${
-                  selected ? 'bg-emerald-100 border-emerald-300' : 'bg-white border-stone-200'
+                style={tw`mr-2 px-3 py-1.5 rounded-chip border ${
+                  selected ? 'bg-emerald-100 border-emerald-300' : 'bg-card border-line'
                 }`}
               >
                 <Text
-                  style={tw`text-xs font-semibold ${selected ? 'text-emerald-800' : 'text-stone-600'}`}
+                  style={tw`text-xs font-semibold ${selected ? 'text-emerald-800' : 'text-ink-2'}`}
                 >
                   {f.label}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </ScrollView>
@@ -693,15 +690,15 @@ export default function ExploreScreen() {
 
       {searchLoading ? (
         <View style={tw`py-8 items-center`}>
-          <ActivityIndicator color="#059669" />
-          <Text style={tw`text-sm text-stone-500 mt-2`}>Searching…</Text>
+          <ActivityIndicator color={theme.colors.brand} />
+          <Text style={tw`text-sm text-ink-3 mt-2`}>Searching…</Text>
         </View>
       ) : searchError ? (
-        <View style={tw`mb-4 px-3 py-3 rounded-xl border border-red-200 bg-red-50`}>
+        <View style={tw`mb-4 px-3 py-3 rounded-control border border-red-200 bg-red-50`}>
           <Text style={tw`text-sm text-red-700`}>{searchError}</Text>
-          <TouchableOpacity onPress={onSubmitSearch} style={tw`mt-2`}>
+          <PressableScale onPress={onSubmitSearch} style={tw`mt-2`}>
             <Text style={tw`text-sm font-semibold text-emerald-700`}>Retry</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       ) : (
         <>
@@ -711,7 +708,7 @@ export default function ExploreScreen() {
               {accountHits.length > 0 ? (
                 <View style={tw`mb-5`}>{accountHits.map(renderAccountRow)}</View>
               ) : (
-                <Text style={tw`text-sm text-stone-500 mb-5`}>
+                <Text style={tw`text-sm text-ink-3 mb-5`}>
                   No accounts match “{query.trim()}”.
                 </Text>
               )}
@@ -726,11 +723,10 @@ export default function ExploreScreen() {
                   {searchPosts.map((p) => {
                     const image = resolvePostMediaUri(p.image_url, p.category, p.id);
                     return (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
+                      <PressableScale
                         key={p.id}
                         onPress={() => openSearchPost(p)}
-                        style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
+                        style={tw`w-[48%] mb-3 rounded-card overflow-hidden border border-line/80 bg-card`}
                       >
                         <GrowImage
                           source={{ uri: image }}
@@ -738,15 +734,15 @@ export default function ExploreScreen() {
                           contentFit="cover"
                           cachePolicy="memory-disk"
                         />
-                        <Text style={tw`p-2.5 text-xs font-semibold text-stone-800`} numberOfLines={2}>
+                        <Text style={tw`p-2.5 text-xs font-semibold text-ink`} numberOfLines={2}>
                           {p.caption || p.username}
                         </Text>
-                      </TouchableOpacity>
+                      </PressableScale>
                     );
                   })}
                 </View>
               ) : (
-                <Text style={tw`text-sm text-stone-500 mb-5`}>
+                <Text style={tw`text-sm text-ink-3 mb-5`}>
                   No posts match “{query.trim()}”.
                 </Text>
               )}
@@ -764,10 +760,9 @@ export default function ExploreScreen() {
                   {...horizontalScrollProps}
                 >
                   {filteredShopHits.map((product) => (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
+                    <PressableScale
                       key={product.id}
-                      style={tw`w-36 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
+                      style={tw`w-36 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
                       onPress={() => {
                         triggerPressFeedback();
                         const root = navigation.getParent?.() || navigation;
@@ -783,18 +778,18 @@ export default function ExploreScreen() {
                         contentFit="cover"
                       />
                       <View style={tw`p-2.5`}>
-                        <Text style={tw`text-xs font-semibold text-stone-900`} numberOfLines={2}>
+                        <Text style={tw`text-xs font-semibold text-ink`} numberOfLines={2}>
                           {product.name}
                         </Text>
                         <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
                           ${product.price.toFixed(2)}
                         </Text>
                       </View>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ))}
                 </ScrollView>
               ) : (
-                <Text style={tw`text-sm text-stone-500 mb-5`}>No shop picks match this search.</Text>
+                <Text style={tw`text-sm text-ink-3 mb-5`}>No shop picks match this search.</Text>
               )}
             </>
           )}
@@ -824,7 +819,7 @@ export default function ExploreScreen() {
   ) : (
     <>
       <SectionTitle title="Recommended for you" />
-      <Text style={tw`text-sm text-stone-500 mb-4 -mt-1`}>
+      <Text style={tw`text-sm text-ink-3 mb-4 -mt-1`}>
         People, stories, and posts matched to your growth paths. Search above to find anyone.
       </Text>
 
@@ -878,7 +873,7 @@ export default function ExploreScreen() {
                     cachePolicy="memory-disk"
                   />
                 </View>
-                <Text style={tw`text-xs text-stone-600 mt-1.5 text-center`} numberOfLines={1}>
+                <Text style={tw`text-xs text-ink-2 mt-1.5 text-center`} numberOfLines={1}>
                   {person.username.split(' ')[0]}
                 </Text>
               </PressableScale>
@@ -886,7 +881,7 @@ export default function ExploreScreen() {
           })}
         </ScrollView>
       ) : (
-        <Text style={tw`text-sm text-stone-500 mb-5`}>
+        <Text style={tw`text-sm text-ink-3 mb-5`}>
           No new story rings right now — browse clips below.
         </Text>
       )}
@@ -905,7 +900,7 @@ export default function ExploreScreen() {
               key={product.id}
               feedback="open"
               pressedScale={0.97}
-              style={tw`w-36 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden`}
+              style={tw`w-36 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
               onPress={() => {
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
@@ -922,14 +917,14 @@ export default function ExploreScreen() {
                 contentFit="cover"
               />
               <View style={tw`p-2.5`}>
-                <Text style={tw`text-xs font-semibold text-stone-900`} numberOfLines={2}>
+                <Text style={tw`text-xs font-semibold text-ink`} numberOfLines={2}>
                   {product.name}
                 </Text>
                 <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
                   ${product.price.toFixed(2)}
                 </Text>
                 {product.matchLabel ? (
-                  <Text style={tw`text-[11px] text-emerald-700 mt-0.5`} numberOfLines={1}>
+                  <Text style={tw`text-caption font-medium text-emerald-700 mt-0.5`} numberOfLines={1}>
                     {product.matchLabel}
                   </Text>
                 ) : null}
@@ -938,12 +933,12 @@ export default function ExploreScreen() {
           ))}
         </ScrollView>
       ) : (
-        <Pressable
+        <PressableScale
           onPress={openMarketplace}
-          style={tw`mb-5 px-4 py-4 rounded-2xl bg-emerald-50 border border-emerald-100`}
+          style={tw`mb-5 px-4 py-4 rounded-card bg-emerald-50 border border-emerald-100`}
         >
           <Text style={tw`text-sm text-emerald-800 font-semibold`}>Browse the marketplace →</Text>
-        </Pressable>
+        </PressableScale>
       )}
 
       {/* Posts mosaic */}
@@ -953,11 +948,10 @@ export default function ExploreScreen() {
           {filteredGrid.slice(0, 12).map((p) => {
             const image = resolvePostMediaUri(p.image_url, p.category, p.id);
             return (
-              <TouchableOpacity
-                activeOpacity={0.7}
+              <PressableScale
                 key={p.id}
                 onPress={() => openPostDetail(p)}
-                style={tw`w-[48%] mb-3 rounded-2xl overflow-hidden border border-stone-200/80 bg-[#FFFcf7]`}
+                style={tw`w-[48%] mb-3 rounded-card overflow-hidden border border-line/80 bg-card`}
               >
                 <GrowImage
                   source={{ uri: image }}
@@ -965,15 +959,15 @@ export default function ExploreScreen() {
                   contentFit="cover"
                   cachePolicy="memory-disk"
                 />
-                <Text style={tw`p-2.5 text-xs font-semibold text-stone-800`} numberOfLines={2}>
+                <Text style={tw`p-2.5 text-xs font-semibold text-ink`} numberOfLines={2}>
                   {p.caption || p.metadata?.username || 'Post'}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </View>
       ) : (
-        <Text style={tw`text-sm text-stone-500 mb-5`}>No posts in this path yet.</Text>
+        <Text style={tw`text-sm text-ink-3 mb-5`}>No posts in this path yet.</Text>
       )}
 
       {/* People */}
@@ -990,10 +984,9 @@ export default function ExploreScreen() {
             return (
               <View
                 key={person.userId}
-                style={tw`w-44 mr-3 bg-[#FFFcf7] border border-stone-200/80 rounded-2xl p-3`}
+                style={tw`w-44 mr-3 bg-card border border-line/80 rounded-card p-3`}
               >
-                <TouchableOpacity
-                  activeOpacity={0.7}
+                <PressableScale
                   onPress={() =>
                     person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId, { username: person.username, avatarUrl: person.avatar })
                   }
@@ -1003,7 +996,7 @@ export default function ExploreScreen() {
                     style={tw`w-16 h-16 rounded-full p-0.5 ${
                       person.storyCount > 0
                         ? 'border-2 border-emerald-500'
-                        : 'border border-stone-200'
+                        : 'border border-line'
                     }`}
                   >
                     <GrowAvatar
@@ -1013,45 +1006,45 @@ export default function ExploreScreen() {
                       size={60}
                     />
                   </View>
-                  <Text style={tw`font-bold text-stone-900 mt-2 text-center`} numberOfLines={1}>
+                  <Text style={tw`font-bold text-ink mt-2 text-center`} numberOfLines={1}>
                     {person.username}
                   </Text>
-                  <Text style={tw`text-[11px] text-stone-500 mt-0.5 text-center`} numberOfLines={1}>
+                  <Text style={tw`text-caption font-medium text-ink-3 mt-0.5 text-center`} numberOfLines={1}>
                     {person.storyCount > 0
                       ? `${person.storyCount} ${person.storyCount === 1 ? 'story' : 'stories'}`
                       : 'In your growth areas'}
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
                 <View style={tw`flex-row gap-2`}>
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => openProfile(person.userId, { username: person.username, avatarUrl: person.avatar })}
-                    style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
+                    style={tw`flex-1 py-2 rounded-control bg-raised items-center`}
                   >
-                    <Text style={tw`text-stone-700 text-xs font-semibold`}>Profile</Text>
-                  </TouchableOpacity>
+                    <Text style={tw`text-ink-2 text-xs font-semibold`}>Profile</Text>
+                  </PressableScale>
                   {friendIds.has(person.userId) ? (
-                    <View style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}>
-                      <Text style={tw`text-stone-600 text-xs font-bold`}>Friends</Text>
+                    <View style={tw`flex-1 py-2 rounded-control bg-raised items-center`}>
+                      <Text style={tw`text-ink-2 text-xs font-bold`}>Friends</Text>
                     </View>
                   ) : pendingRequestIds.has(person.userId) ? (
                     <SpringIn
                       animate={justRequestedId === person.userId}
-                      style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
+                      style={tw`flex-1 py-2 rounded-control bg-raised items-center`}
                     >
-                      <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
+                      <Text style={tw`text-ink-2 text-xs font-bold`}>Requested</Text>
                     </SpringIn>
                   ) : (
-                    <TouchableOpacity
+                    <PressableScale
                       onPress={() => void onAddFriend(person.userId)}
                       disabled={busy}
-                      style={tw`flex-1 py-2 rounded-xl bg-emerald-600 items-center ${
+                      style={tw`flex-1 py-2 rounded-control bg-emerald-600 items-center ${
                         busy ? 'opacity-60' : ''
                       }`}
                     >
                       <Text style={tw`text-white text-xs font-bold`}>
                         {busy ? '…' : 'Request'}
                       </Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   )}
                 </View>
               </View>
@@ -1059,7 +1052,7 @@ export default function ExploreScreen() {
           })}
         </ScrollView>
       ) : (
-        <Text style={tw`text-sm text-stone-500 mb-5`}>
+        <Text style={tw`text-sm text-ink-3 mb-5`}>
           Add growth paths on your profile to discover people in your cohort.
         </Text>
       )}
@@ -1069,32 +1062,32 @@ export default function ExploreScreen() {
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         right={
           <>
             <MessagesInboxButton />
-            <Pressable
+            <PressableScale
               onPress={openMarketplace}
-              style={tw`flex-row items-center bg-[#EAE4D6] border border-stone-200/80 rounded-full px-3 py-2`}
+              style={tw`flex-row items-center bg-raised border border-line/80 rounded-chip px-3 py-2`}
             >
-              <Ionicons name="storefront-outline" size={16} color="#059669" />
+              <Ionicons name="storefront-outline" size={16} color={theme.colors.brand} />
               <Text style={tw`text-sm font-semibold text-emerald-700 ml-1.5`}>Shop</Text>
-            </Pressable>
+            </PressableScale>
           </>
         }
       />
 
-      <View style={tw`px-5 pt-3 pb-2`}>
+      <View style={tw`px-gutter-wide pt-3 pb-2`}>
         <View style={tw`flex-row items-center mb-0.5`}>
-          <Text style={tw`text-lg font-bold text-stone-900`}>Explore</Text>
+          <Text style={tw`text-callout font-bold text-ink`}>Explore</Text>
           {isQaEnv ? (
-            <View style={tw`ml-2 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300`}>
-              <Text style={tw`text-[11px] font-bold text-amber-800 tracking-wide`}>QA</Text>
+            <View style={tw`ml-2 px-2 py-0.5 rounded-chip bg-amber-100 border border-amber-300`}>
+              <Text style={tw`text-caption font-bold text-amber-800 tracking-wide`}>QA</Text>
             </View>
           ) : null}
         </View>
-        <Text style={tw`text-sm text-stone-500 mb-3`}>
+        <Text style={tw`text-sm text-ink-3 mb-3`}>
           {userPaths.length
             ? `Discover people and progress outside your circle · ${userPaths.length} growth path${userPaths.length === 1 ? '' : 's'}`
             : 'Meet people through stories, clips, and shared growth paths.'}
@@ -1123,17 +1116,17 @@ export default function ExploreScreen() {
             />
           </View>
         ) : (
-          <Text style={tw`text-xs text-stone-500 mb-1`}>
+          <Text style={tw`text-xs text-ink-3 mb-1`}>
             Tap search or press Search on the keyboard · filter by Accounts, Posts, Shop
           </Text>
         )}
       </View>
 
       {loadError ? (
-        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl border border-red-200 bg-red-50`}>
+        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-control border border-red-200 bg-red-50`}>
           <View style={tw`flex-row items-center justify-between`}>
             <Text style={tw`flex-1 text-sm text-red-700`}>{loadError}</Text>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => void onRefresh()}
               disabled={refreshing}
               accessibilityRole="button"
@@ -1144,13 +1137,13 @@ export default function ExploreScreen() {
               <Text style={tw`text-sm font-semibold text-red-700`}>
                 {refreshing ? 'Retrying…' : 'Retry'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       ) : null}
 
       {loading && filteredPeople.length === 0 && filteredReels.length === 0 ? (
-        <View style={tw`flex-1 px-5 pt-2`}>
+        <View style={tw`flex-1 px-gutter-wide pt-2`}>
           <SkeletonList variant="explore" count={3} />
         </View>
       ) : (
@@ -1165,9 +1158,8 @@ export default function ExploreScreen() {
             const isFriend = friendIds.has(p.user_id);
             const isRequested = !isFriend && pendingRequestIds.has(p.user_id);
             return (
-              <TouchableOpacity
-                style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl overflow-hidden mb-3`}
-                activeOpacity={0.9}
+              <PressableScale
+                style={tw`bg-card border border-line/80 rounded-card overflow-hidden mb-3`}
                 onPress={() => openPostDetail(p)}
               >
                 <GrowImage
@@ -1185,39 +1177,39 @@ export default function ExploreScreen() {
                       style={tw`mr-2`}
                     />
                   <View style={tw`flex-1`}>
-                    <Text style={tw`font-semibold text-stone-900`}>{username}</Text>
-                    <Text style={tw`text-xs text-stone-500 capitalize`}>{p.category}</Text>
+                    <Text style={tw`font-semibold text-ink`}>{username}</Text>
+                    <Text style={tw`text-xs text-ink-3 capitalize`}>{p.category}</Text>
                   </View>
                   {isFriend ? (
-                    <Ionicons name="checkmark-circle" size={22} color="#059669" />
+                    <Ionicons name="checkmark-circle" size={22} color={theme.colors.brand} />
                   ) : isRequested ? (
                     <SpringIn
                       animate={justRequestedId === p.user_id}
-                      style={tw`bg-stone-100 px-2.5 py-1.5 rounded-lg`}
+                      style={tw`bg-raised px-2.5 py-1.5 rounded-control`}
                     >
-                      <Text style={tw`text-stone-600 text-xs font-bold`}>Requested</Text>
+                      <Text style={tw`text-ink-2 text-xs font-bold`}>Requested</Text>
                     </SpringIn>
                   ) : (
-                    <TouchableOpacity
+                    <PressableScale
                       onPress={(e) => {
                         e.stopPropagation?.();
                         void onAddFriend(p.user_id);
                       }}
-                      style={tw`bg-emerald-50 px-2.5 py-1.5 rounded-lg`}
+                      style={tw`bg-emerald-50 px-2.5 py-1.5 rounded-control`}
                     >
                       <Text style={tw`text-emerald-800 text-xs font-bold`}>+ Request</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   )}
                 </View>
                 {p.caption ? (
-                  <Text style={tw`px-3 pb-3 text-stone-700`} numberOfLines={2}>
+                  <Text style={tw`px-3 pb-3 text-ink-2`} numberOfLines={2}>
                     {p.caption}
                   </Text>
                 ) : null}
-              </TouchableOpacity>
+              </PressableScale>
             );
           }}
-          contentContainerStyle={[tw`px-5 pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+          contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           {...feedListPerformanceProps}
           keyboardShouldPersistTaps="handled"
           refreshControl={

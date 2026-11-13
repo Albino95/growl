@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
@@ -172,41 +172,44 @@ export default function CircleDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
             onPress={() => navigation.goBack()}
             feedback="close"
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            accessibilityLabel="Back"
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           >
-            <Ionicons name="arrow-back" size={18} color="#1C1917" />
+            <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
           </PressableScale>
         }
       />
 
       {loading ? (
-        <View style={tw`flex-1 px-5 pt-2`}>
+        <View style={tw`flex-1 px-gutter-wide pt-2`}>
           <SkeletonList variant="circle" count={1} />
           <SkeletonList variant="journal" count={3} />
         </View>
       ) : !group ? (
-        <View style={tw`px-5 pt-10`}>
-          <Text style={tw`text-lg font-bold text-stone-900`}>Circle not found</Text>
+        <View style={tw`px-gutter-wide pt-10`}>
+          <Text style={tw`text-callout font-bold text-ink`}>Circle not found</Text>
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={tw`px-5 pb-16`}
+          contentContainerStyle={tw`px-gutter-wide pb-16`}
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={() => void load()} tintColor="#059669" />
+            <RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={theme.colors.brand} colors={[theme.colors.brand]} />
           }
         >
           <FadeInUp>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               {group.kind === 'starting' ? 'Starting circle' : group.kind === 'cohort' ? 'Path circle' : 'Circle'}
             </Text>
-            <Text style={tw`text-[28px] font-bold text-stone-900 mt-0.5 leading-8`}>{group.name}</Text>
-            <Text style={tw`text-sm text-stone-500 mt-1.5 leading-5`}>
+            <Text style={tw`text-display font-extrabold text-ink mt-0.5`}>{group.name}</Text>
+            <Text style={tw`text-body text-ink-3 mt-1.5`}>
               {group.path_key === 'grove' ? 'All paths' : getCategoryLabel(group.path_key)}
               {group.city || group.country
                 ? ` · ${[group.city, group.country].filter(Boolean).join(', ')}`
@@ -216,7 +219,7 @@ export default function CircleDetailScreen() {
               <SeatFill filled={group.member_count} max={group.max_members || 10} />
             </View>
             {group.description ? (
-              <Text style={tw`text-sm text-stone-600 mt-3 leading-5`}>{group.description}</Text>
+              <Text style={tw`text-body text-ink-2 mt-3`}>{group.description}</Text>
             ) : null}
           </FadeInUp>
 
@@ -228,9 +231,9 @@ export default function CircleDetailScreen() {
                   onPress={() => void onLeave()}
                   disabled={busy}
                   feedback="close"
-                  style={tw`px-4 py-3.5 rounded-2xl bg-white border border-stone-200 items-center`}
+                  style={tw`px-4 py-3.5 rounded-card bg-card border border-line items-center`}
                 >
-                  <Text style={tw`text-stone-700 font-semibold`}>Leave</Text>
+                  <Text style={tw`text-ink-2 font-semibold`}>Leave</Text>
                 </PressableScale>
               </>
             ) : group.is_full ? (
@@ -238,7 +241,7 @@ export default function CircleDetailScreen() {
                 onPress={() => void onFindAnother()}
                 disabled={busy}
                 feedback="success"
-                style={tw`flex-1 py-3.5 rounded-2xl bg-emerald-600 items-center`}
+                style={tw`flex-1 py-3.5 rounded-card bg-emerald-600 items-center`}
               >
                 <Text style={tw`text-white font-bold`}>Find another</Text>
               </PressableScale>
@@ -247,25 +250,25 @@ export default function CircleDetailScreen() {
                 onPress={() => void onJoin()}
                 disabled={busy}
                 feedback="success"
-                style={tw`flex-1 py-3.5 rounded-2xl bg-emerald-600 items-center`}
+                style={tw`flex-1 py-3.5 rounded-card bg-emerald-600 items-center`}
               >
                 <Text style={tw`text-white font-bold`}>Take a seat</Text>
               </PressableScale>
             )}
           </View>
 
-          <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mt-7 mb-3`}>
+          <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mt-7 mb-3`}>
             Live sits — coming
           </Text>
-          <View style={tw`rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden mb-2.5`}>
+          <View style={tw`rounded-sheet border border-line/80 bg-card overflow-hidden mb-2.5`}>
             <View style={tw`h-1 bg-emerald-600`} />
-            <View style={tw`px-3.5 py-3.5 flex-row items-center`}>
-              <View style={tw`w-11 h-11 rounded-2xl bg-emerald-50 items-center justify-center mr-3`}>
-                <Ionicons name="call-outline" size={20} color="#059669" />
+            <View style={tw`p-4 flex-row items-center`}>
+              <View style={tw`w-11 h-11 rounded-card bg-emerald-50 items-center justify-center mr-3`}>
+                <Ionicons name="call-outline" size={20} color={theme.colors.brand} />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-sm font-bold text-stone-900`}>Voice room</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                <Text style={tw`text-sm font-bold text-ink`}>Voice room</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                   {group.calls.voice_waitlist} waiting · LiveKit rooms after waitlist
                 </Text>
               </View>
@@ -273,7 +276,7 @@ export default function CircleDetailScreen() {
                 onPress={() => void onCall('voice')}
                 disabled={!group.joined || interest.includes('voice')}
                 feedback="select"
-                style={tw`px-3 py-2 rounded-xl ${
+                style={tw`px-3 py-2 rounded-control ${
                   interest.includes('voice') ? 'bg-emerald-50' : 'bg-emerald-600'
                 }`}
               >
@@ -287,14 +290,14 @@ export default function CircleDetailScreen() {
               </PressableScale>
             </View>
           </View>
-          <View style={tw`rounded-[22px] border border-stone-200/80 bg-[#FFFcf7] overflow-hidden`}>
-            <View style={tw`px-3.5 py-3.5 flex-row items-center`}>
-              <View style={tw`w-11 h-11 rounded-2xl bg-[#FFF1F0] items-center justify-center mr-3`}>
-                <Ionicons name="videocam-outline" size={20} color="#E11D48" />
+          <View style={tw`rounded-sheet border border-line/80 bg-card overflow-hidden`}>
+            <View style={tw`p-4 flex-row items-center`}>
+              <View style={tw`w-11 h-11 rounded-card bg-energy-50 items-center justify-center mr-3`}>
+                <Ionicons name="videocam-outline" size={20} color={tw.color('rose-600')} />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-sm font-bold text-stone-900`}>Video sit</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                <Text style={tw`text-sm font-bold text-ink`}>Video sit</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                   {group.calls.video_waitlist} waiting · cameras later, same circle
                 </Text>
               </View>
@@ -302,13 +305,13 @@ export default function CircleDetailScreen() {
                 onPress={() => void onCall('video')}
                 disabled={!group.joined || interest.includes('video')}
                 feedback="select"
-                style={tw`px-3 py-2 rounded-xl ${
-                  interest.includes('video') ? 'bg-[#FFF1F0]' : 'bg-stone-900'
+                style={tw`px-3 py-2 rounded-control ${
+                  interest.includes('video') ? 'bg-energy-50' : 'bg-ink'
                 }`}
               >
                 <Text
                   style={tw`text-xs font-bold ${
-                    interest.includes('video') ? 'text-[#E11D48]' : 'text-white'
+                    interest.includes('video') ? 'text-rose-600' : 'text-page'
                   }`}
                 >
                   {interest.includes('video') ? 'On list' : 'Notify me'}
@@ -317,11 +320,11 @@ export default function CircleDetailScreen() {
             </View>
           </View>
 
-          <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mt-7 mb-3`}>
+          <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mt-7 mb-3`}>
             In this room
           </Text>
           {members.length === 0 ? (
-            <Text style={tw`text-sm text-stone-500 mb-2`}>No one seated yet.</Text>
+            <Text style={tw`text-sm text-ink-3 mb-2`}>No one seated yet.</Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-2`}>
               {members.map((m) => {
@@ -335,10 +338,10 @@ export default function CircleDetailScreen() {
                   >
                     <GrowImage
                       source={avatarSource(uri)}
-                      style={tw`w-14 h-14 rounded-full bg-[#EAE4D6]`}
+                      style={tw`w-14 h-14 rounded-full bg-raised`}
                       contentFit="cover"
                     />
-                    <Text style={tw`text-[11px] font-semibold text-stone-800 mt-1.5`} numberOfLines={1}>
+                    <Text style={tw`text-caption font-semibold text-ink mt-1.5`} numberOfLines={1}>
                       {m.username}
                     </Text>
                   </PressableScale>
@@ -347,32 +350,32 @@ export default function CircleDetailScreen() {
             </ScrollView>
           )}
           {!group.is_full ? (
-            <Text style={tw`text-xs text-stone-500 mb-2`}>
+            <Text style={tw`text-xs text-ink-3 mb-2`}>
               {Math.max(0, (group.max_members || 10) - group.member_count)} open chair
               {(group.max_members || 10) - group.member_count === 1 ? '' : 's'} in this room — not other circles.
             </Text>
           ) : null}
 
-          <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mt-5 mb-3`}>
+          <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mt-5 mb-3`}>
             Recent pulses
           </Text>
           {pulses.length === 0 ? (
-            <Text style={tw`text-sm text-stone-500`}>No check-ins yet. Be the first to say you’re here.</Text>
+            <Text style={tw`text-sm text-ink-3`}>No check-ins yet. Be the first to say you’re here.</Text>
           ) : (
             pulses.map((p, i) => (
               <FadeInUp
                 key={p.id}
                 delay={i * 40}
-                style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80 flex-row items-center`}
+                style={tw`mb-2 p-3 rounded-card bg-card border border-line/80 flex-row items-center`}
               >
                 <GrowImage
                   source={avatarSource(resolveAvatarUri(p.user_id, p.username, p.avatar))}
-                  style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] mr-3`}
+                  style={tw`w-9 h-9 rounded-full bg-raised mr-3`}
                   contentFit="cover"
                 />
                 <View style={tw`flex-1`}>
-                  <Text style={tw`text-sm font-semibold text-stone-900`}>{p.username}</Text>
-                  <Text style={tw`text-xs text-stone-500`}>
+                  <Text style={tw`text-sm font-semibold text-ink`}>{p.username}</Text>
+                  <Text style={tw`text-xs text-ink-3`}>
                     {p.note || 'Showed up'} · {timeAgo(p.created_at)}
                   </Text>
                 </View>

@@ -98,11 +98,11 @@ export default function ChallengesStrip({ path, refreshKey = 0, onOpen }: Props)
   return (
     <View style={tw`mb-5`}>
       <View style={tw`flex-row items-end justify-between mb-1 mt-1`}>
-        <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+        <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase`}>
           {topPath ? `Challenges · ${getCategoryLabel(topPath)}` : 'Challenges'}
         </Text>
       </View>
-      <Text style={tw`text-sm text-stone-500 mb-3`}>
+      <Text style={tw`text-sm text-ink-3 mb-3`}>
         Small, doable streaks on a path. Friends can join you.
       </Text>
       {loading && items.length === 0 ? (
@@ -118,8 +118,8 @@ export default function ChallengesStrip({ path, refreshKey = 0, onOpen }: Props)
                   feedback.open();
                   onOpen(c.id);
                 }}
-                style={tw`w-56 mr-3 p-4 rounded-3xl bg-[#FFFcf7] border ${
-                  c.completed ? 'border-[#F97066]/40' : c.joined ? 'border-emerald-200' : 'border-stone-200/80'
+                style={tw`w-56 mr-3 p-4 rounded-sheet bg-card border ${
+                  c.completed ? 'border-energy-600/40' : c.joined ? 'border-emerald-200' : 'border-line/80'
                 }`}
                 accessibilityRole="button"
                 accessibilityLabel={`${c.title} challenge, ${c.participants} joined${
@@ -127,24 +127,24 @@ export default function ChallengesStrip({ path, refreshKey = 0, onOpen }: Props)
                 }`}
               >
                 <View style={tw`flex-row items-center justify-between`}>
-                  <View style={tw`w-11 h-11 rounded-2xl bg-emerald-50 items-center justify-center`}>
+                  <View style={tw`w-11 h-11 rounded-card bg-emerald-50 items-center justify-center`}>
                     <Text style={tw`text-2xl`}>{c.emoji || '🌱'}</Text>
                   </View>
-                  <Text style={tw`text-[11px] font-semibold text-stone-500`}>
+                  <Text style={tw`text-caption font-semibold text-ink-3`}>
                     {c.participants === 1 ? '1 joined' : `${c.participants} joined`}
                   </Text>
                 </View>
-                <Text style={tw`mt-3 text-base font-bold text-stone-900`} numberOfLines={2}>
+                <Text style={tw`mt-3 text-base font-bold text-ink`} numberOfLines={2}>
                   {c.title}
                 </Text>
-                <Text style={tw`mt-0.5 text-xs text-stone-500`} numberOfLines={1}>
+                <Text style={tw`mt-0.5 text-xs text-ink-3`} numberOfLines={1}>
                   {getCategoryLabel(c.path)} · {c.target_days} of {c.duration_days} days
                 </Text>
 
                 {c.joined ? (
                   <View style={tw`mt-3`}>
                     <ChallengeProgressBar progress={c.progress} target={c.target_days} completed={c.completed} />
-                    <Text style={tw`mt-1.5 text-xs font-semibold ${c.completed ? 'text-[#C2410C]' : 'text-emerald-700'}`}>
+                    <Text style={tw`mt-1.5 text-xs font-semibold ${c.completed ? 'text-bloom-ink' : 'text-emerald-700'}`}>
                       {c.completed
                         ? 'Finished 🌳'
                         : `${c.progress}/${c.target_days} days${left ? ` · ${left}` : ''}`}

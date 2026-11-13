@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   Dimensions,
   StatusBar,
   Image,
@@ -16,6 +15,7 @@ import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-naviga
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import tw from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
 import { resolveStoryDisplayUri, resolveAvatarUri, avatarSource } from '../../utils/images';
 import { useAuth } from '../../store/hooks';
 import { createConversation } from '../../services/api/messages';
@@ -31,6 +31,7 @@ import { haptic } from '../../theme/haptics';
 import { duration as motionDuration, easing, timing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
+import { cacheRemoteClip } from '../../utils/cacheRemoteClip';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -300,12 +301,19 @@ export default function StoryViewerScreen() {
       onStoriesUpdate?.(next);
     }
 
-    // Warm the cache for the next photo story so the tap-through doesn't flash.
+    // Warm the next story as soon as this one starts so advancing doesn't wait
+    // on a download (black flash): photos into expo-image's cache, videos into
+    // the local clip cache the player reads from (cacheRemoteClip dedupes, so
+    // the player's own call joins this in-flight download).
     const upcoming = storiesRef.current[currentIndex + 1];
     if (upcoming) {
       const nextUri = resolveStoryDisplayUri(upcoming.image, upcoming.userId, upcoming.id);
-      if (nextUri && !isVideoMedia({ uri: nextUri })) {
-        ExpoImage.prefetch(nextUri).catch(() => undefined);
+      if (nextUri) {
+        if (isVideoMedia({ uri: nextUri })) {
+          void cacheRemoteClip(nextUri).catch(() => '');
+        } else {
+          ExpoImage.prefetch(nextUri).catch(() => undefined);
+        }
       }
     }
 
@@ -430,8 +438,8 @@ export default function StoryViewerScreen() {
         </View>
 
         {/* Header */}
-        <View style={tw`absolute top-12 left-0 right-0 flex-row items-center justify-between px-4`}>
-          <TouchableOpacity
+        <View style={tw`absolute top-12 left-0 right-0 flex-row items-center justify-between px-gutter`}>
+          <PressableScale
             onPress={navigateToProfile}
             style={tw`flex-row items-center flex-1`}
           >
@@ -450,13 +458,17 @@ export default function StoryViewerScreen() {
                 })}
               </Text>
             </View>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </PressableScale>
+          <PressableScale
+            pressedScale={0.9}
             onPress={markAllViewedAndClose}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Close story"
             style={tw`w-10 h-10 items-center justify-center`}
           >
             <Ionicons name="close" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
+          </PressableScale>
         </View>
 
         {/* Navigation Areas */}
@@ -484,9 +496,9 @@ export default function StoryViewerScreen() {
         </View>
 
         {/* Bottom Actions */}
-        <View style={tw`absolute bottom-8 left-0 right-0 flex-row items-center justify-center px-4`}>
-          <TouchableOpacity
-            style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center`}
+        <View style={tw`absolute bottom-8 left-0 right-0 flex-row items-center justify-center px-gutter`}>
+          <PressableScale
+            style={tw`bg-white/20 rounded-chip px-6 py-3 flex-row items-center`}
             onPress={() => {
               if (!likedIds[currentStory.id]) haptic('tapLight');
               setLikedIds((prev) => ({
@@ -504,9 +516,9 @@ export default function StoryViewerScreen() {
             <Text style={tw`text-white ml-2 font-semibold`}>
               {likedIds[currentStory.id] ? 'Liked' : 'Like'}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={tw`bg-white/20 rounded-full px-6 py-3 flex-row items-center ml-4 ${
+          </PressableScale>
+          <PressableScale
+            style={tw`bg-white/20 rounded-chip px-6 py-3 flex-row items-center ml-4 ${
               messageBusy ? 'opacity-60' : ''
             }`}
             disabled={messageBusy}
@@ -543,7 +555,7 @@ export default function StoryViewerScreen() {
               <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" />
             )}
             <Text style={tw`text-white ml-2 font-semibold`}>Message</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </View>
     </SafeAreaView>

@@ -15,6 +15,7 @@ import { duration, easing, spring, timing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { haptic } from '../../theme/haptics';
 import { useColorSchemeName } from '../../theme/scheme';
+import { radius } from '../../theme/tokens';
 
 /** Distance the pill sits above the bottom safe-area inset — clears the floating dock. */
 const TOAST_DOCK_CLEARANCE = 84;
@@ -158,8 +159,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     maxWidth: 420,
-    backgroundColor: '#1C1917', // stone-900
-    borderRadius: 999,
+    backgroundColor: '#1C1917', // stone-900 (light only; pillDark overrides)
+    borderRadius: radius.chip,
     paddingLeft: 14,
     paddingRight: 6,
     minHeight: 44,
@@ -192,7 +193,7 @@ const styles = StyleSheet.create({
   action: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: radius.chip,
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   actionText: {

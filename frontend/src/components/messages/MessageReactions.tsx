@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import type { MessageReactionEmoji, MessageReactions } from '../../services/api/messages';
 import { feedback } from '../../utils/interactionFeedback';
 
@@ -49,6 +50,8 @@ type PickerProps = {
   onPick: (emoji: MessageReactionEmoji) => void;
 };
 
+// Colours follow the chat wall (`dark` = a dark wall, incl. Linen in dark mode), not
+// the app scheme: light walls stay light in both schemes, so these stay literal.
 export function ReactionPicker({ mine, dark, onPick }: PickerProps) {
   return (
     <View
@@ -64,8 +67,9 @@ export function ReactionPicker({ mine, dark, onPick }: PickerProps) {
       {REACTION_ORDER.map((key) => {
         const active = mine === key;
         return (
-          <Pressable
+          <PressableScale
             key={key}
+            pressedScale={0.88}
             onPress={() => {
               feedback.like(mine !== key);
               onPick(key);
@@ -77,7 +81,7 @@ export function ReactionPicker({ mine, dark, onPick }: PickerProps) {
             accessibilityLabel={`React ${key}`}
           >
             <Text style={{ fontSize: 18 }}>{REACTION_GLYPH[key]}</Text>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>
@@ -100,7 +104,7 @@ export function ReactionChips({ reactions, own, dark, onPressChip }: ChipsProps)
       {keys.map((key) => {
         const mine = reactions?.mine === key;
         return (
-          <Pressable
+          <PressableScale
             key={key}
             onPress={() => {
               feedback.like(!mine);
@@ -122,17 +126,15 @@ export function ReactionChips({ reactions, own, dark, onPressChip }: ChipsProps)
             <Text style={{ fontSize: 12 }}>{REACTION_GLYPH[key]}</Text>
             {(counts[key] || 0) > 1 ? (
               <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  marginLeft: 3,
-                  color: dark ? '#FFFcf7' : '#44403C',
-                }}
+                style={[
+                  tw`text-caption font-bold`,
+                  { marginLeft: 3, color: dark ? '#FFFcf7' : '#44403C' },
+                ]}
               >
                 {counts[key]}
               </Text>
             ) : null}
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>

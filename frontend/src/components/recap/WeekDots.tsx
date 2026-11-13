@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import type { StreakDayStatus } from '../../services/api/growth';
 
 type Props = {
@@ -46,20 +46,20 @@ function WeekDots({ days, size = 10, showLabels = false, tone = 'default' }: Pro
             style = { borderWidth: 1.5, borderColor: '#F97066', backgroundColor: 'transparent' };
             break;
           case 'missed':
-            style = { backgroundColor: tone === 'onBrand' ? 'rgba(255,255,255,0.3)' : '#E7E5E4' };
+            style = { backgroundColor: tone === 'onBrand' ? 'rgba(255,255,255,0.3)' : theme.colors.line };
             break;
           default:
             style = {
               backgroundColor: 'transparent',
               borderWidth: 1,
-              borderColor: tone === 'onBrand' ? 'rgba(255,255,255,0.3)' : '#E7E5E4',
+              borderColor: tone === 'onBrand' ? 'rgba(255,255,255,0.3)' : theme.colors.line,
             };
         }
         return (
           <View key={d.day} style={tw`items-center`}>
             <View style={[base, style]} />
             {showLabels ? (
-              <Text style={tw`text-[11px] mt-1 ${tone === 'onBrand' ? 'text-white/70' : 'text-stone-500'}`}>
+              <Text style={tw`text-caption mt-1 ${tone === 'onBrand' ? 'text-white/70' : 'text-ink-3'}`}>
                 {weekdayLetter(d.day)}
               </Text>
             ) : null}

@@ -7,6 +7,7 @@ import OrdersScreen from '../../../screens/Business/OrdersScreen';
 import GrowScreen from '../../../screens/Business/GrowScreen';
 import { useAppSelector } from '../../../store/hooks';
 import { haptic } from '../../../theme/haptics';
+import { theme, useColorSchemeName } from '../../../lib/tw';
 import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
 
 export type BusinessTabsParamList = {
@@ -19,6 +20,8 @@ export type BusinessTabsParamList = {
 const Tab = createBottomTabNavigator<BusinessTabsParamList>();
 
 export default function BusinessTabs() {
+  // Subscribe so tab bar colours re-resolve when the scheme flips.
+  useColorSchemeName();
   const lowStockCount = useAppSelector((s) => s.business.kpis?.low_stock_count ?? 0);
 
   return (
@@ -44,12 +47,12 @@ export default function BusinessTabs() {
           else if (route.name === 'Grow') iconName = focused ? 'trending-up' : 'trending-up-outline';
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#059669',
-        tabBarInactiveTintColor: '#A8A29E',
+        tabBarActiveTintColor: theme.colors.brand,
+        tabBarInactiveTintColor: theme.colors.iconMuted,
         tabBarStyle: {
           borderTopWidth: 1,
-          borderTopColor: 'rgba(231, 229, 228, 0.9)',
-          backgroundColor: '#F3EEE4',
+          borderTopColor: theme.colors.line,
+          backgroundColor: theme.colors.page,
           paddingBottom: 5,
           paddingTop: 5,
           height: 60,

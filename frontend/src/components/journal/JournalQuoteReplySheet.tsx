@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import GrowAvatar from '../ui/GrowAvatar';
 import {
   createJournalReply,
@@ -124,69 +124,73 @@ export default function JournalQuoteReplySheet({
     >
       {({ close }) => (
         <>
-          <View style={tw`px-5 pb-3 flex-row items-center justify-between`}>
+          <View style={tw`px-gutter-wide pb-3 flex-row items-center justify-between`}>
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-lg font-bold text-stone-900`}>Reply to a line</Text>
-              <Text style={tw`text-sm text-stone-500 mt-0.5`} numberOfLines={1}>
+              <Text style={tw`text-callout font-bold text-ink`}>Reply to a line</Text>
+              <Text style={tw`text-sm text-ink-3 mt-0.5`} numberOfLines={1}>
                 {entry?.username} · conversation starter
               </Text>
             </View>
-            <Pressable
+            <PressableScale
               onPress={close}
-              style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] items-center justify-center`}
+              pressedScale={0.9}
+              hitSlop={8}
+              accessibilityLabel="Close"
+              style={tw`w-10 h-10 rounded-full bg-raised items-center justify-center`}
             >
-              <Ionicons name="close" size={20} color="#44403C" />
-            </Pressable>
+              <Ionicons name="close" size={20} color={theme.colors.ink2} />
+            </PressableScale>
           </View>
 
           <ScrollView
-            style={tw`px-5`}
+            style={tw`px-gutter-wide`}
             contentContainerStyle={tw`pb-8`}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-1`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1`}>
               Choose a sentence
             </Text>
-            <Text style={tw`text-sm text-stone-500 mb-3`}>
+            <Text style={tw`text-sm text-ink-3 mb-3`}>
               Tap a line, then reply in the circle thread or send a private note.
             </Text>
             {sentences.map((s, idx) => {
               const selected = quote === s;
               return (
-                <Pressable
+                <PressableScale
+                  pressedScale={0.98}
                   key={`${idx}-${s.slice(0, 32)}`}
                   onPress={() => {
                     feedback.select();
                     setQuote(s);
                   }}
-                  style={tw`mb-2 px-3.5 py-3 rounded-2xl border flex-row ${
+                  style={tw`mb-2 p-3 rounded-card border flex-row ${
                     selected
                       ? 'bg-emerald-50 border-emerald-300'
-                      : 'bg-white border-stone-200'
+                      : 'bg-card border-line'
                   }`}
                 >
                   <Text style={tw`text-emerald-700/70 text-lg mr-2 mt-[-2px]`}>“</Text>
-                  <Text style={tw`flex-1 text-[15px] text-stone-800 leading-6`}>{s}</Text>
+                  <Text style={tw`flex-1 text-body text-ink leading-6`}>{s}</Text>
                   {selected ? (
                     <Ionicons
                       name="checkmark-circle"
                       size={20}
-                      color="#059669"
+                      color={theme.colors.brand}
                       style={tw`ml-2 mt-0.5`}
                     />
                   ) : null}
-                </Pressable>
+                </PressableScale>
               );
             })}
 
             {quote ? (
               <View style={tw`mt-4 mb-3`}>
                 <Text
-                  style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}
+                  style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}
                 >
                   Your reply
                 </Text>
-                <View style={tw`bg-[#ECFDF5] border border-emerald-100 rounded-2xl px-3 py-2 mb-3`}>
+                <View style={tw`bg-emerald-50 border border-emerald-100 rounded-card px-3 py-2 mb-3`}>
                   <Text style={tw`text-xs text-emerald-800 italic`} numberOfLines={3}>
                     “{quote}”
                   </Text>
@@ -196,53 +200,53 @@ export default function JournalQuoteReplySheet({
                   value={body}
                   onChangeText={setBody}
                   placeholder="Write something kind…"
-                  placeholderTextColor="#6B645E"
+                  placeholderTextColor={theme.colors.placeholder}
                   multiline
-                  style={tw`bg-white border border-stone-200 rounded-2xl px-4 py-3 min-h-[88px] text-stone-900 text-[15px]`}
+                  style={tw`bg-card border border-line rounded-card px-4 py-3 min-h-[88px] text-ink text-body`}
                   textAlignVertical="top"
                 />
                 <View style={tw`flex-row gap-2 mt-3`}>
-                  <Pressable
+                  <PressableScale
                     onPress={() => void submitPublic()}
                     disabled={sending || !body.trim()}
-                    style={tw`flex-1 py-3.5 rounded-2xl bg-emerald-600 items-center justify-center ${
+                    style={tw`flex-1 py-3.5 rounded-card bg-emerald-600 items-center justify-center ${
                       sending || !body.trim() ? 'opacity-50' : ''
                     }`}
                   >
                     {sending ? (
-                      <ActivityIndicator color="#fff" />
+                      <ActivityIndicator color="#FFFFFF" />
                     ) : (
                       <>
                         <Text style={tw`text-white font-bold text-sm`}>Reply in circle</Text>
-                        <Text style={tw`text-emerald-100 text-[11px] mt-0.5`}>
+                        <Text style={tw`text-white/80 text-caption mt-0.5`}>
                           Visible to friends
                         </Text>
                       </>
                     )}
-                  </Pressable>
-                  <Pressable
+                  </PressableScale>
+                  <PressableScale
                     onPress={() => void submitPrivate(close)}
                     disabled={!body.trim()}
-                    style={tw`flex-1 py-3.5 rounded-2xl bg-[#FFF1F0] border border-[#FECACA] items-center justify-center ${
+                    style={tw`flex-1 py-3.5 rounded-card bg-energy-50 border border-red-200 items-center justify-center ${
                       !body.trim() ? 'opacity-50' : ''
                     }`}
                   >
-                    <Text style={tw`text-[#E11D48] font-bold text-sm`}>Private message</Text>
-                    <Text style={tw`text-[#FB7185] text-[11px] mt-0.5`}>Only you two</Text>
-                  </Pressable>
+                    <Text style={tw`text-rose-600 font-bold text-sm`}>Private message</Text>
+                    <Text style={tw`text-rose-400 text-caption mt-0.5`}>Only you two</Text>
+                  </PressableScale>
                 </View>
               </View>
             ) : null}
 
             <Text
-              style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2 mt-4`}
+              style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-4`}
             >
               Circle replies
             </Text>
             {loading ? (
               <SkeletonList variant="comment" count={2} />
             ) : replies.length === 0 ? (
-              <Text style={tw`text-sm text-stone-500 mb-4`}>
+              <Text style={tw`text-sm text-ink-3 mb-4`}>
                 No public replies yet — be the first conversation.
               </Text>
             ) : (
@@ -250,7 +254,7 @@ export default function JournalQuoteReplySheet({
                 return (
                   <View
                     key={r.id}
-                    style={tw`mb-3 bg-white border border-stone-200 rounded-2xl px-3.5 py-3`}
+                    style={tw`mb-3 bg-card border border-line rounded-card p-3`}
                   >
                     <View style={tw`flex-row items-center mb-2`}>
                       <GrowAvatar
@@ -260,14 +264,14 @@ export default function JournalQuoteReplySheet({
                         size={32}
                         style={tw`mr-2`}
                       />
-                      <Text style={tw`font-semibold text-stone-900 flex-1`} numberOfLines={1}>
+                      <Text style={tw`font-semibold text-ink flex-1`} numberOfLines={1}>
                         {r.username || 'Member'}
                       </Text>
                     </View>
                     <Text style={tw`text-xs text-emerald-800 italic mb-1.5`} numberOfLines={2}>
                       “{r.quote_text}”
                     </Text>
-                    <Text style={tw`text-[15px] text-stone-800 leading-5`}>{r.body}</Text>
+                    <Text style={tw`text-body text-ink leading-5`}>{r.body}</Text>
                   </View>
                 );
               })

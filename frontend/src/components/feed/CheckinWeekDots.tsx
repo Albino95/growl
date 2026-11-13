@@ -1,6 +1,7 @@
 import React from 'react';
 import { Animated, View } from 'react-native';
 import type { StreakDayStatus } from '../../services/api/growth';
+import { theme } from '../../lib/tw';
 
 type Props = {
   days: { day: string; status: StreakDayStatus }[];
@@ -19,16 +20,18 @@ const STATUS_LABEL: Record<StreakDayStatus, string> = {
   future: 'upcoming',
 };
 
+/** Called during render, so `theme.colors` resolves for the active scheme. */
 function dotStyle(status: StreakDayStatus): object {
+  const c = theme.colors;
   switch (status) {
     case 'active':
-      return { backgroundColor: '#059669' };
+      return { backgroundColor: c.brand };
     case 'rest':
       return { backgroundColor: '#A7F3D0', borderWidth: 1, borderColor: '#34D399' };
     case 'missed':
-      return { backgroundColor: '#E7E5E4' };
+      return { backgroundColor: c.line };
     default:
-      return { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#E7E5E4' };
+      return { backgroundColor: 'transparent', borderWidth: 1, borderColor: c.line };
   }
 }
 
@@ -53,14 +56,14 @@ function CheckinWeekDots({ days, todayKey, fill, size = 8 }: Props) {
         return (
           <View
             key={d.day}
-            style={[base, { borderWidth: 1.5, borderColor: '#F97066', alignItems: 'center', justifyContent: 'center' }]}
+            style={[base, { borderWidth: 1.5, borderColor: theme.colors.energy, alignItems: 'center', justifyContent: 'center' }]}
           >
             <Animated.View
               style={[
                 base,
                 {
                   position: 'absolute',
-                  backgroundColor: '#059669',
+                  backgroundColor: theme.colors.brand,
                   opacity: fill.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
                   transform: [{ scale: fill }],
                 },

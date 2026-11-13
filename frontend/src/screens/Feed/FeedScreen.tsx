@@ -6,7 +6,6 @@ import {
   Text,
   FlatList,
   SectionList,
-  TouchableOpacity,
   ScrollView,
   RefreshControl,
   Modal,
@@ -39,7 +38,7 @@ import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSo
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, type StoryItem } from '../../services/api/stories';
 import { blockUser, reportContent } from '../../services/api/friends';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { openReelsAtPost, openReelsFeed, isReelPost } from '../../utils/reelNavigation';
@@ -796,11 +795,11 @@ export default function FeedScreen({ navigation, route }: any) {
       <TodayCard />
       <WeeklyRecapCard />
 
-      <View style={tw`mx-4 mb-3 px-4 py-3 rounded-2xl bg-[#EAE4D6]/80 border border-stone-200/70`}>
-        <Text style={tw`text-[11px] tracking-[2px] uppercase text-stone-500 font-semibold`}>
+      <View style={tw`mx-4 mb-3 px-4 py-3 rounded-card bg-raised/80 border border-line/70`}>
+        <Text style={tw`text-caption tracking-[2px] uppercase text-ink-3 font-semibold`}>
           Your circle
         </Text>
-        <Text style={tw`text-sm text-stone-600 mt-1 leading-5`}>
+        <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>
           Progress from friends — and a few suggestions on your paths.
         </Text>
       </View>
@@ -809,7 +808,7 @@ export default function FeedScreen({ navigation, route }: any) {
       <ScrollView
         horizontal
         style={tw`mb-2`}
-        contentContainerStyle={tw`px-4 pr-4`}
+        contentContainerStyle={tw`px-gutter`}
         {...horizontalScrollProps}
       >
         <PressableScale
@@ -843,7 +842,7 @@ export default function FeedScreen({ navigation, route }: any) {
             <View
               style={tw`w-14 h-14 rounded-full border-2 ${
                 myStories.length > 0 ? 'border-emerald-500' : 'border-dashed border-stone-300'
-              } overflow-hidden items-center justify-center bg-white/60`}
+              } overflow-hidden items-center justify-center bg-card/60`}
             >
               {myStories.length > 0 ? (
                 <GrowImage
@@ -858,18 +857,18 @@ export default function FeedScreen({ navigation, route }: any) {
                   contentFit="cover"
                 />
               ) : (
-                <Ionicons name="add" size={iconSize.md} color="#6B645E" />
+                <Ionicons name="add" size={iconSize.md} color={theme.colors.ink3} />
               )}
             </View>
             {myStories.length > 0 ? (
               <View
-                style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-600 border-2 border-[#FFFcf7] items-center justify-center`}
+                style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-600 border-2 border-card items-center justify-center`}
               >
-                <Ionicons name="add" size={12} color="#fff" />
+                <Ionicons name="add" size={12} color="#FFFFFF" />
               </View>
             ) : null}
           </View>
-          <Text style={tw`text-[11px] text-stone-600 mt-1`}>Your story</Text>
+          <Text style={tw`text-caption font-medium text-ink-2 mt-1`}>Your story</Text>
         </PressableScale>
         {groupedStories.map((group) => {
           const { user: storyUser, stories: userStories } = group;
@@ -927,7 +926,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   />
                 </View>
                 <View
-                  style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-[#FFFcf7] overflow-hidden bg-emerald-100`}
+                  style={tw`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-card overflow-hidden bg-emerald-100`}
                 >
                   <GrowImage
                     source={avatarSource(
@@ -943,13 +942,13 @@ export default function FeedScreen({ navigation, route }: any) {
                 </View>
                 {storyCount > 1 && (
                   <View
-                    style={tw`absolute -top-1 -right-1 bg-emerald-600 rounded-full w-5 h-5 items-center justify-center border-2 border-white`}
+                    style={tw`absolute -top-1 -right-1 bg-emerald-600 rounded-chip w-5 h-5 items-center justify-center border-2 border-card`}
                   >
                     <Text style={tw`text-white text-xs font-bold`}>{storyCount}</Text>
                   </View>
                 )}
               </View>
-              <Text style={tw`text-[11px] text-stone-600 mt-1 max-w-14`} numberOfLines={1}>
+              <Text style={tw`text-caption font-medium text-ink-2 mt-1 max-w-14`} numberOfLines={1}>
                 {storyUser.username}
               </Text>
               </LiveHalo>
@@ -958,7 +957,7 @@ export default function FeedScreen({ navigation, route }: any) {
         })}
       </ScrollView>
 
-      <View style={tw`px-4 mt-1`}>
+      <View style={tw`px-gutter mt-1`}>
         <CategoryCapsuleRow
           items={pathCapsules}
           selectedKey={selectedCategory}
@@ -967,41 +966,41 @@ export default function FeedScreen({ navigation, route }: any) {
       </View>
 
       {selectedCategory ? (
-        <View style={tw`mx-4 mt-2 px-4 py-3.5 rounded-2xl bg-[#FFFcf7] border border-emerald-200/80`}>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+        <View style={tw`mx-4 mt-2 px-4 py-3.5 rounded-card bg-card border border-emerald-200/80`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
             Path home
           </Text>
-          <Text style={tw`text-lg font-bold text-stone-900 mt-0.5`}>
+          <Text style={tw`text-lg font-bold text-ink mt-0.5`}>
             {getCategoryLabel(selectedCategory)}
           </Text>
-          <Text style={tw`text-sm text-stone-500 mt-1 leading-5`}>
+          <Text style={tw`text-sm text-ink-3 mt-1 leading-5`}>
             Posts, peers, and instructors on this path. Clear the filter to see everything.
           </Text>
           <View style={tw`flex-row mt-3 gap-2`}>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => {
                 feedback.open();
                 const root = navigation.getParent() || navigation;
                 root.navigate('Post' as never, { category: selectedCategory } as never);
               }}
-              style={tw`flex-1 py-2.5 rounded-xl bg-emerald-600 items-center`}
+              style={tw`flex-1 py-2.5 rounded-control bg-emerald-600 items-center`}
             >
               <Text style={tw`text-white font-bold text-sm`}>Post on path</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </PressableScale>
+            <PressableScale
               onPress={() => {
                 feedback.select();
                 setSelectedCategory(null);
               }}
-              style={tw`px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white/70 items-center justify-center`}
+              style={tw`px-3.5 py-2.5 rounded-control border border-line bg-card items-center justify-center`}
             >
-              <Text style={tw`text-stone-700 font-semibold text-sm`}>Clear</Text>
-            </TouchableOpacity>
+              <Text style={tw`text-ink-2 font-semibold text-sm`}>Clear</Text>
+            </PressableScale>
           </View>
         </View>
       ) : null}
 
-      <View style={tw`px-4 mt-3`}>
+      <View style={tw`px-gutter mt-3`}>
         <InstructorDiscoveryStrip
           forPaths
           category={selectedCategory}
@@ -1044,29 +1043,29 @@ export default function FeedScreen({ navigation, route }: any) {
       </View>
 
       {(!user?.categories || user.categories.length === 0) && (
-        <View style={tw`mx-4 mt-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+        <View style={tw`mx-4 mt-2 px-3.5 py-3 rounded-card bg-card border border-line/80`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
             Start here
           </Text>
-          <Text style={tw`text-[15px] font-bold text-stone-900 mt-1`}>Pick your growth paths</Text>
-          <Text style={tw`text-sm text-stone-500 mt-1 leading-5`}>
+          <Text style={tw`text-body font-bold text-ink mt-1`}>Pick your growth paths</Text>
+          <Text style={tw`text-sm text-ink-3 mt-1 leading-5`}>
             One or two paths is enough. Home fills with people growing the same thing.
           </Text>
-          <TouchableOpacity
+          <PressableScale
             onPress={() => {
               triggerPressFeedback();
               navigation.navigate('Profile');
             }}
-            style={tw`mt-3 py-2.5 rounded-2xl bg-emerald-600 items-center`}
+            style={tw`mt-3 py-2.5 rounded-card bg-emerald-600 items-center`}
           >
             <Text style={tw`text-white font-bold text-sm`}>Choose paths</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       )}
 
       {user?.categories && user.categories.length > 0 && hasPosts ? (
         <View style={tw`mx-4 mt-2`}>
-          <Text style={tw`text-xs text-stone-500 leading-4`}>
+          <Text style={tw`text-xs text-ink-3 leading-4`}>
             Suggested faces share a path with you — open a profile to see overlap.
           </Text>
         </View>
@@ -1080,42 +1079,42 @@ export default function FeedScreen({ navigation, route }: any) {
           onDismiss={sundaySit ? () => useActivationStore.getState().dismissSunday() : undefined}
         />
       ) : !hasPostedToday && hasPosts && journaledToday ? (
-        <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-100`}>
+        <View style={tw`mx-4 mt-2 px-3.5 py-2.5 rounded-card bg-emerald-50 border border-emerald-100`}>
           <View style={tw`flex-row items-center gap-2`}>
-            <Ionicons name="book-outline" size={iconSize.sm} color="#059669" />
+            <Ionicons name="book-outline" size={iconSize.sm} color={theme.colors.brand} />
             <Text style={tw`text-xs text-emerald-900 flex-1`}>
               Share today’s progress with people on your path.
             </Text>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => {
                 triggerPressFeedback();
                 const rootNavigation = navigation.getParent() || navigation;
                 rootNavigation.navigate('Post');
               }}
-              style={tw`px-3 py-1.5 rounded-full bg-emerald-600`}
+              style={tw`px-3 py-1.5 rounded-chip bg-emerald-600`}
             >
               <Text style={tw`text-xs font-semibold text-white`}>Post</Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       ) : null}
 
       {feedStatus === 'failed' && (
-        <View style={tw`mx-4 mt-2 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50`}>
+        <View style={tw`mx-4 mt-2 px-3 py-2.5 rounded-control border border-red-200 bg-red-50`}>
           <View style={tw`flex-row items-center`}>
-            <Ionicons name="alert-circle-outline" size={iconSize.sm} color="#DC2626" />
+            <Ionicons name="alert-circle-outline" size={iconSize.sm} color={theme.colors.danger} />
             <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>
               {feedError || 'Could not load your feed right now.'}
             </Text>
-            <TouchableOpacity
+            <PressableScale
               onPress={() => void retryFeed()}
               disabled={retryingFeed}
-              style={tw`ml-2 px-3 py-1.5 rounded-full bg-red-600 ${retryingFeed ? 'opacity-70' : ''}`}
+              style={tw`ml-2 px-3 py-1.5 rounded-chip bg-[#DC2626] ${retryingFeed ? 'opacity-70' : ''}`}
             >
               <Text style={tw`text-xs font-semibold text-white`}>
                 {retryingFeed ? 'Retrying...' : 'Retry'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       )}
@@ -1141,24 +1140,25 @@ export default function FeedScreen({ navigation, route }: any) {
   ]);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
-      <View style={tw`flex-1 bg-surface-page`}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+      <View style={tw`flex-1 bg-page`}>
         <GrowChromeHeader
           right={
             <>
               <NotificationBellButton />
               <MessagesInboxButton />
-              <Pressable
+              <PressableScale
+                pressedScale={0.9}
                 onPress={() => {
                   triggerPressFeedback();
                   openReelsFeed(navigation, 'home');
                 }}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
                 accessibilityRole="button"
                 accessibilityLabel="Reels"
               >
-                <Ionicons name="play-circle-outline" size={17} color="#059669" />
-              </Pressable>
+                <Ionicons name="play-circle-outline" size={17} color={theme.colors.brand} />
+              </PressableScale>
             </>
           }
         />
@@ -1172,8 +1172,8 @@ export default function FeedScreen({ navigation, route }: any) {
           onViewableItemsChanged={onViewableItemsChanged}
           ListHeaderComponent={feedListHeader}
           renderSectionHeader={({ section }) => (
-            <View style={tw`px-5 pt-3 pb-2`}>
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase`}>
+            <View style={tw`px-gutter-wide pt-3 pb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase`}>
                 {section.title}
               </Text>
             </View>
@@ -1187,7 +1187,7 @@ export default function FeedScreen({ navigation, route }: any) {
           renderItem={renderPostItem}
           ListEmptyComponent={
             feedStatus === 'loading' ? (
-              <View style={tw`px-5 pt-4`}>
+              <View style={tw`px-gutter-wide pt-4`}>
                 <SkeletonList variant="post" count={3} />
               </View>
             ) : (
@@ -1267,22 +1267,23 @@ export default function FeedScreen({ navigation, route }: any) {
           maxHeightRatio={0.7}
         >
           {({ close }) => (
-            <View style={tw`px-4 pb-2`}>
+            <View style={tw`px-gutter pb-2`}>
               <View style={tw`flex-row items-center justify-between mb-2`}>
-                <Text style={tw`text-lg font-bold text-stone-900`}>
+                <Text style={tw`text-callout font-bold text-ink`}>
                   {likesModal?.title || 'Likes'}
                 </Text>
-                <TouchableOpacity
+                <PressableScale
+                  pressedScale={0.9}
                   onPress={close}
                   accessibilityRole="button"
                   accessibilityLabel="Close likes"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="close" size={iconSize.md} color="#6B645E" />
-                </TouchableOpacity>
+                  <Ionicons name="close" size={iconSize.md} color={theme.colors.ink3} />
+                </PressableScale>
               </View>
               {likesModal?.subtitle ? (
-                <Text style={tw`text-sm text-stone-500 mb-3`}>{likesModal.subtitle}</Text>
+                <Text style={tw`text-sm text-ink-3 mb-3`}>{likesModal.subtitle}</Text>
               ) : null}
               {likesLoading ? (
                 <SkeletonList variant="inbox" count={4} />
@@ -1292,16 +1293,16 @@ export default function FeedScreen({ navigation, route }: any) {
                   keyExtractor={(u) => u.id}
                   style={{ maxHeight: 360 }}
                   renderItem={({ item }) => (
-                    <View style={tw`flex-row items-center py-2.5 border-b border-stone-100`}>
+                    <View style={tw`flex-row items-center py-2.5 border-b border-line`}>
                       <GrowImage
                         source={avatarSource(
                           resolveAvatarUri(item.id, item.username, item.avatar || null)
                         )}
-                        style={tw`w-9 h-9 rounded-full bg-stone-100 mr-3`}
+                        style={tw`w-9 h-9 rounded-full bg-raised mr-3`}
                         contentFit="cover"
                       />
                       <View style={tw`flex-1`}>
-                        <Text style={tw`font-semibold text-stone-900`}>{item.username}</Text>
+                        <Text style={tw`font-semibold text-ink`}>{item.username}</Text>
                         {item.isFriend ? (
                           <Text style={tw`text-xs text-emerald-700`}>Friend</Text>
                         ) : null}
@@ -1310,7 +1311,7 @@ export default function FeedScreen({ navigation, route }: any) {
                   )}
                   ListEmptyComponent={
                     <View style={tw`py-8 items-center`}>
-                      <Text style={tw`text-stone-500`}>No likes to show.</Text>
+                      <Text style={tw`text-ink-3`}>No likes to show.</Text>
                     </View>
                   }
                 />
@@ -1349,28 +1350,28 @@ export default function FeedScreen({ navigation, route }: any) {
             const postLink = `https://letsgrow.lu/p/${encodeURIComponent(target.id)}`;
 
             return (
-              <View style={tw`px-5 pb-2`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+              <View style={tw`px-gutter-wide pb-2`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
                   Post
                 </Text>
-                <Text style={tw`text-xl font-bold text-stone-900 mt-0.5 mb-1`} numberOfLines={1}>
+                <Text style={tw`text-title font-bold text-ink mt-0.5 mb-1`} numberOfLines={1}>
                   {target.isOwn ? 'Your post' : `@${target.username}`}
                 </Text>
-                <Text style={tw`text-sm text-stone-500 mb-4`} numberOfLines={2}>
+                <Text style={tw`text-sm text-ink-3 mb-4`} numberOfLines={2}>
                   {(target.caption || '').trim() || 'Growth moment on Grow!'}
                 </Text>
 
                 <PressableScale
                   onPress={openShare}
                   feedback={false}
-                  style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-emerald-50 border border-emerald-100`}
+                  style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-card bg-emerald-50 border border-emerald-100`}
                 >
-                  <View style={tw`w-10 h-10 rounded-xl bg-emerald-600 items-center justify-center mr-3`}>
-                    <Ionicons name="share-outline" size={20} color="#fff" />
+                  <View style={tw`w-10 h-10 rounded-control bg-emerald-600 items-center justify-center mr-3`}>
+                    <Ionicons name="share-outline" size={20} color="#FFFFFF" />
                   </View>
                   <View style={tw`flex-1`}>
-                    <Text style={tw`text-base font-bold text-stone-900`}>Share post card</Text>
-                    <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                    <Text style={tw`text-base font-bold text-ink`}>Share post card</Text>
+                    <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                       Instagram-ready image or link
                     </Text>
                   </View>
@@ -1382,12 +1383,12 @@ export default function FeedScreen({ navigation, route }: any) {
                     close();
                   }}
                   feedback={false}
-                  style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                  style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-card bg-card border border-line/80`}
                 >
-                  <View style={tw`w-10 h-10 rounded-xl bg-[#EAE4D6] items-center justify-center mr-3`}>
-                    <Ionicons name="link-outline" size={20} color="#1C1917" />
+                  <View style={tw`w-10 h-10 rounded-control bg-raised items-center justify-center mr-3`}>
+                    <Ionicons name="link-outline" size={20} color={theme.colors.ink} />
                   </View>
-                  <Text style={tw`text-base font-semibold text-stone-900`}>Copy link</Text>
+                  <Text style={tw`text-base font-semibold text-ink`}>Copy link</Text>
                 </PressableScale>
 
                 {!target.isOwn ? (
@@ -1398,12 +1399,12 @@ export default function FeedScreen({ navigation, route }: any) {
                         setTimeout(() => reportPost(target), 220);
                       }}
                       feedback={false}
-                      style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                      style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-card bg-card border border-line/80`}
                     >
-                      <View style={tw`w-10 h-10 rounded-xl bg-amber-50 items-center justify-center mr-3`}>
-                        <Ionicons name="flag-outline" size={20} color="#D97706" />
+                      <View style={tw`w-10 h-10 rounded-control bg-amber-50 items-center justify-center mr-3`}>
+                        <Ionicons name="flag-outline" size={20} color={tw.color('amber-600')} />
                       </View>
-                      <Text style={tw`text-base font-semibold text-stone-900`}>Report post</Text>
+                      <Text style={tw`text-base font-semibold text-ink`}>Report post</Text>
                     </PressableScale>
                     <PressableScale
                       onPress={() => {
@@ -1418,24 +1419,24 @@ export default function FeedScreen({ navigation, route }: any) {
                         }, 220);
                       }}
                       feedback={false}
-                      style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                      style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-card bg-card border border-line/80`}
                     >
-                      <View style={tw`w-10 h-10 rounded-xl bg-red-50 items-center justify-center mr-3`}>
-                        <Ionicons name="ban-outline" size={20} color="#DC2626" />
+                      <View style={tw`w-10 h-10 rounded-control bg-red-50 items-center justify-center mr-3`}>
+                        <Ionicons name="ban-outline" size={20} color={theme.colors.danger} />
                       </View>
-                      <Text style={tw`text-base font-semibold text-stone-900`}>Block user</Text>
+                      <Text style={tw`text-base font-semibold text-ink`}>Block user</Text>
                     </PressableScale>
                   </>
                 ) : (
-                  <View style={tw`mt-1 px-3.5 py-3 rounded-2xl bg-[#EAE4D6]`}>
-                    <Text style={tw`text-sm text-stone-600 leading-5`}>
+                  <View style={tw`mt-1 px-3.5 py-3 rounded-card bg-raised`}>
+                    <Text style={tw`text-sm text-ink-2 leading-5`}>
                       Tip: tap the share icon under any post — yours or a friend’s — for an Instagram-ready card.
                     </Text>
                   </View>
                 )}
 
                 <PressableScale onPress={close} feedback={false} style={tw`mt-2 py-3 items-center`}>
-                  <Text style={tw`text-stone-500 font-semibold`}>Cancel</Text>
+                  <Text style={tw`text-ink-3 font-semibold`}>Cancel</Text>
                 </PressableScale>
               </View>
             );

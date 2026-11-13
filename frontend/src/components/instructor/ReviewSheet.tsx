@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import { StarPicker } from './StarRating';
 import type { ReviewEligibility } from '../../services/api/instructor';
@@ -51,9 +51,9 @@ export default function ReviewSheet({
         style={tw`flex-1 justify-end bg-black/40`}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-4 pb-8`}>
+        <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
-            <Text style={tw`text-lg font-bold text-stone-900`}>
+            <Text style={tw`text-lg font-bold text-ink`}>
               {isCoach ? `Rate ${peerName}` : `Review ${peerName}`}
             </Text>
             <PressableScale
@@ -61,12 +61,12 @@ export default function ReviewSheet({
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={8}
-              style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] items-center justify-center`}
+              style={tw`w-9 h-9 rounded-full bg-raised items-center justify-center`}
             >
-              <Ionicons name="close" size={18} color="#1C1917" />
+              <Ionicons name="close" size={18} color={theme.colors.ink} />
             </PressableScale>
           </View>
-          <Text style={tw`text-sm text-stone-500 mb-4 leading-5`}>
+          <Text style={tw`text-sm text-ink-3 mb-4 leading-5`}>
             {isCoach
               ? 'How well did they follow your advice? Only after 4 completed weeks together.'
               : 'Reviews open after 4 completed weeks together. Be specific and kind.'}
@@ -83,9 +83,9 @@ export default function ReviewSheet({
             value={body}
             onChangeText={setBody}
             placeholder={isCoach ? 'What they did well — or what to keep practicing' : 'What changed for you'}
-            placeholderTextColor="#6B645E"
+            placeholderTextColor={theme.colors.placeholder}
             multiline
-            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3 text-[15px] text-stone-900 min-h-[88px] mb-4`}
+            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[88px] mb-4`}
           />
           <PressableScale
             onPress={() =>
@@ -96,7 +96,7 @@ export default function ReviewSheet({
               })
             }
             disabled={busy}
-            style={tw`py-3.5 rounded-2xl bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
+            style={tw`py-3.5 rounded-card bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
           >
             {busy ? (
               <ActivityIndicator color="#fff" />

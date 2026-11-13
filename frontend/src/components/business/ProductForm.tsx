@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   ScrollView,
-  TouchableOpacity,
   Modal,
   Platform,
   InputAccessoryView,
@@ -16,7 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import CATEGORIES from '../../data/categories';
 import { uploadMediaFile } from '../../services/api/media';
 import StickyFooter from '../ui/StickyFooter';
@@ -177,25 +177,25 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     }
   };
 
-  const inputStyle = tw`bg-[#FFFcf7] border border-stone-200 rounded-xl px-4 py-3 text-base text-stone-900`;
+  const inputStyle = tw`bg-card border border-line rounded-control px-4 py-3 text-base text-ink`;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top', 'bottom']}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-[#FFFcf7]`}>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={28} color="#6B645E" />
-          </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-stone-900`}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top', 'bottom']}>
+        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
+          <PressableScale onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={28} color={theme.colors.ink3} />
+          </PressableScale>
+          <Text style={tw`text-lg font-semibold text-ink`}>
             {product ? 'Edit product' : 'Add product'}
           </Text>
-          <TouchableOpacity
+          <PressableScale
             onPress={() => Keyboard.dismiss()}
             hitSlop={12}
             accessibilityLabel="Dismiss keyboard"
           >
             <Text style={tw`text-sm font-semibold text-emerald-700`}>Done</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
 
         <KeyboardAvoidingView
@@ -203,42 +203,42 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
-            style={tw`flex-1 px-4 pt-4`}
+            style={tw`flex-1 px-gutter pt-4`}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={tw`pb-6`}
           >
             <View style={tw`mb-4`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Product image</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Product image</Text>
               {imageUrl ? (
                 <View style={tw`relative`}>
-                  <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-xl`} contentFit="cover" />
-                  <TouchableOpacity
-                    style={tw`absolute top-2 right-2 bg-red-500 rounded-full p-2`}
+                  <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-control`} contentFit="cover" />
+                  <PressableScale
+                    style={tw`absolute top-2 right-2 bg-red-500 rounded-chip p-2`}
                     onPress={() => setImageUrl('')}
                   >
                     <Ionicons name="close" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
+                  </PressableScale>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={tw`w-full h-40 bg-[#FFFcf7] rounded-xl items-center justify-center border-2 border-dashed border-stone-300`}
+                <PressableScale
+                  style={tw`w-full h-40 bg-card rounded-control items-center justify-center border-2 border-dashed border-stone-300`}
                   onPress={() => void handlePickImage()}
                 >
-                  <Ionicons name="image-outline" size={40} color="#A8A29E" />
-                  <Text style={tw`text-stone-500 mt-2`}>Tap to add image</Text>
-                </TouchableOpacity>
+                  <Ionicons name="image-outline" size={40} color={theme.colors.iconMuted} />
+                  <Text style={tw`text-ink-3 mt-2`}>Tap to add image</Text>
+                </PressableScale>
               )}
               {uploadNotice ? <Text style={tw`text-xs text-amber-700 mt-2`}>{uploadNotice}</Text> : null}
             </View>
 
             <View style={tw`mb-4`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Name *</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Name *</Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
                 placeholder="Product name"
                 style={inputStyle}
-                placeholderTextColor="#6B645E"
+                placeholderTextColor={theme.colors.ink3}
                 inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                 returnKeyType="next"
                 blurOnSubmit={false}
@@ -247,14 +247,14 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
             </View>
 
             <View style={tw`mb-4`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Description</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Description</Text>
               <TextInput
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Optional description"
                 multiline
                 style={[inputStyle, tw`min-h-24`]}
-                placeholderTextColor="#6B645E"
+                placeholderTextColor={theme.colors.ink3}
                 textAlignVertical="top"
                 returnKeyType="done"
                 blurOnSubmit
@@ -264,45 +264,45 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
             </View>
 
             <View style={tw`mb-4`}>
-              <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Category *</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Category *</Text>
               <View style={tw`flex-row flex-wrap gap-2`}>
                 {CATEGORIES.map((cat) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={cat.key}
                     onPress={() => {
                       setCategory(cat.key);
                       setSubcategory('');
                     }}
-                    style={tw`px-3 py-2 rounded-full ${category === cat.key ? 'bg-emerald-600' : 'bg-[#FFFcf7] border border-stone-200'}`}
+                    style={tw`px-3 py-2 rounded-chip ${category === cat.key ? 'bg-emerald-600' : 'bg-card border border-line'}`}
                   >
-                    <Text style={tw`text-sm font-semibold ${category === cat.key ? 'text-white' : 'text-stone-700'}`}>
+                    <Text style={tw`text-sm font-semibold ${category === cat.key ? 'text-white' : 'text-ink-2'}`}>
                       {cat.label}
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
             </View>
 
             {selectedCategoryData?.subcategories?.length ? (
               <View style={tw`mb-4`}>
-                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Subcategory</Text>
+                <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Subcategory</Text>
                 <View style={tw`flex-row flex-wrap gap-2`}>
                   {selectedCategoryData.subcategories.map((sub) => (
-                    <TouchableOpacity
+                    <PressableScale
                       key={sub.key}
                       onPress={() => setSubcategory(sub.key)}
-                      style={tw`px-3 py-2 rounded-full ${
-                        subcategory === sub.key ? 'bg-emerald-600' : 'bg-[#FFFcf7] border border-stone-200'
+                      style={tw`px-3 py-2 rounded-chip ${
+                        subcategory === sub.key ? 'bg-emerald-600' : 'bg-card border border-line'
                       }`}
                     >
                       <Text
                         style={tw`text-sm font-semibold ${
-                          subcategory === sub.key ? 'text-white' : 'text-stone-700'
+                          subcategory === sub.key ? 'text-white' : 'text-ink-2'
                         }`}
                       >
                         {sub.label}
                       </Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ))}
                 </View>
               </View>
@@ -310,7 +310,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
 
             <View style={tw`flex-row gap-3 mb-8`}>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Price (€) *</Text>
+                <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Price (€) *</Text>
                 <TextInput
                   ref={priceRef}
                   value={price}
@@ -321,7 +321,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   placeholder="0.00"
                   keyboardType="decimal-pad"
                   style={inputStyle}
-                  placeholderTextColor="#6B645E"
+                  placeholderTextColor={theme.colors.ink3}
                   returnKeyType="done"
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => stockRef.current?.focus()}
@@ -331,7 +331,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 ) : null}
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-sm font-semibold text-stone-700 mb-2`}>Stock *</Text>
+                <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Stock *</Text>
                 <TextInput
                   ref={stockRef}
                   value={stock}
@@ -342,7 +342,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                   placeholder="0"
                   keyboardType="number-pad"
                   style={inputStyle}
-                  placeholderTextColor="#6B645E"
+                  placeholderTextColor={theme.colors.ink3}
                   returnKeyType="done"
                   inputAccessoryViewID={Platform.OS === 'ios' ? KEYBOARD_ACCESSORY_ID : undefined}
                   onSubmitEditing={() => Keyboard.dismiss()}
@@ -354,25 +354,25 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
             </View>
           </ScrollView>
 
-          <StickyFooter style={tw`bg-[#FFFcf7] border-stone-200/80`}>
-            <TouchableOpacity
-              style={tw`bg-emerald-600 rounded-xl py-4 items-center ${isSubmitting ? 'opacity-50' : ''}`}
+          <StickyFooter style={tw`bg-card border-line/80`}>
+            <PressableScale
+              style={tw`bg-emerald-600 rounded-control py-4 items-center ${isSubmitting ? 'opacity-50' : ''}`}
               onPress={() => void handleSubmit()}
               disabled={isSubmitting}
             >
               <Text style={tw`text-white font-bold text-base`}>
                 {isSubmitting ? 'Saving…' : product ? 'Save changes' : 'Create product'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </StickyFooter>
         </KeyboardAvoidingView>
 
         {Platform.OS === 'ios' ? (
           <InputAccessoryView nativeID={KEYBOARD_ACCESSORY_ID}>
             <View
-              style={tw`bg-[#EAE4D6] border-t border-stone-200 px-3 py-2 flex-row justify-end`}
+              style={tw`bg-raised border-t border-line px-3 py-2 flex-row justify-end`}
             >
-              <Button title="Done" onPress={() => Keyboard.dismiss()} color="#059669" />
+              <Button title="Done" onPress={() => Keyboard.dismiss()} color={theme.colors.brand} />
             </View>
           </InputAccessoryView>
         ) : null}

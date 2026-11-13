@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { breathe, pop } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { stageAccent, stageEmoji, stageLabel } from './seedMeta';
@@ -84,7 +84,7 @@ export default function SeedPlantVisual({
           height: ringSize,
           borderRadius: ringSize / 2,
           borderWidth: 3,
-          borderColor: 'rgba(28,25,23,0.08)',
+          borderColor: theme.colors.line,
         }}
       />
       <View
@@ -109,29 +109,29 @@ export default function SeedPlantVisual({
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: resting ? '#E7E5E4' : accent.wash,
+            backgroundColor: resting ? theme.colors.line : (tw.color(accent.washTw) ?? accent.wash),
             alignItems: 'center',
             justifyContent: 'center',
             opacity: resting ? 0.7 : 1,
             transform: [{ scale }, { translateY: bob }, { rotate }],
             borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.7)',
+            borderColor: theme.colors.card,
           },
         ]}
       >
         <Text style={{ fontSize: size * 0.4 }}>{stageEmoji(stage)}</Text>
         {shared ? (
           <View
-            style={tw`absolute -bottom-1 px-1.5 py-0.5 rounded-full bg-emerald-600 border border-white`}
+            style={tw`absolute -bottom-1 px-1.5 py-0.5 rounded-full bg-emerald-600 border border-card`}
           >
-            <Text maxFontSizeMultiplier={1.3} style={tw`text-[11px] font-bold text-white`}>Shared</Text>
+            <Text maxFontSizeMultiplier={1.3} style={tw`text-caption font-bold text-white`}>Shared</Text>
           </View>
         ) : null}
       </Animated.View>
       <Text
         style={[
-          tw`absolute -bottom-5 text-[11px] font-semibold`,
-          { color: resting ? '#A8A29E' : '#57534E' },
+          tw`absolute -bottom-5 text-caption font-semibold`,
+          { color: resting ? theme.colors.iconMuted : theme.colors.ink2 },
         ]}
       >
         {resting ? 'Resting' : stageLabel(stage)}

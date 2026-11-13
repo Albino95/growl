@@ -32,14 +32,14 @@ export default function ProfileHeaderSkeleton({
       accessibilityLabel="Loading profile"
       accessibilityState={{ busy: true }}
     >
-      <View style={tw`px-4 py-2.5 flex-row items-center border-b border-stone-200/50`}>
+      <View style={tw`px-gutter py-2.5 flex-row items-center border-b border-line/50`}>
         {onBack ?? <Skeleton style={tw`w-10 h-10 rounded-full mr-3`} />}
         {preview ? (
           <View style={tw`flex-1`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
               Profile
             </Text>
-            <Text style={tw`text-[17px] font-bold text-stone-900`} numberOfLines={1}>
+            <Text style={tw`text-callout font-bold text-ink`} numberOfLines={1}>
               {preview.name}
             </Text>
           </View>
@@ -52,13 +52,13 @@ export default function ProfileHeaderSkeleton({
         <Skeleton style={tw`w-10 h-10 rounded-full`} />
       </View>
 
-      <View style={tw`px-5 pt-4 pb-3`}>
-        <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-3xl px-4 pt-5 pb-4`}>
+      <View style={tw`px-gutter-wide pt-4 pb-3`}>
+        <View style={tw`bg-card border border-line/80 rounded-sheet px-4 pt-5 pb-4`}>
           {preview ? (
             // Mirrors the loaded header's avatar + name row exactly (no jump on swap).
             <View style={tw`flex-row items-center mb-3`}>
               <View
-                style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-[#ECFDF5]`}
+                style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-emerald-50`}
               >
                 <Image
                   source={avatarSource(preview.avatarUri)}
@@ -67,7 +67,7 @@ export default function ProfileHeaderSkeleton({
                 />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-2xl font-bold text-stone-900`} numberOfLines={2}>
+                <Text style={tw`text-2xl font-bold text-ink`} numberOfLines={2}>
                   {preview.name}
                 </Text>
               </View>
@@ -76,29 +76,29 @@ export default function ProfileHeaderSkeleton({
             <View style={tw`flex-row items-center mb-4`}>
               <Skeleton style={tw`w-[84px] h-[84px] rounded-full mr-4`} />
               <View style={tw`flex-1`}>
-                <Skeleton style={tw`h-6 w-3/5 rounded-lg mb-2.5`} />
+                <Skeleton style={tw`h-6 w-3/5 rounded-control mb-2.5`} />
                 <Skeleton style={tw`h-5 w-24 rounded-full`} />
               </View>
             </View>
           )}
           <Skeleton style={tw`h-3 w-full rounded mb-2`} />
           <Skeleton style={tw`h-3 w-4/5 rounded mb-4`} />
-          <Skeleton style={tw`h-[62px] w-full rounded-2xl mb-3.5`} />
+          <Skeleton style={tw`h-[62px] w-full rounded-card mb-3.5`} />
           <View style={tw`flex-row gap-2`}>
-            <Skeleton style={tw`flex-1 h-11 rounded-2xl`} />
-            <Skeleton style={tw`flex-1 h-11 rounded-2xl`} />
+            <Skeleton style={tw`flex-1 h-11 rounded-card`} />
+            <Skeleton style={tw`flex-1 h-11 rounded-card`} />
           </View>
         </View>
       </View>
 
-      <View style={tw`px-5 flex-row gap-2 mb-3`}>
+      <View style={tw`px-gutter-wide flex-row gap-2 mb-3`}>
         <Skeleton style={tw`h-9 w-20 rounded-full`} />
         <Skeleton style={tw`h-9 w-20 rounded-full`} />
         <Skeleton style={tw`h-9 w-20 rounded-full`} />
       </View>
-      <View style={tw`px-5 flex-row flex-wrap gap-1`}>
+      <View style={tw`px-gutter-wide flex-row flex-wrap gap-1`}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} style={[tw`rounded-lg`, { width: '32.6%', aspectRatio: 1 }]} />
+          <Skeleton key={i} style={[tw`rounded-control`, { width: '32.6%', aspectRatio: 1 }]} />
         ))}
       </View>
     </View>

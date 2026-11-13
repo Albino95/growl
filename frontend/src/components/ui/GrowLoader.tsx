@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { theme } from '../../lib/tw';
 import { feedback } from '../../utils/interactionFeedback';
 import { easing, loopPeriod } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
@@ -102,10 +103,10 @@ export default function GrowLoader({ label, light = false, size = 'md' }: Props)
         </View>
       </Pressable>
       {label ? (
-        <Text style={[styles.label, { color: light ? '#44403C' : '#FFFFFF' }]}>{label}</Text>
+        <Text style={[styles.label, { color: light ? theme.colors.ink2 : '#FFFFFF' }]}>{label}</Text>
       ) : null}
       {hint ? (
-        <Text style={[styles.hint, { color: light ? '#059669' : '#A7F3D0' }]}>{hint}</Text>
+        <Text style={[styles.hint, { color: light ? theme.colors.leafInk : '#A7F3D0' }]}>{hint}</Text>
       ) : null}
     </View>
   );

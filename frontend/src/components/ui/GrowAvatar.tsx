@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Image, type ImageStyle } from 'expo-image';
 import type { StyleProp } from 'react-native';
+import { theme } from '../../lib/tw';
 import { DEFAULT_AVATAR_ASSET, avatarSource, resolveAvatarUri } from '../../utils/images';
 
 type Props = {
@@ -26,7 +27,7 @@ export default function GrowAvatar({ userId, username, uri, size = 40, style }: 
   return (
     <Image
       source={source}
-      style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#E8E4DC' }, style]}
+      style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: theme.colors.raised }, style]}
       contentFit="cover"
       cachePolicy="memory-disk"
       recyclingKey={key}

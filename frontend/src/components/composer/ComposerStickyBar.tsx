@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import PrimaryButton from '../ui/PrimaryButton';
 import StickyFooter from '../ui/StickyFooter';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { COMPOSER_COPY } from '../../hooks/composerConfig';
 import tw from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = {
   /** Omit to hide the category row (stories). */
@@ -30,10 +31,10 @@ export default function ComposerStickyBar({
   onLongSubmit,
 }: Props) {
   return (
-    <StickyFooter transparent style={tw`bg-stone-900 border-t border-white/10`}>
+    <StickyFooter transparent style={tw`bg-[#1C1917] border-t border-white/10`}>
       {error ? (
         <View
-          style={tw`mb-3 rounded-2xl bg-red-500/15 border border-red-400/30 px-3 py-3`}
+          style={tw`mb-3 rounded-card bg-red-500/15 border border-red-400/30 px-3 py-3`}
           accessibilityLiveRegion="assertive"
         >
           <View style={tw`flex-row items-start`}>
@@ -46,29 +47,29 @@ export default function ComposerStickyBar({
             </View>
           </View>
           <View style={tw`flex-row gap-2 mt-3`}>
-            <Pressable
+            <PressableScale
               onPress={error.onRetry}
               accessibilityRole="button"
               accessibilityLabel="Retry sharing"
-              style={tw`flex-1 py-2.5 rounded-xl bg-white items-center`}
+              style={tw`flex-1 py-2.5 rounded-control bg-white items-center`}
             >
-              <Text style={tw`text-stone-900 font-bold text-sm`}>Retry</Text>
-            </Pressable>
-            <Pressable
+              <Text style={tw`text-[#1C1917] font-bold text-sm`}>Retry</Text>
+            </PressableScale>
+            <PressableScale
               onPress={error.onEdit}
               accessibilityRole="button"
               accessibilityLabel="Edit draft"
-              style={tw`flex-1 py-2.5 rounded-xl bg-white/10 border border-white/20 items-center`}
+              style={tw`flex-1 py-2.5 rounded-control bg-white/10 border border-white/20 items-center`}
             >
               <Text style={tw`text-white font-semibold text-sm`}>Edit</Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
       ) : null}
       {category || music ? (
         <View style={tw`flex-row items-stretch gap-2 mb-3`}>
           {category ? (
-            <Pressable
+            <PressableScale
               onPress={category.onOpen}
               disabled={publishing}
               accessibilityRole="button"
@@ -77,7 +78,7 @@ export default function ComposerStickyBar({
                   ? `Category: ${getCategoryLabel(category.selected)}`
                   : 'Choose a category (required)'
               }
-              style={tw`flex-1 min-w-0 flex-row items-center justify-between bg-white/10 border border-white/20 rounded-2xl px-3 py-3`}
+              style={tw`flex-1 min-w-0 flex-row items-center justify-between bg-white/10 border border-white/20 rounded-card px-3 py-3`}
             >
               <View style={tw`flex-row items-center flex-1 min-w-0`}>
                 <Ionicons name="pricetag-outline" size={18} color="#A7F3D0" style={tw`mr-2`} />
@@ -86,22 +87,22 @@ export default function ComposerStickyBar({
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color="#A8A29E" />
-            </Pressable>
+            </PressableScale>
           ) : null}
           {music ? (
-            <Pressable
+            <PressableScale
               onPress={music.onOpen}
               disabled={publishing}
               accessibilityRole="button"
               accessibilityLabel={music.title ? `Music: ${music.title}` : 'Add music'}
-              style={tw`w-14 flex-shrink-0 items-center justify-center bg-white/10 border border-white/20 rounded-2xl`}
+              style={tw`w-14 flex-shrink-0 items-center justify-center bg-white/10 border border-white/20 rounded-card`}
             >
               <Ionicons
                 name="musical-notes-outline"
                 size={18}
                 color={music.title ? '#A7F3D0' : '#A8A29E'}
               />
-            </Pressable>
+            </PressableScale>
           ) : null}
         </View>
       ) : null}
@@ -113,7 +114,7 @@ export default function ComposerStickyBar({
         loading={publishing}
       />
       {category && !category.selected ? (
-        <Text style={tw`text-amber-200/90 text-xs text-center mt-2`} accessibilityLiveRegion="polite">
+        <Text style={tw`text-[#FDE68A]/90 text-xs text-center mt-2`} accessibilityLiveRegion="polite">
           {category.hasCategories
             ? 'Choose a category above to share.'
             : 'Add interests in your profile to pick a category — it\'s required to share.'}

@@ -3,6 +3,7 @@ import { Modal, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
 import PrimaryButton from './PrimaryButton';
+import { type } from '../../theme/tokens';
 
 export type DialogButton = {
   label: string;
@@ -141,27 +142,33 @@ export default function AppDialogHost() {
         />
         <View
           style={[
-            tw`w-full max-w-sm rounded-3xl px-5 pt-5 pb-4 border`,
+            tw`w-full max-w-sm rounded-sheet px-5 pt-5 pb-4 border`,
             { backgroundColor: c.card, borderColor: c.line },
           ]}
         >
           <View
             style={[
-              tw`w-12 h-12 rounded-2xl items-center justify-center mb-3`,
+              tw`w-12 h-12 rounded-card items-center justify-center mb-3`,
               { backgroundColor: destructive ? c.dangerSoft : c.brandSoft },
             ]}
           >
             <Ionicons name={icon} size={24} color={destructive ? c.danger : dark ? c.leafInk : c.brand} />
           </View>
-          <Text style={{ color: c.ink, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>
+          <Text style={{
+              color: c.ink,
+              fontSize: type.callout.fontSize,
+              lineHeight: type.callout.lineHeight,
+              fontWeight: '700',
+              marginBottom: 4,
+            }}>
             {request.title}
           </Text>
           {request.message ? (
             <Text
               style={{
-                color: c.ink3,
-                fontSize: 14,
-                lineHeight: 20,
+                color: c.ink2,
+                fontSize: type.body.fontSize,
+                lineHeight: type.body.lineHeight,
                 marginBottom: 16,
               }}
             >
@@ -182,7 +189,8 @@ export default function AppDialogHost() {
                     variant={isCancel ? 'ghost' : 'solid'}
                     style={
                       isDestructive
-                        ? { backgroundColor: '#DC2626', borderColor: '#DC2626' }
+                        ? // Fill stays red-600 in both schemes so the white label keeps contrast.
+                          { backgroundColor: '#DC2626', borderColor: '#DC2626' }
                         : undefined
                     }
                   />

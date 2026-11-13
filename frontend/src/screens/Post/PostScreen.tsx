@@ -121,10 +121,10 @@ export default function PostScreen({ navigation }: Props) {
     >
       {promoteName ? (
         <View
-          style={tw`mx-4 mb-2 px-3.5 py-2.5 rounded-2xl bg-emerald-700/95 border border-emerald-500/40`}
+          style={tw`mx-gutter mb-2 px-3.5 py-2.5 rounded-card bg-emerald-600/95 border border-emerald-500/40`}
           accessibilityRole="text"
         >
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-100 uppercase`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-[#D1FAE5] uppercase`}>
             Partnership
           </Text>
           <Text style={tw`text-sm font-bold text-white mt-0.5`} numberOfLines={1}>

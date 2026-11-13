@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, View } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { spring } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 
@@ -30,15 +30,15 @@ export default function SeatFill({ filled, max = 10 }: Props) {
   const hot = taken >= 8;
   return (
     <View>
-      <Text style={tw`text-[11px] font-semibold text-stone-500 mb-1.5`}>
+      <Text style={tw`text-caption font-semibold text-ink-3 mb-1.5`}>
         {occupancyCopy(taken, cap)}
       </Text>
-      <View style={tw`h-1.5 rounded-full bg-[#EAE4D6] overflow-hidden`}>
+      <View style={tw`h-1.5 rounded-full bg-raised overflow-hidden`}>
         <Animated.View
           style={{
             height: 6,
             width: '100%',
-            backgroundColor: hot ? '#F97066' : '#059669',
+            backgroundColor: hot ? theme.colors.energy : theme.colors.brand,
             // Native-driven scaleX anchored left (track's rounded overflow clips the ends).
             transformOrigin: 'left',
             transform: [

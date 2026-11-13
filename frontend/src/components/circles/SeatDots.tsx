@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, View } from 'react-native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { breathe, spring, stagger } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 
@@ -49,7 +49,7 @@ export default function SeatDots({ filled, max = 10, live = false, size = 8 }: P
               height: size,
               borderRadius: size / 2,
               marginRight: 3,
-              backgroundColor: on ? (i >= 8 ? '#F97066' : '#059669') : '#E7E5E4',
+              backgroundColor: on ? (i >= 8 ? theme.colors.energy : theme.colors.brand) : theme.colors.line,
               transform: [{ scale: isLast && live ? glow : scales[i] }],
             }}
           />

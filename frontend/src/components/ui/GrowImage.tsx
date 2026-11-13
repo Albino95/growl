@@ -1,9 +1,12 @@
 import React, { forwardRef } from 'react';
 import { Image, type ImageProps } from 'expo-image';
-import { StyleSheet } from 'react-native';
+import { theme } from '../../lib/tw';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 
-/** Cream placeholder shown while a content image loads. */
+/**
+ * Light-scheme placeholder value (kept for back-compat). Rendering reads
+ * `theme.colors.raised` so the placeholder follows the active scheme.
+ */
 export const GROW_IMAGE_PLACEHOLDER = '#EAE4D6';
 
 function uriOf(source: ImageProps['source']): string | undefined {
@@ -35,13 +38,9 @@ const GrowImage = forwardRef<Image, ImageProps>(function GrowImage(props, ref) {
       cachePolicy="memory-disk"
       recyclingKey={uriOf(source)}
       {...rest}
-      style={[styles.placeholder, style]}
+      style={[{ backgroundColor: theme.colors.raised }, style]}
     />
   );
-});
-
-const styles = StyleSheet.create({
-  placeholder: { backgroundColor: GROW_IMAGE_PLACEHOLDER },
 });
 
 export default GrowImage;

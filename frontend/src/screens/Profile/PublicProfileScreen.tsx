@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   Alert,
@@ -19,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
 import { getCategoryLabel, groupGrowthPaths } from '../../utils/categoryLabels';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import ErrorState from '../../components/ui/ErrorState';
 import ProfileHeaderSkeleton from '../../components/profile/ProfileHeaderSkeleton';
@@ -738,7 +737,7 @@ export default function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
         <ProfileHeaderSkeleton
           preview={
             preview && (preview.username || preview.displayName)
@@ -749,14 +748,16 @@ export default function PublicProfileScreen() {
               : null
           }
           onBack={
-            <TouchableOpacity
+            <PressableScale
               onPress={() => navigation.goBack()}
-              style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center mr-3`}
+              style={tw`w-10 h-10 rounded-full bg-raised border border-line/80 items-center justify-center mr-3`}
               accessibilityRole="button"
               accessibilityLabel="Back"
+              pressedScale={0.9}
+              hitSlop={8}
             >
-              <Ionicons name="arrow-back" size={20} color="#1C1917" />
-            </TouchableOpacity>
+              <Ionicons name="arrow-back" size={20} color={theme.colors.ink} />
+            </PressableScale>
           }
         />
       </SafeAreaView>
@@ -766,7 +767,7 @@ export default function PublicProfileScreen() {
   if (!profileUser) {
     const failed = profileError === 'error';
     return (
-      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`}>
+      <SafeAreaView style={tw`flex-1 bg-page`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
           {failed ? (
             <ErrorState
@@ -779,48 +780,51 @@ export default function PublicProfileScreen() {
             />
           ) : (
             <>
-              <Ionicons name="person-outline" size={64} color="#A8A29E" />
-              <Text style={tw`text-stone-600 mt-4 text-center text-lg`}>User not found</Text>
+              <Ionicons name="person-outline" size={64} color={theme.colors.iconMuted} />
+              <Text style={tw`text-ink-2 mt-4 text-center text-lg`}>User not found</Text>
             </>
           )}
-          <TouchableOpacity
+          <PressableScale
             onPress={() => navigation.goBack()}
             accessibilityRole="button"
-            style={tw`mt-4 px-6 py-3 rounded-xl ${failed ? 'bg-[#EAE4D6]' : 'bg-emerald-600'}`}
+            style={tw`mt-4 px-6 py-3 rounded-control ${failed ? 'bg-raised' : 'bg-emerald-600'}`}
           >
             <Text style={tw`font-semibold ${failed ? 'text-stone-800' : 'text-white'}`}>Go Back</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
-      <View style={tw`px-4 py-2.5 flex-row items-center border-b border-stone-200/50`}>
-        <TouchableOpacity
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+      <View style={tw`px-gutter py-2.5 flex-row items-center border-b border-line/50`}>
+        <PressableScale
           onPress={() => navigation.goBack()}
-          style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center mr-3`}
+          style={tw`w-10 h-10 rounded-full bg-raised border border-line/80 items-center justify-center mr-3`}
           accessibilityLabel="Back"
+          pressedScale={0.9}
+          hitSlop={8}
         >
-          <Ionicons name="arrow-back" size={20} color="#1C1917" />
-        </TouchableOpacity>
+          <Ionicons name="arrow-back" size={20} color={theme.colors.ink} />
+        </PressableScale>
         <View style={tw`flex-1`}>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
             Profile
           </Text>
-          <Text style={tw`text-[17px] font-bold text-stone-900`} numberOfLines={1}>
+          <Text style={tw`text-callout font-bold text-ink`} numberOfLines={1}>
             {profileUser.username}
           </Text>
         </View>
-        <TouchableOpacity
-          style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+        <PressableScale
+          style={tw`w-10 h-10 rounded-full bg-raised border border-line/80 items-center justify-center`}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           onPress={openOptionsMenu}
           accessibilityLabel="More options"
+          pressedScale={0.9}
         >
-          <Ionicons name="ellipsis-horizontal" size={20} color="#57534E" />
-        </TouchableOpacity>
+          <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.ink2} />
+        </PressableScale>
       </View>
 
       <ScrollView
@@ -830,10 +834,10 @@ export default function PublicProfileScreen() {
           <RefreshControl {...refresh} />
         }
       >
-        <View style={tw`px-5 pt-4 pb-3`}>
-          <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-3xl px-4 pt-5 pb-4`}>
+        <View style={tw`px-gutter-wide pt-4 pb-3`}>
+          <View style={tw`bg-card border border-line/80 rounded-sheet px-4 pt-5 pb-4`}>
             <View style={tw`flex-row items-center mb-3`}>
-              <View style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-[#ECFDF5]`}>
+              <View style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-emerald-50`}>
                 <Image
                   source={avatarSource(
                     resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar)
@@ -843,11 +847,11 @@ export default function PublicProfileScreen() {
                 />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-2xl font-bold text-stone-900`} numberOfLines={2}>
+                <Text style={tw`text-2xl font-bold text-ink`} numberOfLines={2}>
                   {profileUser.username}
                 </Text>
                 {profileUser.isInstructor ? (
-                  <View style={tw`flex-row items-center mt-1.5 self-start px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200`}>
+                  <View style={tw`flex-row items-center mt-1.5 self-start px-2.5 py-1 rounded-chip bg-emerald-50 border border-emerald-200`}>
                     <Ionicons name="school" size={13} color="#059669" />
                     <Text style={tw`text-xs text-emerald-800 font-semibold ml-1`}>Instructor</Text>
                     {(profileUser.endorsementsReceived || 0) > 0 ? (
@@ -872,11 +876,11 @@ export default function PublicProfileScreen() {
             ) : null}
 
             {profileUser.isInstructor && profileUser.teachingHeadline ? (
-              <View style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-emerald-50 border border-emerald-100`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+              <View style={tw`mb-2 px-3.5 py-3 rounded-card bg-emerald-50 border border-emerald-100`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
                   Teaching
                 </Text>
-                <Text style={tw`text-[15px] text-stone-800 mt-1 leading-5`}>
+                <Text style={tw`text-body text-stone-800 mt-1 leading-5`}>
                   {profileUser.teachingHeadline}
                 </Text>
               </View>
@@ -890,18 +894,18 @@ export default function PublicProfileScreen() {
                 rating={profileUser.rating}
               />
             ) : profileUser.followThrough && profileUser.followThrough.count > 0 ? (
-              <View style={tw`mb-3 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              <View style={tw`mb-3 px-3.5 py-3 rounded-card bg-card border border-line/80`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                   Follow-through
                 </Text>
                 <View style={tw`flex-row items-center mt-1.5`}>
                   <StarRow value={profileUser.followThrough.avg} />
-                  <Text style={tw`text-xs text-stone-500 ml-1.5`}>
+                  <Text style={tw`text-xs text-ink-3 ml-1.5`}>
                     {profileUser.followThrough.avg} · {profileUser.followThrough.count} coach
                     {profileUser.followThrough.count === 1 ? '' : 'es'}
                   </Text>
                 </View>
-                <Text style={tw`text-xs text-stone-500 mt-1`}>
+                <Text style={tw`text-xs text-ink-3 mt-1`}>
                   Rated by instructors after 4 completed weeks.
                 </Text>
               </View>
@@ -909,57 +913,57 @@ export default function PublicProfileScreen() {
 
             {profileUser.isInstructor && (profileUser.testimonials || []).length > 0 ? (
               <View style={tw`mb-3`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase mb-2`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
                   From clients
                 </Text>
                 {profileUser.testimonials!.map((t) => (
                   <View
                     key={t.id}
-                    style={tw`mb-2 px-3.5 py-3 rounded-2xl bg-[#FFFcf7] border border-stone-200/80`}
+                    style={tw`mb-2 px-3.5 py-3 rounded-card bg-card border border-line/80`}
                   >
                     <View style={tw`flex-row items-center justify-between`}>
-                      <Text style={tw`font-semibold text-stone-900`}>{t.reviewer.username}</Text>
+                      <Text style={tw`font-semibold text-ink`}>{t.reviewer.username}</Text>
                       <StarRow value={t.stars} size={12} />
                     </View>
                     {t.body ? (
-                      <Text style={tw`text-[13px] text-stone-600 mt-1.5 leading-5`}>{t.body}</Text>
+                      <Text style={tw`text-footnote text-ink-2 mt-1.5 leading-5`}>{t.body}</Text>
                     ) : null}
                   </View>
                 ))}
               </View>
             ) : profileUser.isInstructor ? (
-              <Text style={tw`text-xs text-stone-500 mb-3`}>
+              <Text style={tw`text-xs text-ink-3 mb-3`}>
                 Client reviews appear after 4 completed weeks together.
               </Text>
             ) : null}
 
             {profileUser.status ? (
-              <View style={tw`mb-2 px-3 py-2 rounded-2xl bg-[#EAE4D6] border border-stone-200/60`}>
-                <Text style={tw`text-[13px] text-stone-800 leading-5`}>{profileUser.status}</Text>
+              <View style={tw`mb-2 px-3 py-2 rounded-card bg-raised border border-line/60`}>
+                <Text style={tw`text-footnote text-stone-800 leading-5`}>{profileUser.status}</Text>
               </View>
             ) : null}
             {profileUser.bio ? (
-              <Text style={tw`text-sm text-stone-500 mb-3 leading-5`}>{profileUser.bio}</Text>
+              <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>{profileUser.bio}</Text>
             ) : null}
 
-            <View style={tw`flex-row bg-[#EAE4D6] border border-stone-200/70 rounded-2xl overflow-hidden mb-3.5`}>
+            <View style={tw`flex-row bg-raised border border-line/70 rounded-card overflow-hidden mb-3.5`}>
               <View style={tw`flex-1 items-center py-2.5`}>
-                <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.postsCount}</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Posts</Text>
+                <Text style={tw`text-lg font-bold text-ink`}>{profileUser.postsCount}</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>Posts</Text>
               </View>
-              <View style={tw`w-px bg-stone-200/80 my-2`} />
+              <View style={tw`w-px bg-line/80 my-2`} />
               <View style={tw`flex-1 items-center py-2.5`}>
-                <Text style={tw`text-lg font-bold text-stone-900`}>{profileUser.storiesCount}</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>Stories</Text>
+                <Text style={tw`text-lg font-bold text-ink`}>{profileUser.storiesCount}</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>Stories</Text>
               </View>
-              <View style={tw`w-px bg-stone-200/80 my-2`} />
+              <View style={tw`w-px bg-line/80 my-2`} />
               <View style={tw`flex-1 items-center py-2.5`}>
                 <Text style={tw`text-lg font-bold text-emerald-700`}>
                   {profileUser.isInstructor
                     ? profileUser.completedPlans || 0
                     : profileUser.points}
                 </Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                   {profileUser.isInstructor ? 'Plans' : 'Points'}
                 </Text>
               </View>
@@ -968,12 +972,12 @@ export default function PublicProfileScreen() {
             {!isOwnProfile && currentUser?.id ? (
               <View style={tw`gap-2`}>
                 <View style={tw`flex-row gap-2`}>
-                  <TouchableOpacity
+                  <PressableScale
                     onPress={() => void onToggleFriend()}
                     disabled={friendBusy}
-                    style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 ${
+                    style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 ${
                       friendConnected || friendRequestSent
-                        ? 'bg-[#EAE4D6] border border-stone-200'
+                        ? 'bg-raised border border-line'
                         : friendRequestReceived
                           ? 'bg-amber-500'
                           : 'bg-emerald-600'
@@ -993,7 +997,7 @@ export default function PublicProfileScreen() {
                                 : 'person-add'
                         }
                         size={iconSize.sm}
-                        color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
+                        color={friendConnected || friendRequestSent ? theme.colors.ink2 : '#fff'}
                       />
                       <Text
                         style={tw`font-bold text-sm ${
@@ -1009,23 +1013,23 @@ export default function PublicProfileScreen() {
                                 : 'Add friend'}
                       </Text>
                     </Animated.View>
-                  </TouchableOpacity>
+                  </PressableScale>
 
                   {profileUser.isInstructor &&
                   profileUser.offering?.accepting === false &&
                   !friendConnected ? (
                     <View
                       accessibilityState={{ disabled: true }}
-                      style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-[#EAE4D6] border border-stone-200/80`}
+                      style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 bg-raised border border-line/80`}
                     >
-                      <Ionicons name="pause-circle-outline" size={iconSize.sm} color="#6B645E" />
-                      <Text style={tw`font-bold text-sm text-stone-500`}>Not taking plans</Text>
+                      <Ionicons name="pause-circle-outline" size={iconSize.sm} color={theme.colors.ink3} />
+                      <Text style={tw`font-bold text-sm text-ink-3`}>Not taking plans</Text>
                     </View>
                   ) : profileUser.isInstructor && profileUser.offering?.accepting !== false ? (
                     <PressableScale
                       onPress={() => void onReachOut()}
                       disabled={messageBusy}
-                      style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                      style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
                         messageBusy ? 'opacity-60' : ''
                       }`}
                     >
@@ -1037,10 +1041,10 @@ export default function PublicProfileScreen() {
                       <Text style={tw`font-bold text-sm text-white`}>Reach out</Text>
                     </PressableScale>
                   ) : friendConnected ? (
-                    <TouchableOpacity
+                    <PressableScale
                       onPress={() => void onMessageFriend()}
                       disabled={messageBusy}
-                      style={tw`flex-1 py-3 rounded-2xl flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                      style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
                         messageBusy ? 'opacity-60' : ''
                       }`}
                     >
@@ -1050,28 +1054,28 @@ export default function PublicProfileScreen() {
                         <Ionicons name="chatbubble-ellipses" size={iconSize.sm} color="#fff" />
                       )}
                       <Text style={tw`font-bold text-sm text-white`}>Message</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ) : null}
                 </View>
 
                 {endorseStatus?.pendingIncoming && endorseStatus.pendingIncomingRequestId ? (
                   <View
-                    style={tw`rounded-[22px] overflow-hidden border border-[#FECACA] bg-[#FFFcf7]`}
+                    style={tw`rounded-sheet overflow-hidden border border-red-200 bg-card`}
                   >
                     <View style={tw`h-1.5 bg-energy-600`} />
                     <View style={tw`px-4 py-3.5`}>
                       <View style={tw`flex-row items-center mb-1`}>
-                        <Ionicons name="ribbon" size={iconSize.xs} color="#E11D48" />
+                        <Ionicons name="ribbon" size={iconSize.xs} color={tw.color('rose-600')} />
                         <Text
-                          style={tw`text-[11px] font-semibold tracking-widest text-[#E11D48] uppercase ml-1.5`}
+                          style={tw`text-caption font-semibold tracking-widest text-rose-600 uppercase ml-1.5`}
                         >
                           Endorsement ask
                         </Text>
                       </View>
-                      <Text style={tw`text-[15px] font-semibold text-stone-900 mt-0.5`}>
+                      <Text style={tw`text-body font-semibold text-ink mt-0.5`}>
                         They asked for your endorsement
                       </Text>
-                      <Text style={tw`text-sm text-stone-600 mt-1.5 leading-5`}>
+                      <Text style={tw`text-sm text-ink-2 mt-1.5 leading-5`}>
                         Peer trust unlocks their Instructor Hub — no purchase. Shared paths below.
                       </Text>
                       {(endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
@@ -1079,9 +1083,9 @@ export default function PublicProfileScreen() {
                           {endorseStatus.sharedCategories.slice(0, 3).map((key) => (
                             <View
                               key={`ask-shared-${key}`}
-                              style={tw`px-2.5 py-1 rounded-full bg-[#FFF1F0] border border-[#FECACA]`}
+                              style={tw`px-2.5 py-1 rounded-chip bg-energy-50 border border-red-200`}
                             >
-                              <Text style={tw`text-[11px] font-semibold text-[#E11D48]`}>
+                              <Text style={tw`text-caption font-semibold text-rose-600`}>
                                 {getCategoryLabel(key)}
                               </Text>
                             </View>
@@ -1093,7 +1097,7 @@ export default function PublicProfileScreen() {
                           onPress={() => void onRespondIncomingRequest('accepted')}
                           disabled={endorseBusy}
                           feedback={false}
-                          style={tw`flex-1 py-3 rounded-xl flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                          style={tw`flex-1 py-3 rounded-control flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
                             endorseBusy ? 'opacity-60' : ''
                           }`}
                         >
@@ -1108,9 +1112,9 @@ export default function PublicProfileScreen() {
                           onPress={() => void onRespondIncomingRequest('declined')}
                           disabled={endorseBusy}
                           feedback={false}
-                          style={tw`px-4 py-3 rounded-xl bg-[#EAE4D6] border border-stone-200 items-center justify-center`}
+                          style={tw`px-4 py-3 rounded-control bg-raised border border-line items-center justify-center`}
                         >
-                          <Text style={tw`font-semibold text-sm text-stone-700`}>Not now</Text>
+                          <Text style={tw`font-semibold text-sm text-ink-2`}>Not now</Text>
                         </PressableScale>
                       </View>
                     </View>
@@ -1120,20 +1124,20 @@ export default function PublicProfileScreen() {
                     endorseStatus.canEndorse ||
                     (endorseStatus.sharedCategories?.length ?? 0) === 0) ? (
                   <View
-                    style={tw`rounded-[22px] overflow-hidden border ${
+                    style={tw`rounded-sheet overflow-hidden border ${
                       endorseStatus.alreadyEndorsed
-                        ? 'border-emerald-200 bg-[#ECFDF5]'
+                        ? 'border-emerald-200 bg-emerald-50'
                         : endorseStatus.canEndorse
-                          ? 'border-stone-800 bg-[#FFFcf7]'
-                          : 'border-stone-200 bg-[#EAE4D6]'
+                          ? 'border-ink bg-card'
+                          : 'border-line bg-raised'
                     }`}
                   >
                     <View style={tw`px-4 py-3.5`}>
                       <Text
-                        style={tw`text-[11px] font-semibold tracking-widest uppercase ${
+                        style={tw`text-caption font-semibold tracking-widest uppercase ${
                           endorseStatus.alreadyEndorsed || endorseStatus.canEndorse
                             ? 'text-emerald-700'
-                            : 'text-stone-500'
+                            : 'text-ink-3'
                         }`}
                       >
                         {endorseStatus.alreadyEndorsed
@@ -1142,7 +1146,7 @@ export default function PublicProfileScreen() {
                             ? 'You can endorse'
                             : 'Endorsement'}
                       </Text>
-                      <Text style={tw`text-sm text-stone-600 mt-1 leading-5 mb-3`}>
+                      <Text style={tw`text-sm text-ink-2 mt-1 leading-5 mb-3`}>
                         {endorseStatus.alreadyEndorsed
                           ? 'You’ve already backed them on a shared path.'
                           : endorseStatus.canEndorse
@@ -1155,17 +1159,17 @@ export default function PublicProfileScreen() {
                         onPress={() => void onEndorse()}
                         disabled={!endorseStatus.canEndorse || endorseBusy}
                         feedback={false}
-                        style={tw`py-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                        style={tw`py-3 rounded-control flex-row items-center justify-center gap-1.5 ${
                           endorseStatus.alreadyEndorsed
-                            ? 'bg-white border border-emerald-200'
+                            ? 'bg-card border border-emerald-200'
                             : endorseStatus.canEndorse
-                              ? 'bg-stone-900'
-                              : 'bg-white/70 border border-stone-200'
+                              ? 'bg-ink'
+                              : 'bg-card/70 border border-line'
                         } ${endorseBusy ? 'opacity-60' : ''}`}
                       >
                         {endorseBusy ? (
                           <ActivityIndicator
-                            color={endorseStatus.canEndorse ? '#fff' : '#57534E'}
+                            color={endorseStatus.canEndorse ? theme.colors.page : theme.colors.ink2}
                           />
                         ) : (
                           <Ionicons
@@ -1175,8 +1179,8 @@ export default function PublicProfileScreen() {
                               endorseStatus.alreadyEndorsed
                                 ? '#059669'
                                 : endorseStatus.canEndorse
-                                  ? '#fff'
-                                  : '#6B645E'
+                                  ? theme.colors.page
+                                  : theme.colors.ink3
                             }
                           />
                         )}
@@ -1185,8 +1189,8 @@ export default function PublicProfileScreen() {
                             endorseStatus.alreadyEndorsed
                               ? 'text-emerald-700'
                               : endorseStatus.canEndorse
-                                ? 'text-white'
-                                : 'text-stone-500'
+                                ? 'text-page'
+                                : 'text-ink-3'
                           }`}
                         >
                           {endorseStatus.alreadyEndorsed
@@ -1204,10 +1208,10 @@ export default function PublicProfileScreen() {
 
                 {endorseStatus?.canRequestEndorsement || endorseStatus?.pendingOutgoing ? (
                   <View
-                    style={tw`rounded-[22px] overflow-hidden border ${
+                    style={tw`rounded-sheet overflow-hidden border ${
                       endorseStatus.pendingOutgoing
-                        ? 'border-emerald-200 bg-[#ECFDF5]'
-                        : 'border-emerald-600/50 bg-[#FFFcf7]'
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : 'border-emerald-600/50 bg-card'
                     }`}
                   >
                     <View
@@ -1223,19 +1227,19 @@ export default function PublicProfileScreen() {
                           color="#059669"
                         />
                         <Text
-                          style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
+                          style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
                         >
                           {endorseStatus.pendingOutgoing
                             ? 'Request pending'
                             : 'Ask for endorsement'}
                         </Text>
                       </View>
-                      <Text style={tw`text-[15px] font-semibold text-stone-900 mt-0.5`}>
+                      <Text style={tw`text-body font-semibold text-ink mt-0.5`}>
                         {endorseStatus.pendingOutgoing
                           ? 'Waiting on their response'
                           : `Ask ${profileUser?.username ?? 'them'} to endorse you`}
                       </Text>
-                      <Text style={tw`text-sm text-stone-600 mt-1.5 leading-5`}>
+                      <Text style={tw`text-sm text-ink-2 mt-1.5 leading-5`}>
                         {endorseStatus.pendingOutgoing
                           ? 'They’ll see a structured ask in Notifications and can endorse with one tap.'
                           : 'Sends a notification — not a cold DM. Peer trust unlocks your Instructor Hub.'}
@@ -1245,9 +1249,9 @@ export default function PublicProfileScreen() {
                           {endorseStatus.sharedCategories.slice(0, 3).map((key) => (
                             <View
                               key={`req-shared-${key}`}
-                              style={tw`px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100`}
+                              style={tw`px-2.5 py-1 rounded-chip bg-emerald-50 border border-emerald-100`}
                             >
-                              <Text style={tw`text-[11px] font-semibold text-emerald-800`}>
+                              <Text style={tw`text-caption font-semibold text-emerald-800`}>
                                 {getCategoryLabel(key)}
                               </Text>
                             </View>
@@ -1258,9 +1262,9 @@ export default function PublicProfileScreen() {
                         onPress={() => void onRequestEndorsement()}
                         disabled={!endorseStatus.canRequestEndorsement || requestBusy}
                         feedback={false}
-                        style={tw`mt-3.5 py-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                        style={tw`mt-3.5 py-3 rounded-control flex-row items-center justify-center gap-1.5 ${
                           endorseStatus.pendingOutgoing
-                            ? 'bg-white border border-emerald-200'
+                            ? 'bg-card border border-emerald-200'
                             : 'bg-emerald-600'
                         } ${requestBusy ? 'opacity-60' : ''}`}
                       >
@@ -1295,12 +1299,12 @@ export default function PublicProfileScreen() {
           </View>
 
           {!profileUser.isInstructor && endorseStatus ? (
-            <View style={tw`mt-3 px-4 py-3 rounded-2xl bg-[#EAE4D6] border border-stone-200/80 flex-row items-center`}>
+            <View style={tw`mt-3 px-4 py-3 rounded-card bg-raised border border-line/80 flex-row items-center`}>
               <View style={tw`w-10 h-10 rounded-full bg-emerald-600/15 items-center justify-center mr-3`}>
                 <Ionicons name="ribbon" size={20} color="#059669" />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                   Instructor track
                 </Text>
                 <Text style={tw`text-sm text-stone-800 mt-0.5 font-medium`}>
@@ -1313,23 +1317,23 @@ export default function PublicProfileScreen() {
         </View>
 
         {/* Growth paths */}
-        <View style={tw`px-5 pb-3`}>
-          <View style={tw`bg-[#EAE4D6] border border-stone-200/80 rounded-2xl p-4`}>
-            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+        <View style={tw`px-gutter-wide pb-3`}>
+          <View style={tw`bg-raised border border-line/80 rounded-card p-4`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
               Grow!
             </Text>
-            <Text style={tw`text-lg font-bold text-stone-900 mt-0.5 mb-3`}>Growth paths</Text>
+            <Text style={tw`text-lg font-bold text-ink mt-0.5 mb-3`}>Growth paths</Text>
 
             {endorseStatus && (endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
               <View style={tw`mb-3`}>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase mb-2`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase mb-2`}>
                   Shared with you
                 </Text>
                 <View style={tw`flex-row flex-wrap`}>
                   {endorseStatus.sharedCategories.map((key) => (
                     <View
                       key={`shared-${key}`}
-                      style={tw`bg-emerald-600 px-3 py-1.5 rounded-full mr-2 mb-2 flex-row items-center`}
+                      style={tw`bg-emerald-600 px-3 py-1.5 rounded-chip mr-2 mb-2 flex-row items-center`}
                     >
                       <Ionicons name="git-compare-outline" size={12} color="#fff" style={tw`mr-1`} />
                       <Text style={tw`text-sm text-white font-semibold`}>
@@ -1351,14 +1355,14 @@ export default function PublicProfileScreen() {
                   return (
                     <View
                       key={group.parentKey}
-                      style={tw`flex-row items-center rounded-2xl px-3 py-3 mb-2 border ${
+                      style={tw`flex-row items-center rounded-card px-3 py-3 mb-2 border ${
                         isShared
-                          ? 'bg-[#ECFDF5] border-emerald-200'
-                          : 'bg-[#FFFcf7] border-stone-200/70'
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-card border-line/70'
                       }`}
                     >
                       <View
-                        style={tw`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
+                        style={tw`w-10 h-10 rounded-control items-center justify-center mr-3 ${
                           isShared ? 'bg-emerald-600' : 'bg-emerald-600/12'
                         }`}
                       >
@@ -1369,10 +1373,10 @@ export default function PublicProfileScreen() {
                         />
                       </View>
                       <View style={tw`flex-1`}>
-                        <Text style={tw`text-[15px] font-bold text-stone-900`}>
+                        <Text style={tw`text-body font-bold text-ink`}>
                           {group.parentLabel}
                         </Text>
-                        <Text style={tw`text-xs text-stone-500 mt-0.5`}>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                           {group.focusLabels.length > 0
                             ? group.focusLabels.join(' · ')
                             : isShared
@@ -1385,7 +1389,7 @@ export default function PublicProfileScreen() {
                 })}
               </View>
             ) : (
-              <Text style={tw`text-sm text-stone-600`}>
+              <Text style={tw`text-sm text-ink-2`}>
                 Paths aren’t listed yet — you can still connect and message.
               </Text>
             )}
@@ -1393,8 +1397,8 @@ export default function PublicProfileScreen() {
         </View>
 
         {/* Tabs */}
-        <View style={tw`px-5 pt-1`}>
-          <View style={tw`flex-row gap-5 border-b border-stone-200/80`}>
+        <View style={tw`px-gutter-wide pt-1`}>
+          <View style={tw`flex-row gap-5 border-b border-line/80`}>
             {(
               [
                 { key: 'posts' as const, label: 'Posts' },
@@ -1404,7 +1408,7 @@ export default function PublicProfileScreen() {
             ).map((tab) => {
               const active = activeTab === tab.key;
               return (
-                <TouchableOpacity
+                <PressableScale
                   key={tab.key}
                   onPress={() => setActiveTab(tab.key)}
                   style={tw`pb-2.5 border-b-2 ${
@@ -1412,13 +1416,13 @@ export default function PublicProfileScreen() {
                   }`}
                 >
                   <Text
-                    style={tw`text-[15px] ${
-                      active ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'
+                    style={tw`text-body ${
+                      active ? 'text-ink font-bold' : 'text-ink-3 font-medium'
                     }`}
                   >
                     {tab.label}
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
               );
             })}
           </View>
@@ -1427,9 +1431,9 @@ export default function PublicProfileScreen() {
         {/* Content */}
         {isBlocked ? (
           <View style={tw`p-6 items-center justify-center`}>
-            <Ionicons name="ban-outline" size={48} color="#A8A29E" />
-            <Text style={tw`text-stone-700 mt-3 text-center font-semibold`}>You have blocked this user</Text>
-            <Text style={tw`text-stone-500 mt-1 text-center`}>
+            <Ionicons name="ban-outline" size={48} color={theme.colors.iconMuted} />
+            <Text style={tw`text-ink-2 mt-3 text-center font-semibold`}>You have blocked this user</Text>
+            <Text style={tw`text-ink-3 mt-1 text-center`}>
               Unblock them to view their posts, stories, and activity again.
             </Text>
           </View>
@@ -1490,25 +1494,25 @@ export default function PublicProfileScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
-                    <TouchableOpacity
+                    <PressableScale
                       key={story.id}
                       style={tw`items-center`}
                       onPress={() => openStoryViewer(story.id)}
                     >
-                      <View style={tw`w-[72px] h-[128px] rounded-xl overflow-hidden mb-2 border-2 border-emerald-500 bg-[#EAE4D6]`}>
+                      <View style={tw`w-[72px] h-[128px] rounded-control overflow-hidden mb-2 border-2 border-emerald-500 bg-raised`}>
                         <Image
                           source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
                           style={tw`w-full h-full`}
                           contentFit="contain"
                         />
                       </View>
-                      <Text style={tw`text-xs text-stone-500`}>
+                      <Text style={tw`text-xs text-ink-3`}>
                         {story.views} views
                       </Text>
-                      <Text style={tw`text-xs text-stone-500 mt-1`}>
+                      <Text style={tw`text-xs text-ink-3 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ))}
                 </View>
               </ScrollView>
@@ -1524,9 +1528,9 @@ export default function PublicProfileScreen() {
           <View style={tw`p-4`}>
             {journalEntries.length > 0 ? (
               journalEntries.map((entry) => (
-                <View key={entry.id} style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-xl p-4 mb-3`}>
+                <View key={entry.id} style={tw`bg-card border border-line/80 rounded-control p-4 mb-3`}>
                   <View style={tw`flex-row items-center justify-between mb-2`}>
-                    <Text style={tw`text-sm font-semibold text-stone-500`}>
+                    <Text style={tw`text-sm font-semibold text-ink-3`}>
                       {new Date(entry.date).toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
@@ -1536,20 +1540,20 @@ export default function PublicProfileScreen() {
                     </Text>
                     <View style={tw`flex-row items-center`}>
                       <Ionicons name="globe" size={16} color="#059669" />
-                      <Text style={tw`text-xs text-stone-500 ml-1`}>Public</Text>
+                      <Text style={tw`text-xs text-ink-3 ml-1`}>Public</Text>
                     </View>
                   </View>
-                  <Text style={tw`text-stone-900 leading-6`}>{entry.content}</Text>
+                  <Text style={tw`text-ink leading-6`}>{entry.content}</Text>
                   {entry.mood && (
                     <View style={tw`mt-2 flex-row items-center`}>
-                      <Ionicons name="happy-outline" size={16} color="#6B645E" />
-                      <Text style={tw`text-xs text-stone-500 ml-1`}>Mood: {entry.mood}</Text>
+                      <Ionicons name="happy-outline" size={16} color={theme.colors.ink3} />
+                      <Text style={tw`text-xs text-ink-3 ml-1`}>Mood: {entry.mood}</Text>
                     </View>
                   )}
                   {entry.tags && entry.tags.length > 0 && (
                     <View style={tw`flex-row flex-wrap mt-2`}>
                       {entry.tags.map((tag, index) => (
-                        <View key={index} style={tw`bg-[#ECFDF5] border border-emerald-200/80 px-2 py-1 rounded-full mr-2 mb-1`}>
+                        <View key={index} style={tw`bg-emerald-50 border border-emerald-200/80 px-2 py-1 rounded-chip mr-2 mb-1`}>
                           <Text style={tw`text-xs text-emerald-800`}>{tag}</Text>
                         </View>
                       ))}
@@ -1579,40 +1583,44 @@ export default function PublicProfileScreen() {
             style={tw`absolute inset-0 bg-black/35`}
             onPress={() => setShowOptionsMenu(false)}
           />
-          <View style={tw`bg-[#FFFcf7] px-4 pt-3 pb-6 rounded-t-3xl`}>
-            <View style={tw`w-12 h-1.5 bg-[#EAE4D6] rounded-full self-center mb-4`} />
+          <View style={tw`bg-card px-4 pt-3 pb-6 rounded-t-sheet`}>
+            <View style={tw`w-12 h-1.5 bg-raised rounded-full self-center mb-4`} />
 
             {!isOwnProfile ? (
               <>
-                <Pressable
-                  style={tw`py-4 border-b border-[#EAE4D6]`}
+                <PressableScale
+                  accessibilityRole="button"
+                  style={tw`py-4 border-b border-line`}
                   onPress={() => void handleBlockMenuPress()}
                 >
-                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-stone-900' : 'text-red-600'}`}>
+                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-ink' : 'text-red-600'}`}>
                     {isBlocked ? 'Unblock User' : 'Block User'}
                   </Text>
-                </Pressable>
+                </PressableScale>
 
-                <Pressable
-                  style={tw`py-4 border-b border-[#EAE4D6]`}
+                <PressableScale
+                  accessibilityRole="button"
+                  style={tw`py-4 border-b border-line`}
                   onPress={handleReportMenuPress}
                 >
-                  <Text style={tw`text-base font-semibold text-stone-900`}>Report User</Text>
-                </Pressable>
+                  <Text style={tw`text-base font-semibold text-ink`}>Report User</Text>
+                </PressableScale>
 
-                <Pressable
-                  style={tw`py-4 border-b border-[#EAE4D6]`}
+                <PressableScale
+                  accessibilityRole="button"
+                  style={tw`py-4 border-b border-line`}
                   onPress={handleMuteMenuPress}
                 >
-                  <Text style={tw`text-base font-semibold text-stone-900`}>
+                  <Text style={tw`text-base font-semibold text-ink`}>
                     {isMuted ? 'Unmute User' : 'Mute User'}
                   </Text>
-                </Pressable>
+                </PressableScale>
               </>
             ) : null}
 
-            <Pressable
-              style={tw`py-4 border-b border-[#EAE4D6]`}
+            <PressableScale
+              accessibilityRole="button"
+              style={tw`py-4 border-b border-line`}
               onPress={() => {
                 setShowOptionsMenu(false);
                 if (!profileUser) return;
@@ -1629,15 +1637,16 @@ export default function PublicProfileScreen() {
                 });
               }}
             >
-              <Text style={tw`text-base font-semibold text-stone-900`}>Share profile card</Text>
-            </Pressable>
+              <Text style={tw`text-base font-semibold text-ink`}>Share profile card</Text>
+            </PressableScale>
 
-            <Pressable
+            <PressableScale
+              accessibilityRole="button"
               style={tw`py-4 mt-2`}
               onPress={() => setShowOptionsMenu(false)}
             >
-              <Text style={tw`text-base font-semibold text-center text-stone-500`}>Cancel</Text>
-            </Pressable>
+              <Text style={tw`text-base font-semibold text-center text-ink-3`}>Cancel</Text>
+            </PressableScale>
           </View>
         </View>
       </Modal>

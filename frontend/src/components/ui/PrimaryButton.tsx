@@ -11,7 +11,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { usePressFeedback } from '../../hooks/usePressFeedback';
 import type { FeedbackKind } from '../../utils/interactionFeedback';
 
@@ -63,8 +63,8 @@ function PrimaryButton({
         ? tw`bg-transparent border border-stone-300`
         : tw`bg-brand-600`;
   const labelVariant =
-    variant === 'soft' ? tw`text-brand-700` : variant === 'ghost' ? tw`text-stone-700` : tw`text-white`;
-  const iconColor = variant === 'solid' ? '#FFFFFF' : '#57534E';
+    variant === 'soft' ? tw`text-brand-700` : variant === 'ghost' ? tw`text-ink-2` : tw`text-white`;
+  const iconColor = variant === 'solid' ? '#FFFFFF' : theme.colors.ink2;
 
   // Label stays in layout (opacity only) so the button never changes width while loading.
   const phase: 'label' | 'loading' | 'success' = success ? 'success' : loading ? 'loading' : 'label';
@@ -108,7 +108,7 @@ function PrimaryButton({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: isDisabled, busy: !!loading }}
       style={[
-        tw`px-4 py-3.5 rounded-2xl items-center justify-center min-h-[50px]`,
+        tw`px-4 py-3.5 rounded-card items-center justify-center min-h-[50px]`,
         baseVariant,
         !!disabled && !loading && !success && tw`opacity-50`,
         style,
@@ -116,7 +116,7 @@ function PrimaryButton({
     >
       <Animated.View style={feedback.animatedStyle}>
         <Animated.View style={{ opacity: labelOpacity }}>
-          <Text style={[tw`font-semibold text-base text-center`, labelVariant]}>{label}</Text>
+          <Text style={[tw`text-callout font-semibold text-center`, labelVariant]}>{label}</Text>
         </Animated.View>
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, tw`items-center justify-center`]}>
           <Animated.View style={{ opacity: spinnerOpacity }}>

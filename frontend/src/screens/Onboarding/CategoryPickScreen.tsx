@@ -105,13 +105,13 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
 
   return (
     <Screen background="page" edges={['top', 'bottom']}>
-      <View style={tw`px-5 pt-4 pb-6 flex-1 max-w-md w-full self-center`}>
+      <View style={tw`px-gutter-wide pt-4 pb-6 flex-1 max-w-md w-full self-center`}>
         <Animated.View style={[tw`mb-4`, groupStyle(groups[0])]}>
-          <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
             Grow!
           </Text>
-          <Text style={tw`text-3xl font-bold text-stone-900 mt-1.5`}>Choose your paths</Text>
-          <Text style={tw`text-stone-500 text-base leading-6 mt-2`}>
+          <Text style={tw`text-3xl font-bold text-ink mt-1.5`}>Choose your paths</Text>
+          <Text style={tw`text-ink-3 text-base leading-6 mt-2`}>
             Pick up to 3 growth areas (multiple focuses per area). This shapes your feed, shop ranking, and who can endorse you.
           </Text>
         </Animated.View>
