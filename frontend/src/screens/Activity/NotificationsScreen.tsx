@@ -244,7 +244,7 @@ export default function NotificationsScreen() {
       if (SHOW_SEEDS && item.ref_type === 'growth_seed' && item.ref_id) {
         navigateFromRoot(navigation, 'SeedDetail', { seedId: item.ref_id });
       } else if (item.actor?.id) {
-        navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
+        navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id, preview: { username: item.actor.username, avatarUrl: item.actor.avatar } });
       }
       return;
     }
@@ -256,7 +256,7 @@ export default function NotificationsScreen() {
 
     if (item.ref_type === 'growth_group' && item.ref_id) {
       if (SHOW_CIRCLES) navigateFromRoot(navigation, 'CircleDetail', { groupId: item.ref_id });
-      else if (item.actor?.id) navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
+      else if (item.actor?.id) navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id, preview: { username: item.actor.username, avatarUrl: item.actor.avatar } });
       return;
     }
 
@@ -297,18 +297,18 @@ export default function NotificationsScreen() {
     }
 
     if (item.ref_type === 'user' && item.ref_id) {
-      navigateFromRoot(navigation, 'PublicProfile', { userId: item.ref_id });
+      navigateFromRoot(navigation, 'PublicProfile', { userId: item.ref_id, preview: item.actor?.id === item.ref_id ? { username: item.actor.username, avatarUrl: item.actor.avatar } : undefined });
       return;
     }
     if (item.actor?.id) {
-      navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
+      navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id, preview: { username: item.actor.username, avatarUrl: item.actor.avatar } });
     }
   };
 
   const openActorProfile = (item: ActivityNotification) => {
     feedback.open();
     if (item.actor?.id) {
-      navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id });
+      navigateFromRoot(navigation, 'PublicProfile', { userId: item.actor.id, preview: { username: item.actor.username, avatarUrl: item.actor.avatar } });
     }
   };
 

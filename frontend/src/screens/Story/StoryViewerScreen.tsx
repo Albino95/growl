@@ -345,7 +345,7 @@ export default function StoryViewerScreen() {
     markShownViewed();
     navigation.goBack();
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: currentStory.userId }));
+    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: currentStory.userId, preview: { username: currentStory.username, avatarUrl: currentStory.avatar } }));
   };
 
   if (!currentStory) {

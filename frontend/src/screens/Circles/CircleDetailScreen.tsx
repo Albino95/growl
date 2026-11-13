@@ -329,7 +329,7 @@ export default function CircleDetailScreen() {
                 return (
                   <PressableScale
                     key={m.user_id}
-                    onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: m.user_id })}
+                    onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: m.user_id, preview: { username: m.username, avatarUrl: m.avatar } })}
                     feedback="open"
                     style={tw`mr-3 items-center w-[64px]`}
                   >

@@ -69,6 +69,7 @@ import { useActivationStore } from '../../state/useActivationStore';
 import { getJournalEntries } from '../../services/api/journal';
 import { localDateKey } from '../../components/journal/journalMeta';
 import FeedPostCard, { type FeedCardPost } from './components/FeedPostCard';
+import type { ProfilePreview } from '../../app/navigation/RootNavigator';
 import { useStableCallback } from '../../hooks/useStableCallback';
 
 type Story = {
@@ -703,9 +704,9 @@ export default function FeedScreen({ navigation, route }: any) {
 
   // Stable, id-keyed handlers for the memoized FeedPostCard. useStableCallback always
   // calls the latest closure, so behaviour matches the previous inline handlers.
-  const onCardOpenProfile = useStableCallback((userId: string) => {
+  const onCardOpenProfile = useStableCallback((userId: string, preview?: ProfilePreview) => {
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.navigate('PublicProfile' as never, { userId } as never);
+    rootNavigation.navigate('PublicProfile' as never, { userId, preview } as never);
   });
   const onCardOpenMenu = useStableCallback((post: Post) => {
     feedback.open();
@@ -1014,9 +1015,9 @@ export default function FeedScreen({ navigation, route }: any) {
             const root = navigation.getParent() || navigation;
             root.navigate('Instructors' as never);
           }}
-          onOpenProfile={(userId) => {
+          onOpenProfile={(userId, preview) => {
             const root = navigation.getParent() || navigation;
-            root.navigate('PublicProfile' as never, { userId } as never);
+            root.navigate('PublicProfile' as never, { userId, preview } as never);
           }}
           onMessage={(person) => {
             void (async () => {
@@ -1199,9 +1200,9 @@ export default function FeedScreen({ navigation, route }: any) {
                 onJournal={openTodayJournal}
                 onClearFilter={() => setSelectedCategory(null)}
                 onChoosePaths={() => navigation.navigate('Profile')}
-                onOpenProfile={(userId) => {
+                onOpenProfile={(userId, preview) => {
                   const root = navigation.getParent() || navigation;
-                  root.navigate('PublicProfile' as never, { userId } as never);
+                  root.navigate('PublicProfile' as never, { userId, preview } as never);
                 }}
                 onInstructors={() => {
                   const root = navigation.getParent() || navigation;

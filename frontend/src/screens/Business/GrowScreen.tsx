@@ -228,8 +228,11 @@ export default function GrowScreen() {
     }
   }, [dispatch, mainSegment, communityTab, loadPosts]);
 
-  const openInstructorProfile = (instructorId: string) => {
-    navigateFromRoot(navigation, 'PublicProfile', { userId: instructorId });
+  const openInstructorProfile = (
+    instructorId: string,
+    preview?: { username?: string; displayName?: string; avatarUrl?: string | null }
+  ) => {
+    navigateFromRoot(navigation, 'PublicProfile', { userId: instructorId, preview });
   };
 
   const handleRequestAction = async (requestId: string, status: 'declined') => {
@@ -590,7 +593,7 @@ export default function GrowScreen() {
                     key={instructor.id}
                     style={tw`flex-row items-center py-3.5 border-b border-stone-200/80`}
                   >
-                    <TouchableOpacity onPress={() => openInstructorProfile(instructor.id)}>
+                    <TouchableOpacity onPress={() => openInstructorProfile(instructor.id, { username: instructor.username, avatarUrl: instructor.avatar })}>
                       <PartnerAvatar
                         id={instructor.id}
                         name={instructor.username}
@@ -598,7 +601,7 @@ export default function GrowScreen() {
                       />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => openInstructorProfile(instructor.id)}
+                      onPress={() => openInstructorProfile(instructor.id, { username: instructor.username, avatarUrl: instructor.avatar })}
                       style={tw`flex-1 ml-3 pr-2`}
                     >
                       <Text style={tw`font-semibold text-stone-900`} numberOfLines={1}>
@@ -1182,7 +1185,7 @@ export default function GrowScreen() {
                   </View>
                   <TouchableOpacity
                     style={tw`py-3 items-center`}
-                    onPress={() => openInstructorProfile(selectedPartner.instructor_id)}
+                    onPress={() => openInstructorProfile(selectedPartner.instructor_id, { displayName: selectedPartner.instructor_name, avatarUrl: selectedPartner.instructor_avatar })}
                   >
                     <Text style={tw`font-semibold text-emerald-700`}>View profile</Text>
                   </TouchableOpacity>

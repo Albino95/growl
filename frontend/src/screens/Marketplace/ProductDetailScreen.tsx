@@ -13,7 +13,7 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../app/navigation/RootNavigator';
 import tw from '../../lib/tw';
-import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import Skeleton from '../../components/ui/Skeleton';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
 import { resolveProductImageUri, resolveAvatarUri, avatarSource } from '../../utils/images';
@@ -28,6 +28,13 @@ const { width } = Dimensions.get('window');
 type ProductDetailRouteParams = {
   ProductDetail: {
     productId: string;
+    preview?: {
+      title?: string;
+      imageUrl?: string | null;
+      price?: number;
+      currency?: string;
+      sellerName?: string;
+    };
   };
 };
 
@@ -36,7 +43,7 @@ type ProductDetailRouteProp = RouteProp<ProductDetailRouteParams, 'ProductDetail
 export default function ProductDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<ProductDetailRouteProp>();
-  const { productId } = route.params;
+  const { productId, preview } = route.params;
   const { user } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -62,14 +69,20 @@ export default function ProductDetailScreen() {
       const response = await getProduct(productId);
       if (response.success && response.data) {
         setProduct(response.data);
-        const catalog = await getProducts({});
-        if (catalog.success && Array.isArray(catalog.data?.products)) {
-          const ranked = rankMarketplaceProducts(catalog.data.products, user?.categories || [], {
-            userPoints: user?.points,
-          });
-          setRelatedProducts(
-            ranked.filter((p) => p.id !== productId).slice(0, 6)
-          );
+        // Show the product now; related items fill in when the catalog lands.
+        setLoading(false);
+        try {
+          const catalog = await getProducts({});
+          if (catalog.success && Array.isArray(catalog.data?.products)) {
+            const ranked = rankMarketplaceProducts(catalog.data.products, user?.categories || [], {
+              userPoints: user?.points,
+            });
+            setRelatedProducts(
+              ranked.filter((p) => p.id !== productId).slice(0, 6)
+            );
+          }
+        } catch {
+          // Related items are optional; never bounce the user off a loaded product.
         }
       } else {
         void alertMessage('Error', 'Failed to load product');
@@ -114,9 +127,66 @@ export default function ProductDetailScreen() {
   };
 
   if (loading) {
+    // First load: same geometry as the loaded page. Whatever the tap site already
+    // knew (route `preview`: image, title, price, seller) renders for real right away;
+    // the rest is skeleton until the product lands.
+    const previewImage = preview?.imageUrl ? resolveProductImageUri(preview.imageUrl) : '';
     return (
-      <SafeAreaView style={tw`flex-1 bg-surface-page`}>
-        <BrandLoadingScreen variant="page" message="Loading product…" manageStatusBar={false} />
+      <SafeAreaView
+        style={tw`flex-1 bg-surface-page`}
+        edges={['top']}
+        accessibilityLabel="Loading product"
+        accessibilityState={{ busy: true }}
+      >
+        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200/80 bg-surface-card`}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={24} color="#1C1917" />
+          </TouchableOpacity>
+          <Text style={tw`text-lg font-semibold text-stone-900`}>Product</Text>
+          <Ionicons name="heart-outline" size={24} color="#1C1917" />
+        </View>
+        <View style={tw`bg-surface-subtle`}>
+          {previewImage ? (
+            <GrowImage source={{ uri: previewImage }} style={{ width, height: 384 }} contentFit="cover" />
+          ) : (
+            <Skeleton style={{ width, height: 384 }} />
+          )}
+        </View>
+        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-surface-card border border-stone-200/80 rounded-2xl`}>
+          <View style={tw`flex-row items-center mb-4`}>
+            <Skeleton style={tw`w-8 h-8 rounded-full mr-2`} />
+            {preview?.sellerName ? (
+              <Text style={tw`text-sm text-stone-600`}>Sold by {preview.sellerName}</Text>
+            ) : (
+              <Skeleton style={tw`h-3.5 w-28 rounded`} />
+            )}
+          </View>
+          {preview?.title ? (
+            <Text style={tw`text-2xl font-bold text-stone-900 mb-2`}>{preview.title}</Text>
+          ) : (
+            <Skeleton style={tw`h-7 w-3/4 rounded-lg mb-2`} />
+          )}
+          <View style={tw`flex-row items-center mb-4`}>
+            {typeof preview?.price === 'number' ? (
+              <Text style={tw`text-3xl font-bold text-brand-700`}>${preview.price.toFixed(2)}</Text>
+            ) : (
+              <Skeleton style={tw`h-9 w-28 rounded-lg`} />
+            )}
+          </View>
+          <Skeleton style={tw`h-5 w-28 rounded mb-3`} />
+          <Skeleton style={tw`h-3.5 w-full rounded mb-2`} />
+          <Skeleton style={tw`h-3.5 w-full rounded mb-2`} />
+          <Skeleton style={tw`h-3.5 w-2/3 rounded mb-6`} />
+          <View style={tw`flex-row mb-6`}>
+            <Skeleton style={tw`h-7 w-20 rounded-full mr-2`} />
+            <Skeleton style={tw`h-7 w-24 rounded-full`} />
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
@@ -338,7 +408,7 @@ export default function ProductDetailScreen() {
                       onPress={() =>
                         (navigation as { navigate: (a: string, b: object) => void }).navigate(
                           'ProductDetail',
-                          { productId: item.id }
+                          { productId: item.id, preview: { title: item.name, imageUrl: thumb, price: item.price, sellerName: item.business?.username } }
                         )
                       }
                       style={tw`w-36 mr-3 bg-surface-card border border-stone-200/80 rounded-2xl overflow-hidden`}

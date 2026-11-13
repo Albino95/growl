@@ -381,8 +381,8 @@ export default function InstructorScreen({ navigation }: any) {
     });
   };
 
-  const openProfile = (userId: string) => {
-    navigateFromRoot(navigation, 'PublicProfile', { userId });
+  const openProfile = (userId: string, preview?: { username?: string; avatarUrl?: string | null }) => {
+    navigateFromRoot(navigation, 'PublicProfile', { userId, preview });
   };
 
   const openMessages = (targetUserId?: string) => {
@@ -450,7 +450,7 @@ export default function InstructorScreen({ navigation }: any) {
 
   const messageEndorser = async (person: InstructorEndorser) => {
     if (!person.is_friend) {
-      openProfile(person.id);
+      openProfile(person.id, { username: person.username, avatarUrl: person.avatar });
       return;
     }
     setBusyId(person.id);
@@ -634,7 +634,7 @@ export default function InstructorScreen({ navigation }: any) {
                               idx < suggestions.length - 1 ? 'border-b border-stone-200/80' : ''
                             }`}
                           >
-                            <TouchableOpacity onPress={() => openProfile(person.id)}>
+                            <TouchableOpacity onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
                               <AvatarBubble avatar={person.avatar} name={person.username} />
                             </TouchableOpacity>
                             <View style={tw`flex-1 ml-3 pr-2`}>
@@ -1114,12 +1114,12 @@ export default function InstructorScreen({ navigation }: any) {
                       key={`learner-${person.id}`}
                       style={tw`flex-row items-center py-3 border-b border-stone-200/80`}
                     >
-                      <TouchableOpacity onPress={() => openProfile(person.id)}>
+                      <TouchableOpacity onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
                         <AvatarBubble avatar={person.avatar} name={person.username} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={0.7}
-                        onPress={() => openProfile(person.id)}
+                        onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}
                         style={tw`flex-1 ml-3 pr-2`}
                       >
                         <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>
@@ -1160,12 +1160,12 @@ export default function InstructorScreen({ navigation }: any) {
                       i < hub.endorsers.length - 1 ? 'border-b border-stone-200/80' : ''
                     }`}
                   >
-                    <TouchableOpacity onPress={() => openProfile(person.id)}>
+                    <TouchableOpacity onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}>
                       <AvatarBubble avatar={person.avatar} name={person.username} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => openProfile(person.id)}
+                      onPress={() => openProfile(person.id, { username: person.username, avatarUrl: person.avatar })}
                       style={tw`flex-1 ml-3 pr-2`}
                     >
                       <Text style={tw`font-semibold text-stone-900`}>{person.username}</Text>

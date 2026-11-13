@@ -14,12 +14,13 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import { horizontalScrollProps } from '../../constants/scroll';
 import { feedback } from '../../utils/interactionFeedback';
 import { SkeletonList } from '../ui/SkeletonCard';
+import type { ProfilePreview } from '../../app/navigation/RootNavigator';
 
 type Props = {
   category?: string | null;
   forPaths?: boolean;
   title?: string;
-  onOpenProfile: (userId: string) => void;
+  onOpenProfile: (userId: string, preview?: ProfilePreview) => void;
   onMessage?: (person: DiscoverInstructor) => void;
   onSeeAll?: () => void;
 };
@@ -90,7 +91,7 @@ export default function InstructorDiscoveryStrip({
                 key={person.id}
                 onPress={() => {
                   feedback.open();
-                  onOpenProfile(person.id);
+                  onOpenProfile(person.id, { username: person.username, avatarUrl: person.avatar });
                 }}
                 style={tw`w-[168px] bg-[#FFFcf7] border border-stone-200/80 rounded-2xl px-3.5 py-3`}
               >

@@ -350,7 +350,7 @@ export default function MarketplaceScreen() {
                             const rootNavigation = navigation.getParent() || navigation;
                             (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
                               'ProductDetail',
-                              { productId: item.id }
+                              { productId: item.id, preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username } }
                             );
                           }}
                         >
@@ -413,6 +413,7 @@ export default function MarketplaceScreen() {
                   const rootNavigation = navigation.getParent() || navigation;
                   (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
                     productId: item.id,
+                    preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username },
                   });
                 }}
               >

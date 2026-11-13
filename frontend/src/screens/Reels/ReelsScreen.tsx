@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navig
 import { getForYouFeed, getFeedPosts, getFeedPost, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { isVideoMedia } from '../../services/api/media';
 import { resolvePostMediaUri } from '../../utils/images';
+import { cacheRemoteClip } from '../../utils/cacheRemoteClip';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import { isReelPost } from '../../utils/reelNavigation';
 import { reelPlaybackSettingsFromMetadata } from '../../utils/reelMedia';
@@ -138,6 +139,20 @@ function ReelsEmptyState({ onCreate }: { onCreate: () => void }) {
       </TouchableOpacity>
     </View>
   );
+}
+
+
+/** Playable URI + whether the reel is a clip (vs. a photo reel). */
+function reelMedia(item: ReelRow): { uri: string; isVideo: boolean } {
+  const uri = resolvePostMediaUri(item.image_url ?? '', item.category, item.id);
+  const mt = typeof item.metadata?.media_type === 'string' ? item.metadata.media_type : undefined;
+  const ct =
+    typeof item.metadata?.content_type === 'string' ? item.metadata.content_type : undefined;
+  if (mt === 'image') return { uri, isVideo: false };
+  if (mt === 'video') return { uri, isVideo: true };
+  if (isVideoMedia({ uri, mediaType: mt, contentType: ct })) return { uri, isVideo: true };
+  // Legacy video reels often have video_edit but no media_type
+  return { uri, isVideo: !!item.metadata?.video_edit };
 }
 
 export default function ReelsScreen() {
@@ -483,24 +498,58 @@ export default function ReelsScreen() {
     }
   };
 
-  const renderReel = ({ item }: { item: ReelRow }) => {
+  const activeIndex = useMemo(
+    () => (activeId ? items.findIndex((r) => r.id === activeId) : -1),
+    [items, activeId]
+  );
+
+  // Warm the next few clips (and the previous one) so a swipe never waits on the
+  // network: video files land in the disk cache NativeClipPlayer reads from,
+  // photo reels go through expo-image's cache. Sequential so the active clip
+  // keeps the bandwidth; disk only, nothing held in JS memory.
+  const prefetchKey = useMemo(() => {
+    if (activeIndex < 0) return '';
+    return [activeIndex, activeIndex + 1, activeIndex + 2, activeIndex + 3, activeIndex - 1]
+      .filter((i) => i >= 0 && i < items.length)
+      .map((i) => {
+        const media = reelMedia(items[i]);
+        return `${media.isVideo ? 'v' : 'i'}|${media.uri}`;
+      })
+      .join('\n');
+  }, [activeIndex, items]);
+
+  useEffect(() => {
+    if (!prefetchKey) return;
+    let cancelled = false;
+    void (async () => {
+      for (const entry of prefetchKey.split('\n')) {
+        if (cancelled) return;
+        const media = { isVideo: entry.startsWith('v|'), uri: entry.slice(2) };
+        if (!media.uri) continue;
+        if (!media.isVideo) {
+          void Image.prefetch(media.uri, 'memory-disk').catch(() => undefined);
+          continue;
+        }
+        if (Platform.OS === 'web') continue;
+        await cacheRemoteClip(media.uri).catch(() => '');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefetchKey]);
+
+  const renderReel = ({ item, index }: { item: ReelRow; index: number }) => {
     const username = item.metadata?.username || 'Member';
-    const uri = resolvePostMediaUri(item.image_url ?? '', item.category, item.id);
+    const { uri, isVideo } = reelMedia(item);
     const likes = item.metadata?.likes ?? 0;
     const comments = item.metadata?.comments ?? 0;
-    const isVideo = (() => {
-      const mt =
-        typeof item.metadata?.media_type === 'string' ? item.metadata.media_type : undefined;
-      const ct =
-        typeof item.metadata?.content_type === 'string' ? item.metadata.content_type : undefined;
-      if (mt === 'image') return false;
-      if (mt === 'video') return true;
-      if (isVideoMedia({ uri, mediaType: mt, contentType: ct })) return true;
-      // Legacy video reels often have video_edit but no media_type
-      if (mt !== 'image' && item.metadata?.video_edit) return true;
-      return false;
-    })();
     const isActive = activeId === item.id;
+    // Player tiers: active plays, index ±1 holds a paused/muted decoded player
+    // (first frame ready before the swipe lands), everything further out has
+    // no player at all. Max 3 live players at any time.
+    const isNeighbour = !isActive && activeIndex >= 0 && Math.abs(index - activeIndex) === 1;
+    const mountPlayer = sessionStarted && (isActive || isNeighbour);
     const isUserPaused = userPausedIds.has(item.id);
     const shouldPlay = isActive && sessionStarted && !isUserPaused && !commentsPost;
     const videoEdit = reelPlaybackSettingsFromMetadata(item.metadata);
@@ -517,17 +566,18 @@ export default function ReelsScreen() {
         <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => handleReelPress(item.id)}>
             {isVideo ? (
-              isActive && sessionStarted && !commentsPost ? (
+              mountPlayer ? (
                 <ReelVideoPlayer
                   uri={uri}
                   settings={videoEdit}
                   shouldPlay={shouldPlay}
+                  preload={!isActive}
                   contentFit="cover"
                   style={StyleSheet.absoluteFillObject}
                 />
               ) : (
                 <View style={[StyleSheet.absoluteFillObject, tw`bg-black items-center justify-center`]}>
-                  <Ionicons name="play" size={44} color="#FFFFFF" />
+                  {isActive ? <Ionicons name="play" size={44} color="#FFFFFF" /> : null}
                 </View>
               )
             ) : (
@@ -562,8 +612,16 @@ export default function ReelsScreen() {
                 style={tw`flex-row items-center mb-3`}
                 onPress={() => {
                   const root = navigation.getParent?.() || navigation;
+                  const displayName = (item.metadata as Record<string, unknown> | undefined)
+                    ?.display_name;
                   (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', {
                     userId: item.user_id,
+                    // Lets PublicProfile paint the header instantly while it fetches.
+                    preview: {
+                      username: item.metadata?.username,
+                      displayName: typeof displayName === 'string' ? displayName : undefined,
+                      avatarUrl: item.metadata?.avatar ?? null,
+                    },
                   });
                 }}
               >
@@ -664,9 +722,13 @@ export default function ReelsScreen() {
         renderItem={renderReel}
         extraData={`${pageH}:${activeId}:${sessionStarted ? '1' : '0'}`}
         keyExtractor={(item) => item.id}
-        initialNumToRender={1}
-        maxToRenderPerBatch={1}
-        windowSize={1}
+        // One page above + current + one below stays mounted so neighbours are
+        // decoded before the swipe lands. Players beyond ±1 never mount
+        // (see renderReel). Clipping stays off: detaching VideoViews mid-swipe
+        // is what causes the black flash on Android.
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={3}
         removeClippedSubviews={false}
         pagingEnabled
         showsVerticalScrollIndicator={false}

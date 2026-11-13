@@ -8,6 +8,7 @@ import FeedLikeButton, { type FeedReaction } from '../../../components/feed/Feed
 import PressableScale from '../../../components/ui/PressableScale';
 import GrowAvatar from '../../../components/ui/GrowAvatar';
 import type { VideoEditSettings } from '../../../components/ui/VideoEditor';
+import type { ProfilePreview } from '../../../app/navigation/RootNavigator';
 
 export type FeedCardPost = {
   id: string;
@@ -47,7 +48,7 @@ export type FeedPostCardProps = {
   heartBurstKey: number;
   isAudioPlaying: boolean;
   // Handlers must be referentially stable (they receive the post / id) so memo holds.
-  onOpenProfile: (userId: string) => void;
+  onOpenProfile: (userId: string, preview?: ProfilePreview) => void;
   onOpenMenu: (post: FeedCardPost) => void;
   onMediaPress: (post: FeedCardPost) => void;
   onMediaError: (postId: string) => void;
@@ -91,7 +92,7 @@ function FeedPostCard({
       <View style={tw`flex-row items-center justify-between px-4 py-3`}>
         <TouchableOpacity
           style={tw`flex-row items-center flex-1`}
-          onPress={() => onOpenProfile(item.userId)}
+          onPress={() => onOpenProfile(item.userId, { username: item.username, avatarUrl: item.avatar })}
         >
           <GrowAvatar
             userId={item.userId}
@@ -237,7 +238,7 @@ function FeedPostCard({
         {/* Caption */}
         <View style={tw`mb-2 flex-row flex-wrap`}>
           <TouchableOpacity
-            onPress={() => onOpenProfile(item.userId)}
+            onPress={() => onOpenProfile(item.userId, { username: item.username, avatarUrl: item.avatar })}
           >
             <Text style={tw`font-bold text-stone-900 text-base`}>{item.username}</Text>
           </TouchableOpacity>

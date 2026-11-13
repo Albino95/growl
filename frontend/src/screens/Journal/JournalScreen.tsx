@@ -363,10 +363,10 @@ export default function JournalScreen() {
     [entries]
   );
 
-  const openProfile = (userId: string) => {
+  const openProfile = (userId: string, preview?: { username?: string; avatarUrl?: string | null }) => {
     feedback.open();
     const root = navigation.getParent?.() || navigation;
-    (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId });
+    (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId, preview });
   };
 
   const messageAboutEntry = async (
@@ -588,7 +588,7 @@ export default function JournalScreen() {
             renderItem={({ item }) => (
               <CircleJournalCard
                 entry={item}
-                onOpenProfile={openProfile}
+                onOpenProfile={(id) => openProfile(id, { username: item.username, avatarUrl: item.avatar })}
                 onMessage={(e) => void messageAboutEntry(e)}
                 onReplyToLine={(e) => {
                   feedback.open();

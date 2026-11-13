@@ -107,6 +107,7 @@ type PublicUser = PublicProfileSummary;
 type RouteParams = {
   PublicProfile: {
     userId: string;
+    preview?: { username?: string; displayName?: string; avatarUrl?: string | null };
   };
 };
 
@@ -172,7 +173,7 @@ export default function PublicProfileScreen() {
   const { user: currentUser, updateUser } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PublicProfile'>>();
-  const { userId } = route.params;
+  const { userId, preview } = route.params;
   
   const [loading, setLoading] = useState(true);
   const [profileUser, setProfileUser] = useState<PublicUser | null>(null);
@@ -739,6 +740,14 @@ export default function PublicProfileScreen() {
     return (
       <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
         <ProfileHeaderSkeleton
+          preview={
+            preview && (preview.username || preview.displayName)
+              ? {
+                  name: (preview.username || preview.displayName)!,
+                  avatarUri: resolveAvatarUri(userId, preview.username, preview.avatarUrl),
+                }
+              : null
+          }
           onBack={
             <TouchableOpacity
               onPress={() => navigation.goBack()}

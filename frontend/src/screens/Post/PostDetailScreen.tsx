@@ -213,7 +213,7 @@ export default function PostDetailScreen() {
 
   const navigateToProfile = () => {
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: post.userId }));
+    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: post.userId, preview: { username: post.username, avatarUrl: post.avatar } }));
   };
 
   return (

@@ -164,7 +164,7 @@ export default function InstructorsScreen() {
           return (
             <FadeInUp delay={Math.min(index * 40, 160)}>
               <PressableScale
-                onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: item.id })}
+                onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: item.id, preview: { username: item.username, avatarUrl: item.avatar } })}
                 style={tw`mb-3 px-4 py-4 rounded-3xl bg-[#FFFcf7] border border-stone-200/80`}
               >
                 <View style={tw`flex-row items-center`}>

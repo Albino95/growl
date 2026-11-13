@@ -30,6 +30,17 @@ type PostDetailParam = {
   daysUntilDecay?: number;
 };
 
+/** Profile data already in hand at a tap site; PublicProfile renders it instantly while loading. */
+export type ProfilePreview = { username?: string; displayName?: string; avatarUrl?: string | null };
+/** Product data already in hand at a tap site; ProductDetail renders it instantly while loading. */
+export type ProductPreview = {
+  title?: string;
+  imageUrl?: string | null;
+  price?: number;
+  currency?: string;
+  sellerName?: string;
+};
+
 export type RootStackParamList = {
   Auth: undefined;
   Categories: undefined;
@@ -53,9 +64,17 @@ export type RootStackParamList = {
         mode?: 'home' | 'explore';
       }
     | undefined;
-  PublicProfile: { userId: string };
+  PublicProfile: {
+    userId: string;
+    /** Data already in hand at the tap site, rendered instantly while the profile loads. */
+    preview?: ProfilePreview;
+  };
   PostDetail: { post: PostDetailParam };
-  ProductDetail: { productId: string };
+  ProductDetail: {
+    productId: string;
+    /** Data already in hand at the tap site, rendered instantly while the product loads. */
+    preview?: ProductPreview;
+  };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
   OrderConfirmation: {

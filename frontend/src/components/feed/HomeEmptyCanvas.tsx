@@ -8,6 +8,7 @@ import GrowAvatar from '../ui/GrowAvatar';
 import { listFriends, type FriendSummary } from '../../services/api/friends';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { horizontalScrollProps } from '../../constants/scroll';
+import type { ProfilePreview } from '../../app/navigation/RootNavigator';
 
 type Props = {
   filtered: boolean;
@@ -18,7 +19,7 @@ type Props = {
   onJournal: () => void;
   onClearFilter?: () => void;
   onChoosePaths: () => void;
-  onOpenProfile: (userId: string) => void;
+  onOpenProfile: (userId: string, preview?: ProfilePreview) => void;
   onInstructors: () => void;
 };
 
@@ -159,7 +160,7 @@ export default function HomeEmptyCanvas({
               {people.map((person) => (
                 <PressableScale
                   key={person.id}
-                  onPress={() => onOpenProfile(person.id)}
+                  onPress={() => onOpenProfile(person.id, { username: person.username, avatarUrl: person.avatar })}
                   style={tw`w-[92px] mr-2.5 items-center`}
                 >
                   <GrowAvatar

@@ -367,7 +367,7 @@ export default function CommentsScreen({
                       onPress={() => {
                         if (item.user_id !== user?.id) {
                           const rootNavigation = navigation.getParent() || navigation;
-                          rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: item.user_id }));
+                          rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: item.user_id, preview: { username: item.user?.username, avatarUrl: item.user?.avatar } }));
                         }
                       }}
                     >
@@ -383,7 +383,7 @@ export default function CommentsScreen({
                           onPress={() => {
                             if (item.user_id !== user?.id) {
                               const rootNavigation = navigation.getParent() || navigation;
-                              rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: item.user_id }));
+                              rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: item.user_id, preview: { username: item.user?.username, avatarUrl: item.user?.avatar } }));
                             }
                           }}
                         >

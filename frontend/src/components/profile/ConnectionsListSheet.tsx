@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from '../../lib/tw';
 import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import type { FriendSummary } from '../../services/api/friends';
+import type { ProfilePreview } from '../../app/navigation/RootNavigator';
 import SearchField from '../ui/SearchField';
 
 export type ConnectionsSheetMode = 'following' | 'followers';
@@ -27,7 +28,7 @@ type Props = {
   users: FriendSummary[];
   loading?: boolean;
   onClose: () => void;
-  onSelectUser: (userId: string) => void;
+  onSelectUser: (userId: string, preview?: ProfilePreview) => void;
 };
 
 function accountTypeOf(u: FriendSummary): AccountFilter {
@@ -199,7 +200,7 @@ export default function ConnectionsListSheet({
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <TouchableOpacity
-                onPress={() => onSelectUser(item.id)}
+                onPress={() => onSelectUser(item.id, { username: item.username, avatarUrl: item.avatar })}
                 style={tw`flex-row items-center px-5 py-3.5 border-b border-[#EAE4D6] bg-[#FFFcf7]/active:bg-[#EAE4D6]`}
               >
                 <View

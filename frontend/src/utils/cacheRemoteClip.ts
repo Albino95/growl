@@ -47,11 +47,23 @@ export function clipCacheFileName(uri: string): string {
  * FileSystem first, then play the local file. Web keeps the original URI.
  * Returns '' when the copy fails — callers must not fall back to streaming.
  */
-export async function cacheRemoteClip(uri: string): Promise<string> {
-  const src = (uri || '').trim();
-  if (!src) return '';
-  if (Platform.OS === 'web' || isLocalClipUri(src)) return src;
+/** In-flight downloads keyed by source URL — prefetch and player mount share one copy. */
+const inFlight = new Map<string, Promise<string>>();
 
+export function cacheRemoteClip(uri: string): Promise<string> {
+  const src = (uri || '').trim();
+  if (!src) return Promise.resolve('');
+  if (Platform.OS === 'web' || isLocalClipUri(src)) return Promise.resolve(src);
+  const pending = inFlight.get(src);
+  if (pending) return pending;
+  const job = downloadClip(src).finally(() => {
+    inFlight.delete(src);
+  });
+  inFlight.set(src, job);
+  return job;
+}
+
+async function downloadClip(src: string): Promise<string> {
   try {
     const FileSystem = await import('expo-file-system/legacy');
     const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;

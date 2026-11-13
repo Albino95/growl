@@ -68,6 +68,7 @@ import GrowAvatar from '../../components/ui/GrowAvatar';
 import MessagesInboxButton from '../../components/navigation/MessagesInboxButton';
 import { alertMessage } from '../../utils/confirmDialog';
 import ChallengesStrip from '../../components/challenges/ChallengesStrip';
+import type { ProfilePreview } from '../../app/navigation/RootNavigator';
 
 function SectionTitle({
   title,
@@ -427,15 +428,15 @@ export default function ExploreScreen() {
     });
   }, [searchHits, accountRole]);
 
-  const openProfile = (userId: string) => {
+  const openProfile = (userId: string, preview?: ProfilePreview) => {
     const root = navigation.getParent?.() || navigation;
-    (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId });
+    (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId, preview });
   };
 
   const openStoryViewer = (person: DiscoverPerson) => {
     const g = storyGroups.find((x) => x.userId === person.userId);
     if (!g?.stories?.length) {
-      openProfile(person.userId);
+      openProfile(person.userId, { username: person.username, avatarUrl: person.avatar });
       return;
     }
     const root = navigation.getParent?.() || navigation;
@@ -585,7 +586,7 @@ export default function ExploreScreen() {
       >
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => openProfile(hit.id)}
+          onPress={() => openProfile(hit.id, { username: hit.username, avatarUrl: hit.avatar })}
           style={tw`flex-row items-center flex-1`}
         >
           <GrowAvatar userId={hit.id} username={hit.username} uri={hit.avatar} size={48} style={tw`mr-3`} />
@@ -772,7 +773,7 @@ export default function ExploreScreen() {
                         const root = navigation.getParent?.() || navigation;
                         (root as { navigate: (a: string, b: object) => void }).navigate(
                           'ProductDetail',
-                          { productId: product.id }
+                          { productId: product.id, preview: { title: product.name, imageUrl: product.image_url, price: product.price } }
                         );
                       }}
                     >
@@ -909,6 +910,7 @@ export default function ExploreScreen() {
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
                   productId: product.id,
+                  preview: { title: product.name, imageUrl: product.image_url, price: product.price },
                 });
               }}
             >
@@ -993,7 +995,7 @@ export default function ExploreScreen() {
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={() =>
-                    person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId)
+                    person.storyCount > 0 ? openStoryViewer(person) : openProfile(person.userId, { username: person.username, avatarUrl: person.avatar })
                   }
                   style={tw`items-center mb-3`}
                 >
@@ -1022,7 +1024,7 @@ export default function ExploreScreen() {
                 </TouchableOpacity>
                 <View style={tw`flex-row gap-2`}>
                   <TouchableOpacity
-                    onPress={() => openProfile(person.userId)}
+                    onPress={() => openProfile(person.userId, { username: person.username, avatarUrl: person.avatar })}
                     style={tw`flex-1 py-2 rounded-xl bg-stone-100 items-center`}
                   >
                     <Text style={tw`text-stone-700 text-xs font-semibold`}>Profile</Text>

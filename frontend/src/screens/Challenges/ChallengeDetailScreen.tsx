@@ -351,7 +351,7 @@ export default function ChallengeDetailScreen() {
                 <PressableScale
                   key={p.user_id}
                   disabled={p.is_me}
-                  onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: p.user_id })}
+                  onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: p.user_id, preview: { username: p.username, avatarUrl: p.avatar } })}
                   style={tw`flex-row items-center py-3 ${i < others.length - 1 ? 'border-b border-stone-200/70' : ''}`}
                   accessibilityLabel={`${p.is_me ? 'You' : p.username}, ${p.progress} of ${c.target_days} days`}
                 >

@@ -1203,9 +1203,9 @@ export default function ProfileScreen({ navigation: navProp }: any) {
         users={connectionsSheet === 'followers' ? followers : following}
         loading={profileLoading && (connectionsSheet === 'followers' ? followers : following).length === 0}
         onClose={() => setConnectionsSheet(null)}
-        onSelectUser={(id) => {
+        onSelectUser={(id, preview) => {
           setConnectionsSheet(null);
-          navigateFromRoot(navigation, 'PublicProfile', { userId: id });
+          navigateFromRoot(navigation, 'PublicProfile', { userId: id, preview });
         }}
       />
 

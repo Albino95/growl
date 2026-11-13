@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import type { TextOverlay } from '../photoEditor/types';
 import type { VideoEditSettings } from './types';
@@ -23,7 +23,17 @@ type Props = {
   loop?: boolean;
   onEnded?: () => void;
   onProgress?: (positionMs: number, durationMs: number) => void;
+  /**
+   * Warm neighbour (Reels index ±1): decode the clip so its first frame is on
+   * screen before the swipe lands, but stay paused and silent. Shortly after a
+   * cell drops back to preload it rewinds to the start, so swiping back
+   * restarts the reel like a fresh mount did.
+   */
+  preload?: boolean;
 };
+
+/** Wait for the outgoing swipe to settle before rewinding (avoids a visible jump). */
+const PRELOAD_REWIND_DELAY_MS = 400;
 
 type HtmlVideoEl = {
   play: () => Promise<void>;
@@ -100,6 +110,7 @@ export default function ReelVideoPlayer({
   loop = true,
   onEnded,
   onProgress,
+  preload = false,
 }: Props) {
   const htmlVideoRef = useRef<HtmlVideoEl | null>(null);
   const webAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -114,7 +125,15 @@ export default function ReelVideoPlayer({
   const trimStart = edit.trimStartMs || 0;
   const trimEnd = edit.trimEndMs || 0;
   const originalVol = edit.originalVolume;
-  const isMuted = originalVol <= 0.001;
+  const isMuted = preload || originalVol <= 0.001;
+  const playing = shouldPlay && !preload;
+  const [rewindGeneration, setRewindGeneration] = useState(0);
+
+  useEffect(() => {
+    if (!preload) return;
+    const t = setTimeout(() => setRewindGeneration((g) => g + 1), PRELOAD_REWIND_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [preload]);
 
   const onWebTimeUpdate = useCallback(() => {
     const el = htmlVideoRef.current;
@@ -185,7 +204,7 @@ export default function ReelVideoPlayer({
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!shouldPlay) {
+    if (!playing) {
       htmlVideoRef.current?.pause();
       webAudioRef.current?.pause();
       return;
@@ -210,7 +229,7 @@ export default function ReelVideoPlayer({
         }
       }
     })();
-  }, [shouldPlay, trimStart, uri, soundtrackUrl]);
+  }, [playing, trimStart, uri, soundtrackUrl]);
 
   // Keep soundtrack volume in sync without remounting the audio element
   useEffect(() => {
@@ -237,7 +256,7 @@ export default function ReelVideoPlayer({
             muted: isMuted,
             loop: loop && !(trimEnd > 0),
             playsInline: true,
-            autoPlay: shouldPlay,
+            autoPlay: playing,
             controls: useNativeControls,
             preload: 'auto',
             className: contentFit === 'contain' ? 'grow-video-contain' : 'grow-video-cover',
@@ -264,9 +283,11 @@ export default function ReelVideoPlayer({
           >
             <NativeClipPlayer
               uri={uri}
-              shouldPlay={shouldPlay}
+              shouldPlay={playing}
               loop={loop}
               muted={isMuted}
+              seekMs={rewindGeneration > 0 ? 0 : null}
+              seekGeneration={rewindGeneration}
               volume={isMuted ? 0 : originalVol}
               playbackRate={edit.speed || 1}
               contentFit={contentFit}

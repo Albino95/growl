@@ -1,14 +1,30 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import tw from '../../lib/tw';
 import Skeleton from '../ui/Skeleton';
+import { avatarSource } from '../../utils/images';
+
+/** Data already known at the tap site (route `preview`), shown instantly instead of bones. */
+export type ProfileHeaderPreview = {
+  /** Username shown in the top bar and name slot (same as the loaded header). */
+  name: string;
+  /** Avatar URI resolved exactly like the loaded header so expo-image hits its cache. */
+  avatarUri?: string | null;
+};
 
 /**
  * First-load placeholder for PublicProfileScreen: mirrors the real header
  * (top bar, avatar + name card, stats strip, action buttons) and a 3-column
  * grid so the layout doesn't jump when data lands.
  */
-export default function ProfileHeaderSkeleton({ onBack }: { onBack?: React.ReactNode }) {
+export default function ProfileHeaderSkeleton({
+  onBack,
+  preview,
+}: {
+  onBack?: React.ReactNode;
+  preview?: ProfileHeaderPreview | null;
+}) {
   return (
     <View
       style={tw`flex-1`}
@@ -18,22 +34,53 @@ export default function ProfileHeaderSkeleton({ onBack }: { onBack?: React.React
     >
       <View style={tw`px-4 py-2.5 flex-row items-center border-b border-stone-200/50`}>
         {onBack ?? <Skeleton style={tw`w-10 h-10 rounded-full mr-3`} />}
-        <View style={tw`flex-1`}>
-          <Skeleton style={tw`h-2.5 w-14 rounded mb-1.5`} />
-          <Skeleton style={tw`h-4 w-32 rounded`} />
-        </View>
+        {preview ? (
+          <View style={tw`flex-1`}>
+            <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+              Profile
+            </Text>
+            <Text style={tw`text-[17px] font-bold text-stone-900`} numberOfLines={1}>
+              {preview.name}
+            </Text>
+          </View>
+        ) : (
+          <View style={tw`flex-1`}>
+            <Skeleton style={tw`h-2.5 w-14 rounded mb-1.5`} />
+            <Skeleton style={tw`h-4 w-32 rounded`} />
+          </View>
+        )}
         <Skeleton style={tw`w-10 h-10 rounded-full`} />
       </View>
 
       <View style={tw`px-5 pt-4 pb-3`}>
         <View style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-3xl px-4 pt-5 pb-4`}>
-          <View style={tw`flex-row items-center mb-4`}>
-            <Skeleton style={tw`w-[84px] h-[84px] rounded-full mr-4`} />
-            <View style={tw`flex-1`}>
-              <Skeleton style={tw`h-6 w-3/5 rounded-lg mb-2.5`} />
-              <Skeleton style={tw`h-5 w-24 rounded-full`} />
+          {preview ? (
+            // Mirrors the loaded header's avatar + name row exactly (no jump on swap).
+            <View style={tw`flex-row items-center mb-3`}>
+              <View
+                style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-[#ECFDF5]`}
+              >
+                <Image
+                  source={avatarSource(preview.avatarUri)}
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-2xl font-bold text-stone-900`} numberOfLines={2}>
+                  {preview.name}
+                </Text>
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={tw`flex-row items-center mb-4`}>
+              <Skeleton style={tw`w-[84px] h-[84px] rounded-full mr-4`} />
+              <View style={tw`flex-1`}>
+                <Skeleton style={tw`h-6 w-3/5 rounded-lg mb-2.5`} />
+                <Skeleton style={tw`h-5 w-24 rounded-full`} />
+              </View>
+            </View>
+          )}
           <Skeleton style={tw`h-3 w-full rounded mb-2`} />
           <Skeleton style={tw`h-3 w-4/5 rounded mb-4`} />
           <Skeleton style={tw`h-[62px] w-full rounded-2xl mb-3.5`} />

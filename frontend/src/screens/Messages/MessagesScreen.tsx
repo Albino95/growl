@@ -637,6 +637,7 @@ export default function MessagesScreen() {
                 const root = navigation.getParent() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', {
                   userId: selectedConversation.peer.id,
+                  preview: { username: selectedConversation.peer.username, avatarUrl: selectedConversation.peer.avatar },
                 });
               }}
               style={tw`flex-row items-center flex-1`}
