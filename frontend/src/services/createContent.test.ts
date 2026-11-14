@@ -181,6 +181,7 @@ describe('publish adapters', () => {
       audioTrack: { title: 'Song', url: 'https://m/s.mp3' },
       extras: { promoteBusinessId: 'b1', promoteBusinessName: 'Café', productId: 'pr1' },
       user: { username: 'maya' },
+      idempotencyKey: 'draft-key-1',
     });
     expect(api.createFeedPost).toHaveBeenCalledWith({
       image_url: HOSTED,
@@ -195,7 +196,7 @@ describe('publish adapters', () => {
         promote_business_name: 'Café',
         source: 'partnership',
       },
-    });
+    }, { idempotencyKey: 'draft-key-1' });
     expect((out.optimistic.metadata as Record<string, unknown>).source).toBe('partnership');
   });
 
@@ -258,8 +259,12 @@ describe('story ts/te', () => {
       media: { url: HOSTED, mediaType: 'video' },
       caption: '   ',
       videoEdit: { trimStartMs: 0, trimEndMs: 30000 },
+      idempotencyKey: 'draft-key-2',
     });
-    expect(api.createStory).toHaveBeenCalledWith({ image_url: `${HOSTED}?te=30000`, caption: undefined });
+    expect(api.createStory).toHaveBeenCalledWith(
+      { image_url: `${HOSTED}?te=30000`, caption: undefined },
+      { idempotencyKey: 'draft-key-2' }
+    );
   });
 
   it('publishStory maps failures to publish errors', async () => {

@@ -114,6 +114,9 @@ export default function SeedDetailScreen() {
         <GrowChromeHeader
           leftAccessory={
             <PressableScale
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               onPress={() => navigation.goBack()}
               feedback="close"
               style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
@@ -135,6 +138,9 @@ export default function SeedDetailScreen() {
         <GrowChromeHeader
           leftAccessory={
             <PressableScale
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               onPress={() => navigation.goBack()}
               feedback="close"
               style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
@@ -174,6 +180,9 @@ export default function SeedDetailScreen() {
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
             onPress={() => navigation.goBack()}
             feedback="close"
             style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}

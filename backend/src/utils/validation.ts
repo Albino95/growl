@@ -531,7 +531,7 @@ export const createJournalEntrySchema = z.object({
 export const updateJournalEntrySchema = z.object({
   title: z.string().max(200).nullable().optional(),
   content: z.string().min(1).max(5000).optional(),
-  mood: journalMoodSchema.nullable(),
+  mood: journalMoodSchema.nullable().optional(),
   tags: z.array(z.string().max(40)).max(20).optional(),
   is_public: z.boolean().optional(),
   metadata: boundedMetadataRecord.optional(),
@@ -564,6 +564,17 @@ export const todayCheckinSchema = z.object({
   intention: z.string().trim().max(140, 'Keep your intention under 140 characters').nullable().optional(),
   rest: z.boolean().optional(),
   followup: z.enum(['yes', 'partly', 'no']).nullable().optional(),
+});
+
+/** PUT /me/life-mode — 'none' clears; until (optional) is validated against the user's local day. */
+export const lifeModeSchema = z.object({
+  mode: z.enum(['none', 'sick', 'travel', 'break']),
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'until must be YYYY-MM-DD').nullable().optional(),
+});
+
+/** PUT /me/privacy */
+export const privacySettingsSchema = z.object({
+  dm_policy: z.enum(['everyone', 'friends', 'nobody']),
 });
 
 export const badgesSeenSchema = z.object({

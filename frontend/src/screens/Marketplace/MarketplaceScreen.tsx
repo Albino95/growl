@@ -223,6 +223,7 @@ export default function MarketplaceScreen() {
           right={
             <>
               <PressableScale
+                hitSlop={4}
                 onPress={() => {
                   feedback.open();
                   setFilterOpen(true);
@@ -235,6 +236,7 @@ export default function MarketplaceScreen() {
                 <Ionicons name="options-outline" size={17} color={theme.colors.brand} />
               </PressableScale>
               <PressableScale
+                hitSlop={4}
                 onPress={() => {
                   feedback.open();
                   const rootNavigation = navigation.getParent() || navigation;

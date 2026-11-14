@@ -1,4 +1,4 @@
-import { request } from './http';
+import { request, withIdempotency } from './http';
 
 export type FeedPost = {
   id: string;
@@ -98,10 +98,12 @@ export async function createFeedPost(payload: {
   category: string;
   subcategory?: string;
   metadata?: Record<string, unknown>;
-}): Promise<{ success: boolean; data: FeedPost }> {
+}, opts?: { idempotencyKey?: string }): Promise<{ success: boolean; data: FeedPost }> {
   return request<{ success: boolean; data: FeedPost }>('/feed/posts', {
     method: 'POST',
     body: JSON.stringify(payload),
+    // Pass the draft's stable key so a retry after a dropped response can't double-post.
+    ...withIdempotency(opts?.idempotencyKey),
   });
 }
 
@@ -150,10 +152,14 @@ export async function deleteFeedPostComment(postId: string, commentId: string): 
   );
 }
 
-export async function createFeedPostComment(postId: string, content: string): Promise<FeedComment> {
+export async function createFeedPostComment(
+  postId: string,
+  content: string,
+  opts?: { idempotencyKey?: string }
+): Promise<FeedComment> {
   const res = await request<{ success: boolean; data: FeedComment }>(
     `/feed/posts/${encodeURIComponent(postId)}/comments`,
-    { method: 'POST', body: JSON.stringify({ content }) }
+    { method: 'POST', body: JSON.stringify({ content }), ...withIdempotency(opts?.idempotencyKey) }
   );
   if (!res.success || !res.data) throw new Error('Could not post comment');
   return res.data;

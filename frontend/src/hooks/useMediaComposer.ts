@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { NavigationAction } from '@react-navigation/native';
-import type { TextInput } from 'react-native';
+import { AppState, type TextInput } from 'react-native';
 import { useAppDispatch, useAuth } from '../store/hooks';
 import { prependFeedPost } from '../store/slices/feedSlice';
 import type { FeedPost } from '../services/api/feed';
@@ -37,6 +37,16 @@ import { useDeferredNativePlayer } from '../components/ui/videoEditor/useDeferre
 import type { VideoEditSettings } from '../components/ui/videoEditor/types';
 import type { ReelCaptureResult } from '../components/ui/videoEditor/ReelCameraCapture';
 import { useComposerPrefsStore } from '../state/useComposerPrefsStore';
+import { toast } from '../state/useToastStore';
+import {
+  composerDraftNs,
+  drafts,
+  newIdempotencyKey,
+  sanitizeComposerDraft,
+  type ComposerDraft,
+} from '../services/drafts';
+import { isValidIdempotencyKey } from '../services/api/idempotency';
+import { DEFAULT_VIDEO_EDIT } from '../components/ui/videoEditor/types';
 import { useCreateFlowLeaveGuard } from './useCreateFlowLeaveGuard';
 import { COMPOSER_CONFIG, COMPOSER_COPY } from './composerConfig';
 import {
@@ -45,6 +55,7 @@ import {
   hasComposerDraft,
   initialComposerState,
   type ComposerAudio,
+  type ComposerState,
   type ComposerUpload,
 } from './composerMachine';
 
@@ -66,6 +77,39 @@ export type UseMediaComposerOptions = {
 };
 
 const SUCCESS_HOLD_MS = 700;
+const DRAFT_SAVE_MS = 800;
+/** Drafts older than this aren't offered back. */
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isVideoKindLabel(kind: ComposerKind): string {
+  return kind === 'reel' ? 'clip' : kind === 'story' ? 'photo or clip' : 'photo';
+}
+
+/** Snapshot of what's worth keeping for "Continue your draft?" (null = nothing). */
+function draftFromState(
+  kind: ComposerKind,
+  s: ComposerState,
+  idempotencyKey: string
+): ComposerDraft | null {
+  if (s.status === 'success' || s.status === 'importing') return null;
+  if (!s.media && !s.caption.trim() && !s.audio) return null;
+  return {
+    kind,
+    caption: s.caption,
+    category: s.category,
+    media: s.media
+      ? {
+          uri: s.media.uri,
+          mediaType: s.media.mediaType,
+          mimeType: s.media.mimeType,
+          durationMs: s.media.durationMs,
+        }
+      : null,
+    videoEdit: s.media?.mediaType === 'video' ? { ...s.videoEdit } : null,
+    audio: s.audio,
+    idempotencyKey,
+  };
+}
 const EGG_CAPTION = /^(grow!?|🌱|still growing\.?)$/i;
 
 /**
@@ -114,6 +158,36 @@ export function useMediaComposer({
   previewArmedRef.current = previewArmed;
   const clipStill = stillSourceFromFrames(state.frames) as { uri: string } | null;
 
+  // --- persisted draft ("Continue your draft?") ------------------------------
+  const userId = user?.id ?? null;
+  const draftNs = composerDraftNs(kind);
+  /** One key per draft: a retried / resumed publish can't create a duplicate. */
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  /** Autosave waits until the stored draft has been offered (or there was none). */
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  /** Set once the user discards or the publish succeeds — never write again. */
+  const draftClosedRef = useRef(false);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelDraftSave = useCallback(() => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = null;
+  }, []);
+
+  const flushDraft = useCallback(() => {
+    cancelDraftSave();
+    if (draftClosedRef.current) return;
+    const snapshot = draftFromState(kind, stateRef.current, idempotencyKeyRef.current);
+    if (snapshot) void drafts.save(draftNs, userId, snapshot);
+    else void drafts.clear(draftNs, userId);
+  }, [cancelDraftSave, draftNs, kind, userId]);
+
+  const dropDraft = useCallback(() => {
+    draftClosedRef.current = true;
+    cancelDraftSave();
+    void drafts.clear(draftNs, userId);
+  }, [cancelDraftSave, draftNs, userId]);
+
   // --- leave guard -----------------------------------------------------------
   const closeEditor = useCallback(() => dispatch({ type: 'CLOSE_EDITOR' }), []);
   const { leave, canAutoLeave } = useCreateFlowLeaveGuard({
@@ -122,7 +196,10 @@ export function useMediaComposer({
     busy: publishing,
     editorOpen: status === 'editing',
     onCloseEditor: closeEditor,
-    onDiscard: () => dispatch({ type: 'DISCARD' }),
+    onDiscard: () => {
+      dropDraft();
+      dispatch({ type: 'DISCARD' });
+    },
     discardTitle: config.discardTitle,
     discardMessage: COMPOSER_COPY.discardMessage,
   });
@@ -199,6 +276,121 @@ export function useMediaComposer({
         });
     },
     [config.acceptsVideo, config.maxClipMs, config.noun]
+  );
+
+  // Offer the saved draft once per open (skipped when the route seeds the draft).
+  const seededByRoute = Boolean(initialCaption || postExtras);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (seededByRoute) {
+        setDraftHydrated(true);
+        return;
+      }
+      const saved = await drafts.load<ComposerDraft>(draftNs, userId, {
+        maxAgeMs: DRAFT_MAX_AGE_MS,
+      });
+      if (cancelled) return;
+      if (!saved || saved.data.kind !== kind) {
+        setDraftHydrated(true);
+        return;
+      }
+      const usable = await sanitizeComposerDraft(saved.data);
+      if (cancelled) return;
+      if (!usable) {
+        void drafts.clear(draftNs, userId);
+        setDraftHydrated(true);
+        return;
+      }
+      const resume = await confirmAsync(
+        'Continue your draft?',
+        usable.droppedMedia
+          ? 'Your caption is still here, but the photo or clip is no longer on this device.'
+          : `You have an unfinished ${config.noun}.`,
+        { confirmLabel: 'Continue', cancelLabel: 'Discard' }
+      );
+      if (cancelled) return;
+      if (!resume) {
+        void drafts.clear(draftNs, userId);
+        setDraftHydrated(true);
+        return;
+      }
+      // Only restore into an untouched composer.
+      const now = stateRef.current;
+      if (now.media || now.caption.trim() || now.status !== 'empty') {
+        setDraftHydrated(true);
+        return;
+      }
+      const d = usable.draft;
+      if (isValidIdempotencyKey(d.idempotencyKey)) idempotencyKeyRef.current = d.idempotencyKey;
+      if (d.media && (d.media.mediaType === 'image' || config.acceptsVideo)) {
+        dispatch({ type: 'IMPORT_START' });
+        applyPicked({
+          uri: d.media.uri,
+          kind: d.media.mediaType,
+          mimeType: d.media.mimeType,
+          durationMs: d.media.durationMs || 0,
+        });
+        if (d.media.mediaType === 'video' && d.videoEdit) {
+          // Edits travel as metadata: replay them through the editor transition.
+          dispatch({ type: 'OPEN_EDITOR' });
+          dispatch({
+            type: 'VIDEO_EDITED',
+            settings: { ...DEFAULT_VIDEO_EDIT, ...(d.videoEdit as Partial<VideoEditSettings>) },
+          });
+        }
+      }
+      if (d.caption) dispatch({ type: 'SET_CAPTION', caption: d.caption });
+      if (d.category) dispatch({ type: 'SET_CATEGORY', category: d.category });
+      if (d.audio) dispatch({ type: 'SET_AUDIO', audio: d.audio });
+      if (usable.droppedMedia) {
+        toast.info(`Pick your ${isVideoKindLabel(kind)} again — the old one was cleared`);
+      }
+      setDraftHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Once per mount; `applyPicked` is stable for a given kind.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounced autosave of the draft fields.
+  useEffect(() => {
+    if (!draftHydrated || draftClosedRef.current) return;
+    if (state.status === 'importing' || state.status === 'success') return;
+    cancelDraftSave();
+    draftTimer.current = setTimeout(flushDraft, DRAFT_SAVE_MS);
+    return cancelDraftSave;
+  }, [
+    draftHydrated,
+    state.status,
+    state.caption,
+    state.category,
+    state.media,
+    state.videoEdit,
+    state.audio,
+    flushDraft,
+    cancelDraftSave,
+  ]);
+
+  // Save right away when the app backgrounds, and when the screen goes away
+  // with content that wasn't discarded or published.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active' && draftHydrated) flushDraft();
+    });
+    return () => sub.remove();
+  }, [draftHydrated, flushDraft]);
+  const flushDraftRef = useRef(flushDraft);
+  flushDraftRef.current = flushDraft;
+  const draftHydratedRef = useRef(draftHydrated);
+  draftHydratedRef.current = draftHydrated;
+  useEffect(
+    () => () => {
+      if (draftHydratedRef.current) flushDraftRef.current();
+    },
+    []
   );
 
   const pick = useCallback(
@@ -309,6 +501,7 @@ export function useMediaComposer({
     (post: FeedPost | null) => {
       // One success haptic + seedpop per publish; the overlay blooms the check.
       haptic('shared');
+      dropDraft();
       setPublished(post);
       dispatch({ type: 'PUBLISH_SUCCESS' });
       // Reel stays on its success sheet ("View in Reels"); others close.
@@ -319,7 +512,7 @@ export function useMediaComposer({
         if (canAutoLeave()) leave(() => navigation.goBack());
       }, SUCCESS_HOLD_MS);
     },
-    [canAutoLeave, kind, leave, navigation]
+    [canAutoLeave, dropDraft, kind, leave, navigation]
   );
 
   const publish = useCallback(async () => {
@@ -375,6 +568,9 @@ export function useMediaComposer({
       }
 
       dispatch({ type: 'PUBLISH_PHASE', phase: 'publishing' });
+      // Stable per draft (restored drafts keep theirs): retrying the same draft
+      // after a lost response returns the original post instead of a duplicate.
+      const idempotencyKey = idempotencyKeyRef.current;
       let result: PublishFeedResult | null = null;
       if (kind === 'post') {
         result = await publishPost({
@@ -384,6 +580,7 @@ export function useMediaComposer({
           audioTrack: s.audio,
           extras: postExtras,
           user,
+          idempotencyKey,
         });
       } else if (kind === 'reel') {
         result = await publishReel({
@@ -393,9 +590,15 @@ export function useMediaComposer({
           videoEdit: s.videoEdit,
           coverUrl: upload.coverUrl,
           user,
+          idempotencyKey,
         });
       } else {
-        await publishStory({ media: upload, caption: s.caption, videoEdit: s.videoEdit });
+        await publishStory({
+          media: upload,
+          caption: s.caption,
+          videoEdit: s.videoEdit,
+          idempotencyKey,
+        });
       }
 
       if (result) {

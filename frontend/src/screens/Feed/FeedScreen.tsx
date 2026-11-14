@@ -37,7 +37,7 @@ import { ReactionPickerBar, type FeedReaction } from '../../components/feed/Feed
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, type StoryItem } from '../../services/api/stories';
-import { blockUser, reportContent } from '../../services/api/friends';
+import { blockUser, listFriends, reportContent } from '../../services/api/friends';
 import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
@@ -65,6 +65,9 @@ import { isAppActive } from '../../utils/appActive';
 import HomeEmptyCanvas from '../../components/feed/HomeEmptyCanvas';
 import HomeSitCue from '../../components/feed/HomeSitCue';
 import TodayCard from '../../components/feed/TodayCard';
+import CheckInSpotlight from '../../components/onboarding/CheckInSpotlight';
+import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
+import { getReducedMotion } from '../../hooks/useReducedMotion';
 import WeeklyRecapCard from '../../components/recap/WeeklyRecapCard';
 import { isRecapWindow } from '../../components/recap/growthMeta';
 import { useGrowthStore } from '../../state/useGrowthStore';
@@ -165,6 +168,9 @@ export default function FeedScreen({ navigation, route }: any) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const feedListRef = React.useRef<SectionList<Post>>(null);
   const homePulse = useHomeTabStore((s) => s.pulse);
+  const checkInSpotlight = useDemoTutorialStore((s) => s.checkInSpotlight);
+  /** Drives the Home header copy: "Friends & suggestions" vs "People on your paths". */
+  const [hasFriends, setHasFriends] = useState<boolean | null>(null);
   const lastJournalDateKey = useActivationStore((s) => s.lastJournalDateKey);
   const journaledToday = lastJournalDateKey === localDateKey();
   const sundaySit = useActivationStore((s) => s.showSundaySit());
@@ -426,6 +432,26 @@ export default function FeedScreen({ navigation, route }: any) {
     void useGrowthStore.getState().refresh({ force: true, userId: user?.id ?? null });
     if (isRecapWindow()) void useGrowthStore.getState().refreshRecap({ force: true });
   });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    void listFriends().then((list) => {
+      if (!cancelled) setHasFriends(list.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  // Tour hand-off ("Check in now"): bring the Today card into view; CheckInSpotlight pulses it.
+  useEffect(() => {
+    if (checkInSpotlight < 1) return;
+    const list = feedListRef.current as unknown as {
+      scrollToOffset?: (opts: { offset: number; animated: boolean }) => void;
+    };
+    list?.scrollToOffset?.({ offset: 0, animated: !getReducedMotion() });
+  }, [checkInSpotlight]);
 
   useEffect(() => {
     if (homePulse < 1) return;
@@ -797,15 +823,19 @@ export default function FeedScreen({ navigation, route }: any) {
   const feedListHeader = useMemo(() => (
     <View style={tw`pb-2`}>
       {/* Self-contained (read useGrowthStore) — no header memo deps. */}
-      <TodayCard />
+      <CheckInSpotlight>
+        <TodayCard />
+      </CheckInSpotlight>
       <WeeklyRecapCard />
 
       <View style={tw`mx-4 mb-3 px-4 py-3 rounded-card bg-raised/80 border border-line/70`}>
         <Text style={tw`text-caption tracking-[2px] uppercase text-ink-3 font-semibold`}>
-          Your circle
+          {hasFriends === false ? 'People on your paths' : 'Friends & suggestions'}
         </Text>
         <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>
-          Progress from friends — and a few suggestions on your paths.
+          {hasFriends === false
+            ? 'People growing the same things as you. Add a few to fill your Home.'
+            : 'What your friends are up to, plus a few people on your paths.'}
         </Text>
       </View>
 
@@ -1071,7 +1101,7 @@ export default function FeedScreen({ navigation, route }: any) {
       {user?.categories && user.categories.length > 0 && hasPosts ? (
         <View style={tw`mx-4 mt-2`}>
           <Text style={tw`text-xs text-ink-3 leading-4`}>
-            Suggested faces share a path with you — open a profile to see overlap.
+            Suggestions share a path with you. Open a profile to say hi.
           </Text>
         </View>
       ) : null}
@@ -1125,6 +1155,7 @@ export default function FeedScreen({ navigation, route }: any) {
       )}
     </View>
   ), [
+    hasFriends,
     navigation,
     myStories,
     user?.id,
@@ -1153,6 +1184,7 @@ export default function FeedScreen({ navigation, route }: any) {
               <NotificationBellButton />
               <MessagesInboxButton />
               <PressableScale
+                hitSlop={4}
                 pressedScale={0.9}
                 onPress={() => {
                   triggerPressFeedback();
@@ -1212,6 +1244,13 @@ export default function FeedScreen({ navigation, route }: any) {
                 onInstructors={() => {
                   const root = navigation.getParent() || navigation;
                   root.navigate('Instructors' as never);
+                }}
+                onInvite={() => {
+                  const root = navigation.getParent() || navigation;
+                  root.navigate('Invite' as never);
+                }}
+                onFriendAdded={(connected) => {
+                  if (connected) setHasFriends(true);
                 }}
               />
             )

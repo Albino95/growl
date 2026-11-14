@@ -11,6 +11,22 @@ import {
   MESSAGE_REACTION_EMOJIS,
 } from '../utils/validation';
 import { coachingConversationIds, hasCoachingChannel } from '../utils/coachingAccess';
+import { dmPolicyAllows, DM_POLICY_REJECTED_MESSAGE } from '../utils/dmPolicy';
+
+/** Max messages per page (also bounds the reactions lookup). */
+export const MAX_MESSAGES_PAGE = 100;
+
+/**
+ * Recipient's dm_policy ('everyone' | 'friends' | 'nobody') applied to starting a
+ * conversation or sending a message. Active coaching channels are exempt (a paid /
+ * in-progress coaching relationship must keep working).
+ */
+async function dmPolicyRejection(env: Env, senderId: string, recipientId: string): Promise<Response | null> {
+  const allowed = await dmPolicyAllows(env, recipientId, () => areFriends(env, senderId, recipientId));
+  if (allowed) return null;
+  if (await hasCoachingChannel(env, senderId, recipientId)) return null;
+  return error('DM_NOT_ALLOWED', DM_POLICY_REJECTED_MESSAGE, 403);
+}
 
 type ConversationRow = {
   id: string;
@@ -106,9 +122,9 @@ export async function canMessagePeer(
 }
 
 /** D1 caps bound parameters per statement; keep IN (...) lists comfortably below it. */
-const IN_CHUNK = 90;
+export const IN_CHUNK = 90;
 
-function chunk<T>(items: T[], size = IN_CHUNK): T[][] {
+export function chunk<T>(items: T[], size = IN_CHUNK): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
@@ -387,6 +403,8 @@ export async function createConversation(request: Request, env: Env): Promise<Re
   if (!canMessage) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
+  const policyRejection = await dmPolicyRejection(env, ctx.userId, targetUserId);
+  if (policyRejection) return policyRejection;
 
   try {
     const conversation = await findOrCreateConversation(env, ctx.userId, targetUserId);
@@ -440,7 +458,7 @@ export async function getMessages(
 
   const params = new URL(request.url).searchParams;
   const rawLimit = parseInt(params.get('limit') || '50', 10);
-  const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 50, 200));
+  const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 50, MAX_MESSAGES_PAGE));
   // Keyset cursor for older pages: messages strictly older than (before, before_id).
   const before = (params.get('before') || '').trim() || null;
   const beforeId = (params.get('before_id') || '').trim() || null;
@@ -528,6 +546,8 @@ export async function sendMessage(
   if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
+  const policyRejection = await dmPolicyRejection(env, ctx.userId, peerId);
+  if (policyRejection) return policyRejection;
 
   const now = new Date().toISOString();
   const id = generateId('msg');
@@ -573,7 +593,7 @@ type ReactionBundle = {
   mine: string | null;
 };
 
-async function loadReactionsForMessages(
+export async function loadReactionsForMessages(
   env: Env,
   messageIds: string[],
   userId: string
@@ -581,17 +601,19 @@ async function loadReactionsForMessages(
   const out: Record<string, ReactionBundle> = {};
   if (messageIds.length === 0) return out;
   try {
-    const placeholders = messageIds.map(() => '?').join(',');
-    const rows = await env.DB.prepare(
-      `SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id IN (${placeholders})`
-    )
-      .bind(...messageIds)
-      .all<{ message_id: string; user_id: string; emoji: string }>();
-    for (const row of rows.results || []) {
-      const bucket = out[row.message_id] || { counts: {}, mine: null };
-      bucket.counts[row.emoji] = (bucket.counts[row.emoji] || 0) + 1;
-      if (row.user_id === userId) bucket.mine = row.emoji;
-      out[row.message_id] = bucket;
+    for (const ids of chunk(Array.from(new Set(messageIds)))) {
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = await env.DB.prepare(
+        `SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id IN (${placeholders})`
+      )
+        .bind(...ids)
+        .all<{ message_id: string; user_id: string; emoji: string }>();
+      for (const row of rows.results || []) {
+        const bucket = out[row.message_id] || { counts: {}, mine: null };
+        bucket.counts[row.emoji] = (bucket.counts[row.emoji] || 0) + 1;
+        if (row.user_id === userId) bucket.mine = row.emoji;
+        out[row.message_id] = bucket;
+      }
     }
   } catch {
     /* table may not exist yet on a stale worker */

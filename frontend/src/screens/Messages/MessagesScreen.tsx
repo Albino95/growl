@@ -53,6 +53,8 @@ import { feedback, triggerFeedback } from '../../utils/interactionFeedback';
 import { useRefresh } from '../../hooks/useRefresh';
 import { isAppActive } from '../../utils/appActive';
 import { alertMessage } from '../../utils/confirmDialog';
+import { ApiError } from '../../services/api/http';
+import { uuidV4 } from '../../services/api/idempotency';
 import {
   KeyboardDoneAccessory,
   formInputAccessoryProps,
@@ -198,6 +200,8 @@ export default function MessagesScreen() {
   const [proposalBusy, setProposalBusy] = useState(false);
   const [inboxQuery, setInboxQuery] = useState('');
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  /** Sends the recipient refused (DM_NOT_ALLOWED): failed for good, no retry. */
+  const [refusedIds, setRefusedIds] = useState<Set<string>>(new Set());
   const [wallOpen, setWallOpen] = useState(false);
   const [pickerId, setPickerId] = useState<string | null>(null);
   const [burstKey, setBurstKey] = useState(0);
@@ -369,7 +373,12 @@ export default function MessagesScreen() {
     })();
   }, [route.params, conversations, openConversation]);
 
-  const handleSendMessage = async (preset?: string) => {
+  /**
+   * `retryId` re-sends an existing failed bubble in place. The temp id is also
+   * the Idempotency-Key (valid: [A-Za-z0-9_\-:.]{8,128}), so a retry of a send
+   * that actually reached the server can't deliver the message twice.
+   */
+  const handleSendMessage = async (preset?: string, retryId?: string) => {
     const body = (preset ?? messageText).trim();
     if (!body || !selectedConversation || sending) return;
     if (/^(grow!?|🌱|still growing\.?)$/i.test(body)) {
@@ -378,8 +387,11 @@ export default function MessagesScreen() {
       feedback.send();
     }
     setSending(true);
-    const tempId = `temp-${Date.now()}`;
-    const optimistic: ChatMessage = {
+    const tempId = retryId ?? `temp-${uuidV4()}`;
+    const existing = retryId
+      ? selectedConversation.messages.find((m) => m.id === retryId)
+      : undefined;
+    const optimistic: ChatMessage = existing ?? {
       id: tempId,
       conversation_id: selectedConversation.id,
       sender_id: user?.id || '',
@@ -388,9 +400,11 @@ export default function MessagesScreen() {
       is_own: true,
       reactions: { counts: {}, mine: null },
     };
-    setSelectedConversation((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev
-    );
+    if (!existing) {
+      setSelectedConversation((prev) =>
+        prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev
+      );
+    }
     if (!preset) setMessageText('');
     setFailedIds((prev) => {
       const next = new Set(prev);
@@ -398,7 +412,7 @@ export default function MessagesScreen() {
       return next;
     });
     try {
-      const res = await sendMessage(selectedConversation.id, body);
+      const res = await sendMessage(selectedConversation.id, body, { idempotencyKey: tempId });
       const saved = res.data;
       setSelectedConversation((prev) => {
         if (!prev) return prev;
@@ -425,7 +439,13 @@ export default function MessagesScreen() {
       });
     } catch (e) {
       setFailedIds((prev) => new Set([...prev, tempId]));
-      void alertMessage('Send failed', e instanceof Error ? e.message : 'Tap the message to try again.');
+      if (e instanceof ApiError && e.code === 'DM_NOT_ALLOWED') {
+        // The recipient's privacy setting: retrying won't help, so no retry loop.
+        setRefusedIds((prev) => new Set([...prev, tempId]));
+        void alertMessage("Couldn't send", e.message || "This person isn't taking messages right now.");
+      } else {
+        void alertMessage('Send failed', e instanceof Error ? e.message : 'Tap the message to try again.');
+      }
     } finally {
       setSending(false);
     }
@@ -433,16 +453,9 @@ export default function MessagesScreen() {
 
   const retryFailed = (tempId: string) => {
     const msg = selectedConversation?.messages.find((m) => m.id === tempId);
-    if (!msg || sending) return;
-    setSelectedConversation((prev) =>
-      prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== tempId) } : prev
-    );
-    setFailedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(tempId);
-      return next;
-    });
-    void handleSendMessage(msg.body);
+    if (!msg || sending || refusedIds.has(tempId)) return;
+    // Same bubble, same key: handleSendMessage clears the failed mark.
+    void handleSendMessage(msg.body, tempId);
   };
 
   const toggleReact = useCallback(async (messageId: string, emoji: MessageReactionEmoji) => {
@@ -812,6 +825,7 @@ export default function MessagesScreen() {
               }
               renderItem={({ item, index }) => {
                 const failed = failedIds.has(item.id);
+                const refused = refusedIds.has(item.id);
                 const pending = item.id.startsWith('temp-');
                 const prev = selectedConversation.messages[index - 1];
                 const showDay = !prev || dayKey(prev.created_at) !== dayKey(item.created_at);
@@ -907,7 +921,11 @@ export default function MessagesScreen() {
                               { color: item.is_own ? 'rgba(255,255,255,0.75)' : wall.meta },
                             ]}
                           >
-                            {failed ? 'Tap to retry' : formatMessageTime(item.created_at)}
+                            {refused
+                              ? 'Not delivered'
+                              : failed
+                                ? 'Tap to retry'
+                                : formatMessageTime(item.created_at)}
                           </Text>
                           {item.is_own && !failed ? (
                             <ReceiptTicks

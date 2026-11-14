@@ -156,6 +156,7 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
               <View style={tw`mb-3 rounded-card overflow-hidden border border-line`}>
                 <Image source={{ uri: photoUri }} style={tw`w-full h-44`} contentFit="cover" />
                 <PressableScale
+                  hitSlop={6}
                   onPress={() => setPhotoUri(null)}
                   feedback="close"
                   accessibilityRole="button"

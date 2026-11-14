@@ -462,11 +462,40 @@ export default function NotificationsScreen() {
                 ? resolvePostMediaUri(preview.image)
                 : '';
 
+            // One screen-reader element per row; inner buttons become actions.
+            const rowLabel = [
+              item.unread ? 'Unread' : '',
+              meta.label,
+              item.title,
+              item.body || '',
+              timeAgo(item.created_at),
+            ]
+              .filter(Boolean)
+              .join(', ');
+            const rowActions = [
+              ...(item.actor ? [{ name: 'profile', label: `Open ${item.actor.username} profile` }] : []),
+              ...(actionable
+                ? [
+                    { name: 'endorse', label: 'Endorse' },
+                    { name: 'decline', label: 'Not now' },
+                  ]
+                : []),
+            ];
+
             return (
               <FadeInUp delay={Math.min(index, 8) * 35}>
               <PressableScale
                 onPress={() => void openItem(item)}
                 feedback="open"
+                accessibilityRole="button"
+                accessibilityLabel={rowLabel}
+                accessibilityActions={rowActions}
+                onAccessibilityAction={(e) => {
+                  const name = e.nativeEvent.actionName;
+                  if (name === 'profile') openActorProfile(item);
+                  else if (name === 'endorse') void onRespondRequest(item, 'accepted');
+                  else if (name === 'decline') void onRespondRequest(item, 'declined');
+                }}
                 style={tw`mb-3 rounded-sheet border overflow-hidden ${
                   actionable
                     ? 'bg-card border-red-200'
@@ -534,7 +563,10 @@ export default function NotificationsScreen() {
                             {timeAgo(item.created_at)}
                           </Text>
                         </View>
-                        <Text style={tw`text-body font-semibold text-ink leading-5`}>
+                        {/* Unread = bold title + dot on the avatar (not colour alone). */}
+                        <Text
+                          style={tw`text-body ${item.unread ? 'font-bold' : 'font-medium'} text-ink leading-5`}
+                        >
                           {item.title}
                         </Text>
                         {item.body ? (

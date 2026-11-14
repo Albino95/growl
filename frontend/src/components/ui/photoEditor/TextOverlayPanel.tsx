@@ -305,6 +305,7 @@ export default function TextOverlayPanel({
               const selected = activeOverlay.color === c;
               return (
                 <Pressable
+                  hitSlop={4}
                   key={c}
                   onPress={() => onUpdate({ color: c })}
                   accessibilityRole="button"

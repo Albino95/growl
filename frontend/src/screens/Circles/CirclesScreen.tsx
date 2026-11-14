@@ -138,7 +138,7 @@ function CircleCard({
           </View>
         </PressableScale>
         {group.joined ? (
-          <PressableScale onPress={onOpen} feedback="open" pressedScale={0.9} hitSlop={8} style={tw`ml-2`}>
+          <PressableScale accessibilityRole="button" accessibilityLabel={`Open ${group.name}`} onPress={onOpen} feedback="open" pressedScale={0.9} hitSlop={8} style={tw`ml-2`}>
             <Ionicons name="chevron-forward" size={16} color={theme.colors.iconMuted} />
           </PressableScale>
         ) : onJoin && !full ? (

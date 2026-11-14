@@ -1,4 +1,6 @@
 import { enforceWriteLimit } from './utils/writeLimits';
+import { withIdempotency } from './utils/idempotency';
+import * as meRoutes from './routes/me';
 import { runGroupMaintenance } from './routes/groups';
 import { Env } from './types';
 import { attachCors, cors, error, json } from './utils/response';
@@ -173,7 +175,7 @@ async function handleRequest(
         return feedRoutes.getFeed(request, env);
       }
       if (path === `${apiPrefix}/feed/posts` && request.method === 'POST') {
-        return feedRoutes.createPost(request, env);
+        return withIdempotency(request, env, () => feedRoutes.createPost(request, env));
       }
 
       // Get user posts (check before generic post routes)
@@ -216,7 +218,7 @@ async function handleRequest(
           return commentRoutes.getComments(request, env, postId);
         }
         if (request.method === 'POST') {
-          return commentRoutes.createComment(request, env, postId);
+          return withIdempotency(request, env, () => commentRoutes.createComment(request, env, postId));
         }
       }
 
@@ -661,7 +663,7 @@ async function handleRequest(
         return journalRoutes.getJournalEntries(request, env);
       }
       if (path === `${apiPrefix}/journal/entries` && request.method === 'POST') {
-        return journalRoutes.createJournalEntry(request, env);
+        return withIdempotency(request, env, () => journalRoutes.createJournalEntry(request, env));
       }
 
       // Messages routes
@@ -686,7 +688,7 @@ async function handleRequest(
           return messagesRoutes.getMessages(request, env, conversationId);
         }
         if (request.method === 'POST') {
-          return messagesRoutes.sendMessage(request, env, conversationId);
+          return withIdempotency(request, env, () => messagesRoutes.sendMessage(request, env, conversationId));
         }
       }
 
@@ -826,6 +828,9 @@ async function handleRequest(
       }
       if (path === `${apiPrefix}/social/friends` && request.method === 'POST') {
         return friendsRoutes.addFriend(request, env);
+      }
+      if (path === `${apiPrefix}/social/blocks` && request.method === 'GET') {
+        return friendsRoutes.listBlocks(request, env);
       }
       if (path === `${apiPrefix}/social/block` && request.method === 'POST') {
         return friendsRoutes.blockUser(request, env);
@@ -1010,7 +1015,17 @@ async function handleRequest(
       }
       if (path === `${apiPrefix}/me/today`) {
         if (request.method === 'GET') return growthRoutes.getToday(request, env);
-        if (request.method === 'PUT') return growthRoutes.putToday(request, env);
+        if (request.method === 'PUT' || request.method === 'POST') {
+          return withIdempotency(request, env, () => growthRoutes.putToday(request, env));
+        }
+      }
+      if (path === `${apiPrefix}/me/life-mode`) {
+        if (request.method === 'GET') return meRoutes.getLifeMode(request, env);
+        if (request.method === 'PUT') return meRoutes.putLifeMode(request, env);
+      }
+      if (path === `${apiPrefix}/me/privacy`) {
+        if (request.method === 'GET') return meRoutes.getPrivacy(request, env);
+        if (request.method === 'PUT') return meRoutes.putPrivacy(request, env);
       }
       if (path === `${apiPrefix}/me/badges` && request.method === 'GET') {
         return growthRoutes.getMyBadges(request, env);

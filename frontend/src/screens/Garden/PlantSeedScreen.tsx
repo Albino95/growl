@@ -16,6 +16,7 @@ import tw, { theme } from '../../lib/tw';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import FadeInUp from '../../components/ui/FadeInUp';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import CATEGORIES, { type Category } from '../../data/categories';
 import { createSeed } from '../../services/api/seeds';
 import { feedback } from '../../utils/interactionFeedback';
@@ -84,6 +85,7 @@ export default function PlantSeedScreen() {
   const [planted, setPlanted] = useState(false);
   const celebrate = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotion();
 
   const pathOpt = pathOptions.find((p) => p.parent.key === parentKey) || null;
   const subs = useMemo(() => {
@@ -127,7 +129,11 @@ export default function PlantSeedScreen() {
       });
       feedback.success();
       setPlanted(true);
-      Animated.parallel([
+      if (reduceMotion) {
+        // Full size at once; just a soft fade.
+        celebrate.setValue(1);
+        Animated.timing(glow, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      } else Animated.parallel([
         Animated.spring(celebrate, {
           toValue: 1,
           friction: 5,
@@ -200,6 +206,9 @@ export default function PlantSeedScreen() {
         <GrowChromeHeader
           leftAccessory={
             <PressableScale
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
               onPress={() => navigation.goBack()}
               feedback="close"
               style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
@@ -236,6 +245,9 @@ export default function PlantSeedScreen() {
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
             onPress={() => navigation.goBack()}
             feedback="close"
             style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}

@@ -96,6 +96,7 @@ export default function UserOrdersScreen() {
         <View style={tw`px-gutter pt-3 pb-2`}>
           <View style={tw`flex-row items-center mb-4`}>
             <PressableScale
+              hitSlop={4}
               onPress={() => navigation.goBack()}
               style={tw`w-10 h-10 rounded-full bg-card border border-line items-center justify-center mr-3`}
               accessibilityLabel="Go back"

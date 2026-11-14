@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import PressableScale from '../PressableScale';
 import { useVideoPlayer, VideoView, type VideoSource } from 'expo-video';
 import GrowLoader from '../GrowLoader';
 import { cacheRemoteClip, isLocalClipUri } from '../../../utils/cacheRemoteClip';
@@ -32,7 +34,14 @@ function videoSource(uri: string): VideoSource {
   };
 }
 
-function usePlayableUri(uri: string): { playableUri: string; preparing: boolean } {
+function usePlayableUri(uri: string): {
+  playableUri: string;
+  preparing: boolean;
+  failed: boolean;
+  retry: () => void;
+} {
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [playableUri, setPlayableUri] = useState(() =>
     Platform.OS === 'web' || isLocalClipUri(uri) ? uri : ''
   );
@@ -54,17 +63,28 @@ function usePlayableUri(uri: string): { playableUri: string; preparing: boolean 
     let cancelled = false;
     setPlayableUri('');
     setPreparing(true);
-    void cacheRemoteClip(uri).then((local) => {
-      if (cancelled) return;
-      setPlayableUri(local);
-      setPreparing(false);
-    });
+    setFailed(false);
+    cacheRemoteClip(uri)
+      .then((local) => {
+        if (cancelled) return;
+        if (!local) throw new Error('Clip could not be prepared');
+        setPlayableUri(local);
+        setPreparing(false);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        // Show a retry instead of spinning forever.
+        console.warn('[NativeClipPlayer] could not prepare clip', error);
+        setPreparing(false);
+        setFailed(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [uri]);
+  }, [uri, attempt]);
 
-  return { playableUri, preparing };
+  const retry = React.useCallback(() => setAttempt((n) => n + 1), []);
+  return { playableUri, preparing, failed, retry };
 }
 
 type ArmedProps = Omit<Props, 'uri'> & { uri: string };
@@ -190,7 +210,7 @@ function ArmedNativeClip({
  * streams /media. VideoView mounts only after that copy exists.
  */
 export default function NativeClipPlayer({ uri, style, ...rest }: Props) {
-  const { playableUri, preparing } = usePlayableUri(uri);
+  const { playableUri, preparing, failed, retry } = usePlayableUri(uri);
 
   if (!playableUri) {
     return (
@@ -199,6 +219,20 @@ export default function NativeClipPlayer({ uri, style, ...rest }: Props) {
           <View style={twCenter}>
             <GrowLoader label="Loading video…" />
           </View>
+        ) : failed ? (
+          <View style={twCenter}>
+            <Text style={styles.failText}>Couldn’t load this clip</Text>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Try loading the clip again"
+              onPress={retry}
+              feedback="selection"
+              style={styles.retry}
+            >
+              <Ionicons name="refresh" size={16} color="#FFFFFF" />
+              <Text style={styles.retryText}>Try again</Text>
+            </PressableScale>
+          </View>
         ) : null}
       </View>
     );
@@ -206,6 +240,20 @@ export default function NativeClipPlayer({ uri, style, ...rest }: Props) {
 
   return <ArmedNativeClip key={playableUri} uri={playableUri} style={style} {...rest} />;
 }
+
+const styles = StyleSheet.create({
+  failText: { color: 'rgba(255,255,255,0.85)', fontSize: 15, marginBottom: 12 },
+  retry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+});
 
 const twCenter = {
   ...StyleSheet.absoluteFillObject,

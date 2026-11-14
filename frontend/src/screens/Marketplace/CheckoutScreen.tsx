@@ -396,7 +396,7 @@ export default function CheckoutScreen() {
   return (
     <SafeAreaView style={tw`flex-1 bg-page`}>
       <View style={tw`flex-row items-center justify-between px-gutter py-3 bg-card border-b border-line/80`}>
-        <PressableScale onPress={() => navigation.goBack()}>
+        <PressableScale accessibilityRole="button" accessibilityLabel="Go back" hitSlop={10} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
         </PressableScale>
         <Text style={tw`text-lg font-semibold text-ink`}>Checkout</Text>

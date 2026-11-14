@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,22 +10,10 @@ import { feedback } from '../../utils/interactionFeedback';
 import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { spring } from '../../theme/motion';
+import { haptic } from '../../theme/haptics';
+import { CHECKIN_MOODS } from '../../components/recap/growthMeta';
 
-type StepId =
-  | 'welcome'
-  | 'intent'
-  | 'dock'
-  | 'paths'
-  | 'home'
-  | 'explore'
-  | 'journal'
-  | 'create'
-  | 'reels'
-  | 'instructors'
-  | 'shop'
-  | 'you'
-  | 'inbox'
-  | 'later';
+type StepId = 'welcome' | 'create' | 'checkin';
 
 type Detail = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -44,13 +32,17 @@ type Step = {
   details?: Detail[];
 };
 
-// tint/soft are getters so they resolve against the active colour scheme at render.
+/**
+ * Three cards, then straight into the first real win (Home's Today check-in).
+ * "What brought you here?" was dropped: it gated Next, and nothing used the answer.
+ * tint/soft are getters so they resolve against the active colour scheme at render.
+ */
 const STEPS: Step[] = [
   {
     id: 'welcome',
     eyebrow: 'Hey, you made it',
     title: 'Welcome to Grow!',
-    body: 'A little greenhouse for becoming someone. This tour is the map — tap through, skip anytime, replay later from Settings.',
+    body: 'A calm place to grow the things you care about, next to friends on the same paths.',
     icon: 'sparkles',
     get tint() {
       return theme.colors.brand;
@@ -58,121 +50,12 @@ const STEPS: Step[] = [
     get soft() {
       return theme.colors.brandSoft;
     },
-    details: [
-      { icon: 'heart-outline', title: 'Soft, not shouty', body: 'Calm cards, emerald actions, coral for the good moments.' },
-      { icon: 'people-outline', title: 'People on your paths', body: 'Friends, coaches, and posts from the areas you chose.' },
-    ],
-  },
-  {
-    id: 'intent',
-    eyebrow: 'Quick vibe check',
-    title: 'What brought you here?',
-    body: 'Tap one. There is no wrong answer — it just helps us say hi the right way.',
-    icon: 'happy-outline',
-    get tint() {
-      return theme.colors.energy;
-    },
-    get soft() {
-      return theme.colors.energySoft;
-    },
-  },
-  {
-    id: 'dock',
-    eyebrow: 'The bottom bar',
-    title: 'Five rooms. One plus.',
-    body: 'Home · Explore · Journal · Shop · You. The green + in the middle is how you make something. Shop is there so creating never feels like shopping.',
-    icon: 'apps-outline',
-    get tint() {
-      return theme.colors.brand;
-    },
-    get soft() {
-      return theme.colors.brandSoft;
-    },
-    details: [
-      { icon: 'home-outline', title: 'Home', body: 'Friends, stories, and reels from people you know.' },
-      { icon: 'compass-outline', title: 'Explore', body: 'Wander people and posts you have not met yet.' },
-      { icon: 'book-outline', title: 'Journal', body: 'Your quiet pages. Private until you say otherwise.' },
-      { icon: 'storefront-outline', title: 'Shop', body: 'Tools and goods on your paths. Cart lives here.' },
-      { icon: 'person-outline', title: 'You', body: 'Profile, paths, friends, instructors, reviews.' },
-    ],
-  },
-  {
-    id: 'paths',
-    eyebrow: 'Your paths',
-    title: 'You already picked where you want to grow',
-    body: 'Up to three growth areas. They shape your Home, who you meet, and what the Shop ranks first. Change them anytime on You.',
-    icon: 'map-outline',
-    get tint() {
-      return tw.color('amber-700') ?? '#B45309';
-    },
-    get soft() {
-      return tw.color('amber-100') ?? '#FEF3C7';
-    },
-    details: [
-      { icon: 'people-outline', title: 'Cohort friends', body: 'People on overlapping paths get connected automatically. Friends you add yourself stay.' },
-      { icon: 'swap-horizontal-outline', title: 'Change paths later', body: 'You → Your growth paths. Auto-connections update. Manual friends do not vanish.' },
-    ],
-  },
-  {
-    id: 'home',
-    eyebrow: 'Home',
-    title: 'This is where your people live',
-    body: 'Stories on top (24 hours, then gone). Posts and 9:16 reels below. Like, comment, or tap a clip to open the full viewer.',
-    icon: 'home',
-    get tint() {
-      return theme.colors.brand;
-    },
-    get soft() {
-      return theme.colors.brandSoft;
-    },
-    details: [
-      { icon: 'ellipse-outline', title: 'Stories', body: 'Round faces at the top. Yours first. They expire in a day.' },
-      { icon: 'heart-outline', title: 'Reactions', body: 'Like and comment on friends’ posts. Soft haptics if you left those on.' },
-      { icon: 'play-circle-outline', title: 'Reels from Home', body: 'The play button in the header opens friends’ reels full-screen.' },
-      { icon: 'time-outline', title: 'Posts fade', body: 'Older posts quietly decay so the feed stays alive. You set the timer on You.' },
-    ],
-  },
-  {
-    id: 'explore',
-    eyebrow: 'Explore',
-    title: 'Wander a bit',
-    body: 'Discovery for people who are not friends yet. Filter by a path chip. Instructors who teach that path show up too.',
-    icon: 'compass',
-    get tint() {
-      return theme.colors.brand;
-    },
-    get soft() {
-      return theme.colors.brandSoft;
-    },
-    details: [
-      { icon: 'search-outline', title: 'Find people', body: 'Search names. Open a public profile. Add friend if it clicks.' },
-      { icon: 'school-outline', title: 'See all instructors', body: 'The Instructors strip has See all — that is the hire page.' },
-      { icon: 'play-outline', title: 'Explore reels', body: 'Clips from outside your circle. Tap one and swipe.' },
-    ],
-  },
-  {
-    id: 'journal',
-    eyebrow: 'Journal',
-    title: 'Write it down. Nobody has to see it.',
-    body: 'Pencil in the header. Private by default. Mood, a line, a win. Two rooms: Your pages, and Voices from friends who shared.',
-    icon: 'book',
-    get tint() {
-      return tw.color('amber-700') ?? '#B45309';
-    },
-    get soft() {
-      return tw.color('amber-100') ?? '#FEF3C7';
-    },
-    details: [
-      { icon: 'lock-closed-outline', title: 'Your pages', body: 'Today and Timeline. Streaks, moods, reflections when someone replies.' },
-      { icon: 'chatbubbles-outline', title: 'Voices', body: 'A friend’s shared note. Reply to a line or message them privately.' },
-      { icon: 'eye-outline', title: 'Going public', body: 'You choose when a page is visible. It is never the default.' },
-    ],
   },
   {
     id: 'create',
     eyebrow: 'The plus',
-    title: 'The green button is your “I did a thing”',
-    body: 'Bottom center. It opens a sheet — never the camera by accident.',
+    title: 'Made something? Tap +',
+    body: 'The green button at the bottom is where everything starts.',
     icon: 'add',
     get tint() {
       return theme.colors.brand;
@@ -181,109 +64,17 @@ const STEPS: Step[] = [
       return theme.colors.brandSoft;
     },
     details: [
-      { icon: 'book-outline', title: 'Journal entry', body: 'Fastest way to a private page.' },
-      { icon: 'image-outline', title: 'New post', body: 'A still, a caption, a path. Lives on Home and You.' },
-      { icon: 'film-outline', title: 'New reel', body: 'Capture → preview → optional edit → publish. You are never shoved into the editor.' },
-      { icon: 'ellipse-outline', title: 'New story', body: 'Ephemeral. 24 hours. The top strip only.' },
+      { icon: 'image-outline', title: 'Post', body: 'Share a win with your friends.' },
+      { icon: 'book-outline', title: 'Journal', body: 'A private page, just for you.' },
+      { icon: 'ellipse-outline', title: 'Story', body: 'A quick moment that’s gone in 24 hours.' },
     ],
   },
   {
-    id: 'reels',
-    eyebrow: 'Reels',
-    title: 'Portrait, muted, then yours',
-    body: 'Tap a clip on Home or Explore. Swipe the next. Sound when you want it. Creating one: film, look, then sound.',
-    icon: 'film',
-    get tint() {
-      return theme.colors.energy;
-    },
-    get soft() {
-      return theme.colors.energySoft;
-    },
-    details: [
-      { icon: 'phone-portrait-outline', title: '9:16 viewer', body: 'Full-screen, vertical. Chrome stays quiet.' },
-      { icon: 'cut-outline', title: 'Editor tabs', body: 'Edit (trim, text, tools), Look, Sound. Skip the editor if the take is enough.' },
-    ],
-  },
-  {
-    id: 'instructors',
-    eyebrow: 'Instructors',
-    title: 'A real person, a written plan',
-    body: 'Find a coach on Explore, You, or Settings. Reach out — that unlocks a chat. After you talk, they send a proposal. You accept and it becomes a plan.',
-    icon: 'school',
-    get tint() {
-      return theme.colors.brand;
-    },
-    get soft() {
-      return theme.colors.brandSoft;
-    },
-    details: [
-      { icon: 'chatbubble-outline', title: 'Reach out', body: 'On their profile. No friends-only wall. You can talk first.' },
-      { icon: 'document-text-outline', title: 'Proposal → plan', body: 'Weeks, sessions, € per week. Accept and it is a contract. Billing comes later.' },
-      { icon: 'star-outline', title: 'Reviews after 4 weeks', body: 'Only people who finished at least four weeks can rate a coach. Coaches can rate your follow-through too. No fake stars.' },
-      { icon: 'ribbon-outline', title: 'Want to teach?', body: 'Earn peer endorsements, then claim Instructor on You. Hub is also in Settings.' },
-    ],
-  },
-  {
-    id: 'shop',
-    eyebrow: 'Shop',
-    title: 'Tools for the path, not a mall',
-    body: 'The Shop tab. Search, filter by your paths, open a product, checkout. Orders live in Settings → My orders.',
-    icon: 'storefront',
-    get tint() {
-      return theme.colors.brand;
-    },
-    get soft() {
-      return theme.colors.brandSoft;
-    },
-    details: [
-      { icon: 'search-outline', title: 'Search + chips', body: 'Keyword and your growth areas. Sub-paths if you picked one.' },
-      { icon: 'cart-outline', title: 'Cart & checkout', body: 'Card checkout for goods. Coaching money is not in Shop.' },
-      { icon: 'receipt-outline', title: 'My orders', body: 'Settings → My orders. Tracking when a seller ships.' },
-    ],
-  },
-  {
-    id: 'you',
-    eyebrow: 'You',
-    title: 'Your face, your paths, your people',
-    body: 'Last tab. Avatar, stats, posts, stories. Edit profile from Settings. Share a card if you want someone to find you.',
-    icon: 'person',
-    get tint() {
-      return theme.colors.brand;
-    },
-    get soft() {
-      return theme.colors.brandSoft;
-    },
-    details: [
-      { icon: 'map-outline', title: 'Growth paths', body: 'The cream card on You. This is how you change them.' },
-      { icon: 'people-outline', title: 'Friends', body: 'Open another profile to Add friend. Block and report live there too.' },
-      { icon: 'school-outline', title: 'Instructors + plans', body: 'Find a coach, or open Instructor Hub / My coaching plan if you have one.' },
-      { icon: 'chatbubble-ellipses-outline', title: 'Review Grow!', body: 'The coral row on You. Also in Settings. We read every note.' },
-    ],
-  },
-  {
-    id: 'inbox',
-    eyebrow: 'Bell and messages',
-    title: 'We tap you on the shoulder',
-    body: 'Home header: the bell is activity (likes, endorsements, coaching, replies). The bubble is DMs — friends and coaches you reached out to.',
-    icon: 'notifications-outline',
-    get tint() {
-      return theme.colors.energy;
-    },
-    get soft() {
-      return theme.colors.energySoft;
-    },
-    details: [
-      { icon: 'notifications-outline', title: 'Notifications', body: 'Tap a row to jump to the post, the plan, or the chat.' },
-      { icon: 'chatbubbles-outline', title: 'Messages', body: 'Coaching threads get a small banner so you can send or accept a plan from the chat.' },
-      { icon: 'options-outline', title: 'Quiet it', body: 'Settings → Notifications for push prefs. Haptics and UI sounds have their own switches.' },
-    ],
-  },
-  {
-    id: 'later',
-    eyebrow: 'Find these later',
-    title: 'Reviews and this tour live in Settings',
-    body: 'We will not dump you into a form. When you have something to say — or want this walkthrough again — you already know the door.',
-    icon: 'trail-sign-outline',
+    id: 'checkin',
+    eyebrow: 'Your first step',
+    title: 'Tap how you feel',
+    body: 'One tap on Home each day. It takes five seconds and starts your streak.',
+    icon: 'happy-outline',
     get tint() {
       return theme.colors.energy;
     },
@@ -291,12 +82,6 @@ const STEPS: Step[] = [
       return theme.colors.energySoft;
     },
   },
-];
-
-const INTENTS = [
-  { id: 'learn', label: 'I’m here to learn', icon: 'bulb-outline' as const },
-  { id: 'teach', label: 'I might teach', icon: 'school-outline' as const },
-  { id: 'browse', label: 'Just browsing', icon: 'compass-outline' as const },
 ];
 
 function Mascot({
@@ -357,13 +142,13 @@ function DetailCard({ item }: { item: Detail }) {
   return (
     <View
       style={[
-        tw`flex-row items-start rounded-card px-3.5 py-3 mb-2 border`,
-        { backgroundColor: theme.colors.card, borderColor: 'rgba(28,25,23,0.08)' },
+        tw`flex-row items-center rounded-card px-3.5 py-3 mb-2 border`,
+        { backgroundColor: theme.colors.card, borderColor: theme.colors.line },
       ]}
     >
       <View
         style={[
-          tw`w-9 h-9 rounded-full items-center justify-center mr-3 mt-0.5`,
+          tw`w-9 h-9 rounded-full items-center justify-center mr-3`,
           { backgroundColor: theme.colors.subtle },
         ]}
       >
@@ -371,20 +156,43 @@ function DetailCard({ item }: { item: Detail }) {
       </View>
       <View style={tw`flex-1`}>
         <Text style={tw`font-semibold text-ink`}>{item.title}</Text>
-        <Text style={tw`text-sm text-ink-3 leading-5 mt-0.5`}>{item.body}</Text>
+        <Text style={tw`text-footnote text-ink-3 mt-0.5`}>{item.body}</Text>
       </View>
+    </View>
+  );
+}
+
+/** Non-interactive preview of the Today card's mood row — the real one is on Home. */
+function MoodPreview() {
+  return (
+    <View
+      style={[
+        tw`mt-5 rounded-sheet px-3 py-3.5 border flex-row justify-between`,
+        { backgroundColor: theme.colors.card, borderColor: theme.colors.line },
+      ]}
+      accessible
+      accessibilityLabel="Moods you can pick on Home: Heavy, Tired, Okay, Good, Bright"
+    >
+      {CHECKIN_MOODS.map((m) => (
+        <View key={m.mood} style={tw`items-center flex-1`}>
+          <Text style={tw`text-[26px]`}>{m.glyph}</Text>
+          <Text style={tw`text-caption text-ink-3 mt-1`}>{m.label}</Text>
+        </View>
+      ))}
     </View>
   );
 }
 
 type Props = {
   onFinished?: () => void;
+  /** Last card's primary action: close the tour and take the user to Home's check-in. */
+  onCheckIn?: () => void;
 };
 
-export default function DemoTutorial({ onFinished }: Props) {
+export default function DemoTutorial({ onFinished, onCheckIn }: Props) {
   const complete = useDemoTutorialStore((s) => s.complete);
+  const requestCheckInSpotlight = useDemoTutorialStore((s) => s.requestCheckInSpotlight);
   const [index, setIndex] = useState(0);
-  const [intent, setIntent] = useState<string | null>(null);
   const fade = useRef(new Animated.Value(1)).current;
   const slide = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
@@ -398,7 +206,7 @@ export default function DemoTutorial({ onFinished }: Props) {
   const go = (next: number) => {
     if (next < 0) return;
     if (next >= STEPS.length) {
-      void finish();
+      void finish(true);
       return;
     }
     feedback.select();
@@ -430,28 +238,27 @@ export default function DemoTutorial({ onFinished }: Props) {
     });
   };
 
-  const finish = async () => {
-    feedback.success();
+  const finish = async (toCheckIn: boolean) => {
+    if (toCheckIn) {
+      haptic('commit');
+      onCheckIn?.();
+      requestCheckInSpotlight();
+    } else {
+      feedback.select();
+    }
     await complete();
     onFinished?.();
   };
-
-  const intentLine = useMemo(() => {
-    if (intent === 'learn') return 'Nice. We’ll keep the path quiet and useful.';
-    if (intent === 'teach') return 'Lovely. Instructor Hub is waiting on You when you’re ready.';
-    if (intent === 'browse') return 'Wander away. Explore is built for that.';
-    return null;
-  }, [intent]);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['top', 'bottom']}>
       <View style={tw`px-gutter-wide pt-2 pb-3`}>
         <View style={tw`flex-row items-center justify-between mb-2.5`}>
           <PressableScale
-            onPress={() => void finish()}
+            onPress={() => void finish(false)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel="Skip tutorial"
+            accessibilityLabel="Skip tour"
           >
             <Text style={tw`text-sm font-semibold text-ink-3`}>Skip</Text>
           </PressableScale>
@@ -459,7 +266,7 @@ export default function DemoTutorial({ onFinished }: Props) {
             {index + 1} / {STEPS.length}
           </Text>
         </View>
-        <View style={tw`h-1.5 rounded-full bg-stone-200 overflow-hidden`}>
+        <View style={tw`h-1.5 rounded-full bg-raised overflow-hidden`}>
           <View
             style={{
               height: '100%',
@@ -474,65 +281,23 @@ export default function DemoTutorial({ onFinished }: Props) {
       <Animated.View style={[tw`flex-1`, { opacity: fade, transform: [{ translateX: slide }] }]}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={tw`px-gutter-wide pb-4`}
+          contentContainerStyle={tw`flex-grow justify-center px-gutter-wide pb-4`}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
         >
           <Mascot icon={step.icon} tint={step.tint} soft={step.soft} />
           <Text style={tw`text-caption font-semibold tracking-widest uppercase text-center`}>
             <Text style={{ color: step.tint }}>{step.eyebrow}</Text>
           </Text>
-          <Text style={tw`text-[26px] leading-8 font-bold text-ink text-center mt-2`}>
+          <Text
+            style={tw`text-[26px] leading-8 font-bold text-ink text-center mt-2`}
+            accessibilityRole="header"
+          >
             {step.title}
           </Text>
           <Text style={tw`text-body text-ink-3 leading-6 text-center mt-2.5`}>{step.body}</Text>
 
-          {step.id === 'intent' ? (
-            <View style={tw`mt-5`}>
-              {INTENTS.map((item) => {
-                const active = intent === item.id;
-                return (
-                  <PressableScale
-                    key={item.id}
-                    feedback="select"
-                    onPress={() => setIntent(item.id)}
-                    style={[
-                      tw`flex-row items-center rounded-card px-4 py-3.5 mb-2 border`,
-                      active
-                        ? { backgroundColor: theme.colors.brandSoft, borderColor: tw.color('emerald-200') }
-                        : {
-                            backgroundColor: theme.colors.card,
-                            borderColor: theme.colors.line,
-                          },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        tw`w-10 h-10 rounded-full items-center justify-center mr-3`,
-                        { backgroundColor: active ? theme.colors.brand : theme.colors.subtle },
-                      ]}
-                    >
-                      <Ionicons
-                        name={item.icon}
-                        size={18}
-                        color={active ? '#FFFFFF' : theme.colors.brand}
-                      />
-                    </View>
-                    <Text style={tw`flex-1 font-semibold text-ink`}>{item.label}</Text>
-                    {active ? (
-                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.brand} />
-                    ) : null}
-                  </PressableScale>
-                );
-              })}
-              {intentLine ? (
-                <Text style={tw`text-sm text-emerald-800 text-center mt-2`}>{intentLine}</Text>
-              ) : null}
-            </View>
-          ) : null}
-
           {step.id === 'create' ? (
-            <View style={tw`items-center mt-5 mb-1`}>
+            <View style={tw`items-center mt-5 mb-4`}>
               <View
                 style={[
                   tw`w-14 h-14 rounded-full items-center justify-center`,
@@ -541,9 +306,6 @@ export default function DemoTutorial({ onFinished }: Props) {
               >
                 <Ionicons name="add" size={30} color="#FFFFFF" />
               </View>
-              <Text style={tw`text-xs font-semibold text-ink-3 mt-2`}>
-                That’s the one. Bottom center.
-              </Text>
             </View>
           ) : null}
 
@@ -551,68 +313,37 @@ export default function DemoTutorial({ onFinished }: Props) {
             ? step.details.map((item) => <DetailCard key={item.title} item={item} />)
             : null}
 
-          {step.id === 'later' ? (
-            <View style={tw`mt-4`}>
-              <View
-                style={[
-                  tw`rounded-card px-4 py-3.5 mb-2.5 border`,
-                  { backgroundColor: theme.colors.energySoft, borderColor: tw.color('red-200') },
-                ]}
-              >
-                <View style={tw`flex-row items-center mb-1`}>
-                  <Ionicons name="chatbubble-ellipses" size={16} color={theme.colors.energy} />
-                  <Text style={tw`ml-2 font-bold text-ink`}>Review Grow!</Text>
-                </View>
-                <Text style={tw`text-sm text-ink-2 leading-5`}>
-                  You → the coral “Review Grow!” row. Or Settings → Support → Review Grow!. Stars + a
-                  note. We reply there.
-                </Text>
-              </View>
-              <View
-                style={[
-                  tw`rounded-card px-4 py-3.5 border`,
-                  { backgroundColor: theme.colors.brandSoft, borderColor: tw.color('emerald-200') },
-                ]}
-              >
-                <View style={tw`flex-row items-center mb-1`}>
-                  <Ionicons name="sparkles" size={16} color={theme.colors.brand} />
-                  <Text style={tw`ml-2 font-bold text-ink`}>Replay this tour</Text>
-                </View>
-                <Text style={tw`text-sm text-ink-2 leading-5`}>
-                  Settings → Support → Replay the tour. Same walkthrough, whenever you want.
-                </Text>
-              </View>
-            </View>
+          {step.id === 'checkin' ? (
+            <>
+              <MoodPreview />
+              <Text style={tw`text-footnote text-ink-3 text-center mt-4`}>
+                You can replay this tour anytime in Settings.
+              </Text>
+            </>
           ) : null}
         </ScrollView>
       </Animated.View>
 
       <View style={tw`px-gutter-wide pb-4 pt-2`}>
-        {isLast ? (
-          <PrimaryButton label="I’m in — let’s grow" onPress={() => void finish()} />
-        ) : (
-          <View style={tw`flex-row items-center`}>
-            {!isFirst ? (
-              <PressableScale
-                onPress={() => go(index - 1)}
-                accessibilityRole="button"
-                accessibilityLabel="Previous step"
-                style={tw`w-[72px] h-[50px] rounded-card border border-line bg-card items-center justify-center mr-3`}
-              >
-                <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
-              </PressableScale>
-            ) : null}
-            <View style={tw`flex-1`}>
-              <PrimaryButton
-                label={
-                  isFirst ? 'Let’s go' : step.id === 'intent' && !intent ? 'Pick one first' : 'Next'
-                }
-                onPress={() => go(index + 1)}
-                disabled={step.id === 'intent' && !intent}
-              />
-            </View>
+        <View style={tw`flex-row items-center`}>
+          {!isFirst ? (
+            <PressableScale
+              onPress={() => go(index - 1)}
+              accessibilityRole="button"
+              accessibilityLabel="Previous step"
+              style={tw`w-[72px] h-[50px] rounded-card border border-line bg-card items-center justify-center mr-3`}
+            >
+              <Ionicons name="arrow-back" size={18} color={theme.colors.ink} />
+            </PressableScale>
+          ) : null}
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label={isLast ? 'Check in now' : isFirst ? 'Let’s go' : 'Next'}
+              onPress={() => (isLast ? void finish(true) : go(index + 1))}
+              feedback={false}
+            />
           </View>
-        )}
+        </View>
       </View>
     </SafeAreaView>
   );

@@ -160,6 +160,8 @@ export default function InventoryScreen() {
             />
           </View>
           <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${product.name}`}
             style={tw`px-4 py-2.5 bg-red-50 rounded-control items-center justify-center`}
             onPress={() => void handleDeleteProduct(product)}
           >

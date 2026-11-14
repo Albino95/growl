@@ -97,6 +97,7 @@ export type RootStackParamList = {
   Legal: undefined;
   LegalDocument: { documentId: 'terms' | 'privacy' | 'community' | 'support' };
   DeleteAccount: undefined;
+  PrivacySettings: undefined;
   StoryViewer: {
     stories: Array<{
       id: string;
@@ -325,6 +326,11 @@ export default function RootNavigator() {
         <Stack.Screen
           name="DeleteAccount"
           getComponent={() => require('../../screens/Profile/DeleteAccountScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="PrivacySettings"
+          getComponent={() => require('../../screens/Profile/PrivacyScreen').default}
           options={{ headerShown: false }}
         />
         <Stack.Screen name="Business" component={BusinessRootStack} />

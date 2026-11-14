@@ -183,7 +183,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={tw`flex-1 bg-page`} edges={['top', 'bottom']}>
         <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
-          <PressableScale onPress={onClose} hitSlop={12}>
+          <PressableScale accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={12}>
             <Ionicons name="close" size={28} color={theme.colors.ink3} />
           </PressableScale>
           <Text style={tw`text-lg font-semibold text-ink`}>
@@ -213,6 +213,9 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 <View style={tw`relative`}>
                   <Image source={{ uri: imageUrl }} style={tw`w-full h-48 rounded-control`} contentFit="cover" />
                   <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove image"
+                    hitSlop={6}
                     style={tw`absolute top-2 right-2 bg-red-500 rounded-chip p-2`}
                     onPress={() => setImageUrl('')}
                   >

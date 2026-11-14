@@ -11,6 +11,7 @@ import type { CircleJournalEntry, JournalMood } from '../../services/api/journal
 import { feelJournalEntry, muteJournalAuthor } from '../../services/api/journal';
 import { feedback } from '../../utils/interactionFeedback';
 import CATEGORIES from '../../data/categories';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   entry: CircleJournalEntry;
@@ -40,9 +41,11 @@ export default function CircleJournalCard({
   const [feeling, setFeeling] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
   const prevFelt = useRef(felt);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (felt && !prevFelt.current) {
+    // Reduce Motion: the filled heart is the feedback; no pop.
+    if (felt && !prevFelt.current && !reduceMotion) {
       Animated.sequence([
         Animated.spring(heartScale, {
           toValue: 1.35,
@@ -59,7 +62,7 @@ export default function CircleJournalCard({
       ]).start();
     }
     prevFelt.current = felt;
-  }, [felt, heartScale]);
+  }, [felt, heartScale, reduceMotion]);
 
   const mood = (entry.mood as JournalMood | null) || null;
   const meta = mood ? MOOD_META[mood] : null;

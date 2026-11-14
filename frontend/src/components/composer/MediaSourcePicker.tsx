@@ -37,6 +37,9 @@ export default function MediaSourcePicker({
               delayLongPress={450}
               style={tw`bg-white/10 rounded-full p-5 mb-4 border border-white/15`}
               accessible={false}
+              // Decorative icon (long-press easter egg only): hidden from screen readers.
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             >
               <Ionicons
                 name={icon as keyof typeof Ionicons.glyphMap}

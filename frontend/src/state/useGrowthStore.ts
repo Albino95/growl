@@ -13,6 +13,8 @@ import {
   type WeeklyRecap,
 } from '../services/api/growth';
 import { localDayKey } from '../services/api/http';
+import { newIdempotencyKey } from '../services/api/idempotency';
+import { toLifeMode, type LifeMode } from '../services/api/privacy';
 import type { JournalMood } from '../services/api/journal';
 
 /**
@@ -48,6 +50,8 @@ export type ComposeDraft = {
 type GrowthState = {
   streak: Streak | null;
   checkin: Checkin | null;
+  /** From GET /me/today (`none` when off or the server doesn't send it). */
+  lifeMode: LifeMode | null;
   /** Local day the `checkin` / `streak` snapshot belongs to. */
   day: string | null;
   loading: boolean;
@@ -84,6 +88,22 @@ const secureStateStorage: StateStorage = {
   removeItem: (name) => deleteSecureItem(name),
 };
 
+/**
+ * Idempotency key for the check-in save in flight / last failed. A retry of the
+ * same input on the same day reuses it (no double points if the first PUT
+ * landed but its response was lost); any other input, or a success, starts a
+ * new key so a later edit is never answered with the stored earlier save.
+ */
+let pendingSave: { sig: string; key: string } | null = null;
+
+function checkinKeyFor(input: CheckinInput): string {
+  const sig = `${localDayKey()}|${JSON.stringify(input)}`;
+  if (!pendingSave || pendingSave.sig !== sig) {
+    pendingSave = { sig, key: `checkin-${newIdempotencyKey()}` };
+  }
+  return pendingSave.key;
+}
+
 let inflight: Promise<void> | null = null;
 let recapInflight: Promise<void> | null = null;
 /** Bumped on account switch so a late response for the previous user is dropped. */
@@ -94,6 +114,7 @@ export const useGrowthStore = create<GrowthState>()(
     (set, get) => ({
       streak: null,
       checkin: null,
+      lifeMode: null,
       day: null,
       loading: false,
       loaded: false,
@@ -137,6 +158,7 @@ export const useGrowthStore = create<GrowthState>()(
             set({
               streak: res?.streak ?? null,
               checkin: res?.checkin ?? null,
+              lifeMode: res && 'life_mode' in res ? toLifeMode(res.life_mode) : null,
               day: res?.streak?.today || today,
               loaded: true,
               available: !!res?.streak,
@@ -182,7 +204,9 @@ export const useGrowthStore = create<GrowthState>()(
       saveCheckin: async (input) => {
         set({ saving: true });
         try {
-          const res = await saveToday(input);
+          const idempotencyKey = checkinKeyFor(input);
+          const res = await saveToday(input, { idempotencyKey });
+          if (pendingSave?.key === idempotencyKey) pendingSave = null;
           set({
             checkin: res.checkin,
             streak: res.streak ?? get().streak,
@@ -232,6 +256,7 @@ export const useGrowthStore = create<GrowthState>()(
         set({
           streak: null,
           checkin: null,
+          lifeMode: null,
           day: null,
           loaded: false,
           available: true,

@@ -194,10 +194,13 @@ export function buildOptimisticFeedPost(
   };
 }
 
-async function createAndVerify(payload: Parameters<typeof createFeedPost>[0]): Promise<FeedPost> {
+async function createAndVerify(
+  payload: Parameters<typeof createFeedPost>[0],
+  idempotencyKey?: string
+): Promise<FeedPost> {
   let created: Awaited<ReturnType<typeof createFeedPost>>;
   try {
-    created = await createFeedPost(payload);
+    created = await createFeedPost(payload, { idempotencyKey });
   } catch (err) {
     throw toComposerError(err, 'publish');
   }
@@ -223,6 +226,8 @@ export async function publishPost(input: {
   audioTrack?: { title: string; url: string } | null;
   extras?: PostPublishExtras;
   user: OptimisticUser;
+  /** Stable per draft: a retry of the same draft can't create a second post. */
+  idempotencyKey?: string;
 }): Promise<PublishFeedResult> {
   const metadata: Record<string, unknown> = {};
   if (input.audioTrack) {
@@ -242,7 +247,7 @@ export async function publishPost(input: {
     caption: input.caption.trim(),
     ...splitCategory(input.category),
     metadata: Object.keys(metadata).length ? metadata : undefined,
-  });
+  }, input.idempotencyKey);
   return { post, optimistic: buildOptimisticFeedPost(post, { user: input.user, base: metadata }) };
 }
 
@@ -253,6 +258,8 @@ export async function publishReel(input: {
   videoEdit: VideoEditSettings;
   coverUrl?: string | null;
   user: OptimisticUser;
+  /** Stable per draft: a retry of the same draft can't create a second reel. */
+  idempotencyKey?: string;
 }): Promise<PublishFeedResult> {
   const { media } = input;
   const isVideo = media.mediaType === 'video';
@@ -271,7 +278,7 @@ export async function publishReel(input: {
       ...(isVideo && input.coverUrl ? { cover_url: input.coverUrl } : {}),
       ...audio,
     },
-  });
+  }, input.idempotencyKey);
   return {
     post,
     optimistic: buildOptimisticFeedPost(post, {
@@ -306,12 +313,17 @@ export async function publishStory(input: {
   media: UploadedMedia;
   caption: string;
   videoEdit?: Pick<VideoEditSettings, 'trimStartMs' | 'trimEndMs'> | null;
+  /** Stable per draft: a retry of the same draft can't create a second story. */
+  idempotencyKey?: string;
 }): Promise<void> {
   try {
-    await createStory({
-      image_url: storyMediaUrl(input.media.url, input.media.mediaType, input.videoEdit),
-      caption: input.caption.trim() || undefined,
-    });
+    await createStory(
+      {
+        image_url: storyMediaUrl(input.media.url, input.media.mediaType, input.videoEdit),
+        caption: input.caption.trim() || undefined,
+      },
+      { idempotencyKey: input.idempotencyKey }
+    );
   } catch (err) {
     throw toComposerError(err, 'publish');
   }

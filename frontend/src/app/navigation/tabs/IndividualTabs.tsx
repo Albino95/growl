@@ -25,7 +25,8 @@ import { useReducedMotion } from '../../../hooks/useReducedMotion';
 import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../../constants/featureFlags';
 import DemoTutorial from '../../../screens/Onboarding/DemoTutorial';
-import { useDemoTutorialStore } from '../../../state/useDemoTutorialStore';
+import { useDemoTutorialStore, type TabHintKey } from '../../../state/useDemoTutorialStore';
+import TabHint from '../../../components/onboarding/TabHint';
 import { useHomeTabStore } from '../../../state/useHomeTabStore';
 
 export type IndividualTabsParamList = {
@@ -177,6 +178,27 @@ export default function IndividualTabs() {
 
   const showTutorial = tutorialHydrated && (!tutorialSeen || tutorialForce);
 
+  // One-time tab hints: the tab bar reports the focused route; the store decides if it is new.
+  const [focusedTab, setFocusedTab] = useState<string>('Feed');
+  const pendingHint = useDemoTutorialStore((s) => s.hintFor(focusedTab));
+  const markHintSeen = useDemoTutorialStore((s) => s.markHintSeen);
+  /** The hint showing on this visit; cleared when the user leaves the tab or dismisses it. */
+  const [visibleHint, setVisibleHint] = useState<TabHintKey | null>(null);
+
+  useEffect(() => {
+    setVisibleHint(null);
+  }, [focusedTab]);
+
+  useEffect(() => {
+    if (!pendingHint || createOpen) return;
+    // Let the tab transition settle first; count it as seen as soon as it is shown.
+    const t = setTimeout(() => {
+      setVisibleHint(pendingHint);
+      void markHintSeen(pendingHint);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [pendingHint, createOpen, markHintSeen]);
+
   const fabSpin = useRef(new Animated.Value(0)).current;
   const reducedMotion = useReducedMotion();
 
@@ -226,6 +248,9 @@ export default function IndividualTabs() {
       <Tab.Navigator
         // Avoid blank tabs after shift animation (RN screens + native-driver activityState race).
         detachInactiveScreens={false}
+        screenListeners={({ route }) => ({
+          focus: () => setFocusedTab(route.name),
+        })}
         screenOptions={{
           headerShown: false,
           animation: 'shift',
@@ -261,6 +286,11 @@ export default function IndividualTabs() {
               pointerEvents="box-none"
               style={[styles.dockWrap, { paddingBottom: bottomPad }]}
             >
+              {visibleHint && visibleHint === currentRoute && !showTutorial && !createOpen ? (
+                <View style={tw`mb-2.5 px-1`} pointerEvents="box-none">
+                  <TabHint hintKey={visibleHint} onDismiss={() => setVisibleHint(null)} />
+                </View>
+              ) : null}
               <View
                 style={[
                   styles.dock,
@@ -365,7 +395,7 @@ export default function IndividualTabs() {
           style={[StyleSheet.absoluteFill, { zIndex: 40, backgroundColor: theme.colors.page }]}
           pointerEvents="auto"
         >
-          <DemoTutorial />
+          <DemoTutorial onCheckIn={() => tabNavRef.current?.navigate('Feed')} />
         </View>
       ) : null}
     </>

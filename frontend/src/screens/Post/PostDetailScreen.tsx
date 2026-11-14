@@ -1,12 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-} from 'react-native';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +11,7 @@ import GrowAvatar from '../../components/ui/GrowAvatar';
 import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../../components/ui/PressableScale';
+import ErrorState from '../../components/ui/ErrorState';
 import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
 import { feedback } from '../../utils/interactionFeedback';
 import { toast } from '../../state/useToastStore';
@@ -65,26 +59,39 @@ export default function PostDetailScreen() {
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
 
+  /** True when the server copy couldn't be loaded (offline, or the post is gone). */
+  const [hydrateFailed, setHydrateFailed] = useState(false);
+  const [hydrateAttempt, setHydrateAttempt] = useState(0);
+
   // Hydrate like state from the server — route params are often stale after re-login.
   useEffect(() => {
     let cancelled = false;
-    void getFeedPost(initialPost.id).then((remote) => {
-      if (cancelled || !remote) return;
-      const liked = !!remote.metadata?.has_liked;
-      setPost((prev) => ({
-        ...prev,
-        likes: Number(remote.metadata?.likes ?? prev.likes),
-        comments: Number(remote.metadata?.comments ?? prev.comments),
-        hasLiked: liked,
-        reaction: liked ? prev.reaction || 'love' : null,
-        image: resolvePostMediaUri(remote.image_url, remote.category, remote.id) || prev.image,
-        caption: remote.caption || prev.caption,
-      }));
-    });
+    getFeedPost(initialPost.id)
+      .then((remote) => {
+        if (cancelled) return;
+        if (!remote) {
+          setHydrateFailed(true);
+          return;
+        }
+        setHydrateFailed(false);
+        const liked = !!remote.metadata?.has_liked;
+        setPost((prev) => ({
+          ...prev,
+          likes: Number(remote.metadata?.likes ?? prev.likes),
+          comments: Number(remote.metadata?.comments ?? prev.comments),
+          hasLiked: liked,
+          reaction: liked ? prev.reaction || 'love' : null,
+          image: resolvePostMediaUri(remote.image_url, remote.category, remote.id) || prev.image,
+          caption: remote.caption || prev.caption,
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setHydrateFailed(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [initialPost.id]);
+  }, [initialPost.id, hydrateAttempt]);
 
   const openShareCard = () => {
     feedback.open();
@@ -193,7 +200,12 @@ export default function PostDetailScreen() {
       ...prev,
       reaction,
       hasLiked: willLike,
-      likes: willLike === wasLiked ? before.likes : willLike ? before.likes + 1 : Math.max(0, before.likes - 1),
+      likes:
+        willLike === wasLiked
+          ? before.likes
+          : willLike
+            ? before.likes + 1
+            : Math.max(0, before.likes - 1),
     }));
     if (willLike === wasLiked) return;
     likePendingRef.current = true;
@@ -206,7 +218,9 @@ export default function PostDetailScreen() {
         hasLiked: before.hasLiked,
         likes: before.likes,
       }));
-      toast.info('Couldn’t update reaction — check your connection', { icon: 'cloud-offline-outline' });
+      toast.info('Couldn’t update reaction — check your connection', {
+        icon: 'cloud-offline-outline',
+      });
     } finally {
       likePendingRef.current = false;
     }
@@ -214,13 +228,23 @@ export default function PostDetailScreen() {
 
   const navigateToProfile = () => {
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.dispatch(CommonActions.navigate('PublicProfile', { userId: post.userId, preview: { username: post.username, avatarUrl: post.avatar } }));
+    rootNavigation.dispatch(
+      CommonActions.navigate('PublicProfile', {
+        userId: post.userId,
+        preview: { username: post.username, avatarUrl: post.avatar },
+      }),
+    );
   };
 
   return (
     <SafeAreaView style={tw`flex-1 bg-card`} edges={['top']}>
-      <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line bg-card`}>
+      <KeyboardAvoidingView
+        style={tw`flex-1`}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View
+          style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line bg-card`}
+        >
           <PressableScale
             pressedScale={0.9}
             onPress={() => navigation.goBack()}
@@ -231,13 +255,32 @@ export default function PostDetailScreen() {
             <Ionicons name="arrow-back" size={24} color={theme.colors.icon} />
           </PressableScale>
           <Text style={tw`text-callout font-semibold text-ink`}>Post</Text>
-          <PressableScale pressedScale={0.9} onPress={openShareCard} hitSlop={10} accessibilityLabel="Share post">
+          <PressableScale
+            pressedScale={0.9}
+            onPress={openShareCard}
+            hitSlop={10}
+            accessibilityLabel="Share post"
+          >
             <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.icon} />
           </PressableScale>
         </View>
 
         <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
-          <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line`}>
+          {hydrateFailed ? (
+            <ErrorState
+              compact
+              title="Couldn’t refresh this post"
+              message="It may have been removed, or you’re offline."
+              onRetry={() => {
+                setHydrateFailed(false);
+                setHydrateAttempt((n) => n + 1);
+              }}
+              style={tw`border-b border-line`}
+            />
+          ) : null}
+          <View
+            style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line`}
+          >
             <PressableScale style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
               <GrowAvatar
                 userId={post.userId}
@@ -279,33 +322,63 @@ export default function PostDetailScreen() {
                 >
                   {renderReactionIcon()}
                 </PressableScale>
-                <PressableScale pressedScale={0.9} onPress={() => setShowComments(true)} style={tw`mr-3`}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Comments"
+                  pressedScale={0.9}
+                  onPress={() => setShowComments(true)}
+                  style={tw`mr-3`}
+                >
                   <Ionicons name="chatbubble-outline" size={26} color={theme.colors.icon} />
                 </PressableScale>
-                <PressableScale pressedScale={0.9} onPress={openShareCard} accessibilityLabel="Share post card">
+                <PressableScale
+                  accessibilityRole="button"
+                  pressedScale={0.9}
+                  onPress={openShareCard}
+                  accessibilityLabel="Share post card"
+                >
                   <Ionicons name="paper-plane-outline" size={26} color={theme.colors.brand} />
                 </PressableScale>
               </View>
-              <PressableScale pressedScale={0.9}>
-                <Ionicons name="bookmark-outline" size={26} color={theme.colors.icon} />
-              </PressableScale>
             </View>
 
             {showReactionPicker && (
-              <View style={tw`absolute left-4 top-12 bg-card rounded-chip px-3 py-2 flex-row items-center shadow-lg border border-line z-10`}>
-                <PressableScale pressedScale={0.9} onPress={() => void setReaction('like')} style={tw`mx-1`}>
+              <View
+                style={tw`absolute left-4 top-12 bg-card rounded-chip px-3 py-2 flex-row items-center shadow-lg border border-line z-10`}
+              >
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('like')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>👍</Text>
                 </PressableScale>
-                <PressableScale pressedScale={0.9} onPress={() => void setReaction('love')} style={tw`mx-1`}>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('love')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>❤️</Text>
                 </PressableScale>
-                <PressableScale pressedScale={0.9} onPress={() => void setReaction('laugh')} style={tw`mx-1`}>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('laugh')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>😂</Text>
                 </PressableScale>
-                <PressableScale pressedScale={0.9} onPress={() => void setReaction('wow')} style={tw`mx-1`}>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('wow')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>😮</Text>
                 </PressableScale>
-                <PressableScale pressedScale={0.9} onPress={() => void setReaction('support')} style={tw`mx-1`}>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('support')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>💪</Text>
                 </PressableScale>
               </View>

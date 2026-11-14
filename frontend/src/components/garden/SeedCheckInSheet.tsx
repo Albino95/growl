@@ -189,6 +189,9 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
               <View style={tw`mb-3 rounded-card overflow-hidden border border-line`}>
                 <Image source={{ uri: photoUri }} style={tw`w-full h-44`} resizeMode="cover" />
                 <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove photo"
+                  hitSlop={6}
                   onPress={() => setPhotoUri(null)}
                   feedback="close"
                   style={tw`absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 items-center justify-center`}

@@ -2,7 +2,8 @@
  * Growth system API (streak, Today check-in, badges, recap, progress,
  * challenges, invites). Contract: docs/GROWTH_SYSTEM.md.
  */
-import { request, localDayKey } from './http';
+import { request, localDayKey, withIdempotency } from './http';
+import type { LifeMode } from './privacy';
 
 type Envelope<T> = { success: boolean; data: T };
 
@@ -11,10 +12,16 @@ async function get<T>(path: string): Promise<T> {
   return res.data;
 }
 
-async function send<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+async function send<T>(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+  idempotencyKey?: string
+): Promise<T> {
   const res = await request<Envelope<T>>(path, {
     method,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
   });
   return res.data;
 }
@@ -69,7 +76,12 @@ export type Checkin = {
   followup: 'yes' | 'partly' | 'no' | null;
   created_at: string;
 };
-export type TodayState = { checkin: Checkin | null; streak: Streak };
+export type TodayState = {
+  checkin: Checkin | null;
+  streak: Streak;
+  /** Sick / travel / break: missed days don't break the streak. Absent on older servers. */
+  life_mode?: LifeMode | null;
+};
 export type CheckinInput = {
   mood?: Mood;
   path?: string | null;
@@ -84,8 +96,13 @@ export type CheckinResult = {
   new_badges: BadgeEarned[];
 };
 export const getToday = () => get<TodayState>(`/me/today?day=${localDayKey()}`);
-export const saveToday = (input: CheckinInput) =>
-  send<CheckinResult>('/me/today', 'PUT', { day: localDayKey(), ...input });
+export const saveToday = (input: CheckinInput, opts?: { idempotencyKey?: string }) =>
+  send<CheckinResult>(
+    '/me/today',
+    'PUT',
+    { day: localDayKey(), ...input },
+    withIdempotency(opts?.idempotencyKey).idempotencyKey
+  );
 
 // ---------- Weekly recap ----------
 export type WeeklyRecap = {

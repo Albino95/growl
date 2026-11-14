@@ -75,7 +75,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
 
   const handleContinue = async () => {
     if (selectedCategories.length === 0) {
-      alertMessage('Select at least one', 'Pick a growth path to continue.');
+      alertMessage('Pick one to start', 'Choose at least one thing you want to grow in.');
       return;
     }
     setSaving(true);
@@ -112,7 +112,7 @@ export default function CategoryPickScreen({ navigation }: CategoryPickScreenPro
           </Text>
           <Text style={tw`text-3xl font-bold text-ink mt-1.5`}>Choose your paths</Text>
           <Text style={tw`text-ink-3 text-base leading-6 mt-2`}>
-            Pick up to 3 growth areas (multiple focuses per area). This shapes your feed, shop ranking, and who can endorse you.
+            Pick up to 3 things you want to grow in. You can change them anytime.
           </Text>
         </Animated.View>
 

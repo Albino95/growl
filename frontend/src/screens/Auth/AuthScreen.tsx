@@ -51,8 +51,16 @@ import {
   normalizeInviteCode,
   subscribePendingInviteCode,
 } from '../../services/storage/pendingInvite';
+import {
+  hasSignedInBefore,
+  peekSignedInBefore,
+} from '../../services/storage/signInHistory';
 import tw, { theme, getColorSchemeName } from '../../lib/tw';
 import { radius } from '../../theme/tokens';
+
+// Start reading "signed in on this device before?" as soon as the module loads,
+// so the form opens in the right mode without a visible flip.
+void hasSignedInBefore();
 
 // LayoutAnimation is opt-in on Android's legacy renderer; Fabric ignores (and warns on) this.
 if (
@@ -312,7 +320,9 @@ export default function AuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+  // Brand-new install opens on Sign up; anyone who signed in here before gets Sign in.
+  const [isSignUp, setIsSignUp] = useState(() => peekSignedInBefore() === false);
+  const modeTouchedRef = useRef(false);
   const [step, setStep] = useState<Step>('auth');
   const [cooldown, setCooldown] = useState(0);
   const [inviteCode, setInviteCode] = useState('');
@@ -542,12 +552,14 @@ export default function AuthScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    void loadPendingVerification().then((pending) => {
-      if (cancelled || !pending) return;
-      setEmail(pending.email);
-      setDevCodeHint(pending.devCode ?? null);
-      setStep('verify');
-    });
+    loadPendingVerification()
+      .then((pending) => {
+        if (cancelled || !pending) return;
+        setEmail(pending.email);
+        setDevCodeHint(pending.devCode ?? null);
+        setStep('verify');
+      })
+      .catch(() => undefined); // nothing pending to resume
     return () => {
       cancelled = true;
     };
@@ -568,11 +580,14 @@ export default function AuthScreen() {
     let alive = true;
     const apply = (code: string | null) => {
       if (!alive || !code) return;
+      modeTouchedRef.current = true;
       setInviteCode(code);
       setShowInvite(true);
       setIsSignUp(true);
     };
-    void loadPendingInviteCode().then(apply);
+    loadPendingInviteCode()
+      .then(apply)
+      .catch(() => undefined); // no invite: plain sign-up / sign-in
     const unsubscribe = subscribePendingInviteCode(apply);
     return () => {
       alive = false;
@@ -580,8 +595,23 @@ export default function AuthScreen() {
     };
   }, []);
 
+  // If the first-launch read lands after mount, apply it unless the user already chose.
+  useEffect(() => {
+    if (peekSignedInBefore() !== null) return;
+    let alive = true;
+    hasSignedInBefore()
+      .then((seen) => {
+        if (alive && !modeTouchedRef.current) setIsSignUp(!seen);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   /** Mode switch with sign-up-only rows animating in/out. */
   const setMode = (next: boolean) => {
+    modeTouchedRef.current = true;
     if (next === isSignUp) return;
     animateNextLayout(reducedRef.current);
     setIsSignUp(next);

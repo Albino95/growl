@@ -3,6 +3,7 @@ import { addDays, dayRange, localDay, safeTimeZone, topLevelPath, weekStart } fr
 import { checkBadges, type BadgeEarned } from './badges';
 import { checkChallengeCompletion } from './challenges';
 import { rewardPendingInvite } from './invites';
+import { isLifeModeDay, NO_LIFE_MODE, parseLifeMode, type LifeModeState } from './lifeMode';
 
 /**
  * Unified growth streak (docs/GROWTH_SYSTEM.md §3).
@@ -14,6 +15,9 @@ import { rewardPendingInvite } from './invites';
  * - A missed day while a streak is running consumes a rest token (an is_rest row is
  *   written) if one is left; otherwise current resets to 0 (longest is kept).
  * - Every 7 active days earns a rest token (max 2). Rest days don't add to current.
+ * - Life mode (utils/lifeMode.ts): a missed day inside an active life-mode window is
+ *   a protected day (is_rest = 2): the streak continues and no rest token is used.
+ *   Protected rows are persisted when settled so later replays keep them.
  * - Anything that rewrites the past (back-dated activity, a rest day turning active)
  *   falls back to a full replay of the user's rows, which is the source of truth.
  */
@@ -24,6 +28,9 @@ export const KIND_BITS: Record<ActivityKind, number> = { post: 1, story: 2, jour
 
 export const MAX_REST_TOKENS = 2;
 export const ACTIVE_DAYS_PER_TOKEN = 7;
+/** user_activity_days.is_rest values: 1 = rest day (used a token), 2 = life-mode protected. */
+export const REST_TOKEN = 1;
+export const REST_PROTECTED = 2;
 
 export type StreakState = {
   current: number;
@@ -70,11 +77,13 @@ export function advanceStreak(
   prev: StreakState,
   rows: Map<string, DayRow>,
   from: string,
-  through: string
-): { state: StreakState; restDays: string[] } {
+  through: string,
+  opts: { isProtected?: (day: string) => boolean } = {}
+): { state: StreakState; restDays: string[]; protectedDays: string[] } {
   const s: StreakState = { ...prev };
   const restDays: string[] = [];
-  if (from > through) return { state: s, restDays };
+  const protectedDays: string[] = [];
+  if (from > through) return { state: s, restDays, protectedDays };
   for (const d of dayRange(from, through)) {
     const r = rows.get(d);
     if (isActiveRow(r)) {
@@ -87,9 +96,13 @@ export function advanceStreak(
       }
       s.longest = Math.max(s.longest, s.current);
       s.last_active_day = d;
+    } else if (r && Number(r.is_rest) === REST_PROTECTED) {
+      // Life-mode protected day: streak continues, no token used.
     } else if (r && Number(r.is_rest)) {
       // Rest day (explicit or previously settled): uses a token, streak continues.
       s.rest_tokens = Math.max(0, s.rest_tokens - 1);
+    } else if (opts.isProtected?.(d)) {
+      if (s.current > 0) protectedDays.push(d);
     } else if (s.current > 0 && s.rest_tokens > 0) {
       s.rest_tokens -= 1;
       restDays.push(d);
@@ -98,25 +111,37 @@ export function advanceStreak(
     }
   }
   s.settled_through = through;
-  return { state: s, restDays };
+  return { state: s, restDays, protectedDays };
 }
 
-type StreakCtx = { tz: string; streak: StreakState | null };
+type StreakCtx = { tz: string; streak: StreakState | null; lifeMode: LifeModeState };
 
-async function loadCtx(env: Env, userId: string): Promise<StreakCtx | null> {
-  const row = await env.DB.prepare(
-    `SELECT u.timezone AS tz, s.current, s.longest, s.total_days, s.rest_tokens,
+const CTX_SELECT = `s.current, s.longest, s.total_days, s.rest_tokens,
             s.active_since_token, s.last_active_day, s.settled_through, s.user_id AS s_user
      FROM users u LEFT JOIN user_streaks s ON s.user_id = u.id
-     WHERE u.id = ?`
-  )
-    .bind(userId)
-    .first<Record<string, unknown>>();
+     WHERE u.id = ?`;
+
+async function loadCtx(env: Env, userId: string): Promise<StreakCtx | null> {
+  let row: Record<string, unknown> | null;
+  try {
+    row = await env.DB.prepare(
+      `SELECT u.timezone AS tz, u.life_mode, u.life_mode_since, u.life_mode_until, ${CTX_SELECT}`
+    )
+      .bind(userId)
+      .first<Record<string, unknown>>();
+  } catch {
+    // Life-mode columns missing (migration 0036 not applied yet).
+    row = await env.DB.prepare(`SELECT u.timezone AS tz, ${CTX_SELECT}`)
+      .bind(userId)
+      .first<Record<string, unknown>>();
+  }
   if (!row) return null;
   const tz = safeTimeZone(row.tz);
-  if (!row.s_user || !row.settled_through) return { tz, streak: null };
+  const lifeMode = 'life_mode' in row ? parseLifeMode(row) : NO_LIFE_MODE;
+  if (!row.s_user || !row.settled_through) return { tz, streak: null, lifeMode };
   return {
     tz,
+    lifeMode,
     streak: {
       current: Number(row.current) || 0,
       longest: Number(row.longest) || 0,
@@ -129,13 +154,18 @@ async function loadCtx(env: Env, userId: string): Promise<StreakCtx | null> {
   };
 }
 
-async function insertRestRows(env: Env, userId: string, days: string[]): Promise<void> {
+async function insertRestRows(
+  env: Env,
+  userId: string,
+  days: string[],
+  kind: typeof REST_TOKEN | typeof REST_PROTECTED = REST_TOKEN
+): Promise<void> {
   // 2 bound params per row → 40 rows per statement stays well under D1's 100.
   for (let i = 0; i < days.length; i += 40) {
     const chunk = days.slice(i, i + 40);
     await env.DB.prepare(
       `INSERT OR IGNORE INTO user_activity_days (user_id, day, kinds, paths, is_rest)
-       VALUES ${chunk.map(() => "(?, ?, 0, '', 1)").join(', ')}`
+       VALUES ${chunk.map(() => `(?, ?, 0, '', ${kind})`).join(', ')}`
     )
       .bind(...chunk.flatMap((d) => [userId, d]))
       .run();
@@ -196,7 +226,12 @@ async function saveState(
 }
 
 /** Full replay of the user's activity rows (lazy init after backfill; history rewrites). */
-export async function rebuildStreak(env: Env, userId: string, today: string): Promise<StreakState> {
+export async function rebuildStreak(
+  env: Env,
+  userId: string,
+  today: string,
+  lifeMode: LifeModeState = NO_LIFE_MODE
+): Promise<StreakState> {
   const res = await env.DB.prepare(
     `SELECT day, kinds, is_rest FROM user_activity_days WHERE user_id = ? ORDER BY day ASC`
   )
@@ -212,9 +247,12 @@ export async function rebuildStreak(env: Env, userId: string, today: string): Pr
     const first = rows[0].day;
     const last = rows[rows.length - 1].day;
     const through = last > yesterday ? last : yesterday;
-    const out = advanceStreak(INITIAL_STREAK, map, first, through);
+    const out = advanceStreak(INITIAL_STREAK, map, first, through, {
+      isProtected: (d) => isLifeModeDay(lifeMode, d),
+    });
     state = out.state;
     await insertRestRows(env, userId, out.restDays);
+    await insertRestRows(env, userId, out.protectedDays, REST_PROTECTED);
   }
   await saveState(env, userId, state);
   return state;
@@ -226,7 +264,8 @@ async function advanceStored(
   userId: string,
   prev: StreakState,
   through: string,
-  today: string
+  today: string,
+  lifeMode: LifeModeState = NO_LIFE_MODE
 ): Promise<StreakState> {
   const from = addDays(prev.settled_through as string, 1);
   if (from > through) return prev;
@@ -236,10 +275,13 @@ async function advanceStored(
     .bind(userId, from, through)
     .all<DayRow>();
   const map = new Map((res.results || []).map((r) => [r.day, r]));
-  const { state, restDays } = advanceStreak(prev, map, from, through);
+  const { state, restDays, protectedDays } = advanceStreak(prev, map, from, through, {
+    isProtected: (d) => isLifeModeDay(lifeMode, d),
+  });
   await insertRestRows(env, userId, restDays);
+  await insertRestRows(env, userId, protectedDays, REST_PROTECTED);
   const ok = await saveState(env, userId, state, prev.settled_through);
-  if (!ok) return rebuildStreak(env, userId, today);
+  if (!ok) return rebuildStreak(env, userId, today, lifeMode);
   return state;
 }
 
@@ -247,16 +289,17 @@ async function advanceStored(
 export async function getStreakState(
   env: Env,
   userId: string
-): Promise<{ state: StreakState; today: string; tz: string } | null> {
+): Promise<{ state: StreakState; today: string; tz: string; lifeMode: LifeModeState } | null> {
   const ctx = await loadCtx(env, userId);
   if (!ctx) return null;
   const today = localDay(ctx.tz);
   if (!ctx.streak) {
-    return { state: await rebuildStreak(env, userId, today), today, tz: ctx.tz };
+    const state = await rebuildStreak(env, userId, today, ctx.lifeMode);
+    return { state, today, tz: ctx.tz, lifeMode: ctx.lifeMode };
   }
   const yesterday = addDays(today, -1);
-  const state = await advanceStored(env, userId, ctx.streak, yesterday, today);
-  return { state, today, tz: ctx.tz };
+  const state = await advanceStored(env, userId, ctx.streak, yesterday, today, ctx.lifeMode);
+  return { state, today, tz: ctx.tz, lifeMode: ctx.lifeMode };
 }
 
 /** GET /me/streak shape (settles first). */
@@ -354,12 +397,12 @@ export async function recordActivity(
 
     let state: StreakState | null = ctx.streak;
     if (!state) {
-      state = await rebuildStreak(env, userId, today);
+      state = await rebuildStreak(env, userId, today, ctx.lifeMode);
     } else if (!wasActive) {
       if (state.settled_through && day > state.settled_through) {
-        state = await advanceStored(env, userId, state, day, today);
+        state = await advanceStored(env, userId, state, day, today, ctx.lifeMode);
       } else {
-        state = await rebuildStreak(env, userId, today);
+        state = await rebuildStreak(env, userId, today, ctx.lifeMode);
       }
     }
 
@@ -398,6 +441,7 @@ export type RestResult =
 
 /**
  * Explicit rest day from a Today check-in: uses a token (streak continues, no points).
+ * Inside an active life mode it is a protected day instead (no token used).
  * Idempotent if the day is already a rest day.
  */
 export async function recordRest(env: Env, userId: string, day: string): Promise<RestResult | null> {
@@ -411,18 +455,20 @@ export async function recordRest(env: Env, userId: string, day: string): Promise
     .first<DayRow>();
   if (isActiveRow(existing)) return { status: 'already_active', state };
   if (existing && Number(existing.is_rest)) return { status: 'ok', state };
-  if (state.rest_tokens <= 0) return { status: 'no_rest_left', state };
+  const isProtected = isLifeModeDay(got.lifeMode, day);
+  if (!isProtected && state.rest_tokens <= 0) return { status: 'no_rest_left', state };
+  const kind = isProtected ? REST_PROTECTED : REST_TOKEN;
 
   await env.DB.prepare(
-    `INSERT INTO user_activity_days (user_id, day, kinds, paths, is_rest) VALUES (?, ?, 0, '', 1)
-     ON CONFLICT(user_id, day) DO UPDATE SET is_rest = 1 WHERE kinds = 0`
+    `INSERT INTO user_activity_days (user_id, day, kinds, paths, is_rest) VALUES (?, ?, 0, '', ?)
+     ON CONFLICT(user_id, day) DO UPDATE SET is_rest = excluded.is_rest WHERE kinds = 0`
   )
-    .bind(userId, day)
+    .bind(userId, day, kind)
     .run();
   if (state.settled_through && day > state.settled_through) {
-    state = await advanceStored(env, userId, state, day, got.today);
+    state = await advanceStored(env, userId, state, day, got.today, got.lifeMode);
   } else {
-    state = await rebuildStreak(env, userId, got.today);
+    state = await rebuildStreak(env, userId, got.today, got.lifeMode);
   }
   return { status: 'ok', state };
 }

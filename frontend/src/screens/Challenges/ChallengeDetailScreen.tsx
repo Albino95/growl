@@ -119,11 +119,13 @@ export default function ChallengeDetailScreen() {
     if (!detail?.completed || !detail.id || celebratedRef.current) return;
     celebratedRef.current = true;
     let alive = true;
-    void celebrateOnce(`challenge:${detail.id}`).then((fresh) => {
-      if (!alive || !fresh) return;
-      treeScale.setValue(reduced ? 1 : 0.6);
-      pop(treeScale, 1.18, 'bouncy', reduced).start();
-    });
+    celebrateOnce(`challenge:${detail.id}`)
+      .then((fresh) => {
+        if (!alive || !fresh) return;
+        treeScale.setValue(reduced ? 1 : 0.6);
+        pop(treeScale, 1.18, 'bouncy', reduced).start();
+      })
+      .catch(() => undefined); // celebration is a nicety; never surface a storage hiccup
     return () => {
       alive = false;
     };

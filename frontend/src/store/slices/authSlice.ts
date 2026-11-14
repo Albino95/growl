@@ -1,5 +1,13 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
-import { getSecureItem, setSecureItem, deleteSecureItem } from '../../services/storage/secureStore';
+import {
+  getSecureItem,
+  readSecureItem,
+  setSecureItem,
+  deleteSecureItem,
+  type SecureReadResult,
+} from '../../services/storage/secureStore';
+import { getLocalItem, setLocalItem, deleteLocalItem } from '../../services/storage/localStore';
+import { hasSignedInBefore, markSignedInBefore } from '../../services/storage/signInHistory';
 import { setToken, clearToken } from '../../services/storage/tokenManager';
 import {
   signInApi,
@@ -7,9 +15,14 @@ import {
   verifyEmailApi,
   signInSsoApi,
   signOutApi,
-  refreshSessionApi,
   type SessionResponse,
 } from '../../services/api/auth';
+import {
+  clearUnsavedRefreshToken,
+  isTransientApiError,
+  persistSessionTokens,
+  refreshSession,
+} from '../../services/api/http';
 import { fetchCurrentProfile } from '../../services/api/profile';
 
 export type User = {
@@ -43,43 +56,68 @@ interface AuthState {
 const TOKEN_KEY = 'auth_token';
 const REFRESH_KEY = 'auth_refresh_token';
 const USER_CACHE_KEY = 'auth_user_cache';
+/** Set once tokens were rewritten with AFTER_FIRST_UNLOCK keychain access. */
+const KEYCHAIN_MIGRATED_KEY = 'auth_keychain_v2';
+/** Gap before the one retry of a keychain read that threw. */
+const KEYCHAIN_RETRY_MS = 300;
 
+const SESSION_EXPIRED = 'Session expired. Please sign in again.';
+const UNREACHABLE = 'Could not reach Grow! servers. Check your connection and try again.';
+
+/**
+ * Signed in, but we hold only the refresh token and can't reach the server.
+ * Not a credential: the first request 401s, http refreshes, and real tokens
+ * take over. Lets the user in on the cached snapshot instead of signing out.
+ */
+export const PENDING_REFRESH_TOKEN = 'pending-refresh';
+
+/** Offline / timeout / 5xx / 429 — keep the session, try again later. */
 function isTransientAuthError(error: unknown): boolean {
+  if (isTransientApiError(error)) return true;
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
-  return (
-    msg.includes('could not reach') ||
-    msg.includes('failed to fetch') ||
-    msg.includes('network request failed') ||
-    msg.includes('networkerror') ||
-    msg.includes('load failed') ||
-    msg.includes('timed out') ||
-    msg.includes('timeout')
-  );
+  return msg.includes('timed out') || msg.includes('timeout');
 }
 
 async function persistSession(token: string, refreshToken?: string) {
-  await setSecureItem(TOKEN_KEY, token);
-  setToken(token);
-  if (refreshToken) {
-    await setSecureItem(REFRESH_KEY, refreshToken);
-  }
+  // Same retry + in-memory fallback http uses for rotated tokens.
+  await persistSessionTokens(token, refreshToken);
 }
 
+/**
+ * The cached profile isn't a secret, so it lives in a plain local file — the
+ * keychain only holds tokens. Older builds kept it in SecureStore; read there
+ * once as a fallback and move it over.
+ */
 async function cacheUserSnapshot(user: User) {
   try {
-    await setSecureItem(USER_CACHE_KEY, JSON.stringify(user));
+    await setLocalItem(USER_CACHE_KEY, JSON.stringify(user));
   } catch {
     // non-fatal
   }
 }
 
-async function readCachedUser(): Promise<User | null> {
+function parseUser(raw: string | null): User | null {
+  if (!raw) return null;
   try {
-    const raw = await getSecureItem(USER_CACHE_KEY);
-    if (!raw) return null;
     const parsed = JSON.parse(raw) as User;
     return parsed?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readCachedUser(): Promise<User | null> {
+  try {
+    const local = parseUser(await getLocalItem(USER_CACHE_KEY));
+    if (local) return local;
+    const legacy = parseUser(await getSecureItem(USER_CACHE_KEY));
+    if (legacy) {
+      if (await setLocalItem(USER_CACHE_KEY, JSON.stringify(legacy))) {
+        await deleteSecureItem(USER_CACHE_KEY);
+      }
+    }
+    return legacy;
   } catch {
     return null;
   }
@@ -89,7 +127,35 @@ async function clearSessionStorage() {
   await deleteSecureItem(TOKEN_KEY);
   await deleteSecureItem(REFRESH_KEY);
   await deleteSecureItem(USER_CACHE_KEY);
+  await deleteLocalItem(USER_CACHE_KEY);
+  clearUnsavedRefreshToken();
   clearToken();
+}
+
+/** Keychain read that retries once after a short pause if it threw. */
+async function readTokenItem(key: string): Promise<SecureReadResult> {
+  const first = await readSecureItem(key);
+  if (first.ok) return first;
+  await new Promise((r) => setTimeout(r, KEYCHAIN_RETRY_MS));
+  return readSecureItem(key);
+}
+
+/**
+ * Tokens written by older builds use the default WHEN_UNLOCKED access, and
+ * updating an item never changes its access class. Re-create them once so
+ * they're readable after first unlock. Runs before any network call, so a
+ * concurrent rotation can't be overwritten.
+ */
+async function migrateTokenAccessibility(token: string, refreshToken: string | null) {
+  try {
+    if ((await getSecureItem(KEYCHAIN_MIGRATED_KEY)) === '1') return;
+    await deleteSecureItem(TOKEN_KEY);
+    if (refreshToken) await deleteSecureItem(REFRESH_KEY);
+    await persistSessionTokens(token, refreshToken ?? undefined);
+    await setSecureItem(KEYCHAIN_MIGRATED_KEY, '1');
+  } catch {
+    /* best effort; tokens stay in memory for this run */
+  }
 }
 
 /** Instant user from auth/session payload — no extra /profile round-trip. */
@@ -158,15 +224,37 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export const hydrateAuth = createAsyncThunk(
   'auth/hydrate',
   async (_, { rejectWithValue, dispatch }) => {
+    const revalidateSoon = () =>
+      setTimeout(() => {
+        void dispatch(refreshProfile({ stats: false }));
+      }, 0);
+
     try {
-      const token = await getSecureItem(TOKEN_KEY);
-      const refreshToken = await getSecureItem(REFRESH_KEY);
-      const cachedUser = await readCachedUser();
+      const tokenRead = await readTokenItem(TOKEN_KEY);
+      const refreshRead = await readTokenItem(REFRESH_KEY);
+
+      if (!tokenRead.ok || !refreshRead.ok) {
+        // Keychain unreadable (locked, busy) even after a retry. Show sign-in
+        // for now but leave storage alone so the next launch still works.
+        console.warn('[Auth] hydrate: keychain unreadable, not clearing session');
+        clearToken();
+        return { token: null, user: null };
+      }
+
+      const token = tokenRead.value;
+      const refreshToken = refreshRead.value;
 
       if (!token && !refreshToken) {
         clearToken();
         return { token: null, user: null };
       }
+
+      // Existing installs that update into this build should open on Sign in later.
+      void hasSignedInBefore().then((seen) => {
+        if (!seen) markSignedInBefore();
+      });
+      if (token) await migrateTokenAccessibility(token, refreshToken);
+      const cachedUser = await readCachedUser();
 
       // Fast path: a signed-in user with a cached snapshot enters the app
       // immediately; the profile is revalidated in the background. An expired
@@ -174,9 +262,7 @@ export const hydrateAuth = createAsyncThunk(
       // dead session by the session-expired handler — never by a network error.
       if (token && cachedUser) {
         setToken(token);
-        setTimeout(() => {
-          void dispatch(refreshProfile({ stats: false }));
-        }, 0);
+        revalidateSoon();
         return { token, user: cachedUser };
       }
 
@@ -191,75 +277,60 @@ export const hydrateAuth = createAsyncThunk(
           await cacheUserSnapshot(user);
           return { token, user };
         } catch (error) {
-          // Network blip with a still-valid access token — stay signed in offline
-          if (isTransientAuthError(error) && cachedUser) {
-            console.warn('[Auth] hydrate: profile unreachable, using cache');
-            return { token, user: cachedUser };
+          if (isTransientAuthError(error)) {
+            // Server unreachable with a stored access token: stay signed in.
+            console.warn('[Auth] hydrate: profile unreachable, keeping session');
+            revalidateSoon();
+            return { token, user: offlineUser() };
           }
-          // Access token may be expired — try refresh below
+          // 401 etc: access token is dead — fall through to an explicit refresh.
         }
       }
 
       if (refreshToken) {
-        try {
-          const res = await refreshSessionApi(refreshToken);
-          await persistSession(res.token, res.refreshToken);
-          const user = userFromSession(res);
+        // Same single-flight refresh http uses, so a parallel 401 can't rotate
+        // the token out from under us (and revoke the family).
+        const outcome = await refreshSession(refreshToken);
+        if (outcome.kind === 'ok') {
+          const user = userFromSession(outcome.data as unknown as SessionResponse);
           await cacheUserSnapshot(user);
-          return { token: res.token, user };
-        } catch (error) {
-          // Keep session on network errors — only wipe on definitive auth failure
-          if (isTransientAuthError(error)) {
-            if (token && cachedUser) {
-              console.warn('[Auth] hydrate: refresh unreachable, keeping session');
-              setToken(token);
-              return { token, user: cachedUser };
-            }
-            // Tokens exist but we can't reach the server — don't force logout
-            if (token) {
-              setToken(token);
-              return {
-                token,
-                user:
-                  cachedUser ||
-                  ({
-                    id: 'offline',
-                    hasCompletedOnboarding: true,
-                    categories: [],
-                  } satisfies User),
-              };
-            }
-            return rejectWithValue(
-              'Could not reach Grow! servers. Check your connection and try again.'
-            );
-          }
-          // Invalid / expired refresh — real sign-out
-          await clearSessionStorage();
-          return rejectWithValue('Session expired. Please sign in again.');
+          return { token: outcome.token, user };
         }
+        if (outcome.kind === 'rejected') {
+          // The only real sign-out: server said this refresh token is invalid.
+          await clearSessionStorage();
+          return rejectWithValue(SESSION_EXPIRED);
+        }
+        // Offline / timeout / 5xx / 429: keep the session, retry later.
+        if (token) {
+          console.warn('[Auth] hydrate: refresh unreachable, keeping session');
+          setToken(token);
+          revalidateSoon();
+          return { token, user: cachedUser || offlineUser() };
+        }
+        if (cachedUser) {
+          revalidateSoon();
+          return { token: PENDING_REFRESH_TOKEN, user: cachedUser };
+        }
+        return rejectWithValue(UNREACHABLE);
       }
 
+      // Access token rejected and there's no refresh token to try.
       await clearSessionStorage();
-      return rejectWithValue('Session expired. Please sign in again.');
+      return rejectWithValue(SESSION_EXPIRED);
     } catch (error) {
+      // Unexpected failure: never wipe tokens for it. Show sign-in for now;
+      // storage stays intact so the next launch can restore the session.
       console.error('[Auth] hydrate failed:', error);
-      // Never wipe tokens on unexpected/transient failures
-      if (isTransientAuthError(error)) {
-        const token = await getSecureItem(TOKEN_KEY);
-        const cachedUser = await readCachedUser();
-        if (token && cachedUser) {
-          setToken(token);
-          return { token, user: cachedUser };
-        }
-        return rejectWithValue(
-          'Could not reach Grow! servers. Check your connection and try again.'
-        );
-      }
-      await clearSessionStorage();
-      return rejectWithValue('Session expired. Please sign in again.');
+      return rejectWithValue(UNREACHABLE);
     }
   }
 );
+
+/** Placeholder user while signed in but the profile can't be fetched yet. */
+function offlineUser(): User {
+  return { id: 'offline', hasCompletedOnboarding: true, categories: [] };
+}
 
 export const signUp = createAsyncThunk(
   'auth/signUp',
@@ -295,6 +366,7 @@ export const signIn = createAsyncThunk(
       await persistSession(res.token, res.refreshToken);
       const user = userFromSession(res, email.trim());
       await cacheUserSnapshot(user);
+      markSignedInBefore();
       // Do not await /profile here — session payload is enough to enter the app
       return { token: res.token, user };
     } catch (e: unknown) {
@@ -314,6 +386,7 @@ export const signInWithSSO = createAsyncThunk(
       await persistSession(res.token, res.refreshToken);
       const user = userFromSession(res);
       await cacheUserSnapshot(user);
+      markSignedInBefore();
       return { token: res.token, user };
     } catch (e: unknown) {
       return rejectWithValue(e instanceof Error ? e.message : 'SSO sign in failed');
@@ -404,6 +477,13 @@ const authSlice = createSlice({
         state.error = null;
         if (!action.payload.token) {
           state.shouldCompleteSignupOnboarding = false;
+        } else if (
+          action.payload.user &&
+          action.payload.user.id !== 'offline' &&
+          action.payload.user.hasCompletedOnboarding === false
+        ) {
+          // Quit mid-onboarding last time: pick path setup up again.
+          state.shouldCompleteSignupOnboarding = true;
         }
       })
       .addCase(hydrateAuth.rejected, (state, action) => {

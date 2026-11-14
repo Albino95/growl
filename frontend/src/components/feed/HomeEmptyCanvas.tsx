@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import FadeInUp from '../ui/FadeInUp';
 import PressableScale from '../ui/PressableScale';
 import GrowAvatar from '../ui/GrowAvatar';
-import { listFriends, type FriendSummary } from '../../services/api/friends';
+import { addFriend, listFriends } from '../../services/api/friends';
+import { getFeedPosts } from '../../services/api/feed';
+import { rankDiscoverPeople } from '../../utils/ranking';
+import { useAuth } from '../../store/hooks';
+import { toast } from '../../state/useToastStore';
+import { haptic } from '../../theme/haptics';
+import { alertMessage } from '../../utils/confirmDialog';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { horizontalScrollProps } from '../../constants/scroll';
 import type { ProfilePreview } from '../../app/navigation/RootNavigator';
@@ -21,7 +27,23 @@ type Props = {
   onChoosePaths: () => void;
   onOpenProfile: (userId: string, preview?: ProfilePreview) => void;
   onInstructors: () => void;
+  /** Opens the Invite screen. */
+  onInvite?: () => void;
+  /** Called after an Add lands; `connected` = they had already asked, now friends. */
+  onFriendAdded?: (connected: boolean) => void;
 };
+
+type FriendState = 'none' | 'requested' | 'friends';
+
+type PathPerson = {
+  id: string;
+  username: string;
+  avatar?: string | null;
+  label: string;
+  state: FriendState;
+};
+
+const MAX_PEOPLE = 12;
 
 /**
  * First-session Home — never a blank Instagram empty.
@@ -38,26 +60,93 @@ export default function HomeEmptyCanvas({
   onChoosePaths,
   onOpenProfile,
   onInstructors,
+  onInvite,
+  onFriendAdded,
 }: Props) {
-  const [people, setPeople] = useState<FriendSummary[]>([]);
+  const { user } = useAuth();
+  const [people, setPeople] = useState<PathPerson[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const inFlight = useRef(new Set<string>());
+  const userPaths = user?.categories ?? [];
+  const pathsKey = userPaths.join(',');
 
   useEffect(() => {
     let cancelled = false;
-    void listFriends()
-      .then((list) => {
-        if (!cancelled) setPeople(list.slice(0, 10));
-      })
-      .catch(() => {
-        if (!cancelled) setPeople([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
-      });
+    void (async () => {
+      // allSettled: suggestions failing must not hide friends (and vice versa).
+      const [friendsS, postsS] = await Promise.allSettled([
+        listFriends(),
+        getFeedPosts({ mode: 'explore' }),
+      ]);
+      if (cancelled) return;
+      const friends = friendsS.status === 'fulfilled' ? friendsS.value : [];
+      const posts =
+        postsS.status === 'fulfilled' && postsS.value?.success && Array.isArray(postsS.value.data)
+          ? postsS.value.data
+          : [];
+      const friendIds = new Set(friends.map((f) => f.id));
+      let suggested: PathPerson[] = [];
+      try {
+        suggested = rankDiscoverPeople([], posts, userPaths, { selfId: user?.id, friendIds }).map(
+          (p) => ({
+            id: p.userId,
+            username: p.username,
+            avatar: p.avatar,
+            label: p.latestPost?.category ? getCategoryLabel(p.latestPost.category) : 'Growing',
+            state: 'none' as const,
+          })
+        );
+      } catch {
+        suggested = [];
+      }
+      const friendCards: PathPerson[] = friends.map((f) => ({
+        id: f.id,
+        username: f.username,
+        avatar: f.avatar,
+        label: f.categories?.[0]
+          ? getCategoryLabel(f.categories[0])
+          : f.is_instructor
+            ? 'Instructor'
+            : 'Growing',
+        state: 'friends' as const,
+      }));
+      // New faces first — that is where the Add button earns its place.
+      setPeople([...suggested, ...friendCards].slice(0, MAX_PEOPLE));
+      setLoaded(true);
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- paths key covers userPaths
+  }, [user?.id, pathsKey]);
+
+  const setPersonState = (id: string, state: FriendState) =>
+    setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, state } : p)));
+
+  const onAdd = async (person: PathPerson) => {
+    if (person.state !== 'none' || inFlight.current.has(person.id)) return;
+    inFlight.current.add(person.id);
+    haptic('commit');
+    // Optimistic: flip to Requested right away; the server may upgrade it to Friends.
+    setPersonState(person.id, 'requested');
+    try {
+      const result = await addFriend(person.id);
+      if (result.connected) {
+        haptic('success');
+        setPersonState(person.id, 'friends');
+        toast.success(`You and ${person.username} are friends`);
+      } else {
+        toast.success('Friend request sent');
+      }
+      onFriendAdded?.(result.connected);
+    } catch (e) {
+      setPersonState(person.id, 'none');
+      haptic('error');
+      void alertMessage('Could not add', e instanceof Error ? e.message : 'Try again in a moment.');
+    } finally {
+      inFlight.current.delete(person.id);
+    }
+  };
 
   if (filtered) {
     return (
@@ -158,39 +247,72 @@ export default function HomeEmptyCanvas({
           ) : people.length > 0 ? (
             <ScrollView horizontal {...horizontalScrollProps}>
               {people.map((person) => (
-                <PressableScale
+                <View
                   key={person.id}
-                  onPress={() => onOpenProfile(person.id, { username: person.username, avatarUrl: person.avatar })}
-                  style={tw`w-[92px] mr-2.5 items-center`}
+                  style={tw`w-[104px] mr-2.5 items-center rounded-card bg-card border border-line/80 px-2 pt-3 pb-2.5`}
                 >
-                  <GrowAvatar
-                    userId={person.id}
+                  <PressableScale
+                    onPress={() =>
+                      onOpenProfile(person.id, { username: person.username, avatarUrl: person.avatar })
+                    }
+                    style={tw`items-center w-full`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${person.username}'s profile`}
+                  >
+                    <GrowAvatar
+                      userId={person.id}
+                      username={person.username}
+                      uri={person.avatar}
+                      size={52}
+                    />
+                    <Text numberOfLines={1} style={tw`text-xs font-semibold text-ink mt-1.5`}>
+                      {person.username}
+                    </Text>
+                    <Text numberOfLines={1} style={tw`text-caption font-medium text-ink-3 mt-0.5`}>
+                      {person.label}
+                    </Text>
+                  </PressableScale>
+                  <AddButton
+                    state={person.state}
                     username={person.username}
-                    uri={person.avatar}
-                    size={56}
+                    onPress={() => void onAdd(person)}
                   />
-                  <Text numberOfLines={1} style={tw`text-xs font-semibold text-ink mt-1.5`}>
-                    {person.username}
-                  </Text>
-                  <Text numberOfLines={1} style={tw`text-caption font-medium text-ink-3 mt-0.5`}>
-                    {person.categories?.[0]
-                      ? getCategoryLabel(person.categories[0])
-                      : person.is_instructor
-                        ? 'Instructor'
-                        : 'Growing'}
-                  </Text>
-                </PressableScale>
+                </View>
               ))}
             </ScrollView>
           ) : (
             <Text style={tw`text-sm text-ink-3 leading-5`}>
-              No one on your paths yet. Explore is where you meet them.
+              No one here yet. Explore is where you meet people on your paths.
             </Text>
           )}
         </View>
       ) : null}
 
-      <View style={tw`flex-row gap-2 mt-4`}>
+      {onInvite ? (
+        <PressableScale
+          onPress={onInvite}
+          feedback="open"
+          style={tw`mt-4 flex-row items-center rounded-card bg-card border border-line/80 px-4 py-3.5`}
+          accessibilityRole="button"
+          accessibilityLabel="Invite a friend"
+        >
+          <View
+            style={[
+              tw`w-9 h-9 rounded-full items-center justify-center mr-3`,
+              { backgroundColor: theme.colors.brandSoft },
+            ]}
+          >
+            <Ionicons name="person-add-outline" size={16} color={theme.colors.brand} />
+          </View>
+          <View style={tw`flex-1`}>
+            <Text style={tw`text-body font-semibold text-ink`}>Invite a friend</Text>
+            <Text style={tw`text-footnote text-ink-3`}>Growing is easier with someone you know.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.ink3} />
+        </PressableScale>
+      ) : null}
+
+      <View style={tw`flex-row gap-2 mt-2`}>
         <PressableScale
           onPress={onExplore}
           style={tw`flex-1 py-3 rounded-card bg-card border border-line/80 items-center`}
@@ -205,5 +327,52 @@ export default function HomeEmptyCanvas({
         </PressableScale>
       </View>
     </FadeInUp>
+  );
+}
+
+function AddButton({
+  state,
+  username,
+  onPress,
+}: {
+  state: FriendState;
+  username: string;
+  onPress: () => void;
+}) {
+  if (state === 'friends') {
+    return (
+      <View
+        style={tw`mt-2 w-full flex-row items-center justify-center py-1.5 rounded-chip bg-raised`}
+        accessible
+        accessibilityLabel={`You and ${username} are friends`}
+      >
+        <Ionicons name="checkmark" size={13} color={theme.colors.brand} />
+        <Text style={tw`ml-1 text-caption font-semibold text-ink-2`}>Friends</Text>
+      </View>
+    );
+  }
+  if (state === 'requested') {
+    return (
+      <View
+        style={tw`mt-2 w-full items-center py-1.5 rounded-chip border border-line`}
+        accessible
+        accessibilityLabel={`Friend request sent to ${username}`}
+      >
+        <Text style={tw`text-caption font-semibold text-ink-3`}>Requested</Text>
+      </View>
+    );
+  }
+  return (
+    <PressableScale
+      onPress={onPress}
+      pressedScale={0.92}
+      hitSlop={6}
+      style={tw`mt-2 w-full flex-row items-center justify-center py-1.5 rounded-chip bg-brand-600`}
+      accessibilityRole="button"
+      accessibilityLabel={`Add ${username} as a friend`}
+    >
+      <Ionicons name="person-add" size={12} color="#FFFFFF" />
+      <Text style={tw`ml-1 text-caption font-semibold text-white`}>Add</Text>
+    </PressableScale>
   );
 }

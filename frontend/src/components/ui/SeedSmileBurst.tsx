@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   triggerKey: number;
@@ -17,6 +18,7 @@ const SPECKS = [
 export default function SeedSmileBurst({ triggerKey }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.4)).current;
+  const reduceMotion = useReducedMotion();
   const specks = useMemo(
     () =>
       SPECKS.map(() => ({
@@ -36,6 +38,16 @@ export default function SeedSmileBurst({ triggerKey }: Props) {
       s.x.setValue(0);
       s.y.setValue(0);
     });
+    if (reduceMotion) {
+      // Smile fades in and out in place; no pop, no flying specks.
+      scale.setValue(1);
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+        Animated.delay(420),
+        Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
     Animated.parallel([
       Animated.sequence([
         Animated.parallel([
@@ -57,7 +69,7 @@ export default function SeedSmileBurst({ triggerKey }: Props) {
         ])
       ),
     ]).start();
-  }, [triggerKey, opacity, scale, specks]);
+  }, [triggerKey, opacity, reduceMotion, scale, specks]);
 
   if (!triggerKey) return null;
 

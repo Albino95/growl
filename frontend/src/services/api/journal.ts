@@ -2,7 +2,7 @@
  * Journal API service
  */
 
-import { request } from './http';
+import { request, withIdempotency } from './http';
 
 export type JournalMood =
   | 'happy'
@@ -93,11 +93,13 @@ export async function getUserPublicJournalEntries(
 }
 
 export async function createJournalEntry(
-  payload: CreateJournalEntryRequest
+  payload: CreateJournalEntryRequest,
+  opts?: { idempotencyKey?: string }
 ): Promise<JournalEntryResponse> {
   return request<JournalEntryResponse>('/journal/entries', {
     method: 'POST',
     body: JSON.stringify(payload),
+    ...withIdempotency(opts?.idempotencyKey),
   });
 }
 

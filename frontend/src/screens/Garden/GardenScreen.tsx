@@ -354,6 +354,9 @@ export default function GardenScreen() {
       <SafeAreaView style={tw`flex-1 bg-[#0B1210]`} edges={['top', 'bottom']}>
         <View style={tw`px-gutter-wide pt-2 flex-row items-center justify-between`}>
           <PressableScale
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Close relax"
             onPress={() => {
               setMode('grove');
               setActiveMeditation(null);
@@ -373,6 +376,10 @@ export default function GardenScreen() {
             {musicOn ? <EqualizerBars active color="#6EE7B7" /> : null}
           </View>
           <PressableScale
+            hitSlop={4}
+            accessibilityRole="switch"
+            accessibilityLabel="Background music"
+            accessibilityState={{ checked: musicOn }}
             onPress={() => {
               setMusicOn((v) => !v);
               feedback.select();
@@ -669,6 +676,9 @@ export default function GardenScreen() {
       <GrowChromeHeader
         leftAccessory={
           <PressableScale
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
             onPress={() => navigation.goBack()}
             feedback="close"
             style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
@@ -679,6 +689,9 @@ export default function GardenScreen() {
         right={
           <View style={tw`flex-row items-center gap-2`}>
             <PressableScale
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Circles"
               onPress={() => navigateFromRoot(navigation, 'Circles')}
               feedback="open"
               style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}

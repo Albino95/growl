@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../lib/tw';
 import { usePressFeedback } from '../../hooks/usePressFeedback';
 import type { FeedbackKind } from '../../utils/interactionFeedback';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   label: string;
@@ -78,6 +79,7 @@ function PrimaryButton({
   const spinnerOpacity = useRef(new Animated.Value(phase === 'loading' ? 1 : 0)).current;
   const checkOpacity = useRef(new Animated.Value(phase === 'success' ? 1 : 0)).current;
   const checkScale = useRef(new Animated.Value(phase === 'success' ? 1 : 0.6)).current;
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const anims = [
@@ -85,7 +87,10 @@ function PrimaryButton({
       fadeTo(spinnerOpacity, phase === 'loading' ? 1 : 0),
       fadeTo(checkOpacity, phase === 'success' ? 1 : 0),
     ];
-    if (phase === 'success') {
+    if (phase === 'success' && reduceMotion) {
+      // Crossfade only; the check appears at full size.
+      checkScale.setValue(1);
+    } else if (phase === 'success') {
       checkScale.setValue(0.6);
       anims.push(
         Animated.spring(checkScale, {
@@ -100,7 +105,7 @@ function PrimaryButton({
     const anim = Animated.parallel(anims);
     anim.start();
     return () => anim.stop();
-  }, [phase, labelOpacity, spinnerOpacity, checkOpacity, checkScale]);
+  }, [phase, reduceMotion, labelOpacity, spinnerOpacity, checkOpacity, checkScale]);
 
   return (
     <Pressable

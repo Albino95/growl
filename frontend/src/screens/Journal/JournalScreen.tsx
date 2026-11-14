@@ -5,8 +5,9 @@ import {
   SectionList,
   FlatList,
   RefreshControl,
-ScrollView,
+  ScrollView,
   Animated,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +21,13 @@ import EmptyState from '../../components/ui/EmptyState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import PressableScale from '../../components/ui/PressableScale';
 import MoodWeekStrip from '../../components/journal/MoodWeekStrip';
-import JournalComposeModal from '../../components/journal/JournalComposeModal';
+import JournalComposeModal, {
+  type JournalComposePayload,
+} from '../../components/journal/JournalComposeModal';
+import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
+import { pickOnThisDay } from '../../components/journal/onThisDay';
+import { toast } from '../../state/useToastStore';
+import { JOURNAL_DRAFT_NS, ON_THIS_DAY_NS, drafts } from '../../services/drafts';
 import CircleJournalCard from '../../components/journal/CircleJournalCard';
 import JournalQuoteReplySheet from '../../components/journal/JournalQuoteReplySheet';
 import JournalModeSwitcher, {
@@ -58,6 +65,7 @@ import CATEGORIES from '../../data/categories';
 import {
   fetchJournalEntries,
   addJournalEntry,
+  editJournalEntry,
   removeJournalEntry,
   type JournalEntry,
   type JournalMood,
@@ -88,11 +96,12 @@ function pathLabel(key: string | null): string | null {
 
 function EntryCard({
   entry,
-  onDelete,
+  onMenu,
   onShare,
 }: {
   entry: JournalEntry;
-  onDelete: (id: string) => void;
+  /** ••• / long-press: Edit, Share, Delete. */
+  onMenu: (entry: JournalEntry) => void;
   onShare?: (entry: JournalEntry) => void;
 }) {
   const mood = (entry.mood as JournalMood | null) || null;
@@ -102,7 +111,13 @@ function EntryCard({
   const scheme = useColorSchemeName();
 
   return (
-    <View
+    <Pressable
+      onLongPress={() => {
+        feedback.open();
+        onMenu(entry);
+      }}
+      delayLongPress={350}
+      accessibilityHint="Long-press for options"
       style={[
         tw`mb-3 p-4 rounded-card`,
         {
@@ -141,13 +156,13 @@ function EntryCard({
             </PressableScale>
           ) : null}
           <PressableScale
-            feedback="delete"
-            onPress={() => onDelete(entry.id)}
+            feedback="open"
+            onPress={() => onMenu(entry)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel="Delete entry"
+            accessibilityLabel="Entry options"
           >
-            <Ionicons name="trash-outline" size={16} color={theme.colors.iconMuted} />
+            <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.iconMuted} />
           </PressableScale>
         </View>
       </View>
@@ -157,7 +172,82 @@ function EntryCard({
           <Text style={tw`text-caption font-semibold text-ink-2`}>{pathLabel(path)}</Text>
         </View>
       ) : null}
-    </View>
+    </Pressable>
+  );
+}
+
+function EntryMenuSheet({
+  entry,
+  onClose,
+  onEdit,
+  onShare,
+  onDelete,
+}: {
+  entry: JournalEntry | null;
+  onClose: () => void;
+  onEdit: (entry: JournalEntry) => void;
+  onShare: (entry: JournalEntry) => void;
+  onDelete: (entry: JournalEntry) => void;
+}) {
+  const isPublic = entry ? entry.isPublic ?? entry.is_public : false;
+  const rows: {
+    key: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    run: (e: JournalEntry) => void;
+    danger?: boolean;
+  }[] = [
+    { key: 'edit', icon: 'create-outline', label: 'Edit', run: onEdit },
+    ...(isPublic
+      ? [{ key: 'share', icon: 'share-outline' as const, label: 'Share as card', run: onShare }]
+      : []),
+    { key: 'delete', icon: 'trash-outline', label: 'Delete', run: onDelete, danger: true },
+  ];
+  // Run the chosen action only once the sheet's own Modal is gone (iOS can't
+  // present the composer / a dialog while another Modal is still dismissing).
+  const pendingRef = useRef<(() => void) | null>(null);
+  const handleClosed = () => {
+    onClose();
+    const run = pendingRef.current;
+    pendingRef.current = null;
+    if (run) setTimeout(run, 300);
+  };
+  return (
+    <AnimatedBottomSheet visible={!!entry} onClose={handleClosed} maxHeightRatio={0.45}>
+      {({ close }) => (
+        <View style={tw`px-gutter pt-1 pb-4`}>
+          {entry ? (
+            <Text style={tw`text-footnote text-ink-3 mb-2 px-2`} numberOfLines={1}>
+              {entry.content}
+            </Text>
+          ) : null}
+          {rows.map((row) => (
+            <PressableScale
+              key={row.key}
+              feedback={row.danger ? 'delete' : 'open'}
+              onPress={() => {
+                const target = entry;
+                if (target) pendingRef.current = () => row.run(target);
+                close();
+              }}
+              accessibilityRole="button"
+              style={tw`flex-row items-center px-2 py-3.5 rounded-control`}
+            >
+              <Ionicons
+                name={row.icon}
+                size={iconSize.sm}
+                color={row.danger ? tw.color('red-600') : theme.colors.ink2}
+              />
+              <Text
+                style={tw`text-body ml-3 ${row.danger ? 'text-red-600 font-semibold' : 'text-ink'}`}
+              >
+                {row.label}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+      )}
+    </AnimatedBottomSheet>
   );
 }
 
@@ -186,6 +276,10 @@ export default function JournalScreen() {
   const [reflectionsLoading, setReflectionsLoading] = useState(false);
   const [reflectionsOpen, setReflectionsOpen] = useState(false);
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+  const [menuEntry, setMenuEntry] = useState<JournalEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
+  /** Day key the "On this day" card was dismissed for (persisted per user). */
+  const [onThisDayDismissedFor, setOnThisDayDismissedFor] = useState<string | null>(null);
 
   const contentOpacity = useRef(new Animated.Value(1)).current;
   const contentSlide = useRef(new Animated.Value(0)).current;
@@ -399,15 +493,39 @@ export default function JournalScreen() {
     }
   };
 
-  const handleSave = async (payload: {
-    content: string;
-    mood?: JournalMood;
-    is_public: boolean;
-    tags: string[];
-    metadata?: Record<string, unknown>;
-  }) => {
+  const handleSave = async ({ entryId, idempotencyKey, ...payload }: JournalComposePayload) => {
+    if (entryId) {
+      // Optimistic: the slice patches the row immediately and rolls back on failure.
+      setComposeOpen(false);
+      setEditingEntry(null);
+      try {
+        await dispatch(
+          editJournalEntry({
+            entryId,
+            payload: {
+              content: payload.content,
+              // The update schema requires `mood` (null clears it).
+              mood: payload.mood ?? null,
+              is_public: payload.is_public,
+              tags: payload.tags,
+              metadata: payload.metadata ?? {},
+            },
+          })
+        ).unwrap();
+        feedback.success();
+        toast.success('Entry updated');
+      } catch (e) {
+        feedback.error();
+        void alertMessage(
+          'Couldn’t update entry',
+          e instanceof Error ? e.message : 'Your changes weren’t saved. Please try again.'
+        );
+      }
+      return;
+    }
     try {
-      await dispatch(addJournalEntry(payload)).unwrap();
+      await dispatch(addJournalEntry({ ...payload, idempotencyKey })).unwrap();
+      void drafts.clear(JOURNAL_DRAFT_NS, user?.id);
       useActivationStore.getState().markJournaled();
       // Activity changed — today now counts toward the streak.
       void useGrowthStore.getState().refresh({ force: true });
@@ -436,7 +554,61 @@ export default function JournalScreen() {
   const openCompose = () => {
     feedback.open();
     setComposeDraft(null);
+    setEditingEntry(null);
     setComposeOpen(true);
+  };
+
+  const openEdit = (entry: JournalEntry) => {
+    setComposeDraft(null);
+    setEditingEntry(entry);
+    setComposeOpen(true);
+  };
+
+  const shareOwnEntry = (e: JournalEntry) => {
+    const mood = e.mood as JournalMood | null;
+    const path = growthPathFromTags(e.tags || []);
+    setSharePayload({
+      kind: 'voice',
+      entryId: e.id,
+      userId: user?.id || '',
+      username: user?.username || 'You',
+      avatar: user?.avatar,
+      content: e.content,
+      moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
+      pathLabel: pathLabel(path),
+    });
+  };
+
+  // --- On this day ----------------------------------------------------------
+  // Uses loaded entries only (latest 100): the list API has no date filter yet.
+  useEffect(() => {
+    let cancelled = false;
+    void drafts.load<{ dateKey: string }>(ON_THIS_DAY_NS, user?.id).then((saved) => {
+      if (!cancelled) setOnThisDayDismissedFor(saved?.data.dateKey ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  // todayKey keeps the pick fresh across midnight.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const onThisDay = useMemo(() => pickOnThisDay(entries), [entries, todayKey]);
+  const showOnThisDay = !!onThisDay && onThisDayDismissedFor !== todayKey;
+
+  const dismissOnThisDay = () => {
+    feedback.close();
+    setOnThisDayDismissedFor(todayKey);
+    void drafts.save(ON_THIS_DAY_NS, user?.id, { dateKey: todayKey });
+  };
+
+  const openOnThisDay = () => {
+    if (!onThisDay) return;
+    feedback.open();
+    setSearchQuery('');
+    setVisibility('all');
+    setFocusDateKey(onThisDay.dateKey);
+    setViewTab('timeline');
   };
 
   return (
@@ -632,16 +804,31 @@ export default function JournalScreen() {
                   onAction={() => setVoiceFilterUserId(null)}
                 />
               ) : (
-                <EmptyState
-                  icon="radio-outline"
-                  title="Voices is quiet"
-                  description="When friends share a public journal, their notes land here. You can reply to a sentence or message privately."
-                  actionLabel="Share one of your pages"
-                  onAction={() => {
-                    animateModeChange('pages');
-                    openCompose();
-                  }}
-                />
+                <View>
+                  <EmptyState
+                    icon="radio-outline"
+                    title="Voices is quiet"
+                    description="When friends share a public journal, their notes land here. You can reply to a sentence or message privately."
+                    actionLabel="Invite a friend"
+                    onAction={() => {
+                      feedback.open();
+                      navigateFromRoot(navigation, 'Invite');
+                    }}
+                  />
+                  <PressableScale
+                    feedback="open"
+                    onPress={() => {
+                      animateModeChange('pages');
+                      openCompose();
+                    }}
+                    accessibilityRole="button"
+                    style={tw`self-center px-4 py-2.5`}
+                  >
+                    <Text style={tw`text-body font-semibold text-ink-2`}>
+                      Or share one of your pages
+                    </Text>
+                  </PressableScale>
+                </View>
               )
             }
           />
@@ -709,6 +896,34 @@ export default function JournalScreen() {
                 </Text>
               </PressableScale>
             </View>
+
+            {showOnThisDay && onThisDay ? (
+              <PressableScale
+                feedback="open"
+                onPress={openOnThisDay}
+                accessibilityRole="button"
+                accessibilityLabel={`${onThisDay.heading} Open entry`}
+                style={tw`mx-gutter-wide mb-3 p-4 rounded-card bg-card border border-line/80`}
+              >
+                <View style={tw`flex-row items-center mb-1.5`}>
+                  <Ionicons name="time-outline" size={iconSize.xs} color={theme.colors.ink3} />
+                  <Text style={tw`text-footnote font-semibold text-ink-2 ml-1.5 flex-1`}>
+                    {onThisDay.heading}
+                  </Text>
+                  <PressableScale
+                    onPress={dismissOnThisDay}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Hide for today"
+                  >
+                    <Ionicons name="close" size={iconSize.xs} color={theme.colors.iconMuted} />
+                  </PressableScale>
+                </View>
+                <Text style={tw`text-body text-ink leading-6`} numberOfLines={3}>
+                  “{onThisDay.excerpt}”
+                </Text>
+              </PressableScale>
+            ) : null}
 
             {(reflections.length > 0 || sharedCount > 0) && (
               <PressableScale
@@ -778,21 +993,8 @@ export default function JournalScreen() {
                   <EntryCard
                     key={entry.id}
                     entry={entry}
-                    onDelete={handleDelete}
-                    onShare={(e) => {
-                      const mood = e.mood as JournalMood | null;
-                      const path = growthPathFromTags(e.tags || []);
-                      setSharePayload({
-                        kind: 'voice',
-                        entryId: e.id,
-                        userId: user?.id || '',
-                        username: user?.username || 'You',
-                        avatar: user?.avatar,
-                        content: e.content,
-                        moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
-                        pathLabel: pathLabel(path),
-                      });
-                    }}
+                    onMenu={setMenuEntry}
+                    onShare={shareOwnEntry}
                   />
                 ))
               )}
@@ -895,24 +1097,7 @@ export default function JournalScreen() {
               </View>
             )}
             renderItem={({ item }) => (
-              <EntryCard
-                entry={item}
-                onDelete={handleDelete}
-                onShare={(e) => {
-                  const mood = e.mood as JournalMood | null;
-                  const path = growthPathFromTags(e.tags || []);
-                  setSharePayload({
-                    kind: 'voice',
-                    entryId: e.id,
-                    userId: user?.id || '',
-                    username: user?.username || 'You',
-                    avatar: user?.avatar,
-                    content: e.content,
-                    moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
-                    pathLabel: pathLabel(path),
-                  });
-                }}
-              />
+              <EntryCard entry={item} onMenu={setMenuEntry} onShare={shareOwnEntry} />
             )}
             ListEmptyComponent={
               isLoading ? (
@@ -950,10 +1135,12 @@ export default function JournalScreen() {
         preferredPath={composeDraft?.path ?? userPath}
         initialMood={composeDraft?.mood ?? null}
         initialContent={composeDraft?.intention ?? null}
+        editingEntry={editingEntry}
         onClose={() => {
           feedback.close();
           setComposeOpen(false);
           setComposeDraft(null);
+          setEditingEntry(null);
         }}
         onSave={(payload) => void handleSave(payload)}
       />
@@ -976,6 +1163,14 @@ export default function JournalScreen() {
           setReflectionsOpen(false);
           animateModeChange('voices');
         }}
+      />
+
+      <EntryMenuSheet
+        entry={menuEntry}
+        onClose={() => setMenuEntry(null)}
+        onEdit={openEdit}
+        onShare={shareOwnEntry}
+        onDelete={(e) => handleDelete(e.id)}
       />
 
       <ShareCardSheet

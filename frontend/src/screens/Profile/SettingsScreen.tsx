@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
 import PressableScale from '../../components/ui/PressableScale';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw, { theme } from '../../lib/tw';
 import { haptic } from '../../theme/haptics';
 import { previewSound, toggleFeedback } from '../../utils/interactionFeedback';
@@ -14,6 +14,9 @@ import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { useAuth } from '../../store/hooks';
 import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
+import { getLifeMode, whenAvailable, type LifeMode } from '../../services/api/privacy';
+import LifeModeSheet from './LifeModeSheet';
+import { lifeModeSubtitle } from './lifeMode';
 
 function Row({
   icon,
@@ -167,6 +170,26 @@ export default function SettingsScreen() {
   const replayTutorial = useDemoTutorialStore((s) => s.replay);
   const hapticsEnabled = useUiPrefsStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useUiPrefsStore((s) => s.setHapticsEnabled);
+  /** null = not loaded yet or the endpoint isn't deployed (row stays hidden). */
+  const [lifeMode, setLifeModeState] = useState<LifeMode | null>(null);
+  const [lifeSheetOpen, setLifeSheetOpen] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      whenAvailable(getLifeMode)
+        .then((r) => {
+          if (!cancelled) setLifeModeState(r.available ? r.data : null);
+        })
+        .catch(() => {
+          // Offline etc. — still offer the row; the sheet reports save errors.
+          if (!cancelled) setLifeModeState((prev) => prev ?? { mode: 'none', until: null });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
@@ -209,6 +232,20 @@ export default function SettingsScreen() {
             subtitle="Push and email preferences"
             onPress={() => navigateFromRoot(navigation, 'NotificationPrefs')}
           />
+          <Row
+            icon="shield-checkmark-outline"
+            label="Privacy & safety"
+            subtitle="Messages, blocked people, your data"
+            onPress={() => navigateFromRoot(navigation, 'PrivacySettings')}
+          />
+          {lifeMode ? (
+            <Row
+              icon="leaf-outline"
+              label="Taking a break?"
+              subtitle={lifeModeSubtitle(lifeMode)}
+              onPress={() => setLifeSheetOpen(true)}
+            />
+          ) : null}
           <Row
             icon="gift-outline"
             label="Invite friends"
@@ -323,6 +360,14 @@ export default function SettingsScreen() {
           />
         </View>
       </ScrollView>
+      {lifeMode ? (
+        <LifeModeSheet
+          visible={lifeSheetOpen}
+          onClose={() => setLifeSheetOpen(false)}
+          current={lifeMode}
+          onSaved={setLifeModeState}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

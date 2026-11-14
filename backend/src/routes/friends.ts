@@ -829,6 +829,53 @@ export async function blockUser(request: Request, env: Env): Promise<Response> {
   }
 }
 
+/**
+ * GET /social/blocks — people the caller has blocked, newest first.
+ * Each item: { id, username, display_name, avatar_url, blocked_at }.
+ */
+export async function listBlocks(request: Request, env: Env): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT u.id, u.metadata, r.created_at AS blocked_at
+       FROM user_relationships r
+       INNER JOIN users u ON u.id = r.target_user_id
+       WHERE r.user_id = ? AND r.type = 'block'
+       ORDER BY r.created_at DESC, u.id ASC
+       LIMIT 500`
+    )
+      .bind(ctx.userId)
+      .all<{ id: string; metadata: string | null; blocked_at: string }>();
+    const blocks = (rows.results || []).map((row) => {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(row.metadata || '{}') || {};
+      } catch {
+        meta = {};
+      }
+      const username = typeof meta.username === 'string' && meta.username ? meta.username : row.id.slice(0, 8);
+      const displayName =
+        (typeof meta.display_name === 'string' && meta.display_name) ||
+        (typeof meta.name === 'string' && meta.name) ||
+        username;
+      return {
+        id: row.id,
+        username,
+        display_name: displayName,
+        avatar_url: typeof meta.avatar === 'string' && meta.avatar ? meta.avatar : null,
+        blocked_at: row.blocked_at,
+      };
+    });
+    return json({ blocks });
+  } catch (err) {
+    console.error('[listBlocks]', err);
+    return error('DATABASE_ERROR', 'Could not load blocked people', 500);
+  }
+}
+
 export async function unblockUser(
   request: Request,
   env: Env,

@@ -339,12 +339,18 @@ export default function PhotoEditor({
     let alive = true;
     setSourceStatus('preparing');
     setImageLoaded(false);
-    void warmPhotoEditorSource(originalUri).then((copy) => {
-      if (!alive) return;
-      setBaseUri(copy.uri);
-      setWorkingUri(copy.uri);
-      setSourceStatus('ready');
-    });
+    warmPhotoEditorSource(originalUri)
+      .then((copy) => {
+        if (!alive) return;
+        setBaseUri(copy.uri);
+        setWorkingUri(copy.uri);
+        setSourceStatus('ready');
+      })
+      .catch((error: unknown) => {
+        // Show the existing "couldn't prepare" state (with retry) instead of spinning.
+        console.warn('[PhotoEditor] could not prepare photo', error);
+        if (alive) setSourceStatus('failed');
+      });
     return () => {
       alive = false;
     };

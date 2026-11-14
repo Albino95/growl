@@ -23,7 +23,9 @@ import {
   safeTimeZone,
   topLevelPath,
 } from '../utils/days';
+import { lifeModePayload } from '../utils/lifeMode';
 import {
+  buildStreakPayload,
   getStreakPayload,
   getStreakState,
   recordActivity,
@@ -133,12 +135,17 @@ export async function getMyStreak(request: Request, env: Env): Promise<Response>
 export async function getToday(request: Request, env: Env): Promise<Response> {
   const me = await requireUser(request, env);
   if (me instanceof Response) return me;
-  const streak = await getStreakPayload(env, me.userId);
-  if (!streak) return error('NOT_FOUND', 'User not found', 404);
+  const got = await getStreakState(env, me.userId);
+  if (!got) return error('NOT_FOUND', 'User not found', 404);
+  const streak = await buildStreakPayload(env, me.userId, got.state, got.today);
   const asked = new URL(request.url).searchParams.get('day');
   const day = asked && isAcceptableClientDay(asked) ? asked : streak.today;
   const row = await loadCheckin(env, me.userId, day);
-  return json({ checkin: row ? formatCheckin(row) : null, streak });
+  return json({
+    checkin: row ? formatCheckin(row) : null,
+    streak,
+    life_mode: lifeModePayload(got.lifeMode, got.today),
+  });
 }
 
 /** PUT /me/today */

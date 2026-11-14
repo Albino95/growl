@@ -13,7 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw, { theme } from '../../lib/tw';
 import { useAuth } from '../../store/hooks';
-import { exportAccountData, deleteAccount } from '../../services/api/privacy';
+import { deleteAccount } from '../../services/api/privacy';
+import { useAccountExport } from './useAccountExport';
 import { resetNavigationToAuth } from '../../app/navigation/rootNavigation';
 import { alertMessage } from '../../utils/confirmDialog';
 import FormTextInput from '../../components/ui/FormTextInput';
@@ -23,26 +24,10 @@ import PrimaryButton from '../../components/ui/PrimaryButton';
 export default function DeleteAccountScreen() {
   const navigation = useNavigation();
   const { signOut } = useAuth();
-  const [exporting, setExporting] = useState(false);
+  const { exporting, runExport } = useAccountExport();
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const data = await exportAccountData();
-      const summary = `Exported ${data.posts.length} posts, ${data.comments.length} comments, ${data.orders.length} orders.`;
-      alertMessage(
-        'Export ready',
-        `${summary}\n\nA copy has been prepared on the server. Contact privacy@letsgrow.lu for a full archive file.`
-      );
-    } catch (e: unknown) {
-      alertMessage('Export failed', e instanceof Error ? e.message : 'Could not export data');
-    } finally {
-      setExporting(false);
-    }
-  };
 
   const openDeleteConfirm = () => {
     setConfirmText('');
@@ -86,7 +71,7 @@ export default function DeleteAccountScreen() {
         </Text>
 
         <PressableScale
-          onPress={() => void handleExport()}
+          onPress={() => void runExport()}
           disabled={exporting || deleting}
           style={tw`bg-card border border-line rounded-control p-4 mb-4 flex-row items-center`}
         >

@@ -2,7 +2,7 @@
  * Messages API service — friend-only direct messaging
  */
 
-import { request } from './http';
+import { request, withIdempotency } from './http';
 
 export interface MessagePeer {
   id: string;
@@ -108,7 +108,8 @@ export async function getMessages(
 
 export async function sendMessage(
   conversationId: string,
-  body: string
+  body: string,
+  opts?: { idempotencyKey?: string }
 ): Promise<{
   success: boolean;
   data: ChatMessage;
@@ -116,6 +117,8 @@ export async function sendMessage(
   return request(`/messages/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: 'POST',
     body: JSON.stringify({ body }),
+    // Pass the optimistic temp id so "tap to retry" can't send the message twice.
+    ...withIdempotency(opts?.idempotencyKey),
   });
 }
 

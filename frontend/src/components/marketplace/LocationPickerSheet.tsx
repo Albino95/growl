@@ -71,7 +71,7 @@ export default function LocationPickerSheet({
         <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-5 pb-8 max-h-[88%]`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
             <Text style={tw`text-lg font-bold text-ink`}>{title}</Text>
-            <PressableScale onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <PressableScale accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={10}>
               <Ionicons name="close" size={24} color={theme.colors.ink3} />
             </PressableScale>
           </View>
@@ -95,7 +95,7 @@ export default function LocationPickerSheet({
               clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
             />
             {query.length > 0 && Platform.OS !== 'ios' ? (
-              <PressableScale onPress={() => setQuery('')}>
+              <PressableScale accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={12} onPress={() => setQuery('')}>
                 <Ionicons name="close-circle" size={20} color={theme.colors.iconMuted} />
               </PressableScale>
             ) : null}

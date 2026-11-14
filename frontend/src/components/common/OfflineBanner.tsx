@@ -40,7 +40,7 @@ export default function OfflineBanner() {
     >
       <Ionicons name="cloud-offline-outline" size={14} color="#FFFFFF" />
       <Text style={styles.text} maxFontSizeMultiplier={1.2} numberOfLines={1}>
-        You’re offline — showing saved content
+        You’re offline. We’ll send things once you’re back.
       </Text>
     </Animated.View>
   );

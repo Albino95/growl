@@ -5,6 +5,7 @@ import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import { feedback } from '../../utils/interactionFeedback';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 export type CreateAction = 'post' | 'reel' | 'story' | 'journal' | 'seed' | 'circle';
 
@@ -70,13 +71,20 @@ function ActionRow({
   visible: boolean;
   onSelect: (key: CreateAction) => void;
 }) {
+  const reduceMotion = useReducedMotion();
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(14)).current;
 
   useEffect(() => {
     if (!visible) {
       opacity.setValue(0);
-      translateY.setValue(14);
+      translateY.setValue(reduceMotion ? 0 : 14);
+      return;
+    }
+    if (reduceMotion) {
+      // No travel or stagger: rows simply fade in together.
+      translateY.setValue(0);
+      Animated.timing(opacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
       return;
     }
     Animated.parallel([
@@ -94,7 +102,7 @@ function ActionRow({
         bounciness: 7,
       }),
     ]).start();
-  }, [visible, index, opacity, translateY]);
+  }, [visible, index, opacity, reduceMotion, translateY]);
 
   return (
     <Animated.View style={{ opacity, transform: [{ translateY }] }}>
@@ -124,13 +132,19 @@ function ActionRow({
 
 /** Bottom sheet for the dock create (+) control. */
 export default function CreateActionSheet({ visible, onClose, onSelect }: Props) {
+  const reduceMotion = useReducedMotion();
   const sheetY = useRef(new Animated.Value(40)).current;
   const sheetOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) {
-      sheetY.setValue(40);
+      sheetY.setValue(reduceMotion ? 0 : 40);
       sheetOpacity.setValue(0);
+      return;
+    }
+    if (reduceMotion) {
+      sheetY.setValue(0);
+      Animated.timing(sheetOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
       return;
     }
     Animated.parallel([
@@ -146,7 +160,7 @@ export default function CreateActionSheet({ visible, onClose, onSelect }: Props)
         bounciness: 8,
       }),
     ]).start();
-  }, [visible, sheetOpacity, sheetY]);
+  }, [visible, reduceMotion, sheetOpacity, sheetY]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

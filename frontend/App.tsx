@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import { Animated, Easing, Linking, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Linking, StyleSheet, Text, View } from 'react-native';
 import {
   DarkTheme,
   DefaultTheme,
@@ -55,7 +55,9 @@ import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
 import ToastHost from './src/components/ui/Toast';
 import { KeyboardDoneAccessory } from './src/components/ui/KeyboardDoneAccessory';
-import { initMonitoring } from './src/services/monitoring';
+import { getSentry, initMonitoring } from './src/services/monitoring';
+import tw from './src/lib/tw';
+import PrimaryButton from './src/components/ui/PrimaryButton';
 import { prewarmFirstOpenRead } from './src/utils/firstLaunch';
 import {
   navigationRef,
@@ -96,6 +98,77 @@ setSessionExpiredHandler(() => {
 // daily vs first-launch within its 100ms budget.
 prewarmFirstOpenRead();
 
+type FallbackProps = { onTryAgain: () => void; onGoHome: () => void };
+
+/** Calm full-screen fallback when a screen throws during render. */
+function CrashFallback({ onTryAgain, onGoHome }: FallbackProps) {
+  return (
+    <View style={tw`flex-1 bg-page items-center justify-center px-gutter`}>
+      <Text style={tw`text-title text-ink text-center mb-2`} accessibilityRole="header">
+        Something went sideways
+      </Text>
+      <Text style={tw`text-body text-ink-2 text-center mb-6`}>
+        Your work is safe. Let’s reload this screen.
+      </Text>
+      <PrimaryButton label="Try again" onPress={onTryAgain} style={tw`self-stretch mb-3`} />
+      <PrimaryButton label="Go home" variant="ghost" onPress={onGoHome} style={tw`self-stretch`} />
+    </View>
+  );
+}
+
+type BoundaryProps = { children: React.ReactNode; onGoHome: () => void };
+type BoundaryState = { failed: boolean };
+
+/** Used when Sentry isn't available (dev without a DSN, web). */
+class LocalErrorBoundary extends React.Component<BoundaryProps, BoundaryState> {
+  state: BoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): BoundaryState {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn('[RootErrorBoundary]', error);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <CrashFallback
+        onTryAgain={() => this.setState({ failed: false })}
+        onGoHome={() => {
+          this.props.onGoHome();
+          this.setState({ failed: false });
+        }}
+      />
+    );
+  }
+}
+
+/**
+ * Root error boundary around the navigation tree. Reports through Sentry when
+ * monitoring is on; otherwise a local boundary with the same fallback.
+ */
+function RootErrorBoundary({ children, onGoHome }: BoundaryProps) {
+  const Sentry = getSentry();
+  if (!Sentry) return <LocalErrorBoundary onGoHome={onGoHome}>{children}</LocalErrorBoundary>;
+  return (
+    <Sentry.ErrorBoundary
+      fallback={({ resetError }) => (
+        <CrashFallback
+          onTryAgain={resetError}
+          onGoHome={() => {
+            onGoHome();
+            resetError();
+          }}
+        />
+      )}
+    >
+      {children}
+    </Sentry.ErrorBoundary>
+  );
+}
+
 function AppContent({ scheme }: { scheme: ColorSchemeName }) {
   const dispatch = useAppDispatch();
   const token = useAppSelector((state) => state.auth.token);
@@ -112,6 +185,12 @@ function AppContent({ scheme }: { scheme: ColorSchemeName }) {
     state: undefined,
   });
   if (savedNav.current.key !== navKey) savedNav.current = { key: navKey, state: undefined };
+  // "Go home" from the crash screen: drop the saved nav state and remount fresh.
+  const [navEpoch, setNavEpoch] = useState(0);
+  const onCrashGoHome = useCallback(() => {
+    savedNav.current.state = undefined;
+    setNavEpoch((n) => n + 1);
+  }, []);
   const onNavStateChange = useCallback(
     (state: NavigationState | undefined) => {
       if (savedNav.current.key === navKey) savedNav.current.state = state;
@@ -177,20 +256,22 @@ function AppContent({ scheme }: { scheme: ColorSchemeName }) {
         <Animated.View
           style={[styles.nav, navSettled ? null : { transform: [{ scale: navScale }] }]}
         >
-          <NavigationContainer
-            key={`${navKey}:${scheme}`}
-            ref={navigationRef}
-            linking={linking}
-            theme={NAV_THEMES[scheme]}
-            // Only set after a scheme remount; first mount still honours the
-            // linking initial URL (initialState would suppress it).
-            initialState={savedNav.current.state}
-            onStateChange={onNavStateChange}
-          >
-            {/* Dark icons on cream, light icons on night soil. */}
-            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-            <RootNavigator />
-          </NavigationContainer>
+          <RootErrorBoundary onGoHome={onCrashGoHome}>
+            <NavigationContainer
+              key={`${navKey}:${scheme}:${navEpoch}`}
+              ref={navigationRef}
+              linking={linking}
+              theme={NAV_THEMES[scheme]}
+              // Only set after a scheme remount; first mount still honours the
+              // linking initial URL (initialState would suppress it).
+              initialState={savedNav.current.state}
+              onStateChange={onNavStateChange}
+            >
+              {/* Dark icons on cream, light icons on night soil. */}
+              <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+              <RootNavigator />
+            </NavigationContainer>
+          </RootErrorBoundary>
         </Animated.View>
       ) : (
         <View style={styles.hold} />
@@ -228,7 +309,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function App() {
+function App() {
   // Resolves appearance pref + OS scheme and switches tw / theme.colors.
   const scheme = useAppearanceSync();
 
@@ -254,3 +335,8 @@ export default function App() {
     </Provider>
   );
 }
+
+// Sentry.wrap adds touch breadcrumbs and app-start tracing; only when monitoring
+// actually initialised (no DSN in dev → plain component, native module untouched).
+const SentryForWrap = getSentry();
+export default SentryForWrap ? SentryForWrap.wrap(App) : App;

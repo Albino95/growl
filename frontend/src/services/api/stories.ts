@@ -1,4 +1,4 @@
-import { request } from './http';
+import { request, withIdempotency } from './http';
 
 export type StoryItem = {
   id: string;
@@ -43,13 +43,18 @@ export async function getUserStories(userId: string): Promise<StoryItem[]> {
 }
 
 /** Creates a new story after media has been uploaded/resolved by caller. */
-export async function createStory(payload: {
-  image_url: string;
-  caption?: string;
-}): Promise<{ success: boolean; data: StoryItem }> {
+export async function createStory(
+  payload: {
+    image_url: string;
+    caption?: string;
+  },
+  opts?: { idempotencyKey?: string }
+): Promise<{ success: boolean; data: StoryItem }> {
   return request<{ success: boolean; data: StoryItem }>('/stories', {
     method: 'POST',
     body: JSON.stringify(payload),
+    // Stable per draft so a retry after a lost response can't post it twice.
+    ...withIdempotency(opts?.idempotencyKey),
   });
 }
 

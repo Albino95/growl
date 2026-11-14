@@ -1054,6 +1054,7 @@ export default function GrowScreen() {
       onMessages={() => stackNav.navigate('BusinessMessages')}
       headerRight={
         <PressableScale
+          hitSlop={4}
           onPress={() => stackNav.navigate('BusinessCreatePost')}
           style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           accessibilityLabel="Create post"
@@ -1109,7 +1110,7 @@ export default function GrowScreen() {
                         </Text>
                       </View>
                     </View>
-                    <PressableScale onPress={() => setSelectedPartner(null)}>
+                    <PressableScale accessibilityRole="button" accessibilityLabel="Close" hitSlop={10} onPress={() => setSelectedPartner(null)}>
                       <Ionicons name="close" size={24} color={theme.colors.ink3} />
                     </PressableScale>
                   </View>
@@ -1208,7 +1209,7 @@ export default function GrowScreen() {
                     <Text style={tw`text-lg font-bold text-ink`}>
                       Request · {discoverTarget.username}
                     </Text>
-                    <PressableScale onPress={() => setDiscoverTarget(null)}>
+                    <PressableScale accessibilityRole="button" accessibilityLabel="Close" hitSlop={10} onPress={() => setDiscoverTarget(null)}>
                       <Ionicons name="close" size={24} color={theme.colors.ink3} />
                     </PressableScale>
                   </View>

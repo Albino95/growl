@@ -506,6 +506,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
             <SafeAreaView style={tw`flex-1`} pointerEvents="box-none">
               <View style={tw`flex-row items-center justify-between px-4 pt-2`}>
                 <Pressable
+                  hitSlop={4}
                   onPress={onClose}
                   accessibilityRole="button"
                   accessibilityLabel="Close camera"
@@ -525,6 +526,7 @@ export default function ReelCameraCapture({ visible, onClose, onCaptured }: Prop
                   <Text style={tw`text-white/80 text-xs font-semibold`}>{hint}</Text>
                 )}
                 <Pressable
+                  hitSlop={4}
                   onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
                   disabled={recording}
                   accessibilityRole="button"

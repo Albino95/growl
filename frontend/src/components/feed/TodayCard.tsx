@@ -37,6 +37,7 @@ import {
 } from '../recap/growthMeta';
 import { journalMoodFromCheckin, localDateKey } from '../journal/journalMeta';
 import { useGrowthStore } from '../../state/useGrowthStore';
+import { isLifeModeActive, LIFE_MODE_LABEL } from '../../screens/Profile/lifeMode';
 import { useActivationStore } from '../../state/useActivationStore';
 import { useAuth } from '../../store/hooks';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
@@ -122,6 +123,7 @@ function TodayCard() {
   const available = useGrowthStore((s) => s.available);
   const loaded = useGrowthStore((s) => s.loaded);
   const saving = useGrowthStore((s) => s.saving);
+  const lifeMode = useGrowthStore((s) => s.lifeMode);
 
   const lastJournalDateKey = useActivationStore((s) => s.lastJournalDateKey);
   const journaledToday = lastJournalDateKey === localDateKey();
@@ -649,6 +651,11 @@ function TodayCard() {
           <Text style={tw`text-sm text-ink-3 mt-0.5`}>
             {editing ? 'Update today’s check-in.' : 'How are you arriving today?'}
           </Text>
+          {lifeMode && isLifeModeActive(lifeMode) ? (
+            <Text style={tw`text-footnote text-ink-2 mt-1`}>
+              {`${LIFE_MODE_LABEL[lifeMode.mode]} — your streak is waiting for you.`}
+            </Text>
+          ) : null}
         </View>
         <View style={tw`items-end pt-1`}>
           <WeekDots days={streak.week} size={8} />

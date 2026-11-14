@@ -25,6 +25,7 @@ import {
   type FeedComment,
 } from '../../services/api/feed';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { uuidV4 } from '../../services/api/idempotency';
 import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
@@ -180,7 +181,9 @@ export default function CommentsScreen({
    */
   const submitComment = async (text: string, retryId?: string) => {
     if (!text) return;
-    const tempId = retryId || `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // The temp id doubles as the Idempotency-Key (valid: [A-Za-z0-9_\-:.]{8,128}),
+    // so "Tap to retry" re-sends the same key and can never post twice.
+    const tempId = retryId || `tmp-${uuidV4()}`;
     if (sendingIdsRef.current.has(tempId)) return;
     sendingIdsRef.current.add(tempId);
     if (retryId) {
@@ -206,7 +209,7 @@ export default function CommentsScreen({
     }
     let created: FeedComment;
     try {
-      created = await createFeedPostComment(postId, text);
+      created = await createFeedPostComment(postId, text, { idempotencyKey: tempId });
     } catch {
       sendingIdsRef.current.delete(tempId);
       feedback.error();
@@ -468,6 +471,7 @@ export default function CommentsScreen({
               </View>
               {commentText.trim() ? (
                 <PressableScale
+                  hitSlop={4}
                   pressedScale={0.9}
                   onPress={handleSendComment}
                   style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center`}

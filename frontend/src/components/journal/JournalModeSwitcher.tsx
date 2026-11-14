@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
 import { radius } from '../../theme/tokens';
 import PressableScale from '../ui/PressableScale';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 export type JournalMode = 'pages' | 'voices';
 
@@ -28,15 +29,21 @@ export default function JournalModeSwitcher({
   const [trackW, setTrackW] = useState(0);
   const c = useThemeColors();
   const scheme = useColorSchemeName();
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reduceMotion) {
+      // Jump the pill instead of sliding it.
+      slide.setValue(mode === 'pages' ? 0 : 1);
+      return;
+    }
     Animated.spring(slide, {
       toValue: mode === 'pages' ? 0 : 1,
       useNativeDriver: true,
       speed: 22,
       bounciness: 7,
     }).start();
-  }, [mode, slide]);
+  }, [mode, reduceMotion, slide]);
 
   const onTrackLayout = (e: LayoutChangeEvent) => {
     setTrackW(e.nativeEvent.layout.width);

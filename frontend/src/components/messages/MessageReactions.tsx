@@ -68,6 +68,7 @@ export function ReactionPicker({ mine, dark, onPick }: PickerProps) {
         const active = mine === key;
         return (
           <PressableScale
+            hitSlop={{ top: 4, bottom: 4 }}
             key={key}
             pressedScale={0.88}
             onPress={() => {

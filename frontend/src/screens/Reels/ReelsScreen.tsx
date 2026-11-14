@@ -568,7 +568,13 @@ export default function ReelsScreen() {
       <View style={[tw`bg-black overflow-hidden`, { height: pageH, width: '100%' }]}>
         {/* Full-bleed media plane — absolute so flex/Pressable quirks can't shrink the video */}
         <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => handleReelPress(item.id)}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => handleReelPress(item.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${isVideo ? 'Video' : 'Photo'} reel by ${username}`}
+            accessibilityHint={isVideo ? (shouldPlay ? 'Pauses the video' : 'Plays the video') : undefined}
+          >
             {isVideo ? (
               mountPlayer ? (
                 <ReelVideoPlayer

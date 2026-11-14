@@ -52,7 +52,6 @@ export default function ProductDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [saved, setSaved] = useState(false);
   const [failedImageIndexes, setFailedImageIndexes] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
@@ -148,7 +147,7 @@ export default function ProductDetailScreen() {
             <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
           </PressableScale>
           <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
-          <Ionicons name="heart-outline" size={24} color={theme.colors.ink} />
+          <View style={tw`w-6`} />
         </View>
         <View style={tw`bg-raised`}>
           {previewImage ? (
@@ -221,16 +220,11 @@ export default function ProductDetailScreen() {
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false} {...verticalScrollProps}>
         <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
-          <PressableScale onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <PressableScale accessibilityRole="button" accessibilityLabel="Go back" onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
           </PressableScale>
           <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
-          <PressableScale
-            onPress={() => setSaved(!saved)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name={saved ? 'heart' : 'heart-outline'} size={24} color={saved ? theme.colors.danger : theme.colors.ink} />
-          </PressableScale>
+          <View style={tw`w-6`} />
         </View>
 
         <View style={tw`bg-raised`}>
@@ -363,6 +357,10 @@ export default function ProductDetailScreen() {
             <Text style={tw`text-lg font-semibold text-ink mb-3`}>Quantity</Text>
             <View style={tw`flex-row items-center`}>
               <PressableScale
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease quantity"
+                accessibilityState={{ disabled: quantity <= 1 }}
                 onPress={() => setQuantity(Math.max(1, quantity - 1))}
                 style={tw`w-10 h-10 items-center justify-center border border-line/80 bg-page rounded-card`}
               >
@@ -370,6 +368,10 @@ export default function ProductDetailScreen() {
               </PressableScale>
               <Text style={tw`mx-6 text-lg font-semibold text-ink`}>{quantity}</Text>
               <PressableScale
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Increase quantity"
+                accessibilityState={{ disabled: quantity >= product.stock }}
                 onPress={() => setQuantity(Math.min(product.stock, quantity + 1))}
                 disabled={quantity >= product.stock}
                 style={tw`w-10 h-10 items-center justify-center border border-line/80 bg-page rounded-card ${
