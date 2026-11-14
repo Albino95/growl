@@ -17,6 +17,7 @@ import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 import { getLifeMode, whenAvailable, type LifeMode } from '../../services/api/privacy';
 import LifeModeSheet from './LifeModeSheet';
 import { lifeModeSubtitle } from './lifeMode';
+import { refreshGrowth } from '../../state/useGrowthStore';
 
 function Row({
   icon,
@@ -229,7 +230,7 @@ export default function SettingsScreen() {
           <Row
             icon="notifications-outline"
             label="Notifications"
-            subtitle="Push and email preferences"
+            subtitle="Daily reminder and email"
             onPress={() => navigateFromRoot(navigation, 'NotificationPrefs')}
           />
           <Row
@@ -365,7 +366,11 @@ export default function SettingsScreen() {
           visible={lifeSheetOpen}
           onClose={() => setLifeSheetOpen(false)}
           current={lifeMode}
-          onSaved={setLifeModeState}
+          onSaved={(next) => {
+            setLifeModeState(next);
+            // Growth store holds life mode for the Today card + daily reminder plan.
+            refreshGrowth(true);
+          }}
         />
       ) : null}
     </SafeAreaView>

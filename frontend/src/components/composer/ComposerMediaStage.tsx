@@ -93,7 +93,11 @@ export default function ComposerMediaStage({ composer, badge }: Props) {
             </View>
           ) : null}
           {publishing ? (
-            <PublishingOverlay variant="publishing" phase={state.phase} />
+            <PublishingOverlay
+              variant="publishing"
+              phase={state.phase}
+              progress={composer.publishProgress}
+            />
           ) : openingEditor ? (
             <PublishingOverlay variant="loading" label={COMPOSER_COPY.openingEditor} />
           ) : null}

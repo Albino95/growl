@@ -37,6 +37,7 @@ import { ReactionPickerBar, type FeedReaction } from '../../components/feed/Feed
 import { resolveStoryDisplayUri, resolveAvatarUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { toggleFeedPostLike, getFeedPostLikes, type FeedPost, type FeedLiker } from '../../services/api/feed';
 import { getStories, type StoryItem } from '../../services/api/stories';
+import { usePublishQueue } from '../../state/usePublishQueue';
 import { blockUser, listFriends, reportContent } from '../../services/api/friends';
 import tw, { theme } from '../../lib/tw';
 import { iconSize } from '../../theme/icons';
@@ -277,6 +278,14 @@ export default function FeedScreen({ navigation, route }: any) {
       // Do not clear the tray on network failure
     }
   };
+
+  // A background publish finished: pull the new story into the tray (the feed
+  // post itself is inserted + refreshed by the publish queue).
+  const lastSharedAt = usePublishQueue((s) => s.lastSharedAt);
+  useEffect(() => {
+    if (lastSharedAt) void loadStoriesOnly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSharedAt]);
 
   useFocusEffect(
     useCallback(() => {

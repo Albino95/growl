@@ -7,8 +7,10 @@
 import { Platform } from 'react-native';
 import {
   MediaTooLargeError,
+  isUploadCancelled,
   uploadMediaApi,
   uploadMediaFile,
+  type UploadControl,
   type UploadPurpose,
 } from './api/media';
 import { createFeedPost, type FeedPost } from './api/feed';
@@ -100,7 +102,7 @@ export type UploadedMedia = {
   contentType?: string;
 };
 
-export type UploadComposerMediaOptions = {
+export type UploadComposerMediaOptions = UploadControl & {
   mediaType: ComposerMediaType;
   mime?: string;
   /** Web blob → JPEG long edge (default 1400). */
@@ -114,6 +116,8 @@ export type UploadComposerMediaOptions = {
  * - image data: URL (or web blob, downscaled first) → JSON upload
  * - image file → multipart (shrunk to JPEG by media.ts)
  * Throws ComposerError (stage 'upload'); never resolves a non-hosted URL.
+ * `onProgress` / `signal` reach the transport; a cancel rethrows
+ * `UploadCancelledError` as-is (never mapped to a ComposerError).
  */
 export async function uploadComposerMedia(
   uri: string,
@@ -121,13 +125,16 @@ export async function uploadComposerMedia(
   opts: UploadComposerMediaOptions
 ): Promise<UploadedMedia> {
   const purpose: UploadPurpose = kind;
+  const control: UploadControl = { onProgress: opts.onProgress, signal: opts.signal };
   let result: UploadedMedia;
   try {
     if (isRemoteMediaUrl(uri)) {
       result = { url: uri, mediaType: opts.mediaType, contentType: opts.mime };
+      control.onProgress?.(1, 1);
     } else if (opts.mediaType === 'video') {
       const uploaded = await uploadMediaFile(uri, purpose, {
         mimeType: opts.mime || 'video/mp4',
+        ...control,
       });
       result = { url: uploaded.url, mediaType: uploaded.mediaType, contentType: uploaded.contentType };
     } else {
@@ -140,14 +147,15 @@ export async function uploadComposerMedia(
         }
       }
       if (source.toLowerCase().startsWith('data:')) {
-        const url = await uploadMediaApi(source, purpose);
+        const url = await uploadMediaApi(source, purpose, control);
         result = { url, mediaType: 'image', contentType: 'image/jpeg' };
       } else {
-        const uploaded = await uploadMediaFile(source, purpose, { mimeType: 'image/jpeg' });
+        const uploaded = await uploadMediaFile(source, purpose, { mimeType: 'image/jpeg', ...control });
         result = { url: uploaded.url, mediaType: 'image', contentType: uploaded.contentType };
       }
     }
   } catch (err) {
+    if (isUploadCancelled(err)) throw err;
     throw toComposerError(err, 'upload');
   }
   if (!isPublishableMediaUrl(result.url)) {

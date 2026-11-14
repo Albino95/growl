@@ -187,6 +187,15 @@ export function composerDraftNs(kind: string): string {
   return `composer-draft-${kind}`;
 }
 
+/**
+ * A draft that was handed to the background publish queue. It stays on disk
+ * until the publish succeeds, so an app kill mid-upload can still offer
+ * "Continue your draft?" (same idempotency key → no duplicate post).
+ */
+export function composerPendingNs(kind: string): string {
+  return `composer-pending-${kind}`;
+}
+
 export type ComposerDraft = {
   kind: 'post' | 'reel' | 'story';
   caption: string;

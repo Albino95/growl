@@ -5,19 +5,15 @@ import { useAppDispatch, useAuth } from '../store/hooks';
 import { prependFeedPost } from '../store/slices/feedSlice';
 import type { FeedPost } from '../services/api/feed';
 import {
-  publishPost,
-  publishReel,
-  publishStory,
   toComposerError,
-  uploadComposerMedia,
   type ComposerKind,
   type PostPublishExtras,
-  type PublishFeedResult,
 } from '../services/createContent';
+import { runPublish, type PublishInput } from '../services/publish/runPublish';
+import { overallProgress } from '../services/publish/progress';
+import { publishQueue } from '../state/usePublishQueue';
 import { pickMedia, type PickSource } from '../utils/pickMedia';
 import type { PickedMedia } from '../utils/pickedMedia';
-import { isRemoteMediaUrl } from '../utils/mediaUri';
-import { uploadReelCover } from '../utils/uploadReelCover';
 import { alertMessage, confirmAsync } from '../utils/confirmDialog';
 import { feedback, hushNativeAudio } from '../utils/interactionFeedback';
 import { haptic } from '../theme/haptics';
@@ -40,6 +36,7 @@ import { useComposerPrefsStore } from '../state/useComposerPrefsStore';
 import { toast } from '../state/useToastStore';
 import {
   composerDraftNs,
+  composerPendingNs,
   drafts,
   newIdempotencyKey,
   sanitizeComposerDraft,
@@ -140,6 +137,8 @@ export function useMediaComposer({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [wantPlay, setWantPlay] = useState(false);
   const [published, setPublished] = useState<FeedPost | null>(null);
+  /** In-place fallback only: 0..1 while publishing. */
+  const [publishProgress, setPublishProgress] = useState(0);
   const captionInputRef = useRef<TextInput>(null);
   const publishingRef = useRef(false);
   const importTokenRef = useRef(0);
@@ -279,49 +278,16 @@ export function useMediaComposer({
   );
 
   // Offer the saved draft once per open (skipped when the route seeds the draft).
-  const seededByRoute = Boolean(initialCaption || postExtras);
+  // Order: an "Edit" from the publish pill (restored without asking) → this
+  // composer's autosaved draft → a draft whose background publish never
+  // finished (app killed mid-upload).
+  const seededByRoute = Boolean(
+    initialCaption || postExtras?.productId || postExtras?.promoteBusinessId
+  );
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      if (seededByRoute) {
-        setDraftHydrated(true);
-        return;
-      }
-      const saved = await drafts.load<ComposerDraft>(draftNs, userId, {
-        maxAgeMs: DRAFT_MAX_AGE_MS,
-      });
-      if (cancelled) return;
-      if (!saved || saved.data.kind !== kind) {
-        setDraftHydrated(true);
-        return;
-      }
-      const usable = await sanitizeComposerDraft(saved.data);
-      if (cancelled) return;
-      if (!usable) {
-        void drafts.clear(draftNs, userId);
-        setDraftHydrated(true);
-        return;
-      }
-      const resume = await confirmAsync(
-        'Continue your draft?',
-        usable.droppedMedia
-          ? 'Your caption is still here, but the photo or clip is no longer on this device.'
-          : `You have an unfinished ${config.noun}.`,
-        { confirmLabel: 'Continue', cancelLabel: 'Discard' }
-      );
-      if (cancelled) return;
-      if (!resume) {
-        void drafts.clear(draftNs, userId);
-        setDraftHydrated(true);
-        return;
-      }
-      // Only restore into an untouched composer.
-      const now = stateRef.current;
-      if (now.media || now.caption.trim() || now.status !== 'empty') {
-        setDraftHydrated(true);
-        return;
-      }
-      const d = usable.draft;
+
+    const restore = (d: ComposerDraft, droppedMedia: boolean, upload?: ComposerUpload | null) => {
       if (isValidIdempotencyKey(d.idempotencyKey)) idempotencyKeyRef.current = d.idempotencyKey;
       if (d.media && (d.media.mediaType === 'image' || config.acceptsVideo)) {
         dispatch({ type: 'IMPORT_START' });
@@ -339,13 +305,95 @@ export function useMediaComposer({
             settings: { ...DEFAULT_VIDEO_EDIT, ...(d.videoEdit as Partial<VideoEditSettings>) },
           });
         }
+        // Hosted media from the failed attempt: re-sharing skips the upload.
+        if (upload) dispatch({ type: 'RESTORE_UPLOAD', upload });
       }
       if (d.caption) dispatch({ type: 'SET_CAPTION', caption: d.caption });
       if (d.category) dispatch({ type: 'SET_CATEGORY', category: d.category });
       if (d.audio) dispatch({ type: 'SET_AUDIO', audio: d.audio });
-      if (usable.droppedMedia) {
+      if (droppedMedia) {
         toast.info(`Pick your ${isVideoKindLabel(kind)} again — the old one was cleared`);
       }
+    };
+
+    void (async () => {
+      const editRequest = publishQueue.getState().takeEditRequest(kind);
+      if (editRequest) {
+        const draft: ComposerDraft = {
+          kind,
+          caption: editRequest.input.caption,
+          category: editRequest.input.category,
+          media: { ...editRequest.input.media },
+          videoEdit:
+            editRequest.input.media.mediaType === 'video' ? { ...editRequest.input.videoEdit } : null,
+          audio: editRequest.input.audio,
+          idempotencyKey: editRequest.idempotencyKey,
+        };
+        const usable = await sanitizeComposerDraft(draft);
+        if (cancelled) return;
+        // This composer owns the draft again (its autosave takes over).
+        void drafts.clear(composerPendingNs(kind), userId);
+        if (usable) restore(usable.draft, usable.droppedMedia, editRequest.upload);
+        setDraftHydrated(true);
+        return;
+      }
+      if (seededByRoute) {
+        setDraftHydrated(true);
+        return;
+      }
+      let fromPending = false;
+      let saved = await drafts.load<ComposerDraft>(draftNs, userId, {
+        maxAgeMs: DRAFT_MAX_AGE_MS,
+      });
+      if (!saved) {
+        const pending = await drafts.load<ComposerDraft>(composerPendingNs(kind), userId, {
+          maxAgeMs: DRAFT_MAX_AGE_MS,
+        });
+        // Still uploading (or failed with the pill showing): leave it to the queue.
+        if (pending && !publishQueue.getState().hasLiveJob(pending.data.idempotencyKey)) {
+          saved = pending;
+          fromPending = true;
+        }
+      }
+      if (cancelled) return;
+      if (!saved || saved.data.kind !== kind) {
+        setDraftHydrated(true);
+        return;
+      }
+      const clearSaved = () => {
+        void drafts.clear(fromPending ? composerPendingNs(kind) : draftNs, userId);
+      };
+      const usable = await sanitizeComposerDraft(saved.data);
+      if (cancelled) return;
+      if (!usable) {
+        clearSaved();
+        setDraftHydrated(true);
+        return;
+      }
+      const resume = await confirmAsync(
+        'Continue your draft?',
+        usable.droppedMedia
+          ? 'Your caption is still here, but the photo or clip is no longer on this device.'
+          : fromPending
+            ? `Your ${config.noun.replace(/^an? /, '')} didn’t finish sharing.`
+            : `You have an unfinished ${config.noun}.`,
+        { confirmLabel: 'Continue', cancelLabel: 'Discard' }
+      );
+      if (cancelled) return;
+      if (!resume) {
+        clearSaved();
+        setDraftHydrated(true);
+        return;
+      }
+      // Only restore into an untouched composer.
+      const now = stateRef.current;
+      if (now.media || now.caption.trim() || now.status !== 'empty') {
+        setDraftHydrated(true);
+        return;
+      }
+      // A resumed pending draft moves back to this composer's own slot.
+      if (fromPending) clearSaved();
+      restore(usable.draft, usable.droppedMedia);
       setDraftHydrated(true);
     })();
     return () => {
@@ -515,6 +563,68 @@ export function useMediaComposer({
     [canAutoLeave, dropDraft, kind, leave, navigation]
   );
 
+  /** Snapshot the draft into a self-contained publish input. */
+  const publishInputFrom = useCallback(
+    (s: ComposerState): PublishInput | null => {
+      if (!s.media) return null;
+      return {
+        kind,
+        media: s.media,
+        caption: s.caption,
+        category: s.category,
+        videoEdit: s.videoEdit,
+        audio: s.audio,
+        frames: s.frames,
+        extras: kind === 'post' ? postExtras : undefined,
+        uploadMaxEdge: config.uploadMaxEdge,
+        user,
+      };
+    },
+    [config.uploadMaxEdge, kind, postExtras, user]
+  );
+
+  /**
+   * Background flow (PublishHost mounted): persist the draft as "pending",
+   * hand it to the queue, and close right away. The pill shows progress.
+   */
+  const shareInBackground = useCallback(
+    (s: ComposerState, input: PublishInput) => {
+      const idempotencyKey = idempotencyKeyRef.current;
+      const snapshot = draftFromState(kind, s, idempotencyKey);
+      // Kept until the publish succeeds — an app kill mid-upload offers it back.
+      draftClosedRef.current = true;
+      cancelDraftSave();
+      void (async () => {
+        if (snapshot) await drafts.save(composerPendingNs(kind), userId, snapshot);
+        await drafts.clear(draftNs, userId);
+      })();
+      const upload = s.upload && s.upload.sourceUri === input.media.uri ? s.upload : null;
+      publishQueue.getState().enqueue(input, {
+        idempotencyKey,
+        userId,
+        thumbUri:
+          input.media.mediaType === 'video'
+            ? clipStill?.uri ?? null
+            : input.media.uri,
+        upload,
+      });
+      if (s.category && config.categoryRequired) rememberCategory(kind, s.category);
+      setWantPlay(false);
+      leave(() => navigation.goBack());
+    },
+    [
+      cancelDraftSave,
+      clipStill?.uri,
+      config.categoryRequired,
+      draftNs,
+      kind,
+      leave,
+      navigation,
+      rememberCategory,
+      userId,
+    ]
+  );
+
   const publish = useCallback(async () => {
     if (publishingRef.current) return;
     const s = stateRef.current;
@@ -524,83 +634,43 @@ export function useMediaComposer({
       setCategorySheetOpen(true);
       return;
     }
+    const input = publishInputFrom(s);
+    if (!input) return;
+
+    if (publishQueue.getState().hosts > 0) {
+      // The screen closes right after; this only blocks a double tap meanwhile.
+      publishingRef.current = true;
+      if (input.media.mediaType === 'video' && previewArmedRef.current) {
+        setWantPlay(false);
+        await waitMs(nativePublishUnloadMs());
+      }
+      shareInBackground(s, input);
+      return;
+    }
+
+    // Fallback: no PublishHost mounted → publish in place behind the overlay.
     publishingRef.current = true;
+    setPublishProgress(0);
     dispatch({ type: 'PUBLISH_START' });
-    const mediaItem = s.media;
-    const mediaIsVideo = mediaItem.mediaType === 'video';
     try {
-      if (mediaIsVideo && previewArmedRef.current) await waitMs(nativePublishUnloadMs());
+      if (input.media.mediaType === 'video' && previewArmedRef.current) {
+        await waitMs(nativePublishUnloadMs());
+      }
       setWantPlay(false);
-
-      // Retry after a publish-only failure reuses the hosted media.
-      let upload: ComposerUpload | null =
-        s.upload && s.upload.sourceUri === mediaItem.uri ? s.upload : null;
-      const needsCover =
-        kind === 'reel' && mediaIsVideo && !isRemoteMediaUrl(mediaItem.uri) &&
-        typeof upload?.coverUrl !== 'string';
-      // Cover never blocks publishing (resolves null on failure).
-      const coverPromise: Promise<string | null> = needsCover
-        ? uploadReelCover({
-            videoUri: mediaItem.uri,
-            durationMs: mediaItem.durationMs,
-            edit: s.videoEdit,
-            frames: s.frames,
-          })
-        : Promise.resolve(upload?.coverUrl ?? null);
-
-      if (!upload) {
-        dispatch({ type: 'PUBLISH_PHASE', phase: 'uploading' });
-        const uploaded = await uploadComposerMedia(mediaItem.uri, kind, {
-          mediaType: mediaItem.mediaType,
-          mime: mediaItem.mimeType,
-          maxEdge: config.uploadMaxEdge,
-        });
-        upload = { sourceUri: mediaItem.uri, ...uploaded };
-        dispatch({ type: 'UPLOADED', upload });
-      }
-
-      if (kind === 'reel' && upload.mediaType === 'video' && typeof upload.coverUrl !== 'string') {
-        const coverUrl = await coverPromise;
-        if (coverUrl) {
-          upload = { ...upload, coverUrl };
-          dispatch({ type: 'UPLOADED', upload });
-        }
-      }
-
-      dispatch({ type: 'PUBLISH_PHASE', phase: 'publishing' });
-      // Stable per draft (restored drafts keep theirs): retrying the same draft
-      // after a lost response returns the original post instead of a duplicate.
-      const idempotencyKey = idempotencyKeyRef.current;
-      let result: PublishFeedResult | null = null;
-      if (kind === 'post') {
-        result = await publishPost({
-          mediaUrl: upload.url,
-          caption: s.caption,
-          category: s.category as string,
-          audioTrack: s.audio,
-          extras: postExtras,
-          user,
-          idempotencyKey,
-        });
-      } else if (kind === 'reel') {
-        result = await publishReel({
-          media: upload,
-          caption: s.caption,
-          category: s.category as string,
-          videoEdit: s.videoEdit,
-          coverUrl: upload.coverUrl,
-          user,
-          idempotencyKey,
-        });
-      } else {
-        await publishStory({
-          media: upload,
-          caption: s.caption,
-          videoEdit: s.videoEdit,
-          idempotencyKey,
-        });
-      }
-
+      const { result } = await runPublish(input, {
+        // Stable per draft (restored drafts keep theirs): retrying the same draft
+        // after a lost response returns the original post instead of a duplicate.
+        idempotencyKey: idempotencyKeyRef.current,
+        // Retry after a publish-only failure reuses the hosted media.
+        cachedUpload: s.upload,
+        onUploaded: (upload) => dispatch({ type: 'UPLOADED', upload }),
+        onProgress: ({ parts, stage }) => {
+          const phase =
+            stage === 'uploading' ? 'uploading' : stage === 'finishing' ? 'publishing' : null;
+          if (phase && stateRef.current.phase !== phase) dispatch({ type: 'PUBLISH_PHASE', phase });
+          setPublishProgress((prev) => Math.max(prev, overallProgress(parts, stage)));
+        },
+      });
       if (result) {
         reduxDispatch(prependFeedPost(result.optimistic));
         if (typeof result.post.points_total === 'number') {
@@ -617,14 +687,13 @@ export function useMediaComposer({
     }
   }, [
     config.categoryRequired,
-    config.uploadMaxEdge,
     finishSuccess,
     kind,
-    postExtras,
+    publishInputFrom,
     reduxDispatch,
     rememberCategory,
+    shareInBackground,
     updateUser,
-    user,
   ]);
 
   /** Primary button tap (with the "grow!" caption easter egg). */
@@ -671,6 +740,8 @@ export function useMediaComposer({
     wantPlay,
     editorVisible: status === 'editing' && state.editorShown,
     published,
+    /** In-place fallback progress (0..1) while `publishing`. */
+    publishProgress,
     captionInputRef,
     // sheets / modals
     categorySheetOpen,

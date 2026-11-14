@@ -1,8 +1,9 @@
 // Learn more https://docs.expo.dev/guides/customizing-metro
-const { getDefaultConfig } = require('expo/metro-config');
+// Sentry's wrapper adds debug IDs so uploaded source maps match release bundles.
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 
 /** @type {import('expo/metro-config').MetroConfig} */
-const config = getDefaultConfig(__dirname);
+const config = getSentryExpoConfig(__dirname);
 
 // Configure for web builds to handle ES modules properly
 config.resolver.sourceExts.push('mjs');

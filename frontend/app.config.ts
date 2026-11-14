@@ -53,6 +53,11 @@ const defineConfig = (): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'app.growl.mobile',
+    // Team + App Group shared with the Today widget (targets/widget).
+    appleTeamId: 'TWA9YR63J2',
+    entitlements: {
+      'com.apple.security.application-groups': ['group.app.growl.mobile'],
+    },
     buildNumber: '2',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
@@ -139,6 +144,23 @@ const defineConfig = (): ExpoConfig => ({
       },
     ],
     'expo-apple-authentication',
+    [
+      'expo-notifications',
+      {
+        // Local reminders only (no remote push yet).
+        color: '#059669',
+      },
+    ],
+    // Home-screen widget extension lives in targets/widget.
+    '@bacons/apple-targets',
+    [
+      '@sentry/react-native/expo',
+      {
+        organization: 'grow-inc',
+        project: 'grow-mobile',
+        url: 'https://de.sentry.io/',
+      },
+    ],
     [
       'expo-video',
       {

@@ -13,6 +13,13 @@ const CHECK_EVERY_MS = 10 * 60 * 1000;
 let lastCheckAt = 0;
 let lastCheckUser: string | null = null;
 const celebrated = new Set<string>();
+/** True while a badge celebration or its share sheet is on screen (other hosts wait for it). */
+let celebrationOpen = false;
+
+/** Lets other global sheets (e.g. the reminder ask) avoid stacking a second modal on top. */
+export function isBadgeCelebrationOpen(): boolean {
+  return celebrationOpen;
+}
 
 /**
  * Global badge celebrations. Mount once inside the app root (no props).
@@ -94,6 +101,13 @@ export default function BadgeCelebrationHost() {
   }, [signedIn, checkServer]);
 
   const current = sharePayload ? null : queue[0] ?? null;
+
+  useEffect(() => {
+    celebrationOpen = signedIn && (queue.length > 0 || !!sharePayload);
+    return () => {
+      celebrationOpen = false;
+    };
+  }, [signedIn, queue.length, sharePayload]);
 
   const advance = useCallback(() => {
     setQueue((q) => q.slice(1));

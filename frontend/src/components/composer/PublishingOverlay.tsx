@@ -7,6 +7,7 @@ import type { PublishPhase } from '../../hooks/composerMachine';
 import tw from '../../lib/tw';
 import { duration, easing, pop, timing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { progressPercent } from '../../services/publish/progress';
 
 /**
  * The "Shared" check: pops in (bouncy) with one soft ring blooming out behind it.
@@ -59,7 +60,12 @@ function SuccessMark() {
 
 type Props =
   | { variant: 'loading'; label: string }
-  | { variant: 'publishing'; phase: PublishPhase | null }
+  | {
+      variant: 'publishing';
+      phase: PublishPhase | null;
+      /** 0..1 — shown as a percent while uploading. */
+      progress?: number;
+    }
   | {
       variant: 'success';
       title?: string;
@@ -70,6 +76,8 @@ type Props =
 
 /**
  * The one loading / publishing / success layer for create flows.
+ * `publishing` is the in-place fallback only (no PublishHost mounted); the
+ * normal flow closes the composer and shows the PublishHost pill instead.
  * `loading` and `publishing` sit over the media stage; `success` covers the screen.
  */
 export default function PublishingOverlay(props: Props) {
@@ -90,10 +98,10 @@ export default function PublishingOverlay(props: Props) {
       </View>
     );
   }
-  const label =
-    props.variant === 'publishing'
-      ? COMPOSER_COPY.phase[props.phase || 'preparing']
-      : props.label;
+  let label = props.variant === 'publishing' ? COMPOSER_COPY.phase[props.phase || 'preparing'] : props.label;
+  if (props.variant === 'publishing' && props.phase === 'uploading' && props.progress) {
+    label = `${label.replace(/…$/, '')} ${progressPercent(props.progress)}%`;
+  }
   return (
     <View
       style={tw`absolute inset-0 bg-black/55 items-center justify-center z-30`}

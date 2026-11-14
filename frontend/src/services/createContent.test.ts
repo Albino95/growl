@@ -9,6 +9,7 @@ const media = vi.hoisted(() => {
   }
   return {
     MediaTooLargeError,
+    isUploadCancelled: (err: unknown) => (err as Error)?.name === 'UploadCancelledError',
     uploadMediaApi: vi.fn(),
     uploadMediaFile: vi.fn(),
   };
@@ -87,7 +88,11 @@ describe('uploadComposerMedia', () => {
   it('sends data: images through the JSON upload', async () => {
     media.uploadMediaApi.mockResolvedValue(HOSTED);
     const out = await uploadComposerMedia('data:image/jpeg;base64,AAAA', 'story', { mediaType: 'image' });
-    expect(media.uploadMediaApi).toHaveBeenCalledWith('data:image/jpeg;base64,AAAA', 'story');
+    expect(media.uploadMediaApi).toHaveBeenCalledWith(
+      'data:image/jpeg;base64,AAAA',
+      'story',
+      expect.objectContaining({ onProgress: undefined, signal: undefined })
+    );
     expect(media.uploadMediaFile).not.toHaveBeenCalled();
     expect(out.mediaType).toBe('image');
   });

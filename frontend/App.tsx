@@ -54,6 +54,10 @@ import { theme } from './src/lib/tw';
 import { useActivationStore } from './src/state/useActivationStore';
 import AppDialogHost from './src/components/ui/AppDialog';
 import ToastHost from './src/components/ui/Toast';
+import PublishHost from './src/components/composer/PublishHost';
+import ReminderHost from './src/components/reminders/ReminderHost';
+import { initReminders } from './src/services/reminders';
+import { initWidgetSync } from './src/services/widgetSync';
 import { KeyboardDoneAccessory } from './src/components/ui/KeyboardDoneAccessory';
 import { getSentry, initMonitoring } from './src/services/monitoring';
 import tw from './src/lib/tw';
@@ -79,6 +83,7 @@ try {
 }
 
 initMonitoring();
+initWidgetSync();
 
 // Refresh token rejected (expired, revoked, banned): clear every slice and go
 // back to sign-in instead of showing a logged-in UI whose requests all fail.
@@ -205,6 +210,12 @@ function AppContent({ scheme }: { scheme: ColorSchemeName }) {
     void useActivationStore.getState().hydrate();
   }, [dispatch, hydrated]);
 
+  // Local daily check-in reminder: plans after auth hydrates; returns its own cleanup.
+  useEffect(() => {
+    if (!hydrated) return;
+    return initReminders();
+  }, [hydrated]);
+
   useEffect(() => {
     const onUrl = ({ url }: { url: string }) => {
       if (url.startsWith('growl://checkout/')) {
@@ -328,6 +339,8 @@ function App() {
         {/* Success / info toasts: above navigation, below AppDialog modals.
             Keyed on scheme so their tw styles re-evaluate on a switch. */}
         <ToastHost key={`toast:${scheme}`} />
+        <PublishHost key={`publish:${scheme}`} />
+        <ReminderHost key={`reminder:${scheme}`} />
         <AppDialogHost key={`dialog:${scheme}`} />
         {/* Shared iOS Done bar for FormTextInput / formInputAccessoryProps fields */}
         <KeyboardDoneAccessory />

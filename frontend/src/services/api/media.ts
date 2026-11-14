@@ -61,29 +61,105 @@ async function localFileSize(uri: string): Promise<number | null> {
   }
 }
 
+/** Thrown when the caller aborts an upload (publish Cancel). Never retried. */
+export class UploadCancelledError extends Error {
+  constructor() {
+    super('Upload cancelled');
+    this.name = 'UploadCancelledError';
+  }
+}
+
+export function isUploadCancelled(err: unknown): boolean {
+  return (
+    err instanceof UploadCancelledError ||
+    (err as { name?: string } | null)?.name === 'UploadCancelledError'
+  );
+}
+
+/** Bytes sent / total for one file. `total` is 0 while unknown. */
+export type UploadProgressFn = (sentBytes: number, totalBytes: number) => void;
+
+export type UploadControl = {
+  onProgress?: UploadProgressFn;
+  /** Abort → the in-flight request is cancelled and `UploadCancelledError` is thrown. */
+  signal?: AbortSignal;
+};
+
+/** One upload attempt may sit this long without sending a byte before it is abandoned. */
+export const UPLOAD_ATTEMPT_TIMEOUT_MS = 120_000;
+const UPLOAD_RETRIES = 2;
+
+type RawResponse = { status: number; body: string };
+
+type Attempt = (ctx: {
+  signal: AbortSignal;
+  /** Bytes moved — resets the attempt's stall timer. */
+  onProgress: UploadProgressFn;
+}) => Promise<RawResponse>;
+
+function waitOrAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new UploadCancelledError());
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 /**
- * POST with a timeout and up to `retries` extra attempts on network failures
- * (dropped connection, timeout). HTTP error responses are returned as-is and
- * never retried. `makeInit` builds a fresh body for each attempt.
+ * Run `attempt` with a stall timeout (no progress for `timeoutMs` → abort) and
+ * up to `retries` extra attempts on network failures. HTTP error responses are
+ * returned as-is and never retried. A caller abort is never retried.
  */
-async function postWithRetry(
-  url: string,
-  makeInit: () => RequestInit,
-  { timeoutMs, retries }: { timeoutMs: number; retries: number }
-): Promise<Response> {
+async function sendWithRetry(
+  attempt: Attempt,
+  { timeoutMs, retries, control }: { timeoutMs: number; retries: number; control?: UploadControl }
+): Promise<RawResponse> {
+  const outer = control?.signal;
   let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+  for (let i = 0; i <= retries; i += 1) {
+    if (outer?.aborted) throw new UploadCancelledError();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
+    };
+    const onOuterAbort = () => controller.abort();
+    outer?.addEventListener('abort', onOuterAbort, { once: true });
+    arm();
     try {
-      return await fetch(url, { ...makeInit(), signal: controller.signal });
+      return await attempt({
+        signal: controller.signal,
+        onProgress: (sent, total) => {
+          arm();
+          control?.onProgress?.(sent, total);
+        },
+      });
     } catch (err) {
-      lastError = err;
-      if (attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+      if (outer?.aborted) throw new UploadCancelledError();
+      lastError = timedOut ? Object.assign(new Error('timeout'), { name: 'AbortError' }) : err;
+      if (i < retries) {
+        // A fresh attempt starts from zero bytes.
+        control?.onProgress?.(0, 0);
+        await waitOrAbort(1000 * 2 ** i, outer);
       }
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
+      outer?.removeEventListener('abort', onOuterAbort);
     }
   }
   const timedOut = (lastError as { name?: string })?.name === 'AbortError';
@@ -92,6 +168,106 @@ async function postWithRetry(
       ? 'Upload timed out. Check your connection and try again.'
       : 'Upload failed — no connection. Check your connection and try again.'
   );
+}
+
+type MultipartSpec = {
+  endpoint: string;
+  uri: string;
+  fileName: string;
+  mimeType: string;
+  purpose: UploadPurpose;
+  headers: Record<string, string>;
+};
+
+/**
+ * Native file:// uploads: expo-file-system's upload task streams the file from
+ * disk (no JS copy) and reports bytes sent. iOS uses a background URLSession so
+ * a quick app switch doesn't kill the upload.
+ * Resolves null when the native module is unavailable (caller falls back).
+ */
+async function expoTaskAttempt(
+  spec: MultipartSpec,
+  ctx: { signal: AbortSignal; onProgress: UploadProgressFn }
+): Promise<RawResponse | null> {
+  let FileSystem: typeof import('expo-file-system/legacy');
+  try {
+    FileSystem = await import('expo-file-system/legacy');
+  } catch {
+    return null;
+  }
+  if (typeof FileSystem.createUploadTask !== 'function') return null;
+  const task = FileSystem.createUploadTask(
+    spec.endpoint,
+    spec.uri,
+    {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: 'file',
+      mimeType: spec.mimeType,
+      parameters: { purpose: spec.purpose },
+      headers: spec.headers,
+      sessionType: FileSystem.FileSystemSessionType.BACKGROUND,
+    },
+    (data) => ctx.onProgress(data.totalBytesSent, Math.max(0, data.totalBytesExpectedToSend))
+  );
+  const onAbort = () => {
+    void task.cancelAsync().catch(() => undefined);
+  };
+  if (ctx.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+  ctx.signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    const res = await task.uploadAsync();
+    if (ctx.signal.aborted || !res) {
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    }
+    return { status: res.status, body: res.body };
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === 'ERR_UNAVAILABLE' || (err as { name?: string })?.name === 'UnavailabilityError') {
+      return null;
+    }
+    throw err;
+  } finally {
+    ctx.signal.removeEventListener('abort', onAbort);
+  }
+}
+
+/** XHR multipart (web, content:// / ph:// URIs, or no native upload task) with upload progress. */
+function xhrAttempt(
+  endpoint: string,
+  form: FormData,
+  headers: Record<string, string>,
+  ctx: { signal: AbortSignal; onProgress: UploadProgressFn }
+): Promise<RawResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    const done = () => ctx.signal.removeEventListener('abort', onAbort);
+    xhr.open('POST', endpoint);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+    if (xhr.upload) {
+      xhr.upload.onprogress = (e) => ctx.onProgress(e.loaded, e.lengthComputable ? e.total : 0);
+    }
+    xhr.onload = () => {
+      done();
+      resolve({ status: xhr.status, body: typeof xhr.responseText === 'string' ? xhr.responseText : '' });
+    };
+    xhr.onerror = () => {
+      done();
+      reject(new Error('Network request failed'));
+    };
+    xhr.ontimeout = xhr.onerror;
+    xhr.onabort = () => {
+      done();
+      reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    };
+    if (ctx.signal.aborted) {
+      xhr.abort();
+      return;
+    }
+    ctx.signal.addEventListener('abort', onAbort, { once: true });
+    xhr.send(form);
+  });
 }
 
 async function readAccessToken(): Promise<string | null> {
@@ -107,7 +283,11 @@ async function readAccessToken(): Promise<string | null> {
   return token;
 }
 
-export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): Promise<string> {
+export async function uploadMediaApi(
+  dataUrl: string,
+  purpose: UploadPurpose,
+  control?: UploadControl
+): Promise<string> {
   const prepared = dataUrl.toLowerCase().startsWith('data:video')
     ? dataUrl
     : await prepareImageForUpload(dataUrl, purpose);
@@ -115,15 +295,22 @@ export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): P
     const uploaded = await uploadMediaFile(prepared, purpose, {
       mimeType: 'image/jpeg',
       fileName: 'upload.jpg',
+      ...control,
     });
     return uploaded.url;
   }
+  // JSON body: no byte progress, so report only start and finish.
+  if (control?.signal?.aborted) throw new UploadCancelledError();
+  control?.onProgress?.(0, 0);
   const res = await request<UploadMediaResponse>('/media/upload', {
     method: 'POST',
     body: JSON.stringify({ dataUrl: prepared, purpose }),
   });
+  if (control?.signal?.aborted) throw new UploadCancelledError();
   const url = res.data?.url;
   if (!url) throw new Error('Upload succeeded but no media URL was returned');
+  const size = Number(res.data?.size) || 1;
+  control?.onProgress?.(size, size);
   return normalizeUploadedMediaUrl(url, res.data?.key);
 }
 
@@ -134,8 +321,10 @@ export async function uploadMediaApi(dataUrl: string, purpose: UploadPurpose): P
 export async function uploadMediaFile(
   uri: string,
   purpose: UploadPurpose,
-  opts?: { mimeType?: string; fileName?: string }
+  opts?: { mimeType?: string; fileName?: string } & UploadControl
 ): Promise<{ url: string; mediaType: MediaKind; contentType: string }> {
+  const control: UploadControl = { onProgress: opts?.onProgress, signal: opts?.signal };
+  if (control.signal?.aborted) throw new UploadCancelledError();
   let sourceUri = uri;
   let mimeType = opts?.mimeType || guessMimeFromUri(uri);
   const isVideo = mimeType.startsWith('video/');
@@ -168,14 +357,15 @@ export async function uploadMediaFile(
   const token = await readAccessToken();
   const endpoint = `${getApiBaseUrl()}/media/upload`;
 
-  const parseUploadResponse = async (response: Response) => {
+  const parseUploadResponse = (response: RawResponse) => {
     let data: UploadMediaResponse | null = null;
     try {
-      data = (await response.json()) as UploadMediaResponse;
+      data = JSON.parse(response.body) as UploadMediaResponse;
     } catch {
       throw new Error(messageFromApiError(null, response.status));
     }
-    if (!response.ok || !data?.success || !data.data?.url) {
+    const ok = response.status >= 200 && response.status < 300;
+    if (!ok || !data?.success || !data.data?.url) {
       const err = new Error(messageFromApiError(data, response.status)) as Error & {
         code?: string;
         raw?: unknown;
@@ -220,19 +410,30 @@ export async function uploadMediaFile(
       return form;
     };
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { Accept: 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    const form = await buildForm();
-    const response = await postWithRetry(
-      endpoint,
-      // RN re-reads the file from its uri on each attempt; reuse is safe there.
-      () => ({ method: 'POST', headers, body: form }),
-      { timeoutMs: isVideo ? 180_000 : 60_000, retries: 2 }
+    const spec: MultipartSpec = { endpoint, uri: sourceUri, fileName, mimeType, purpose, headers };
+    // Native file:// → expo upload task (streams from disk, real progress).
+    // Anything else (web blobs, content:// …) → XHR multipart with progress.
+    let useTask = Platform.OS !== 'web' && sourceUri.startsWith('file:');
+    let form: FormData | null = null;
+    const response = await sendWithRetry(
+      async (ctx) => {
+        if (useTask) {
+          const res = await expoTaskAttempt(spec, ctx);
+          if (res) return res;
+          useTask = false; // native task unavailable (e.g. web build) → XHR from now on
+        }
+        // RN re-reads the file from its uri on each send; reuse is safe there.
+        form = form ?? (await buildForm());
+        return xhrAttempt(endpoint, form, headers, ctx);
+      },
+      { timeoutMs: UPLOAD_ATTEMPT_TIMEOUT_MS, retries: UPLOAD_RETRIES, control }
     );
-    return await parseUploadResponse(response);
+    return parseUploadResponse(response);
   } catch (err) {
-    if (err instanceof MediaTooLargeError) throw err;
+    if (err instanceof MediaTooLargeError || isUploadCancelled(err)) throw err;
     // Videos must stay multipart — JSON base64 hits image-only workers / size limits
     if (isVideo) {
       const msg = err instanceof Error ? err.message : 'Video upload failed';
@@ -259,12 +460,20 @@ export async function uploadMediaFile(
     'Content-Type': 'application/json',
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (control.signal?.aborted) throw new UploadCancelledError();
+  control.onProgress?.(0, 0);
   const response = await fetch(endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify({ dataUrl, purpose }),
+    signal: control.signal,
+  }).catch((err) => {
+    if (control.signal?.aborted) throw new UploadCancelledError();
+    throw err;
   });
-  return parseUploadResponse(response);
+  const parsed = parseUploadResponse({ status: response.status, body: await response.text() });
+  control.onProgress?.(1, 1);
+  return parsed;
 }
 
 function guessMimeFromUri(uri: string): string {

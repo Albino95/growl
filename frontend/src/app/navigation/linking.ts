@@ -9,6 +9,10 @@
  * paths) is filtered out so App.tsx's manual checkout handler keeps owning it
  * and unknown URLs never reset the navigation state.
  *
+ * Widget links (growl://home, growl://checkin?mood=…) are also filtered out
+ * here but handed to services/widgetLinks, which navigates + checks in itself
+ * once auth has hydrated (cold start via getInitialURL, warm via subscribe).
+ *
  * App.tsx keys <NavigationContainer> by auth token, so it remounts on sign
  * in/out. `getInitialURL` therefore hands out the cold-start URL only once per
  * process — otherwise every remount would re-open the same invite.
@@ -16,6 +20,7 @@
 import { Linking } from 'react-native';
 import type { LinkingOptions } from '@react-navigation/native';
 import type { RootStackParamList } from './RootNavigator';
+import { handleWidgetUrl } from '../../services/widgetLinks';
 
 export const LINK_PREFIXES = ['growl://', 'https://letsgrow.lu', 'https://www.letsgrow.lu'];
 
@@ -36,6 +41,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
     initialConsumed = true;
     try {
       const url = await Linking.getInitialURL();
+      if (handleWidgetUrl(url)) return null;
       return isGrowthDeepLink(url) ? url : null;
     } catch {
       return null;
@@ -43,6 +49,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
   },
   subscribe(listener) {
     const sub = Linking.addEventListener('url', ({ url }) => {
+      if (handleWidgetUrl(url)) return;
       if (isGrowthDeepLink(url)) listener(url);
     });
     return () => sub.remove();

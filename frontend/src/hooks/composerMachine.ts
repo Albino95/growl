@@ -87,6 +87,8 @@ export type ComposerAction =
   | { type: 'PUBLISH_START' }
   | { type: 'PUBLISH_PHASE'; phase: PublishPhase }
   | { type: 'UPLOADED'; upload: ComposerUpload }
+  /** Restored draft: hosted media from an earlier background attempt. */
+  | { type: 'RESTORE_UPLOAD'; upload: ComposerUpload }
   | { type: 'PUBLISH_SUCCESS' }
   | { type: 'PUBLISH_FAIL'; message: string }
   | { type: 'DISMISS_ERROR' }
@@ -240,6 +242,11 @@ export function composerReducer(s: ComposerState, a: ComposerAction): ComposerSt
 
     case 'UPLOADED':
       if (s.status !== 'publishing') return s;
+      return { ...s, upload: a.upload };
+
+    case 'RESTORE_UPLOAD':
+      if (!s.media || s.media.uri !== a.upload.sourceUri) return s;
+      if (s.status === 'publishing' || s.status === 'success') return s;
       return { ...s, upload: a.upload };
 
     case 'PUBLISH_SUCCESS':

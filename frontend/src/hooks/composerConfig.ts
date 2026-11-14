@@ -117,3 +117,17 @@ export const COMPOSER_COPY = {
   success: 'Shared!',
   discardMessage: 'Your draft will be lost.',
 } as const;
+
+/** Background publish pill (PublishHost) copy. */
+export const PUBLISH_PILL_COPY = {
+  queued: (noun: string) => `Waiting to share your ${noun}…`,
+  preparing: (noun: string) => `Getting your ${noun} ready…`,
+  uploading: (noun: string, percent: number) => `Sharing your ${noun}… ${percent}%`,
+  finishing: 'Finishing…',
+  success: 'Shared',
+  failed: 'Couldn’t share',
+  cancel: 'Cancel',
+  retry: 'Retry',
+  edit: 'Edit',
+  view: 'View',
+} as const;

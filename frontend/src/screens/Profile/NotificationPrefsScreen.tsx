@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Switch,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { View, Text, ScrollView, Switch, ActivityIndicator, Platform } from 'react-native';
 import PressableScale from '../../components/ui/PressableScale';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +8,7 @@ import tw, { theme } from '../../lib/tw';
 import { alertMessage } from '../../utils/confirmDialog';
 import { toast } from '../../state/useToastStore';
 import { toggleFeedback } from '../../theme/haptics';
-import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
+import DailyReminderSection from '../../components/reminders/DailyReminderSection';
 import { featureFlags } from '../../constants/featureFlags';
 import {
   fetchCurrentProfile,
@@ -82,76 +75,85 @@ export default function NotificationPrefsScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`}>
-      <View style={tw`flex-row items-center justify-between px-gutter py-3 bg-card border-b border-line`}>
-        <PressableScale onPress={() => navigation.goBack()} pressedScale={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back">
+      <View
+        style={tw`flex-row items-center justify-between px-gutter py-3 bg-card border-b border-line`}
+      >
+        <PressableScale
+          onPress={() => navigation.goBack()}
+          pressedScale={0.9}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
         </PressableScale>
         <Text style={tw`text-lg font-semibold text-ink`}>Notifications</Text>
         <View style={tw`w-6`} />
       </View>
 
-      {loading ? (
-        <BrandLoadingScreen
-          variant="page"
-          message="Loading preferences…"
-          showWordmark={false}
-          manageStatusBar={false}
-        />
-      ) : (
-        <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4`}>
-          <View style={tw`bg-card rounded-control overflow-hidden mb-4`}>
-            <PrefRow
-              title="Enable notifications"
-              description="Master switch for all app notifications"
-              value={!!prefs.notificationsEnabled}
-              onToggle={() => toggle('notificationsEnabled')}
-            />
-            <PrefRow
-              title="Email notifications"
-              description="Order updates, mentions, and account alerts"
-              value={!!prefs.emailNotifications}
-              onToggle={() => toggle('emailNotifications')}
-              disabled={!prefs.notificationsEnabled}
-            />
-            {featureFlags.enablePushPrefs ? (
+      <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4`}>
+        {/* Device-local, applies instantly — independent of the account prefs below. */}
+        <DailyReminderSection />
+
+        {loading ? (
+          <View style={tw`py-10 items-center`}>
+            <ActivityIndicator color={theme.colors.brand} />
+            <Text style={tw`text-xs text-ink-3 mt-2`}>Loading preferences…</Text>
+          </View>
+        ) : (
+          <>
+            <Text
+              style={tw`text-caption font-semibold text-ink-3 uppercase tracking-wider mb-2 px-1`}
+            >
+              Account
+            </Text>
+            <View style={tw`bg-card rounded-control overflow-hidden mb-4`}>
               <PrefRow
-                title="Push notifications"
-                description="Real-time alerts on your device"
-                value={!!prefs.pushNotifications}
-                onToggle={() => toggle('pushNotifications')}
+                title="Enable notifications"
+                description="Master switch for email and account alerts"
+                value={!!prefs.notificationsEnabled}
+                onToggle={() => toggle('notificationsEnabled')}
+              />
+              <PrefRow
+                title="Email notifications"
+                description="Order updates, mentions, and account alerts"
+                value={!!prefs.emailNotifications}
+                onToggle={() => toggle('emailNotifications')}
                 disabled={!prefs.notificationsEnabled}
               />
-            ) : (
-              <View style={tw`px-4 py-4 border-b border-line`}>
-                <Text style={tw`text-ink font-medium`}>Push notifications</Text>
-                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
-                  Coming soon — device push is not enabled in this build. Email alerts still work.
-                </Text>
-              </View>
-            )}
-            <PrefRow
-              title="Marketing emails"
-              description="Product news and growth tips"
-              value={!!prefs.marketingEmails}
-              onToggle={() => toggle('marketingEmails')}
-              disabled={!prefs.notificationsEnabled}
-              last
-            />
-          </View>
+              {featureFlags.enablePushPrefs ? (
+                <PrefRow
+                  title="Push notifications"
+                  description="Real-time alerts on your device"
+                  value={!!prefs.pushNotifications}
+                  onToggle={() => toggle('pushNotifications')}
+                  disabled={!prefs.notificationsEnabled}
+                />
+              ) : null}
+              <PrefRow
+                title="Marketing emails"
+                description="Product news and growth tips"
+                value={!!prefs.marketingEmails}
+                onToggle={() => toggle('marketingEmails')}
+                disabled={!prefs.notificationsEnabled}
+                last
+              />
+            </View>
 
-          <PressableScale
-            onPress={() => void handleSave()}
-            disabled={saving}
-            style={tw`bg-brand-600 rounded-control py-4 items-center ${saving ? 'opacity-60' : ''}`}
-          >
-            {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={tw`text-white font-bold text-base`}>Save Preferences</Text>
-            )}
-          </PressableScale>
-        </ScrollView>
-      )}
+            <PressableScale
+              onPress={() => void handleSave()}
+              disabled={saving}
+              style={tw`bg-brand-600 rounded-control py-4 items-center ${saving ? 'opacity-60' : ''}`}
+            >
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={tw`text-white font-bold text-base`}>Save Preferences</Text>
+              )}
+            </PressableScale>
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
