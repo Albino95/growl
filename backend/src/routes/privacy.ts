@@ -19,13 +19,19 @@ async function exportUserDataPayload(env: Env, userId: string) {
     .first<any>();
   if (!user) return null;
 
-  const [posts, comments, orders, reports] = await Promise.all([
+  const [posts, comments, orders, reports, growth] = await Promise.all([
     env.DB.prepare(`SELECT * FROM posts WHERE user_id = ?`).bind(userId).all(),
-    env.DB.prepare(`SELECT * FROM comments WHERE user_id = ?`).bind(userId).all(),
+    env.DB.prepare(
+      `SELECT id, post_id, content, created_at FROM post_engagement WHERE user_id = ? AND type = 'comment'`
+    ).bind(userId).all(),
     env.DB.prepare(`SELECT * FROM orders WHERE user_id = ?`).bind(userId).all(),
-    env.DB.prepare(`SELECT * FROM reports WHERE reporter_id = ? OR target_id = ?`)
-      .bind(userId, userId)
+    // Only reports this user filed — never expose who reported them.
+    env.DB.prepare(
+      `SELECT id, target_id, target_type, reason, status, created_at FROM reports WHERE reporter_id = ?`
+    )
+      .bind(userId)
       .all(),
+    exportGrowthData(env, userId),
   ]);
 
   return {
@@ -34,8 +40,60 @@ async function exportUserDataPayload(env: Env, userId: string) {
     comments: comments.results || [],
     orders: orders.results || [],
     reports: reports.results || [],
+    growth,
     exported_at: new Date().toISOString(),
   };
+}
+
+/** Growth system data: check-ins, badges, activity days, streak, challenges, invites. */
+async function exportGrowthData(env: Env, userId: string) {
+  try {
+    const [checkins, badges, days, streak, challenges, invites] = await Promise.all([
+      env.DB.prepare(
+        `SELECT day, tz, mood, path, intention, rest, followup, created_at, updated_at
+         FROM daily_checkins WHERE user_id = ? ORDER BY day`
+      )
+        .bind(userId)
+        .all(),
+      env.DB.prepare(`SELECT badge_id, earned_at, seen_at FROM user_badges WHERE user_id = ? ORDER BY earned_at`)
+        .bind(userId)
+        .all(),
+      env.DB.prepare(
+        `SELECT day, kinds, paths, is_rest FROM user_activity_days WHERE user_id = ? ORDER BY day`
+      )
+        .bind(userId)
+        .all(),
+      env.DB.prepare(
+        `SELECT current, longest, total_days, rest_tokens, last_active_day FROM user_streaks WHERE user_id = ?`
+      )
+        .bind(userId)
+        .first(),
+      env.DB.prepare(
+        `SELECT challenge_id, joined_at, ends_at, completed_at FROM challenge_participants WHERE user_id = ?`
+      )
+        .bind(userId)
+        .all(),
+      // Only whether/when this user joined via an invite and how many joined via theirs.
+      env.DB.prepare(
+        `SELECT 'joined_via_invite' AS kind, created_at, status FROM invite_redemptions WHERE invitee_id = ?
+         UNION ALL
+         SELECT 'invited_someone', created_at, status FROM invite_redemptions WHERE inviter_id = ?`
+      )
+        .bind(userId, userId)
+        .all(),
+    ]);
+    return {
+      checkins: checkins.results || [],
+      badges: badges.results || [],
+      activity_days: days.results || [],
+      streak: streak || null,
+      challenges: challenges.results || [],
+      invites: invites.results || [],
+    };
+  } catch (err) {
+    console.error('[privacy] growth export failed', err);
+    return null;
+  }
 }
 
 /** GET /api/v1/privacy/export — download a copy of the authenticated user's data */
@@ -105,6 +163,15 @@ export async function deleteAccount(request: Request, env: Env): Promise<Respons
   )
     .bind(anonymizedEmail, JSON.stringify({ deleted: true, deletedAt: new Date().toISOString() }), ctx.userId)
     .run();
+
+  // Growth data: free-text check-ins go now and the invite link stops working.
+  // Everything else is removed by ON DELETE CASCADE when the row is hard-deleted.
+  try {
+    await env.DB.prepare(`UPDATE users SET invite_code = NULL WHERE id = ?`).bind(ctx.userId).run();
+    await env.DB.prepare(`DELETE FROM daily_checkins WHERE user_id = ?`).bind(ctx.userId).run();
+  } catch (err) {
+    console.error('[deleteAccount] growth cleanup failed', err);
+  }
 
   return json({
     ok: true,

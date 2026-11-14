@@ -36,7 +36,7 @@ export function PromptDialog({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-stone-900/50 backdrop-blur-sm"
             onClick={onCancel}
           />
           <motion.div
@@ -44,10 +44,10 @@ export function PromptDialog({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-surface-border bg-surface p-6 shadow-xl"
           >
-            <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-            {message && <p className="mt-2 text-sm text-slate-600">{message}</p>}
+            <h3 className="text-lg font-semibold text-stone-900">{title}</h3>
+            {message && <p className="mt-2 text-sm text-stone-600">{message}</p>}
             <Input
               className="mt-4"
               placeholder={placeholder}
@@ -103,7 +103,7 @@ export function ConfirmDialog({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-stone-900/50 backdrop-blur-sm"
             onClick={onCancel}
           />
           <motion.div
@@ -111,10 +111,10 @@ export function ConfirmDialog({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-surface-border bg-surface p-6 shadow-xl"
           >
-            <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-            <p className="mt-2 text-sm text-slate-600">{message}</p>
+            <h3 className="text-lg font-semibold text-stone-900">{title}</h3>
+            <p className="mt-2 text-sm text-stone-600">{message}</p>
             <div className="mt-6 flex justify-end gap-3">
               <Button variant="ghost" onClick={onCancel} disabled={loading}>
                 Cancel
@@ -150,7 +150,7 @@ export function SlideOver({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
@@ -158,10 +158,10 @@ export function SlideOver({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-            className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto border-l border-slate-200 bg-white shadow-2xl"
+            className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto border-l border-surface-border bg-surface shadow-2xl"
           >
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+            <div className="sticky top-0 flex items-center justify-between border-b border-surface-border bg-white px-6 py-4">
+              <h3 className="text-lg font-semibold text-stone-900">{title}</h3>
               <Button variant="ghost" onClick={onClose}>
                 Close
               </Button>

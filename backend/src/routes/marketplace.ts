@@ -104,7 +104,7 @@ export async function createCheckoutSession(request: Request, env: Env): Promise
       .run();
   }
 
-  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://growl.app').replace(/\/$/, '');
+  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://letsgrow.lu').replace(/\/$/, '');
   // Stripe requires https success/cancel URLs. Native apps can listen for universal links
   // or open growl:// from a thin https landing page on growl.app.
   const success =
@@ -277,7 +277,7 @@ export async function getProducts(request: Request, env: Env): Promise<Response>
     SELECT p.*, u.metadata as user_metadata
     FROM products p
     JOIN users u ON p.user_id = u.id
-    WHERE 1=1
+    WHERE COALESCE(p.is_hidden, 0) = 0
   `;
   const bindings: any[] = [];
 
@@ -350,7 +350,7 @@ export async function getProduct(
       `SELECT p.*, u.metadata as user_metadata
        FROM products p
        JOIN users u ON p.user_id = u.id
-       WHERE p.id = ?`
+       WHERE p.id = ? AND COALESCE(p.is_hidden, 0) = 0`
     )
       .bind(productId)
       .first<Product & { user_metadata: string }>();
@@ -870,6 +870,80 @@ export async function getOrders(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * GET /api/v1/marketplace/orders/:orderId
+ * Buyer-owned order detail (used for payment confirmation polling).
+ */
+export async function getOrder(request: Request, env: Env, orderId: string): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const order = await env.DB.prepare(
+      `SELECT o.*,
+       (SELECT json_group_array(json_object(
+         'id', oi.id,
+         'product_id', oi.product_id,
+         'quantity', oi.quantity,
+         'price', oi.price,
+         'product_name', p.name,
+         'product_image', p.image_url
+       ))
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = o.id) as items
+       FROM orders o
+       WHERE o.id = ? AND o.user_id = ?`
+    )
+      .bind(orderId, ctx.userId)
+      .first<Order & { items: string; payment_status?: string }>();
+
+    if (!order) {
+      return error('NOT_FOUND', 'Order not found', 404);
+    }
+
+    return json({
+      ...order,
+      shipping_address: JSON.parse(order.shipping_address || '{}'),
+      metadata: JSON.parse(order.metadata || '{}'),
+      items: JSON.parse(order.items || '[]'),
+    });
+  } catch (err) {
+    console.error('[getOrder] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to fetch order', 500);
+  }
+}
+
+export type OrderStatus =
+  | 'pending'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'completed'
+  | 'cancelled';
+
+/** Server-side order lifecycle. Terminal states (completed, cancelled) have no exits. */
+export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  pending: ['processing', 'cancelled'],
+  processing: ['shipped', 'cancelled'],
+  shipped: ['delivered'],
+  delivered: ['completed'],
+  completed: [],
+  cancelled: [],
+};
+
+export function isAllowedTransition(from: string, to: string): boolean {
+  const allowed = ALLOWED_TRANSITIONS[from as OrderStatus];
+  return !!allowed && allowed.includes(to as OrderStatus);
+}
+
+/** Moving an order forward (anything except cancelling) requires a paid order. */
+export function transitionRequiresPayment(to: string): boolean {
+  return to !== 'cancelled';
+}
+
+/**
  * PATCH /api/v1/marketplace/orders/:orderId/status
  * Update order status (business users only)
  */
@@ -904,7 +978,7 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
     // Verify order exists and belongs to a customer of this business
     // (Business can only update orders for products they own)
     const order = await env.DB.prepare(
-      `SELECT o.id, o.user_id, o.status
+      `SELECT o.id, o.user_id, o.status, o.payment_status
        FROM orders o
        JOIN order_items oi ON o.id = oi.order_id
        JOIN products p ON oi.product_id = p.id
@@ -912,20 +986,37 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
        LIMIT 1`
     )
       .bind(orderId, ctx.userId)
-      .first<{ id: string; user_id: string; status: string }>();
+      .first<{ id: string; user_id: string; status: string; payment_status: string | null }>();
 
     if (!order) {
       return error('NOT_FOUND', 'Order not found or you do not have permission to update it', 404);
     }
 
-    // Update order status
-    await env.DB.prepare(
-      `UPDATE orders 
-       SET status = ?, updated_at = datetime('now')
-       WHERE id = ?`
-    )
-      .bind(status, orderId)
-      .run();
+    if (order.status !== status) {
+      if (!isAllowedTransition(order.status, status)) {
+        return error(
+          'INVALID_TRANSITION',
+          `Order cannot move from ${order.status} to ${status}`,
+          409
+        );
+      }
+      if (transitionRequiresPayment(status) && order.payment_status !== 'paid') {
+        return error(
+          'PAYMENT_REQUIRED',
+          'This order has not been paid yet, so it cannot be fulfilled',
+          409
+        );
+      }
+
+      // Guard on the current status so concurrent updates cannot skip a step.
+      await env.DB.prepare(
+        `UPDATE orders
+         SET status = ?, updated_at = datetime('now')
+         WHERE id = ? AND status = ?`
+      )
+        .bind(status, orderId, order.status)
+        .run();
+    }
 
     // Fetch updated order with items
     const updatedOrder = await env.DB.prepare(
@@ -940,11 +1031,11 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
        ))
        FROM order_items oi
        JOIN products p ON oi.product_id = p.id
-       WHERE oi.order_id = o.id) as items
+       WHERE oi.order_id = o.id AND p.user_id = ?) as items
        FROM orders o
        WHERE o.id = ?`
     )
-      .bind(orderId)
+      .bind(ctx.userId, orderId)
       .first<Order & { items: string }>();
 
     if (!updatedOrder) {

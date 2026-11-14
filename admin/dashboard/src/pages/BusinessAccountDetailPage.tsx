@@ -89,23 +89,23 @@ export function BusinessAccountDetailPage() {
           </motion.div>
 
           <Card padding="md" className="mt-6">
-            <h2 className="text-sm font-semibold text-slate-900">Profile</h2>
+            <h2 className="text-sm font-semibold text-stone-900">Profile</h2>
             <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-slate-500">Field</dt>
-                <dd className="font-medium text-slate-900">
+                <dt className="text-stone-500">Field</dt>
+                <dd className="font-medium text-stone-900">
                   {String(data.profile?.field_of_operation || '—')}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Contact</dt>
-                <dd className="font-medium text-slate-900">
+                <dt className="text-stone-500">Contact</dt>
+                <dd className="font-medium text-stone-900">
                   {String(data.profile?.contact_email || data.user.email)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Created</dt>
-                <dd className="font-medium text-slate-900">
+                <dt className="text-stone-500">Created</dt>
+                <dd className="font-medium text-stone-900">
                   {new Date(data.user.created_at).toLocaleDateString()}
                 </dd>
               </div>
@@ -118,7 +118,7 @@ export function BusinessAccountDetailPage() {
                 Platform orders →
               </Link>
             </div>
-            <p className="mt-3 text-xs text-slate-500">
+            <p className="mt-3 text-xs text-stone-500">
               Sellers manage catalog and fulfillment in the Seller portal (Seller tab on login) or the
               Grow! mobile app.
             </p>

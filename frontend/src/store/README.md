@@ -8,10 +8,18 @@ This directory contains the Redux store configuration for the app.
 src/store/
 ├── store.ts              # Main store configuration
 ├── slices/               # Redux slices (feature-based)
-│   ├── postSlice.ts     # Post-related state
-│   └── photoEditorSlice.ts # Photo editor state
+│   ├── authSlice.ts        # Session, tokens, current user
+│   ├── feedSlice.ts        # Home / explore feed
+│   ├── postSlice.ts        # Post creation state
+│   ├── journalSlice.ts     # Journal entries
+│   ├── marketplaceSlice.ts # Products and cart
+│   └── businessSlice.ts    # Business dashboard data
 └── README.md
 ```
+
+Small, device-local UI preferences (chat wallpaper, home tab, tutorial and
+activation flags) live in Zustand stores under `src/state/`. Server data and
+auth belong in Redux.
 
 ## Usage
 
@@ -45,14 +53,6 @@ Manages post-related state:
 - List of posts
 - Current post being created (image, caption, category)
 - Posting status
-
-### photoEditorSlice
-Manages photo editor state:
-- Edited image URI
-- Current filter
-- Adjustments (brightness, contrast, saturation)
-- Transformations (rotation, flips)
-- Processing status
 
 ## Adding a New Slice
 

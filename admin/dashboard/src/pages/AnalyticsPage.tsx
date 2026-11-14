@@ -16,9 +16,9 @@ function BarChart({ title, rows, labelKey, valueKey }: { title: string; rows: Re
   const max = Math.max(1, ...rows.map((r) => Number(r[valueKey] || 0)));
   return (
     <Card padding="lg">
-      <h3 className="mb-6 font-semibold text-slate-800">{title}</h3>
+      <h3 className="mb-6 font-semibold text-stone-800">{title}</h3>
       {rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No data yet</p>
+        <p className="text-sm text-stone-500">No data yet</p>
       ) : (
         <div className="space-y-4">
           {rows.map((r, i) => {
@@ -27,10 +27,10 @@ function BarChart({ title, rows, labelKey, valueKey }: { title: string; rows: Re
             return (
               <div key={i}>
                 <div className="mb-1.5 flex justify-between text-sm">
-                  <span className="font-medium text-slate-700">{String(r[labelKey])}</span>
-                  <span className="text-slate-500">{value}</span>
+                  <span className="font-medium text-stone-700">{String(r[labelKey])}</span>
+                  <span className="text-stone-500">{value}</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-2 overflow-hidden rounded-full bg-stone-100">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${pct}%` }}

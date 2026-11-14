@@ -73,13 +73,19 @@ export type AdminLoginResponse = {
   token: string;
   admin: { id: string; email: string; role: string; mfa_enabled: boolean };
   permissions: string[];
+  must_enroll_mfa?: boolean;
 };
 
-export async function adminLogin(email: string, password: string, totp?: string) {
+export async function adminLogin(
+  email: string,
+  password: string,
+  totp?: string,
+  recoveryCode?: string
+) {
   const res = await fetch(`${BASE_URL}/admin/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, totp }),
+    body: JSON.stringify({ email, password, totp, recoveryCode }),
   });
   const data = (await res.json()) as ApiResponse<AdminLoginResponse>;
   if (!res.ok || !data.success) {

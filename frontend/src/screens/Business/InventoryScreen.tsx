@@ -2,16 +2,20 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   TextInput,
   RefreshControl,
   FlatList,
-  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
+import { useRefresh } from '../../hooks/useRefresh';
+import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
+import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedListPerformanceProps } from '../../constants/scroll';
 import { createProduct, updateProduct, deleteProduct } from '../../services/api/marketplace';
 import ProductForm from '../../components/business/ProductForm';
@@ -22,8 +26,14 @@ import BusinessScreen from '../../components/business/BusinessScreen';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import CATEGORIES from '../../data/categories';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { fetchBusinessProducts, setCatalogFilter } from '../../store/slices/businessSlice';
+import {
+  fetchBusinessDashboard,
+  fetchBusinessProducts,
+  setCatalogFilter,
+} from '../../store/slices/businessSlice';
+import { formatCurrency } from '../../utils/money';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 import type { BusinessProduct } from '../../services/api/business';
 
@@ -37,7 +47,6 @@ export default function InventoryScreen() {
   const threshold = useAppSelector((s) => s.business.kpis?.low_stock_threshold) ?? 10;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<(typeof products)[0] | null>(null);
 
@@ -53,24 +62,26 @@ export default function InventoryScreen() {
     }
   }, [route.params?.openForm, navigation]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
+  const refresh = useRefresh(() => dispatch(fetchBusinessProducts()));
+
+  // Catalog changes affect dashboard KPIs (stock, inventory value, low-stock alerts).
+  const refreshAfterCatalogChange = async () => {
     await dispatch(fetchBusinessProducts());
-    setRefreshing(false);
+    void dispatch(fetchBusinessDashboard({ force: true, silent: true }));
   };
 
   const handleCreateProduct = async (productData: Parameters<typeof createProduct>[0]) => {
     await createProduct(productData);
-    await dispatch(fetchBusinessProducts());
-    alertMessage('Saved', 'Product created successfully');
+    await refreshAfterCatalogChange();
+    toast.success('Product created');
   };
 
   const handleUpdateProduct = async (productData: Parameters<typeof updateProduct>[1]) => {
     if (!editingProduct) return;
     await updateProduct(editingProduct.id, productData);
-    await dispatch(fetchBusinessProducts());
+    await refreshAfterCatalogChange();
     setEditingProduct(null);
-    alertMessage('Saved', 'Product updated successfully');
+    toast.success('Product updated');
   };
 
   const handleDeleteProduct = async (product: (typeof products)[0]) => {
@@ -81,8 +92,8 @@ export default function InventoryScreen() {
     if (!ok) return;
     try {
       await deleteProduct(product.id);
-      await dispatch(fetchBusinessProducts());
-      alertMessage('Deleted', 'Product removed');
+      await refreshAfterCatalogChange();
+      toast.success('Product deleted');
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Failed to delete');
     }
@@ -112,47 +123,50 @@ export default function InventoryScreen() {
     []
   );
   const loading = productsStatus === 'loading' && products.length === 0;
+  const loadFailed = productsStatus === 'failed' && products.length === 0;
 
   const renderProduct = ({ item: product }: { item: BusinessProduct }) => {
     const sku = `PRD-${product.id.slice(-6).toUpperCase()}`;
     return (
-      <View style={tw`py-4 border-b border-stone-200/70`}>
+      <View style={tw`py-4 border-b border-line/70`}>
         <View style={tw`flex-row items-start`}>
           {product.image_url ? (
-            <Image source={{ uri: product.image_url }} style={tw`w-14 h-14 rounded-xl mr-3`} contentFit="cover" />
+            <Image source={{ uri: product.image_url }} style={tw`w-14 h-14 rounded-control mr-3`} contentFit="cover" />
           ) : (
-            <View style={tw`w-14 h-14 rounded-xl mr-3 bg-[#EAE4D6] items-center justify-center`}>
-              <Ionicons name="image-outline" size={22} color="#A8A29E" />
+            <View style={tw`w-14 h-14 rounded-control mr-3 bg-raised items-center justify-center`}>
+              <Ionicons name="image-outline" size={iconSize.md} color={theme.colors.iconMuted} />
             </View>
           )}
           <View style={tw`flex-1`}>
             <View style={tw`flex-row items-start justify-between`}>
-              <Text style={tw`text-base font-bold text-stone-900 flex-1 pr-2`}>{product.name}</Text>
+              <Text style={tw`text-base font-bold text-ink flex-1 pr-2`}>{product.name}</Text>
               <StockBadge stock={product.stock} threshold={threshold} />
             </View>
-            <Text style={tw`text-sm text-stone-500 mt-1`}>
+            <Text style={tw`text-sm text-ink-3 mt-1`}>
               {sku} · {categoryName(product.category)}
               {product.units_sold != null ? ` · ${product.units_sold} sold` : ''}
             </Text>
-            <Text style={tw`text-lg font-bold text-stone-900 mt-1.5`}>${product.price.toFixed(2)}</Text>
+            <Text style={tw`text-lg font-bold text-ink mt-1.5`}>{formatCurrency(Number(product.price || 0))}</Text>
           </View>
         </View>
         <View style={tw`flex-row gap-2 mt-3`}>
-          <TouchableOpacity
-            style={tw`flex-1 py-2.5 bg-emerald-600 rounded-xl items-center`}
-            onPress={() => {
-              setEditingProduct(product);
-              setShowProductForm(true);
-            }}
-          >
-            <Text style={tw`text-white font-semibold`}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={tw`px-4 py-2.5 bg-red-50 rounded-xl items-center justify-center`}
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label="Edit"
+              onPress={() => {
+                setEditingProduct(product);
+                setShowProductForm(true);
+              }}
+            />
+          </View>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${product.name}`}
+            style={tw`px-4 py-2.5 bg-red-50 rounded-control items-center justify-center`}
             onPress={() => void handleDeleteProduct(product)}
           >
-            <Ionicons name="trash-outline" size={18} color="#DC2626" />
-          </TouchableOpacity>
+            <Ionicons name="trash-outline" size={iconSize.sm} color={theme.colors.danger} />
+          </PressableScale>
         </View>
       </View>
     );
@@ -165,53 +179,57 @@ export default function InventoryScreen() {
       onSettings={() => navigation.getParent()?.navigate('BusinessSettings')}
       onMessages={() => navigation.getParent()?.navigate('BusinessMessages')}
       headerRight={
-        <Pressable
+        <PressableScale
+          pressedScale={0.9}
+          hitSlop={8}
+          accessibilityRole="button"
           onPress={() => {
             setEditingProduct(null);
             setShowProductForm(true);
           }}
-          style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+          style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
           accessibilityLabel="Add product"
         >
-          <Ionicons name="add" size={20} color="#059669" />
-        </Pressable>
+          <Ionicons name="add" size={20} color={theme.colors.brand} />
+        </PressableScale>
       }
     >
-      <View style={tw`px-5 pb-3`}>
+      <View style={tw`px-gutter-wide pb-3`}>
         <View style={tw`relative mb-3`}>
-          <Ionicons name="search" size={18} color="#A8A29E" style={tw`absolute left-3.5 top-3.5 z-10`} />
+          <Ionicons name="search" size={iconSize.sm} color={theme.colors.iconMuted} style={tw`absolute left-3.5 top-3.5 z-10`} />
           <TextInput
+            {...formInputAccessoryProps()}
             placeholder="Search name or SKU…"
             value={searchQuery}
             onChangeText={setSearchQuery}
-            style={tw`bg-[#FFFcf7] border border-stone-200/80 rounded-2xl pl-10 pr-4 py-3 text-base text-stone-900`}
-            placeholderTextColor="#A8A29E"
+            style={tw`bg-card border border-line/80 rounded-card pl-10 pr-4 py-3 text-base text-ink`}
+            placeholderTextColor={theme.colors.ink3}
           />
         </View>
         <BusinessStatStrip
           items={[
             { label: 'Products', value: String(products.length), tone: 'emerald' },
             { label: 'Low stock', value: String(lowStockCount), tone: 'amber' },
-            { label: 'Value', value: `$${totalValue.toFixed(0)}`, tone: 'stone' },
+            { label: 'Value', value: formatCurrency(Math.round(totalValue)), tone: 'stone' },
           ]}
         />
         <View style={tw`flex-row gap-2 mt-3`}>
           {(['all', 'low', 'out'] as const).map((f) => (
-            <TouchableOpacity
+            <PressableScale
               key={f}
               onPress={() => dispatch(setCatalogFilter(f))}
-              style={tw`px-3.5 py-2 rounded-full ${
-                catalogFilter === f ? 'bg-emerald-600' : 'bg-[#EAE4D6]/80 border border-stone-200/60'
+              style={tw`px-3.5 py-2 rounded-chip ${
+                catalogFilter === f ? 'bg-emerald-600' : 'bg-raised/80 border border-line/60'
               }`}
             >
               <Text
                 style={tw`text-sm font-semibold ${
-                  catalogFilter === f ? 'text-white' : 'text-stone-600'
+                  catalogFilter === f ? 'text-white' : 'text-ink-2'
                 }`}
               >
                 {f === 'all' ? 'All' : f === 'low' ? 'Low' : 'Out'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           ))}
         </View>
       </View>
@@ -222,11 +240,11 @@ export default function InventoryScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderProduct}
         contentContainerStyle={[
-          tw`px-5 pt-1 pb-10`,
+          tw`px-gutter-wide pt-1 pb-10`,
           filteredProducts.length === 0 ? tw`flex-grow` : null,
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#059669" colors={['#059669']} />
+          <RefreshControl {...refresh} />
         }
         {...feedListPerformanceProps}
         ListEmptyComponent={
@@ -235,6 +253,11 @@ export default function InventoryScreen() {
               <SkeletonCard variant="product" />
               <SkeletonCard variant="product" />
             </View>
+          ) : loadFailed ? (
+            <ErrorState
+              title="Couldn’t load products"
+              onRetry={() => void dispatch(fetchBusinessProducts())}
+            />
           ) : (
             <BusinessEmptyState
               icon="cube-outline"
@@ -250,17 +273,14 @@ export default function InventoryScreen() {
         }
       />
 
-      <View style={tw`px-5 pb-4 pt-2 border-t border-stone-200/60 bg-surface-page`}>
-        <TouchableOpacity
-          style={tw`bg-emerald-600 rounded-2xl py-4 flex-row items-center justify-center`}
+      <View style={tw`px-gutter-wide pb-4 pt-2 border-t border-line/60 bg-page`}>
+        <PrimaryButton
+          label="Add product"
           onPress={() => {
             setEditingProduct(null);
             setShowProductForm(true);
           }}
-        >
-          <Ionicons name="add-circle" size={22} color="#FFFFFF" style={tw`mr-2`} />
-          <Text style={tw`text-white font-bold text-base`}>Add product</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       <ProductForm

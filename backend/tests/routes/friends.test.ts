@@ -110,9 +110,10 @@ describe('friends routes', () => {
     const data = await parseJsonResponse(response);
 
     expect(response.status).toBe(201);
-    expect(data.ok).toBe(true);
-    expect(data.connected).toBe(false);
-    expect(data.requestSent).toBe(true);
+    expect(data.success).toBe(true);
+    expect(data.data.ok).toBe(true);
+    expect(data.data.connected).toBe(false);
+    expect(data.data.requestSent).toBe(true);
     expect(insertCalls).toHaveLength(1);
     expect(insertCalls[0]).toContain('test-user');
     expect(insertCalls[0]).toContain('user-b');
@@ -158,7 +159,8 @@ describe('friends routes', () => {
     const data = await parseJsonResponse(response);
 
     expect(response.status).toBe(200);
-    expect(data.friends).toHaveLength(1);
-    expect(data.friends[0]).toMatchObject({ id: 'friend-1', username: 'Friend One' });
+    expect(data.success).toBe(true);
+    expect(data.data.friends).toHaveLength(1);
+    expect(data.data.friends[0]).toMatchObject({ id: 'friend-1', username: 'Friend One' });
   });
 });

@@ -1,74 +1,47 @@
-import WaitlistForm from './WaitlistForm';
-import { getSiteUrl } from '@/lib/seo';
+import { Wordmark } from './brand';
+import { SUPPORT_EMAIL } from '@/lib/content';
+import { COMPANY_NAME, SITE_NAME } from '@/lib/seo';
+
+const LINKS = [
+  ['Privacy', '/privacy'],
+  ['Terms', '/terms'],
+  ['Guidelines', '/community'],
+  ['Support', '/support'],
+  ['Delete account', '/delete-account'],
+] as const;
 
 export default function SiteFooter() {
   const year = new Date().getFullYear();
-  const siteUrl = getSiteUrl();
 
   return (
-    <footer className="border-t border-stone-900/10 bg-[#0c1f17] text-emerald-50">
-      <section
-        id="early-access"
-        className="mx-auto max-w-6xl px-6 py-20 sm:px-8 sm:py-24 lg:px-10"
-        aria-labelledby="final-cta-heading"
-      >
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
-          Early access
-        </p>
-        <h2
-          id="final-cta-heading"
-          className="mt-4 max-w-xl font-display text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-[2.75rem] lg:leading-tight"
-        >
-          Start growing with purpose.
-        </h2>
-        <p className="mt-4 max-w-xl text-lg leading-relaxed text-emerald-100/75">
-          Join the early access list and be first when Grow! opens on the App Store and Google
-          Play.
-        </p>
-        <div className="relative mt-9 max-w-lg">
-          {/* Footer form uses light inputs; wrap for contrast on dark band */}
-          <div className="rounded-3xl border border-white/10 bg-[#f3eee4] p-5 sm:p-6">
-            <WaitlistForm variant="footer" />
-          </div>
-        </div>
-      </section>
-
-      <div className="border-t border-white/10">
-        <div className="mx-auto flex max-w-6xl flex-col gap-5 px-6 py-8 text-sm text-emerald-100/55 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
-          <p className="font-display text-lg font-bold tracking-tight text-white">
-            Grow<span className="text-emerald-400">!</span>
+    <footer className="border-t border-line bg-soil">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 text-sm text-moss sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
+        <div className="flex flex-col gap-2">
+          <a href="/" aria-label="Grow! home" className="w-fit rounded-lg">
+            <Wordmark />
+          </a>
+          <p className="font-medium text-bark">
+            {SITE_NAME} by {COMPANY_NAME}. Making your life better, a little each day.
           </p>
-          <nav aria-label="Legal" className="flex flex-wrap gap-x-6 gap-y-2">
-            <a
-              href={`${siteUrl}/privacy`}
-              className="transition hover:text-white"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Privacy
+          <p>
+            Made in Luxembourg. Write to us at{' '}
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline decoration-moss/40 underline-offset-4 hover:text-bark">
+              {SUPPORT_EMAIL}
             </a>
-            <a
-              href={`${siteUrl}/terms`}
-              className="transition hover:text-white"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Terms
-            </a>
-            <a
-              href={`${siteUrl}/delete-account`}
-              className="transition hover:text-white"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Delete account
-            </a>
-            <a href="mailto:support@grow.app" className="transition hover:text-white">
-              Support
-            </a>
-          </nav>
-          <p>© {year} Grow!</p>
+          </p>
         </div>
+        <nav aria-label="Legal">
+          <ul className="flex flex-wrap gap-x-5 gap-y-1">
+            {LINKS.map(([label, href]) => (
+              <li key={href}>
+                <a href={href} className="inline-flex min-h-[44px] items-center hover:text-bark">
+                  {label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <p>© {year} {COMPANY_NAME}</p>
       </div>
     </footer>
   );

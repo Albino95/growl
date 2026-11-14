@@ -1,10 +1,13 @@
-import React from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Modal, Pressable, Text, View, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
+import { feedback } from '../../utils/interactionFeedback';
+import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
-export type CreateAction = 'post' | 'journal';
+export type CreateAction = 'post' | 'reel' | 'story' | 'journal' | 'seed' | 'circle';
 
 type Props = {
   visible: boolean;
@@ -12,6 +15,7 @@ type Props = {
   onSelect: (action: CreateAction) => void;
 };
 
+/** Main create actions first, then the quieter ones (journal, gated seed/circle). */
 const ACTIONS: Array<{
   key: CreateAction;
   title: string;
@@ -25,51 +29,183 @@ const ACTIONS: Array<{
     icon: 'image-outline',
   },
   {
+    key: 'reel',
+    title: 'New reel',
+    subtitle: 'Show a skill unlock in motion',
+    icon: 'film-outline',
+  },
+  {
+    key: 'story',
+    title: 'New story',
+    subtitle: 'Ephemeral update for 24 hours',
+    icon: 'ellipse-outline',
+  },
+  {
     key: 'journal',
     title: 'Journal entry',
-    subtitle: 'Private by default — reflect first',
+    subtitle: 'Private by default — reflect on a skill or goal',
     icon: 'book-outline',
+  },
+  {
+    key: 'seed',
+    title: 'Plant a seed',
+    subtitle: 'Start a goal from your paths — grow it into a tree',
+    icon: 'leaf-outline',
+  },
+  {
+    key: 'circle',
+    title: 'Start a circle',
+    subtitle: 'A room of up to 10 on your path — voice & video later',
+    icon: 'people-outline',
   },
 ];
 
+function ActionRow({
+  action,
+  index,
+  visible,
+  onSelect,
+}: {
+  action: (typeof ACTIONS)[number];
+  index: number;
+  visible: boolean;
+  onSelect: (key: CreateAction) => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(14)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      opacity.setValue(0);
+      translateY.setValue(reduceMotion ? 0 : 14);
+      return;
+    }
+    if (reduceMotion) {
+      // No travel or stagger: rows simply fade in together.
+      translateY.setValue(0);
+      Animated.timing(opacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 220,
+        delay: 40 + index * 45,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        delay: 40 + index * 45,
+        useNativeDriver: true,
+        speed: 18,
+        bounciness: 7,
+      }),
+    ]).start();
+  }, [visible, index, opacity, reduceMotion, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      <PressableScale
+        onPress={() => {
+          feedback.open();
+          onSelect(action.key);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={action.title}
+        accessibilityHint={action.subtitle}
+        pressedScale={0.98}
+        style={tw`flex-row items-center rounded-card bg-card px-4 py-3.5 mb-2 border border-line`}
+      >
+        <View style={tw`w-11 h-11 rounded-full bg-ink items-center justify-center`}>
+          <Ionicons name={action.icon} size={20} color={theme.colors.page} />
+        </View>
+        <View style={tw`ml-3 flex-1`}>
+          <Text style={tw`text-body text-ink font-semibold`}>{action.title}</Text>
+          <Text style={tw`text-footnote text-ink-3 mt-0.5`}>{action.subtitle}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
+      </PressableScale>
+    </Animated.View>
+  );
+}
+
 /** Bottom sheet for the dock create (+) control. */
 export default function CreateActionSheet({ visible, onClose, onSelect }: Props) {
+  const reduceMotion = useReducedMotion();
+  const sheetY = useRef(new Animated.Value(40)).current;
+  const sheetOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      sheetY.setValue(reduceMotion ? 0 : 40);
+      sheetOpacity.setValue(0);
+      return;
+    }
+    if (reduceMotion) {
+      sheetY.setValue(0);
+      Animated.timing(sheetOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(sheetOpacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+      Animated.spring(sheetY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 18,
+        bounciness: 8,
+      }),
+    ]).start();
+  }, [visible, reduceMotion, sheetOpacity, sheetY]);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={tw`flex-1 justify-end`}>
         <Pressable
-          style={tw`absolute inset-0 bg-black/35`}
-          onPress={onClose}
+          style={[tw`absolute inset-0 bg-black/35`, { zIndex: 1 }]}
+          onPress={() => {
+            feedback.close();
+            onClose();
+          }}
+          accessibilityRole="button"
           accessibilityLabel="Dismiss create menu"
         />
-        <View style={tw`bg-[#FFFcf7] rounded-t-3xl px-5 pt-3 pb-8 border-t border-stone-200`}>
-          <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
-          <Text style={tw`text-lg font-semibold text-stone-900 mb-1`}>Create</Text>
-          <Text style={tw`text-sm text-stone-500 mb-4`}>What do you want to add?</Text>
+        <Animated.View
+          style={[
+            tw`bg-card rounded-t-sheet px-gutter-wide pt-3 pb-8 border-t border-line`,
+            {
+              zIndex: 2,
+              opacity: sheetOpacity,
+              transform: [{ translateY: sheetY }],
+            },
+          ]}
+        >
+          <View style={tw`w-10 h-1 rounded-chip bg-stone-300 self-center mb-4`} />
+          <Text style={tw`text-callout font-semibold text-ink mb-1`} accessibilityRole="header">
+            Create
+          </Text>
+          <Text style={tw`text-body text-ink-3 mb-4`}>
+            Post, reel, story, or journal — Shop stays in the tab bar.
+          </Text>
 
-          {ACTIONS.map((action) => (
-            <Pressable
+          {ACTIONS.filter((action) => {
+            if (action.key === 'seed') return SHOW_SEEDS;
+            if (action.key === 'circle') return SHOW_CIRCLES;
+            return true;
+          }).map((action, index) => (
+            <ActionRow
               key={action.key}
-              onPress={() => {
-                triggerPressFeedback();
-                onSelect(action.key);
-              }}
-              style={({ pressed }) => [
-                tw`flex-row items-center rounded-2xl px-4 py-3.5 mb-2 border border-stone-200`,
-                { backgroundColor: pressed ? '#F5F0E8' : '#FFFFFF' },
-              ]}
-            >
-              <View style={tw`w-11 h-11 rounded-full bg-stone-900 items-center justify-center`}>
-                <Ionicons name={action.icon} size={20} color="#FFFFFF" />
-              </View>
-              <View style={tw`ml-3 flex-1`}>
-                <Text style={tw`text-stone-900 font-semibold`}>{action.title}</Text>
-                <Text style={tw`text-xs text-stone-500 mt-0.5`}>{action.subtitle}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
-            </Pressable>
+              action={action}
+              index={index}
+              visible={visible}
+              onSelect={onSelect}
+            />
           ))}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

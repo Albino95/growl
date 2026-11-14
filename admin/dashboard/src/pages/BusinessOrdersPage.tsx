@@ -97,7 +97,7 @@ export function BusinessOrdersPage() {
 
       {flags.length > 0 && (
         <Card className="mb-6" padding="md">
-          <h3 className="mb-4 font-semibold text-slate-800">Pending partnerships ({flags.length})</h3>
+          <h3 className="mb-4 font-semibold text-stone-800">Pending partnerships ({flags.length})</h3>
           <DataTable>
             <DataTableHead>
               <DataTableHeaderCell>Instructor</DataTableHeaderCell>
@@ -109,7 +109,7 @@ export function BusinessOrdersPage() {
                 <DataTableRow key={f.id}>
                   <DataTableCell className="font-mono text-xs">{f.instructor_id}</DataTableCell>
                   <DataTableCell>{f.status}</DataTableCell>
-                  <DataTableCell className="text-slate-500">{new Date(f.created_at).toLocaleString()}</DataTableCell>
+                  <DataTableCell className="text-stone-500">{new Date(f.created_at).toLocaleString()}</DataTableCell>
                 </DataTableRow>
               ))}
             </DataTableBody>
@@ -148,7 +148,7 @@ export function BusinessOrdersPage() {
       </Card>
 
       <SlideOver open={!!selectedOrder} title="Order detail" onClose={() => setSelectedOrder(null)}>
-        <pre className="overflow-auto rounded-lg bg-slate-50 p-4 text-xs">{JSON.stringify(selectedOrder, null, 2)}</pre>
+        <pre className="overflow-auto rounded-lg bg-stone-50 p-4 text-xs">{JSON.stringify(selectedOrder, null, 2)}</pre>
       </SlideOver>
 
       <PromptDialog

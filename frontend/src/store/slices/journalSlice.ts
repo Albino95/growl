@@ -14,6 +14,8 @@ export type { JournalEntry, JournalMood };
 
 interface JournalState {
   entries: JournalEntry[];
+  /** Pre-edit snapshots for optimistic edits (rolled back on failure). */
+  editSnapshots: Record<string, JournalEntry>;
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;
@@ -21,6 +23,7 @@ interface JournalState {
 
 const initialState: JournalState = {
   entries: [],
+  editSnapshots: {},
   isLoading: false,
   isSaving: false,
   error: null,
@@ -38,10 +41,15 @@ export const fetchJournalEntries = createAsyncThunk(
   }
 );
 
+export type AddJournalEntryArg = CreateJournalEntryRequest & {
+  /** Stable per compose session so a retried save never creates a duplicate. */
+  idempotencyKey?: string;
+};
+
 export const addJournalEntry = createAsyncThunk(
   'journal/addEntry',
-  async (payload: CreateJournalEntryRequest) => {
-    const response = await createJournalEntry(payload);
+  async ({ idempotencyKey, ...payload }: AddJournalEntryArg) => {
+    const response = await createJournalEntry(payload, { idempotencyKey });
     if (response.success && response.data) {
       return response.data;
     }
@@ -71,6 +79,21 @@ export const removeJournalEntry = createAsyncThunk(
   }
 );
 
+/** Local view of an entry after an edit (mirrors the server's update semantics). */
+export function applyEntryPatch(entry: JournalEntry, patch: UpdateJournalEntryRequest): JournalEntry {
+  const next: JournalEntry = { ...entry, updated_at: new Date().toISOString() };
+  if (patch.content !== undefined) next.content = patch.content;
+  if (patch.title !== undefined) next.title = patch.title;
+  if (patch.mood !== undefined) next.mood = patch.mood;
+  if (patch.tags !== undefined) next.tags = patch.tags;
+  if (patch.metadata !== undefined) next.metadata = patch.metadata;
+  if (patch.is_public !== undefined) {
+    next.is_public = patch.is_public;
+    next.isPublic = patch.is_public;
+  }
+  return next;
+}
+
 const journalSlice = createSlice({
   name: 'journal',
   initialState,
@@ -80,6 +103,7 @@ const journalSlice = createSlice({
     },
     clearJournalEntries: (state) => {
       state.entries = [];
+      state.editSnapshots = {};
       state.isLoading = false;
       state.error = null;
     },
@@ -113,18 +137,30 @@ const journalSlice = createSlice({
         state.error = action.error.message || 'Failed to create journal entry';
       });
 
+    // Edits are optimistic: patch the row now, roll back if the server says no.
     builder
-      .addCase(editJournalEntry.pending, (state) => {
-        state.isSaving = true;
-        state.error = null;
+      .addCase(editJournalEntry.pending, (state, action) => {
+        const { entryId, payload } = action.meta.arg;
+        const idx = state.entries.findIndex((e) => e.id === entryId);
+        if (idx < 0) return;
+        const prev = state.entries[idx];
+        if (!state.editSnapshots[entryId]) state.editSnapshots[entryId] = { ...prev };
+        state.entries[idx] = applyEntryPatch(prev, payload);
       })
-      .addCase(editJournalEntry.fulfilled, (state, action: PayloadAction<JournalEntry>) => {
-        const idx = state.entries.findIndex((e) => e.id === action.payload.id);
-        if (idx >= 0) state.entries[idx] = action.payload;
-        state.isSaving = false;
+      .addCase(editJournalEntry.fulfilled, (state, action) => {
+        const entryId = action.meta.arg.entryId;
+        delete state.editSnapshots[entryId];
+        const idx = state.entries.findIndex((e) => e.id === entryId);
+        if (idx >= 0) state.entries[idx] = { ...state.entries[idx], ...action.payload };
       })
       .addCase(editJournalEntry.rejected, (state, action) => {
-        state.isSaving = false;
+        const entryId = action.meta.arg.entryId;
+        const snapshot = state.editSnapshots[entryId];
+        delete state.editSnapshots[entryId];
+        if (snapshot) {
+          const idx = state.entries.findIndex((e) => e.id === entryId);
+          if (idx >= 0) state.entries[idx] = snapshot;
+        }
         state.error = action.error.message || 'Failed to update journal entry';
       });
 

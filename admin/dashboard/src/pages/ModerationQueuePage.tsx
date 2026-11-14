@@ -93,13 +93,13 @@ export function ModerationQueuePage() {
                       {r.id.slice(0, 12)}…
                     </Link>
                   </DataTableCell>
-                  <DataTableCell className="font-mono text-xs text-slate-600">
+                  <DataTableCell className="font-mono text-xs text-stone-600">
                     {r.target_type}:{r.target_id.slice(0, 8)}…
                   </DataTableCell>
                   <DataTableCell>{r.reason}</DataTableCell>
                   <DataTableCell><Badge variant={statusBadge(r.workflow_status)}>{r.workflow_status}</Badge></DataTableCell>
                   <DataTableCell><Badge variant={priorityBadge(r.priority)}>{r.priority}</Badge></DataTableCell>
-                  <DataTableCell className="text-slate-500">{new Date(r.created_at).toLocaleString()}</DataTableCell>
+                  <DataTableCell className="text-stone-500">{new Date(r.created_at).toLocaleString()}</DataTableCell>
                 </DataTableRow>
               ))}
             </DataTableBody>

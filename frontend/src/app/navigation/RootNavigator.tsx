@@ -1,25 +1,14 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import React from 'react';
+import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// Side effect: global Dynamic Type cap for Text / TextInput.
+import OfflineBanner from '../../components/common/OfflineBanner';
+import BadgeCelebrationHost from '../../components/badges/BadgeCelebrationHost';
 import AuthScreen from '../../screens/Auth/AuthScreen';
 import CategoryPickScreen from '../../screens/Onboarding/CategoryPickScreen';
 import IndividualTabs from './tabs/IndividualTabs';
 import BusinessRootStack from './BusinessRootStack';
-import PostScreen from '../../screens/Post/PostScreen';
-import PostDetailScreen from '../../screens/Post/PostDetailScreen';
-import MessagesScreen from '../../screens/Messages/MessagesScreen';
-import ReelsScreen from '../../screens/Reels/ReelsScreen';
-import PublicProfileScreen from '../../screens/Profile/PublicProfileScreen';
-import ProductDetailScreen from '../../screens/Marketplace/ProductDetailScreen';
-import CheckoutScreen from '../../screens/Marketplace/CheckoutScreen';
-import UserOrdersScreen from '../../screens/Marketplace/UserOrdersScreen';
-import EditProfileScreen from '../../screens/Profile/EditProfileScreen';
-import SettingsScreen from '../../screens/Profile/SettingsScreen';
-import NotificationPrefsScreen from '../../screens/Profile/NotificationPrefsScreen';
-import LegalHubScreen from '../../screens/Legal/LegalHubScreen';
-import LegalDocumentScreen from '../../screens/Legal/LegalDocumentScreen';
-import DeleteAccountScreen from '../../screens/Profile/DeleteAccountScreen';
-import StoryViewerScreen from '../../screens/Story/StoryViewerScreen';
-import CreateStoryScreen from '../../screens/Story/CreateStoryScreen';
 import { useAppSelector } from '../../store/store';
 import { shouldShowBusinessShell } from '../../constants/businessShell';
 
@@ -41,25 +30,74 @@ type PostDetailParam = {
   daysUntilDecay?: number;
 };
 
+/** Profile data already in hand at a tap site; PublicProfile renders it instantly while loading. */
+export type ProfilePreview = { username?: string; displayName?: string; avatarUrl?: string | null };
+/** Product data already in hand at a tap site; ProductDetail renders it instantly while loading. */
+export type ProductPreview = {
+  title?: string;
+  imageUrl?: string | null;
+  price?: number;
+  currency?: string;
+  sellerName?: string;
+};
+
 export type RootStackParamList = {
   Auth: undefined;
   Categories: undefined;
   Individual: undefined;
   Business: undefined;
-  Post: undefined;
+  Post:
+    | {
+        category?: string;
+        caption?: string;
+        promoteBusinessId?: string;
+        promoteBusinessName?: string;
+        productId?: string;
+      }
+    | undefined;
   Messages: { conversationId?: string; targetUserId?: string } | undefined;
-  Reels: undefined;
-  PublicProfile: { userId: string };
+  Reels:
+    | {
+        startPostId?: string;
+        seedPost?: import('../../services/api/feed').FeedPost;
+        /** home = friends/for-you reels; explore = discovery (non-friend) reels */
+        mode?: 'home' | 'explore';
+      }
+    | undefined;
+  PublicProfile: {
+    userId: string;
+    /** Data already in hand at the tap site, rendered instantly while the profile loads. */
+    preview?: ProfilePreview;
+  };
   PostDetail: { post: PostDetailParam };
-  ProductDetail: { productId: string };
+  ProductDetail: {
+    productId: string;
+    /** Data already in hand at the tap site, rendered instantly while the product loads. */
+    preview?: ProductPreview;
+  };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
+  OrderConfirmation: {
+    orderId?: string;
+    sessionId?: string;
+    cancelled?: boolean;
+  };
   EditProfile: undefined;
   Settings: undefined;
   NotificationPrefs: undefined;
+  Notifications: undefined;
+  Garden: undefined;
+  PlantSeed: undefined;
+  SeedDetail: { seedId: string };
+  Circles: undefined;
+  CircleDetail: { groupId: string };
+  CoachingContract: { contractId: string };
+  Instructors: undefined;
+  AppReviews: undefined;
   Legal: undefined;
   LegalDocument: { documentId: 'terms' | 'privacy' | 'community' | 'support' };
   DeleteAccount: undefined;
+  PrivacySettings: undefined;
   StoryViewer: {
     stories: Array<{
       id: string;
@@ -84,9 +122,23 @@ export type RootStackParamList = {
     }>) => void;
   };
   CreateStory: undefined;
+  CreateReel: undefined;
+  // Growth system (docs/GROWTH_SYSTEM.md)
+  ChallengeDetail: { challengeId: string };
+  Invite: undefined;
+  InviteRedeem: { code: string };
+  Badges: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/*
+ * Startup cost: only the entry screens (Auth, Categories, Individual tabs,
+ * Business shell) are imported eagerly. Every other route uses
+ * `getComponent` so its module — and its dependency tree (editors, players,
+ * checkout, legal text…) — is evaluated on first navigation instead of at
+ * launch.
+ */
 
 export default function RootNavigator() {
   const { token, user, hydrated, shouldCompleteSignupOnboarding } = useAppSelector(
@@ -110,93 +162,185 @@ export default function RootNavigator() {
         : 'Individual';
 
   return (
-    <Stack.Navigator 
-      screenOptions={{ headerShown: false }}
-      initialRouteName={initialRouteName}
-    >
-      <Stack.Screen name="Auth" component={AuthScreen} />
-      <Stack.Screen name="Categories" component={CategoryPickScreen} />
-      {!isBusinessAccount && (
-        <>
-          <Stack.Screen name="Individual" component={IndividualTabs} />
-          <Stack.Screen
-            name="Post"
-            component={PostScreen}
-            options={{
-              headerShown: false,
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-          <Stack.Screen 
-            name="Messages" 
-            component={MessagesScreen}
-            options={{ 
-              headerShown: false,
-              presentation: 'card',
-            }}
-          />
-          <Stack.Screen name="Reels" component={ReelsScreen} />
-          <Stack.Screen
-            name="ProductDetail"
-            component={ProductDetailScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="Checkout"
-            component={CheckoutScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="UserOrders"
-            component={UserOrdersScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="EditProfile"
-            component={EditProfileScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="Settings"
-            component={SettingsScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="NotificationPrefs"
-            component={NotificationPrefsScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="StoryViewer"
-            component={StoryViewerScreen}
-            options={{ headerShown: false, presentation: 'fullScreenModal' }}
-          />
-          <Stack.Screen
-            name="CreateStory"
-            component={CreateStoryScreen}
-            options={{
-              headerShown: false,
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-        </>
-      )}
-      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
-      <Stack.Screen name="Legal" component={LegalHubScreen} options={{ headerShown: false }} />
-      <Stack.Screen
-        name="LegalDocument"
-        component={LegalDocumentScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="DeleteAccount"
-        component={DeleteAccountScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen name="Business" component={BusinessRootStack} />
-    </Stack.Navigator>
+    <View style={styles.root}>
+      <Stack.Navigator 
+        screenOptions={{ headerShown: false }}
+        initialRouteName={initialRouteName}
+      >
+        <Stack.Screen name="Auth" component={AuthScreen} />
+        <Stack.Screen name="Categories" component={CategoryPickScreen} />
+        {!isBusinessAccount && (
+          <>
+            <Stack.Screen name="Individual" component={IndividualTabs} />
+            <Stack.Screen
+              name="Post"
+              getComponent={() => require('../../screens/Post/PostScreen').default}
+              options={{
+                headerShown: false,
+                // card + slide, not UIKit modal — ImagePicker must not dismiss this screen
+                presentation: 'card',
+                animation: 'slide_from_bottom',
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen name="PostDetail" getComponent={() => require('../../screens/Post/PostDetailScreen').default} />
+            <Stack.Screen 
+              name="Messages" 
+              getComponent={() => require('../../screens/Messages/MessagesScreen').default}
+              options={{ 
+                headerShown: false,
+                presentation: 'card',
+              }}
+            />
+            <Stack.Screen name="Reels" getComponent={() => require('../../screens/Reels/ReelsScreen').default} />
+            <Stack.Screen
+              name="ProductDetail"
+              getComponent={() => require('../../screens/Marketplace/ProductDetailScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Checkout"
+              getComponent={() => require('../../screens/Marketplace/CheckoutScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="UserOrders"
+              getComponent={() => require('../../screens/Marketplace/UserOrdersScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="OrderConfirmation"
+              getComponent={() => require('../../screens/Marketplace/OrderConfirmationScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="EditProfile"
+              getComponent={() => require('../../screens/Profile/EditProfileScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Settings"
+              getComponent={() => require('../../screens/Profile/SettingsScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="NotificationPrefs"
+              getComponent={() => require('../../screens/Profile/NotificationPrefsScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Notifications"
+              getComponent={() => require('../../screens/Activity/NotificationsScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen name="Garden" getComponent={() => require('../../screens/Garden/GardenScreen').default} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="PlantSeed"
+              getComponent={() => require('../../screens/Garden/PlantSeedScreen').default}
+              options={{
+                headerShown: false,
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="SeedDetail"
+              getComponent={() => require('../../screens/Garden/SeedDetailScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen name="Circles" getComponent={() => require('../../screens/Circles/CirclesScreen').default} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="CircleDetail"
+              getComponent={() => require('../../screens/Circles/CircleDetailScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="CoachingContract"
+              getComponent={() => require('../../screens/Instructor/CoachingContractScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Instructors"
+              getComponent={() => require('../../screens/Instructor/InstructorsScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="StoryViewer"
+              getComponent={() => require('../../screens/Story/StoryViewerScreen').default}
+              options={{ headerShown: false, presentation: 'fullScreenModal' }}
+            />
+            <Stack.Screen
+              name="CreateStory"
+              getComponent={() => require('../../screens/Story/CreateStoryScreen').default}
+              options={{
+                headerShown: false,
+                presentation: 'card',
+                animation: 'slide_from_bottom',
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="CreateReel"
+              getComponent={() => require('../../screens/Reels/CreateReelScreen').default}
+              options={{
+                headerShown: false,
+                presentation: 'card',
+                animation: 'slide_from_bottom',
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="ChallengeDetail"
+              getComponent={() => require('../../screens/Challenges/ChallengeDetailScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Badges"
+              getComponent={() => require('../../screens/Badges/BadgesScreen').default}
+              options={{ headerShown: false }}
+            />
+          </>
+        )}
+        <Stack.Screen
+          name="Invite"
+          getComponent={() => require('../../screens/Invite/InviteScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="InviteRedeem"
+          getComponent={() => require('../../screens/Invite/InviteRedeemScreen').default}
+          options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen name="PublicProfile" getComponent={() => require('../../screens/Profile/PublicProfileScreen').default} />
+        <Stack.Screen
+          name="AppReviews"
+          getComponent={() => require('../../screens/Feedback/AppReviewsScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen name="Legal" getComponent={() => require('../../screens/Legal/LegalHubScreen').default} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="LegalDocument"
+          getComponent={() => require('../../screens/Legal/LegalDocumentScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="DeleteAccount"
+          getComponent={() => require('../../screens/Profile/DeleteAccountScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="PrivacySettings"
+          getComponent={() => require('../../screens/Profile/PrivacyScreen').default}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen name="Business" component={BusinessRootStack} />
+      </Stack.Navigator>
+      <OfflineBanner />
+      <BadgeCelebrationHost />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

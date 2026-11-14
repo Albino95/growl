@@ -39,38 +39,41 @@ async function requireBusiness(request: Request, env: Env): Promise<BusinessCont
   return { userId: ctx.userId };
 }
 
-function getPeriodBounds(period: Period) {
-  const now = new Date();
-  const end = now.toISOString();
-  const startDate = new Date(now);
-  const prevStartDate = new Date(now);
-  const prevEndDate = new Date(now);
-  if (period === 'today') {
-    startDate.setHours(0, 0, 0, 0);
-    prevStartDate.setDate(startDate.getDate() - 1);
-    prevStartDate.setHours(0, 0, 0, 0);
-    prevEndDate.setDate(startDate.getDate());
-    prevEndDate.setHours(0, 0, 0, 0);
-  } else if (period === 'week') {
-    startDate.setDate(startDate.getDate() - 6);
-    startDate.setHours(0, 0, 0, 0);
-    prevStartDate.setDate(startDate.getDate() - 7);
-    prevStartDate.setHours(0, 0, 0, 0);
-    prevEndDate.setDate(startDate.getDate());
-    prevEndDate.setHours(0, 0, 0, 0);
-  } else {
-    startDate.setDate(startDate.getDate() - 29);
-    startDate.setHours(0, 0, 0, 0);
-    prevStartDate.setDate(startDate.getDate() - 30);
-    prevStartDate.setHours(0, 0, 0, 0);
-    prevEndDate.setDate(startDate.getDate());
-    prevEndDate.setHours(0, 0, 0, 0);
-  }
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Orders created by createCheckoutSession start as payment_status='unpaid' and only become
+ * real sales once the Stripe webhook marks them paid. Refunded orders were real sales whose
+ * refund is tracked separately via refund_amount.
+ */
+const SOLD_PAYMENT_SQL = `o.payment_status IN ('paid', 'refunded')`;
+
+/** Max day span for the sales CSV export. */
+export const MAX_EXPORT_RANGE_DAYS = 366;
+
+/** Max rows returned by list endpoints that are not paginated yet. */
+const LIST_LIMIT = 500;
+
+/** Formats a Date like SQLite's datetime('now'): 'YYYY-MM-DD HH:MM:SS' (UTC). */
+export function toSqliteDateTime(date: Date): string {
+  return date.toISOString().replace('T', ' ').slice(0, 19);
+}
+
+/**
+ * Period bounds as SQLite datetime strings (same format as created_at), so plain string
+ * comparison in SQL is correct. Days are UTC days. `end` is exclusive.
+ */
+export function getPeriodBounds(period: Period | string, now: Date = new Date()) {
+  const days = period === 'today' ? 1 : period === 'week' ? 7 : 30;
+  const startOfToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const start = startOfToday - (days - 1) * DAY_MS;
+  const prevStart = start - days * DAY_MS;
   return {
-    start: startDate.toISOString(),
-    end,
-    prevStart: prevStartDate.toISOString(),
-    prevEnd: prevEndDate.toISOString(),
+    start: toSqliteDateTime(new Date(start)),
+    // +1s so rows written in the current second (datetime('now') truncates) are included.
+    end: toSqliteDateTime(new Date(now.getTime() + 1000)),
+    prevStart: toSqliteDateTime(new Date(prevStart)),
+    prevEnd: toSqliteDateTime(new Date(start)),
   };
 }
 
@@ -79,8 +82,13 @@ function deltaPct(current: number, previous: number): number {
   return Number((((current - previous) / previous) * 100).toFixed(2));
 }
 
-function csvEscape(value: unknown): string {
-  const s = value == null ? '' : String(value);
+export function csvEscape(value: unknown): string {
+  let s = value == null ? '' : String(value);
+  // Neutralise spreadsheet formula injection (=, +, -, @, tab, CR). Real numbers are left alone
+  // so negative amounts stay numeric.
+  if (typeof value !== 'number' && /^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`;
+  }
   if (/[",\n\r]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }
@@ -154,18 +162,25 @@ async function fetchOrderOverview(
 ) {
   return env.DB.prepare(
     `WITH business_orders AS (
-      SELECT DISTINCT o.id, o.status, o.total, o.created_at, COALESCE(o.refund_amount, 0) AS refund_amount
+      SELECT
+        o.id,
+        o.status,
+        o.payment_status,
+        COALESCE(o.refund_amount, 0) AS refund_amount,
+        SUM(oi.quantity * oi.price) AS business_total
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
       JOIN products p ON p.id = oi.product_id
       WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+        AND ${SOLD_PAYMENT_SQL}
+      GROUP BY o.id
     )
     SELECT
       COUNT(*) AS total_orders,
-      SUM(CASE WHEN status IN ('pending', 'processing') THEN 1 ELSE 0 END) AS pending_orders,
+      SUM(CASE WHEN status IN ('pending', 'processing') AND payment_status = 'paid' THEN 1 ELSE 0 END) AS pending_orders,
       SUM(CASE WHEN status IN ('completed', 'delivered') THEN 1 ELSE 0 END) AS completed_orders,
-      SUM(CASE WHEN status IN ('completed', 'delivered') THEN total ELSE 0 END) AS gross_revenue,
-      SUM(CASE WHEN status IN ('completed', 'delivered') THEN refund_amount ELSE 0 END) AS refunds
+      SUM(CASE WHEN status IN ('completed', 'delivered') THEN business_total ELSE 0 END) AS gross_revenue,
+      SUM(CASE WHEN status IN ('completed', 'delivered') THEN MIN(refund_amount, business_total) ELSE 0 END) AS refunds
     FROM business_orders`
   )
     .bind(userId, start, end)
@@ -226,7 +241,8 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
            JOIN products p ON p.id = oi.product_id
            JOIN orders o ON o.id = oi.order_id
            WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
-             AND o.status IN ('completed', 'delivered', 'shipped', 'processing')`
+             AND o.status IN ('completed', 'delivered', 'shipped', 'processing')
+             AND ${SOLD_PAYMENT_SQL}`
         )
           .bind(auth.userId, bounds.start, bounds.end)
           .first<{ units_sold: number }>(),
@@ -249,6 +265,7 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
           JOIN order_items oi ON oi.order_id = o.id
           JOIN products p ON p.id = oi.product_id
           WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+            AND ${SOLD_PAYMENT_SQL}
           ORDER BY o.created_at DESC
           LIMIT 20`
         )
@@ -340,16 +357,18 @@ export async function getAnalyticsTimeseries(request: Request, env: Env): Promis
   try {
     const rows = await env.DB.prepare(
       `WITH business_orders AS (
-        SELECT DISTINCT o.id, o.status, o.total, o.created_at
+        SELECT o.id, o.status, o.created_at, SUM(oi.quantity * oi.price) AS business_total
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.id
         JOIN products p ON p.id = oi.product_id
         WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+          AND ${SOLD_PAYMENT_SQL}
+        GROUP BY o.id
       )
       SELECT
         date(created_at) AS day,
         COUNT(*) AS orders,
-        COALESCE(SUM(CASE WHEN status IN ('completed', 'delivered') THEN total ELSE 0 END), 0) AS revenue
+        COALESCE(SUM(CASE WHEN status IN ('completed', 'delivered') THEN business_total ELSE 0 END), 0) AS revenue
       FROM business_orders
       GROUP BY date(created_at)
       ORDER BY day ASC`
@@ -382,6 +401,7 @@ export async function getAnalyticsFunnel(request: Request, env: Env): Promise<Re
         JOIN order_items oi ON oi.order_id = o.id
         JOIN products p ON p.id = oi.product_id
         WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+          AND ${SOLD_PAYMENT_SQL}
       )
       SELECT
         COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
@@ -441,6 +461,7 @@ export async function getTopProducts(request: Request, env: Env): Promise<Respon
       JOIN orders o ON o.id = oi.order_id
       WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
         AND o.status IN ('completed', 'delivered')
+        AND ${SOLD_PAYMENT_SQL}
       GROUP BY p.id, p.name, p.image_url
       ORDER BY revenue DESC
       LIMIT 10`
@@ -477,6 +498,7 @@ export async function getPartnershipPerformance(request: Request, env: Env): Pro
             AND o.source = 'partnership'
             AND json_extract(o.metadata, '$.referral_instructor_id') = p.instructor_id
             AND o.status IN ('completed', 'delivered')
+            AND ${SOLD_PAYMENT_SQL}
         ), 0) AS attributed_revenue
       FROM partnerships p
       JOIN users u ON u.id = p.instructor_id
@@ -539,12 +561,14 @@ export async function getBusinessProducts(request: Request, env: Env): Promise<R
           WHERE oi.product_id = p.id
             AND o.created_at >= ? AND o.created_at < ?
             AND o.status IN ('completed', 'delivered', 'shipped', 'processing')
+            AND ${SOLD_PAYMENT_SQL}
         ), 0) AS units_sold
        FROM products p
        WHERE p.user_id = ?
-       ORDER BY p.created_at DESC`
+       ORDER BY p.created_at DESC
+       LIMIT ?`
     )
-      .bind(bounds.start, bounds.end, auth.userId)
+      .bind(bounds.start, bounds.end, auth.userId, LIST_LIMIT)
       .all<Product & { units_sold: number }>();
 
     const formattedProducts = (products.results || []).map((product) => ({
@@ -557,7 +581,7 @@ export async function getBusinessProducts(request: Request, env: Env): Promise<R
     return json({
       products: formattedProducts,
       total: formattedProducts.length,
-      limit: formattedProducts.length,
+      limit: LIST_LIMIT,
       offset: 0,
     });
   } catch (err) {
@@ -567,11 +591,37 @@ export async function getBusinessProducts(request: Request, env: Env): Promise<R
 }
 
 /**
+ * Unpaid checkout orders are listed so the seller can see them, but flagged so the app renders
+ * them as "Awaiting payment" with no fulfilment actions.
+ */
+function formatBusinessOrder(order: Order & { items: string; payment_status?: string }) {
+  const items = safeParse<Array<{ quantity?: number; price?: number }>>(order.items, []);
+  const businessTotal = items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0),
+    0
+  );
+  return {
+    ...order,
+    shipping_address: safeParse(order.shipping_address, {}),
+    metadata: safeParse(order.metadata, {}),
+    items,
+    business_total: Number(businessTotal.toFixed(2)),
+    awaiting_payment: isAwaitingPayment(order.payment_status),
+  };
+}
+
+export function isAwaitingPayment(paymentStatus: string | null | undefined): boolean {
+  return paymentStatus !== 'paid' && paymentStatus !== 'refunded';
+}
+
+/**
  * GET /api/v1/business/orders
  */
 export async function getBusinessOrders(request: Request, env: Env): Promise<Response> {
   const auth = await requireBusiness(request, env);
   if (auth instanceof Response) return auth;
+  const url = new URL(request.url);
+  const offset = Math.max(0, Math.floor(Number(url.searchParams.get('offset')) || 0));
   try {
     const orders = await env.DB.prepare(
       `SELECT DISTINCT o.*,
@@ -591,19 +641,12 @@ export async function getBusinessOrders(request: Request, env: Env): Promise<Res
       JOIN products p ON oi.product_id = p.id
       WHERE p.user_id = ?
       ORDER BY o.created_at DESC
-      LIMIT 200`
+      LIMIT 200 OFFSET ?`
     )
-      .bind(auth.userId, auth.userId)
-      .all<Order & { items: string }>();
+      .bind(auth.userId, auth.userId, offset)
+      .all<Order & { items: string; payment_status?: string }>();
 
-    return json(
-      (orders.results || []).map((order) => ({
-        ...order,
-        shipping_address: safeParse(order.shipping_address, {}),
-        metadata: safeParse(order.metadata, {}),
-        items: safeParse(order.items, []),
-      }))
-    );
+    return json((orders.results || []).map(formatBusinessOrder));
   } catch (err) {
     console.error('[getBusinessOrders] Error:', err);
     return error('DATABASE_ERROR', 'Failed to fetch orders', 500);
@@ -637,14 +680,9 @@ export async function getBusinessOrderDetail(request: Request, env: Env, orderId
       LIMIT 1`
     )
       .bind(auth.userId, orderId, auth.userId)
-      .first<Order & { items: string }>();
+      .first<Order & { items: string; payment_status?: string }>();
     if (!order) return error('NOT_FOUND', 'Order not found', 404);
-    return json({
-      ...order,
-      shipping_address: safeParse(order.shipping_address, {}),
-      metadata: safeParse(order.metadata, {}),
-      items: safeParse(order.items, []),
-    });
+    return json(formatBusinessOrder(order));
   } catch (err) {
     console.error('[getBusinessOrderDetail] Error:', err);
     return error('DATABASE_ERROR', 'Failed to fetch order detail', 500);
@@ -1177,11 +1215,12 @@ export async function getCustomers(request: Request, env: Env): Promise<Response
       JOIN order_items oi ON oi.order_id = o.id
       JOIN products p ON p.id = oi.product_id
       JOIN users u ON u.id = o.user_id
-      WHERE p.user_id = ?
+      WHERE p.user_id = ? AND ${SOLD_PAYMENT_SQL}
       GROUP BY o.user_id, u.email, u.metadata
-      ORDER BY last_order_at DESC`
+      ORDER BY last_order_at DESC
+      LIMIT ?`
     )
-      .bind(auth.userId)
+      .bind(auth.userId, LIST_LIMIT)
       .all<{
         user_id: string;
         email: string;
@@ -1264,11 +1303,11 @@ export async function exportOrdersCsv(request: Request, env: Env): Promise<Respo
 
   try {
     const rows = await env.DB.prepare(
-      `SELECT DISTINCT
+      `SELECT
         o.id,
         o.user_id,
         o.status,
-        o.total,
+        SUM(oi.quantity * oi.price) AS total,
         o.payment_status,
         o.source,
         o.created_at,
@@ -1279,6 +1318,8 @@ export async function exportOrdersCsv(request: Request, env: Env): Promise<Respo
       JOIN products p ON p.id = oi.product_id
       JOIN users u ON u.id = o.user_id
       WHERE p.user_id = ? AND o.created_at >= ? AND o.created_at < ?
+        AND ${SOLD_PAYMENT_SQL}
+      GROUP BY o.id
       ORDER BY o.created_at DESC`
     )
       .bind(auth.userId, bounds.start, bounds.end)
@@ -1314,7 +1355,7 @@ export async function exportOrdersCsv(request: Request, env: Env): Promise<Respo
         csvEscape(row.email),
         csvEscape(meta.username || ''),
         csvEscape(row.status),
-        csvEscape(row.total),
+        csvEscape(Number(Number(row.total || 0).toFixed(2))),
         csvEscape(row.payment_status),
         csvEscape(row.source),
         csvEscape(row.created_at),
@@ -1401,6 +1442,19 @@ export async function exportSalesCsv(request: Request, env: Env): Promise<Respon
     return error('VALIDATION_ERROR', 'from and to must be YYYY-MM-DD', 400);
   }
 
+  const fromMs = Date.parse(`${from}T00:00:00Z`);
+  const toMs = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) {
+    return error('VALIDATION_ERROR', 'from must be a valid date on or before to', 400);
+  }
+  if ((toMs - fromMs) / DAY_MS + 1 > MAX_EXPORT_RANGE_DAYS) {
+    return error(
+      'VALIDATION_ERROR',
+      `Export range can be at most ${MAX_EXPORT_RANGE_DAYS} days`,
+      400
+    );
+  }
+
   const start = `${from} 00:00:00`;
   const endExclusive = `${to} 23:59:59`;
 
@@ -1430,6 +1484,7 @@ export async function exportSalesCsv(request: Request, env: Env): Promise<Respon
       WHERE p.user_id = ?
         AND o.created_at >= ?
         AND o.created_at <= ?
+        AND ${SOLD_PAYMENT_SQL}
         ${categoryClause}
       ORDER BY o.created_at DESC, o.id, p.name`
     )
@@ -1658,7 +1713,11 @@ export async function createPromoCode(request: Request, env: Env): Promise<Respo
     );
   } catch (err) {
     console.error('[createPromoCode] Error:', err);
-    return error('DATABASE_ERROR', 'Failed to create promo code', 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE|unique|constraint/i.test(msg)) {
+      return error('CONFLICT', 'That promo code already exists for this business.', 409);
+    }
+    return error('DATABASE_ERROR', 'Failed to create promo code. Please try again.', 500);
   }
 }
 

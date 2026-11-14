@@ -13,8 +13,8 @@ export default function SectionLabel({ children, style, variant = 'default' }: P
     <Text
       style={[
         variant === 'caps'
-          ? tw`text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2`
-          : tw`text-sm font-semibold text-stone-700 mb-2`,
+          ? tw`text-caption font-semibold text-ink-3 uppercase tracking-wider mb-2`
+          : tw`text-footnote font-semibold text-ink-2 mb-2`,
         style,
       ]}
     >

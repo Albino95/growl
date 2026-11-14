@@ -19,6 +19,7 @@ export type SignUpResponse = {
   requiresEmailVerification: true;
   email: string;
   message: string;
+  expiresAt?: string;
   devVerificationCode?: string;
 };
 
@@ -26,6 +27,8 @@ export async function signUpApi(payload: {
   email: string;
   password: string;
   username?: string;
+  /** Optional friend invite code (growth system); redeemed after verification. */
+  invite_code?: string;
 }): Promise<SignUpResponse> {
   const passwordHash = await sha256Hex(payload.password);
   const res = await request<{ success: boolean; data: SignUpResponse }>('/auth/sign-up', {
@@ -34,6 +37,7 @@ export async function signUpApi(payload: {
       email: payload.email,
       username: payload.username,
       passwordHash,
+      ...(payload.invite_code ? { invite_code: payload.invite_code } : {}),
     }),
   });
   return res.data;
@@ -44,6 +48,17 @@ export async function verifyEmailApi(email: string, code: string): Promise<void>
     method: 'POST',
     body: JSON.stringify({ email, code }),
   });
+}
+
+export async function resendVerificationApi(email: string): Promise<SignUpResponse & { sent?: boolean }> {
+  const res = await request<{ success: boolean; data: SignUpResponse & { sent?: boolean } }>(
+    '/auth/resend-verification',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }
+  );
+  return res.data;
 }
 
 export async function forgotPasswordApi(email: string): Promise<{ message: string; devResetCode?: string }> {

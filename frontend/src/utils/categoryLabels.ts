@@ -32,7 +32,7 @@ export function getCategoryMeta(cat: string): {
     parentKey,
     parentLabel: category?.label || parentKey,
     subLabel: sub?.label ?? null,
-    icon: (category?.icon || 'leaf-outline') as IoniconName,
+    icon: (category?.icon || 'sparkles-outline') as IoniconName,
   };
 }
 

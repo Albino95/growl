@@ -286,6 +286,18 @@ describe('Marketplace Routes', () => {
 
   describe('createOrder payment gating', () => {
     it('should return 503 when payments are disabled', async () => {
+      // createOrder authenticates before the payments gate: getRequestContext loads the user row.
+      mockDb.prepare = (query: string) => ({
+        bind: (userId: string) => ({
+          first: async () =>
+            query.includes('SELECT * FROM users WHERE id = ?') && userId === 'test-user'
+              ? { id: 'test-user', email: 'test@example.com', metadata: '{}' }
+              : null,
+          all: async () => ({ results: [] }),
+          run: async () => ({ success: true }),
+        }),
+      });
+
       const request = createMockRequest('https://example.com/api/v1/marketplace/orders', {
         method: 'POST',
         headers: { Authorization: 'Bearer test-token' },

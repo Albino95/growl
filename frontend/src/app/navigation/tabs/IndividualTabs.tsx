@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Platform, Animated, Pressable, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,10 +13,21 @@ import MarketplaceScreen from '../../../screens/Marketplace/MarketplaceScreen';
 import CreateActionSheet, {
   type CreateAction,
 } from '../../../components/navigation/CreateActionSheet';
-import tw, { theme } from '../../../lib/tw';
+import tw, { theme, useColorSchemeName } from '../../../lib/tw';
+import { radius } from '../../../theme/tokens';
+import { iconSize } from '../../../theme/icons';
 import { usePressFeedback } from '../../../hooks/usePressFeedback';
 import { navigateFromRoot } from '../rootNavigation';
-import { triggerPressFeedback } from '../../../utils/interactionFeedback';
+import { feedback } from '../../../utils/interactionFeedback';
+import { haptic } from '../../../theme/haptics';
+import { duration, pop, spring, timing } from '../../../theme/motion';
+import { useReducedMotion } from '../../../hooks/useReducedMotion';
+import { forGrowTabScene, GrowTabTransitionSpec } from '../tabTransitions';
+import { SHOW_CIRCLES, SHOW_SEEDS } from '../../../constants/featureFlags';
+import DemoTutorial from '../../../screens/Onboarding/DemoTutorial';
+import { useDemoTutorialStore, type TabHintKey } from '../../../state/useDemoTutorialStore';
+import TabHint from '../../../components/onboarding/TabHint';
+import { useHomeTabStore } from '../../../state/useHomeTabStore';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
@@ -62,10 +73,37 @@ function DockTabButton({
   isActive: boolean;
   onPress: () => void;
 }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const iconScale = useRef(new Animated.Value(isActive ? 1 : 0.92)).current;
+  const dotScale = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+  const labelOpacity = useRef(new Animated.Value(isActive ? 1 : 0.72)).current;
+  const reduced = useReducedMotion();
+  const dark = useColorSchemeName() === 'dark';
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    // No pop on first mount — only when a tab actually becomes active.
+    const first = !mounted.current;
+    mounted.current = true;
+    if (first) return;
+    Animated.parallel([
+      isActive ? pop(iconScale, 1.12, 'bouncy', reduced) : spring(iconScale, 0.92, 'snappy', reduced),
+      spring(dotScale, isActive ? 1 : 0, 'snappy', reduced),
+      timing(labelOpacity, isActive ? 1 : 0.72, { duration: duration.quick }, reduced),
+    ]).start();
+  }, [isActive, iconScale, dotScale, labelOpacity, reduced]);
+
   return (
     <Pressable
+      onPressIn={() => {
+        if (!reduced) spring(scale, 0.88, 'snappy').start();
+      }}
+      onPressOut={() => {
+        spring(scale, 1, 'snappy', reduced).start();
+      }}
       onPress={() => {
-        triggerPressFeedback();
+        // Switching tabs = tab tick + tock (Full); re-tap (scroll to top) = tick only.
+        haptic(isActive ? 'selection' : 'tab');
         onPress();
       }}
       style={[tw`flex-1 items-center justify-center min-w-0`, { height: TAB_HEIGHT }]}
@@ -74,36 +112,51 @@ function DockTabButton({
       accessibilityState={{ selected: isActive }}
       accessibilityLabel={tab.label}
     >
-      <View style={[tw`w-full items-center justify-center`, { height: ICON_SLOT }]}>
-        <Ionicons
-          name={isActive ? tab.activeIcon : tab.inactiveIcon}
-          size={22}
-          color={isActive ? theme.colors.brand : theme.colors.textSubtle}
-        />
-      </View>
-      <View style={[tw`w-full items-center justify-center`, { height: LABEL_SLOT }]}>
-        <Text
-          style={{
-            fontSize: 10,
-            lineHeight: 12,
-            fontWeight: isActive ? '600' : '400',
-            color: isActive ? theme.colors.brand : theme.colors.textSubtle,
-          }}
-          numberOfLines={1}
+      <Animated.View
+        style={[tw`w-full items-center justify-center`, { height: TAB_HEIGHT, transform: [{ scale }] }]}
+      >
+        <Animated.View
+          style={[
+            tw`w-full items-center justify-center`,
+            { height: ICON_SLOT, transform: [{ scale: iconScale }] },
+          ]}
         >
-          {tab.label}
-        </Text>
-      </View>
-      <View style={[tw`w-full items-center justify-center`, { height: DOT_SLOT }]}>
-        <View
-          style={{
-            width: 4,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: isActive ? theme.colors.brand : 'transparent',
-          }}
-        />
-      </View>
+          <Ionicons
+            name={isActive ? tab.activeIcon : tab.inactiveIcon}
+            size={iconSize.md}
+            color={isActive ? theme.colors.brand : theme.colors.iconMuted}
+          />
+        </Animated.View>
+        <Animated.View
+          style={[tw`w-full items-center justify-center`, { height: LABEL_SLOT, opacity: labelOpacity }]}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              lineHeight: 13,
+              fontWeight: isActive ? '600' : '400',
+              // Night: the lighter leaf ink keeps the 11px active label legible on the dark dock.
+              color: isActive ? (dark ? theme.colors.leafInk : theme.colors.brand) : theme.colors.textMuted,
+            }}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
+          >
+            {tab.label}
+          </Text>
+        </Animated.View>
+        <View style={[tw`w-full items-center justify-center`, { height: DOT_SLOT }]}>
+          <Animated.View
+            style={{
+              width: 4,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: theme.colors.brand,
+              transform: [{ scale: dotScale }],
+              opacity: dotScale,
+            }}
+          />
+        </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -111,20 +164,81 @@ function DockTabButton({
 export default function IndividualTabs() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const dark = useColorSchemeName() === 'dark';
   const [createOpen, setCreateOpen] = useState(false);
   const tabNavRef = useRef<{ navigate: (name: string, params?: object) => void } | null>(null);
+  const tutorialHydrated = useDemoTutorialStore((s) => s.hydrated);
+  const tutorialSeen = useDemoTutorialStore((s) => s.seen);
+  const tutorialForce = useDemoTutorialStore((s) => s.forceShow);
+  const hydrateTutorial = useDemoTutorialStore((s) => s.hydrate);
+
+  useEffect(() => {
+    void hydrateTutorial();
+  }, [hydrateTutorial]);
+
+  const showTutorial = tutorialHydrated && (!tutorialSeen || tutorialForce);
+
+  // One-time tab hints: the tab bar reports the focused route; the store decides if it is new.
+  const [focusedTab, setFocusedTab] = useState<string>('Feed');
+  const pendingHint = useDemoTutorialStore((s) => s.hintFor(focusedTab));
+  const markHintSeen = useDemoTutorialStore((s) => s.markHintSeen);
+  /** The hint showing on this visit; cleared when the user leaves the tab or dismisses it. */
+  const [visibleHint, setVisibleHint] = useState<TabHintKey | null>(null);
+
+  useEffect(() => {
+    setVisibleHint(null);
+  }, [focusedTab]);
+
+  useEffect(() => {
+    if (!pendingHint || createOpen) return;
+    // Let the tab transition settle first; count it as seen as soon as it is shown.
+    const t = setTimeout(() => {
+      setVisibleHint(pendingHint);
+      void markHintSeen(pendingHint);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [pendingHint, createOpen, markHintSeen]);
+
+  const fabSpin = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    spring(fabSpin, createOpen ? 1 : 0, 'snappy', reducedMotion).start();
+  }, [createOpen, fabSpin, reducedMotion]);
 
   const fabFeedback = usePressFeedback({
-    onPress: () => setCreateOpen(true),
+    onPress: () => setCreateOpen((open) => !open),
+    kind: 'impactLight',
+    pressedScale: 0.9,
   });
 
   const handleCreate = (action: CreateAction) => {
     setCreateOpen(false);
-    if (action === 'post') {
-      navigateFromRoot(navigation, 'Post');
-      return;
-    }
-    tabNavRef.current?.navigate('Journal', { openCompose: true });
+    // iOS drops a stack modal if it is presented while this sheet Modal is still dismissing.
+    const delay = action === 'journal' ? 80 : action === 'story' ? 450 : 320;
+    setTimeout(() => {
+      if (action === 'seed') {
+        if (SHOW_SEEDS) navigateFromRoot(navigation, 'PlantSeed');
+        return;
+      }
+      if (action === 'circle') {
+        if (SHOW_CIRCLES) navigateFromRoot(navigation, 'Circles');
+        return;
+      }
+      if (action === 'post') {
+        navigateFromRoot(navigation, 'Post');
+        return;
+      }
+      if (action === 'reel') {
+        navigateFromRoot(navigation, 'CreateReel');
+        return;
+      }
+      if (action === 'story') {
+        navigateFromRoot(navigation, 'CreateStory');
+        return;
+      }
+      tabNavRef.current?.navigate('Journal', { openCompose: true });
+    }, delay);
   };
 
   const bottomPad = Math.max(insets.bottom, 8);
@@ -132,24 +246,68 @@ export default function IndividualTabs() {
   return (
     <>
       <Tab.Navigator
-        screenOptions={{ headerShown: false }}
+        // Avoid blank tabs after shift animation (RN screens + native-driver activityState race).
+        detachInactiveScreens={false}
+        screenListeners={({ route }) => ({
+          focus: () => setFocusedTab(route.name),
+        })}
+        screenOptions={{
+          headerShown: false,
+          animation: 'shift',
+          transitionSpec: GrowTabTransitionSpec,
+          sceneStyleInterpolator: forGrowTabScene,
+          freezeOnBlur: false,
+        }}
         tabBar={(props) => {
           tabNavRef.current = props.navigation;
           const currentRoute = props.state.routes[props.state.index]?.name as string;
+          const pressTab = (key: DockTabKey) => {
+            const focused = currentRoute === key;
+            const route = props.state.routes.find((r) => r.name === key);
+            // Standard tabPress so screens can opt in with useScrollToTop (re-tap → top).
+            const event = route
+              ? props.navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                })
+              : undefined;
+            if (key === 'Feed' && focused) {
+              // Feed owns its own re-tap behaviour (scroll to top + refresh); no
+              // useScrollToTop on Feed, so this is the single handler.
+              useHomeTabStore.getState().requestTopAndRefresh();
+              return;
+            }
+            if (!focused && !event?.defaultPrevented) props.navigation.navigate(key);
+          };
 
           return (
             <View
               pointerEvents="box-none"
               style={[styles.dockWrap, { paddingBottom: bottomPad }]}
             >
-              <View style={styles.dock}>
+              {visibleHint && visibleHint === currentRoute && !showTutorial && !createOpen ? (
+                <View style={tw`mb-2.5 px-1`} pointerEvents="box-none">
+                  <TabHint hintKey={visibleHint} onDismiss={() => setVisibleHint(null)} />
+                </View>
+              ) : null}
+              <View
+                style={[
+                  styles.dock,
+                  {
+                    backgroundColor: theme.colors.card,
+                    // Light keeps the barely-there ink hairline; night needs the solid line token.
+                    borderColor: dark ? theme.colors.line : 'rgba(28,25,23,0.08)',
+                  },
+                ]}
+              >
                 <View style={[tw`flex-1 flex-row`, { height: TAB_HEIGHT }]}>
                   {DOCK_LEFT.map((tab) => (
                     <DockTabButton
                       key={tab.key}
                       tab={tab}
                       isActive={currentRoute === tab.key}
-                      onPress={() => props.navigation.navigate(tab.key)}
+                      onPress={() => pressTab(tab.key)}
                     />
                   ))}
                 </View>
@@ -162,9 +320,13 @@ export default function IndividualTabs() {
                     onPress={fabFeedback.onPress}
                     onPressIn={fabFeedback.onPressIn}
                     onPressOut={fabFeedback.onPressOut}
+                    onLongPress={() => {
+                      feedback.egg();
+                      setCreateOpen(true);
+                    }}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Create"
+                    accessibilityLabel={createOpen ? 'Close create' : 'Create'}
                   >
                     <Animated.View
                       style={[
@@ -173,7 +335,20 @@ export default function IndividualTabs() {
                         fabFeedback.animatedStyle,
                       ]}
                     >
-                      <Ionicons name="add" size={24} color="#FFFFFF" />
+                      <Animated.View
+                        style={{
+                          transform: [
+                            {
+                              rotate: fabSpin.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0deg', '45deg'],
+                              }),
+                            },
+                          ],
+                        }}
+                      >
+                        <Ionicons name="add" size={24} color="#FFFFFF" />
+                      </Animated.View>
                     </Animated.View>
                   </Pressable>
                 </View>
@@ -184,7 +359,7 @@ export default function IndividualTabs() {
                       key={tab.key}
                       tab={tab}
                       isActive={currentRoute === tab.key}
-                      onPress={() => props.navigation.navigate(tab.key)}
+                      onPress={() => pressTab(tab.key)}
                     />
                   ))}
                 </View>
@@ -214,6 +389,15 @@ export default function IndividualTabs() {
         onClose={() => setCreateOpen(false)}
         onSelect={handleCreate}
       />
+
+      {showTutorial ? (
+        <View
+          style={[StyleSheet.absoluteFill, { zIndex: 40, backgroundColor: theme.colors.page }]}
+          pointerEvents="auto"
+        >
+          <DemoTutorial onCheckIn={() => tabNavRef.current?.navigate('Feed')} />
+        </View>
+      ) : null}
     </>
   );
 }
@@ -231,12 +415,10 @@ const styles = StyleSheet.create({
   dock: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFcf7',
-    borderRadius: 28,
+    borderRadius: radius.hero,
     paddingVertical: 6,
     paddingHorizontal: 4,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(28,25,23,0.08)',
     ...Platform.select({
       ios: {
         shadowColor: '#1C1917',

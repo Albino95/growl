@@ -1,44 +1,53 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Modal,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProducts, setSelectedCategory } from '../../store/slices/marketplaceSlice';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
+import { useRefresh } from '../../hooks/useRefresh';
 import type { Product as ApiProduct } from '../../services/api/marketplace';
-import { getProductImageUrl } from '../../utils/images';
+import { resolveProductImageUri } from '../../utils/images';
 import EmptyState from '../../components/ui/EmptyState';
 import SearchField from '../../components/ui/SearchField';
 import SectionLabel from '../../components/ui/SectionLabel';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import MarketplaceCategoryBar from '../../components/marketplace/MarketplaceCategoryBar';
+import PressableScale from '../../components/ui/PressableScale';
+import FadeInUp from '../../components/ui/FadeInUp';
+import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
 import { horizontalScrollProps, feedListPerformanceProps } from '../../constants/scroll';
 import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking';
 import CATEGORIES from '../../data/categories';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { feedback, toggleFeedback } from '../../utils/interactionFeedback';
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const { products, selectedCategory, isLoading, error } = useAppSelector((state) => state.marketplace);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [failedProductImages, setFailedProductImages] = useState<Record<string, boolean>>({});
+
+  const productThumb = (item: ApiProduct) => {
+    if (failedProductImages[item.id]) return '';
+    return resolveProductImageUri(item.image_url, item.images);
+  };
   const [filterOpen, setFilterOpen] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [onMyPathsOnly, setOnMyPathsOnly] = useState(false);
@@ -60,14 +69,14 @@ export default function MarketplaceScreen() {
   );
 
   useEffect(() => {
-    dispatch(fetchProducts(fetchParams));
+    const request = dispatch(fetchProducts(fetchParams));
+    // Abort the superseded search when the query changes or the screen unmounts.
+    return () => request.abort();
   }, [dispatch, fetchParams]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await dispatch(fetchProducts(fetchParams));
-    setRefreshing(false);
-  };
+  const refresh = useRefresh(() => dispatch(fetchProducts(fetchParams)));
+  const listRef = useRef<FlatList<(typeof searchFiltered)[number]>>(null);
+  useScrollToTop(listRef);
 
   const handleCategoryChange = (category: string | null) => {
     setSelectedSubcategory(null);
@@ -208,38 +217,48 @@ export default function MarketplaceScreen() {
   })();
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <View style={tw`flex-1`}>
         <GrowChromeHeader
           right={
             <>
-              <TouchableOpacity
-                onPress={() => setFilterOpen(true)}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+              <PressableScale
+                hitSlop={4}
+                onPress={() => {
+                  feedback.open();
+                  setFilterOpen(true);
+                }}
+                feedback={false}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+                accessibilityRole="button"
                 accessibilityLabel="Open filters"
               >
-                <Ionicons name="options-outline" size={17} color="#059669" />
-              </TouchableOpacity>
-              <TouchableOpacity
+                <Ionicons name="options-outline" size={17} color={theme.colors.brand} />
+              </PressableScale>
+              <PressableScale
+                hitSlop={4}
                 onPress={() => {
+                  feedback.open();
                   const rootNavigation = navigation.getParent() || navigation;
                   rootNavigation.navigate('UserOrders' as never);
                 }}
-                style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+                feedback={false}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+                accessibilityRole="button"
                 accessibilityLabel="Your orders"
               >
-                <Ionicons name="receipt-outline" size={17} color="#059669" />
-              </TouchableOpacity>
+                <Ionicons name="receipt-outline" size={17} color={theme.colors.brand} />
+              </PressableScale>
             </>
           }
         />
 
-        <View style={tw`px-5 pt-3 pb-2`}>
-          <Text style={tw`text-lg font-bold text-stone-900 mb-0.5`}>Shop</Text>
-          <Text style={tw`text-sm text-stone-500 mb-2`}>
+        <FadeInUp style={tw`px-gutter-wide pt-3 pb-2`}>
+          <Text style={tw`text-lg font-bold text-ink mb-0.5`}>Shop</Text>
+          <Text style={tw`text-sm text-ink-3 mb-2`}>
             Gear ranked for your growth paths — filter with the capsules below.
           </Text>
-        </View>
+        </FadeInUp>
 
         <MarketplaceCategoryBar
           categoryKeys={categories}
@@ -252,159 +271,159 @@ export default function MarketplaceScreen() {
           onSelectSubcategory={setSelectedSubcategory}
         />
 
-        {isLoading && products.length === 0 ? (
-          <View style={tw`flex-1 px-4 pt-3`}>
-            <SkeletonCard variant="product" />
-            <SkeletonCard variant="product" />
-            <SkeletonCard variant="product" />
-          </View>
-        ) : (
-          <FlatList
-            data={searchFiltered}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={tw`px-4 pt-3 pb-24`}
-            {...feedListPerformanceProps}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing || isLoading}
-                onRefresh={onRefresh}
-                tintColor="#059669"
-                colors={['#059669']}
+        {/* Keep the FlatList (and the SearchField in its header) mounted while loading so
+            typing a search doesn't unmount the input and dismiss the keyboard. */}
+        <FlatList
+          ref={listRef}
+          data={searchFiltered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={tw`px-gutter pt-3 pb-24`}
+          {...feedListPerformanceProps}
+          refreshControl={
+            <RefreshControl {...refresh} refreshing={refresh.refreshing || isLoading} />
+          }
+          ListHeaderComponent={
+            <>
+              <FadeInUp style={tw`mb-4 rounded-card overflow-hidden bg-emerald-600 px-5 py-5`}>
+                <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
+                <Text style={tw`text-emerald-100 text-sm mt-1`}>
+                  Products ranked by your interests and community picks.
+                </Text>
+              </FadeInUp>
+              <SearchField
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search products"
               />
-            }
-            ListHeaderComponent={
-              <>
-                <View style={tw`mb-4 rounded-2xl overflow-hidden bg-emerald-700 px-5 py-5`}>
-                  <Text style={tw`text-white text-xl font-bold`}>Curated for your path</Text>
-                  <Text style={tw`text-emerald-100 text-sm mt-1`}>
-                    Products ranked by your interests and community picks.
-                  </Text>
+              {hasActiveFilters && (
+                <View style={tw`flex-row flex-wrap mt-2`}>
+                  {inStockOnly ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
+                    </View>
+                  ) : null}
+                  {onMyPathsOnly ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
+                    </View>
+                  ) : null}
+                  {minPrice != null ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
+                    </View>
+                  ) : null}
+                  {maxPrice != null ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
+                    </View>
+                  ) : null}
+                  {sortBy !== 'relevance' ? (
+                    <View style={tw`px-3 py-1 bg-emerald-100 rounded-chip mr-2 mb-1`}>
+                      <Text style={tw`text-xs text-emerald-800 font-medium`}>
+                        {sortBy === 'price_asc'
+                          ? 'Price ↑'
+                          : sortBy === 'price_desc'
+                            ? 'Price ↓'
+                            : 'Newest'}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <SearchField
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Search products"
-                />
-                {hasActiveFilters && (
-                  <View style={tw`flex-row flex-wrap mt-2`}>
-                    {inStockOnly ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>In stock</Text>
-                      </View>
-                    ) : null}
-                    {onMyPathsOnly ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>My paths</Text>
-                      </View>
-                    ) : null}
-                    {minPrice != null ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>From ${minPrice}</Text>
-                      </View>
-                    ) : null}
-                    {maxPrice != null ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>Under ${maxPrice}</Text>
-                      </View>
-                    ) : null}
-                    {sortBy !== 'relevance' ? (
-                      <View style={tw`px-3 py-1 bg-emerald-100 rounded-full mr-2 mb-1`}>
-                        <Text style={tw`text-xs text-emerald-800 font-medium`}>
-                          {sortBy === 'price_asc'
-                            ? 'Price ↑'
-                            : sortBy === 'price_desc'
-                              ? 'Price ↓'
-                              : 'Newest'}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                )}
-                {carouselProducts.length > 0 && !searchQuery.trim() ? (
-                  <View style={tw`mt-4 mb-2`}>
-                    <SectionLabel variant="caps">Recommended for you</SectionLabel>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={tw`pt-2 pb-1`}
-                      style={{ flexGrow: 0 }}
-                      {...horizontalScrollProps}
-                    >
-                      {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
-                        const defaultImage =
-                          item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
-                        const productImage = failedProductImages[item.id]
-                          ? `https://picsum.photos/seed/fallback-product-${encodeURIComponent(item.id)}/600/600`
-                          : defaultImage;
-                        return (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={tw`w-40 mr-3 bg-white border border-stone-100 rounded-2xl overflow-hidden`}
-                            onPress={() => {
-                              const rootNavigation = navigation.getParent() || navigation;
-                              (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
-                                'ProductDetail',
-                                { productId: item.id }
-                              );
-                            }}
-                          >
+              )}
+              {carouselProducts.length > 0 && !searchQuery.trim() ? (
+                <View style={tw`mt-4 mb-2`}>
+                  <SectionLabel variant="caps">Recommended for you</SectionLabel>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={tw`pt-2 pb-1`}
+                    style={{ flexGrow: 0 }}
+                    {...horizontalScrollProps}
+                  >
+                    {carouselProducts.map((item: RankedProduct<ApiProduct>) => {
+                      const productImage = productThumb(item);
+                      return (
+                        <PressableScale
+                          key={item.id}
+                          feedback="open"
+                          pressedScale={0.97}
+                          style={tw`w-40 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
+                          onPress={() => {
+                            const rootNavigation = navigation.getParent() || navigation;
+                            (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
+                              'ProductDetail',
+                              { productId: item.id, preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username } }
+                            );
+                          }}
+                        >
+                          {productImage ? (
                             <Image
                               source={{ uri: productImage }}
-                              style={tw`w-full h-48 bg-stone-100`}
+                              style={tw`w-full h-48 bg-raised`}
                               contentFit="cover"
+                              onError={() => {
+                                setFailedProductImages((prev) =>
+                                  prev[item.id] ? prev : { ...prev, [item.id]: true }
+                                );
+                              }}
                             />
-                            <View style={tw`p-2.5`}>
-                              <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
-                                {item.name}
-                              </Text>
-                              <Text style={tw`text-base font-bold text-brand-700 mt-1`}>
-                                ${item.price.toFixed(2)}
-                              </Text>
-                              {item.matchLabel ? (
-                                <Text style={tw`text-[10px] text-brand-600 mt-0.5`} numberOfLines={1}>
-                                  {item.matchLabel}
-                                </Text>
-                              ) : item.isNew ? (
-                                <Text style={tw`text-[10px] text-violet-600 mt-0.5`}>New</Text>
-                              ) : null}
+                          ) : (
+                            <View style={tw`w-full h-48 bg-raised items-center justify-center`}>
+                              <Ionicons name="image-outline" size={iconSize.lg} color={theme.colors.iconMuted} />
                             </View>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                ) : null}
-                <SectionLabel variant="caps">
-                  {selectedCategory
-                    ? getCategoryLabel(
-                        selectedSubcategory
-                          ? `${selectedCategory}:${selectedSubcategory}`
-                          : selectedCategory
-                      )
-                    : 'All products'}
-                </SectionLabel>
-              </>
-            }
-            renderItem={({ item }) => {
-              const defaultImage = item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
-              const productImage = failedProductImages[item.id]
-                ? `https://picsum.photos/seed/fallback-product-${encodeURIComponent(item.id)}/600/600`
-                : defaultImage;
-              return (
-                <TouchableOpacity
-                  style={tw`bg-white border border-stone-100 rounded-2xl p-4 mb-3`}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    const rootNavigation = navigation.getParent() || navigation;
-                    (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
-                      productId: item.id,
-                    });
-                  }}
-                >
-                  <View style={tw`flex-row`}>
+                          )}
+                          <View style={tw`p-2.5`}>
+                            <Text style={tw`text-sm font-semibold text-ink`} numberOfLines={2}>
+                              {item.name}
+                            </Text>
+                            <Text style={tw`text-base font-bold text-brand-700 mt-1`}>
+                              ${item.price.toFixed(2)}
+                            </Text>
+                            {item.matchLabel ? (
+                              <Text style={tw`text-caption text-brand-700 mt-0.5`} numberOfLines={1}>
+                                {item.matchLabel}
+                              </Text>
+                            ) : item.isNew ? (
+                              <Text style={tw`text-caption text-violet-600 mt-0.5`}>New</Text>
+                            ) : null}
+                          </View>
+                        </PressableScale>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : null}
+              <SectionLabel variant="caps">
+                {selectedCategory
+                  ? getCategoryLabel(
+                      selectedSubcategory
+                        ? `${selectedCategory}:${selectedSubcategory}`
+                        : selectedCategory
+                    )
+                  : 'All products'}
+              </SectionLabel>
+            </>
+          }
+          renderItem={({ item }) => {
+            const productImage = productThumb(item);
+            return (
+              <PressableScale
+                style={tw`bg-card border border-line/80 rounded-card p-4 mb-3`}
+                feedback="open"
+                pressedScale={0.985}
+                onPress={() => {
+                  const rootNavigation = navigation.getParent() || navigation;
+                  (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
+                    productId: item.id,
+                    preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username },
+                  });
+                }}
+              >
+                <View style={tw`flex-row`}>
+                  {productImage ? (
                     <Image
                       source={{ uri: productImage }}
-                      style={[tw`rounded-xl mr-3 bg-stone-100`, { width: 96, height: 120 }]}
+                      style={[tw`rounded-control mr-3 bg-raised`, { width: 96, height: 120 }]}
                       contentFit="cover"
                       transition={150}
                       onError={() => {
@@ -413,119 +432,138 @@ export default function MarketplaceScreen() {
                         );
                       }}
                     />
-                    <View style={tw`flex-1`}>
-                      <Text style={tw`text-base font-semibold text-stone-900 mb-1`} numberOfLines={2}>
-                        {item.name}
-                      </Text>
-                      <Text style={tw`text-sm text-stone-500 mb-2`} numberOfLines={2}>
-                        {item.description || 'Tap for details'}
-                      </Text>
-                      <View style={tw`flex-row items-center justify-between`}>
-                        <View style={tw`flex-row items-center flex-wrap gap-1`}>
-                          {item.isNew ? (
-                            <View style={tw`px-2 py-0.5 bg-violet-50 rounded-full`}>
-                              <Text style={tw`text-xs font-medium text-violet-700`}>New</Text>
-                            </View>
-                          ) : null}
-                          {item.stock > 0 ? (
-                            <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-full`}>
-                              <Text style={tw`text-xs font-medium text-emerald-800`}>In stock</Text>
-                            </View>
-                          ) : (
-                            <View style={tw`px-2 py-0.5 bg-red-50 rounded-full`}>
-                              <Text style={tw`text-xs font-medium text-red-700`}>Sold out</Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={tw`text-lg font-bold text-emerald-700`}>${item.price.toFixed(2)}</Text>
-                      </View>
-                      {item.matchLabel ? (
-                        <Text style={tw`text-xs text-brand-600 mt-1`} numberOfLines={1}>
-                          {item.matchLabel}
-                        </Text>
-                      ) : null}
+                  ) : (
+                    <View
+                      style={[
+                        tw`rounded-control mr-3 bg-raised items-center justify-center`,
+                        { width: 96, height: 120 },
+                      ]}
+                    >
+                      <Ionicons name="image-outline" size={24} color={theme.colors.iconMuted} />
                     </View>
+                  )}
+                  <View style={tw`flex-1`}>
+                    <Text style={tw`text-base font-semibold text-ink mb-1`} numberOfLines={2}>
+                      {item.name}
+                    </Text>
+                    <Text style={tw`text-sm text-ink-3 mb-2`} numberOfLines={2}>
+                      {item.description || 'Tap for details'}
+                    </Text>
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <View style={tw`flex-row items-center flex-wrap gap-1`}>
+                        {item.isNew ? (
+                          <View style={tw`px-2 py-0.5 bg-violet-50 rounded-chip`}>
+                            <Text style={tw`text-xs font-medium text-violet-700`}>New</Text>
+                          </View>
+                        ) : null}
+                        {item.stock > 0 ? (
+                          <View style={tw`px-2 py-0.5 bg-emerald-50 rounded-chip`}>
+                            <Text style={tw`text-xs font-medium text-emerald-800`}>In stock</Text>
+                          </View>
+                        ) : (
+                          <View style={tw`px-2 py-0.5 bg-red-50 rounded-chip`}>
+                            <Text style={tw`text-xs font-medium text-red-700`}>Sold out</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={tw`text-lg font-bold text-emerald-700`}>${item.price.toFixed(2)}</Text>
+                    </View>
+                    {item.matchLabel ? (
+                      <Text style={tw`text-xs text-brand-700 mt-1`} numberOfLines={1}>
+                        {item.matchLabel}
+                      </Text>
+                    ) : null}
                   </View>
-                </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              error ? (
-                <EmptyState
-                  icon="cloud-offline-outline"
-                  title="Couldn’t load products"
-                  description={error}
-                  actionLabel="Try again"
-                  onAction={() => dispatch(fetchProducts(fetchParams))}
-                />
-              ) : searchQuery.trim() ? (
-                <EmptyState
-                  icon="search-outline"
-                  title="No matches"
-                  description={`Nothing found for “${searchQuery.trim()}”. Try another word or clear filters.`}
-                  actionLabel="Clear search"
-                  onAction={() => setSearchQuery('')}
-                />
-              ) : selectedCategory ? (
-                <EmptyState
-                  icon="filter-outline"
-                  title="No products in this path"
-                  description={emptyDescription}
-                  actionLabel="Clear category"
-                  onAction={clearCategoryFilters}
-                />
-              ) : (
-                <EmptyState
-                  icon="storefront-outline"
-                  title="No products yet"
-                  description={emptyDescription}
-                />
-              )
-            }
-          />
-        )}
+                </View>
+              </PressableScale>
+            );
+          }}
+          ListEmptyComponent={
+            isLoading && products.length === 0 ? (
+              <View>
+                <SkeletonCard variant="product" />
+                <SkeletonCard variant="product" />
+                <SkeletonCard variant="product" />
+              </View>
+            ) : error ? (
+              <ErrorState
+                title="Couldn’t load products"
+                message={error}
+                onRetry={() => dispatch(fetchProducts(fetchParams))}
+              />
+            ) : searchQuery.trim() ? (
+              <EmptyState
+                icon="search-outline"
+                title="No matches"
+                description={`Nothing found for “${searchQuery.trim()}”. Try another word or clear filters.`}
+                actionLabel="Clear search"
+                onAction={() => setSearchQuery('')}
+              />
+            ) : selectedCategory ? (
+              <EmptyState
+                icon="filter-outline"
+                title="No products in this path"
+                description={emptyDescription}
+                actionLabel="Clear category"
+                onAction={clearCategoryFilters}
+              />
+            ) : (
+              <EmptyState
+                icon="storefront-outline"
+                title="No products yet"
+                description={emptyDescription}
+              />
+            )
+          }
+        />
       </View>
 
-      <Modal visible={filterOpen} animationType="slide" transparent onRequestClose={() => setFilterOpen(false)}>
-        <View style={tw`flex-1 justify-end bg-black/40`}>
-          <View style={tw`bg-[#F3EEE4] rounded-t-3xl px-5 pt-5 pb-10 max-h-[88%]`}>
+      <AnimatedBottomSheet visible={filterOpen} onClose={() => setFilterOpen(false)}>
+        {({ close }) => (
+          <View style={tw`px-gutter-wide pt-1 pb-2`}>
             <View style={tw`flex-row items-center justify-between mb-4`}>
               <View>
-                <Text style={tw`text-[11px] font-semibold tracking-widest text-emerald-700 uppercase`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
                   Grow! Shop
                 </Text>
-                <Text style={tw`text-lg font-bold text-stone-900`}>Filters</Text>
+                <Text style={tw`text-lg font-bold text-ink`}>Filters</Text>
               </View>
-              <TouchableOpacity onPress={() => setFilterOpen(false)}>
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
+              <PressableScale onPress={close} feedback={false} accessibilityRole="button" accessibilityLabel="Close filters">
+                <Ionicons name="close" size={24} color={theme.colors.ink3} />
+              </PressableScale>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-line/80`}>
                 <Text style={tw`text-base text-stone-800`}>In stock only</Text>
                 <Switch
                   value={inStockOnly}
-                  onValueChange={setInStockOnly}
-                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
-                  thumbColor={inStockOnly ? '#059669' : '#F5F5F4'}
+                  onValueChange={(v) => {
+                    toggleFeedback(v);
+                    setInStockOnly(v);
+                  }}
+                  trackColor={{ false: theme.colors.line, true: tw.color('emerald-200') }}
+                  thumbColor={inStockOnly ? theme.colors.brand : '#F5F5F4'}
                 />
               </View>
 
-              <View style={tw`flex-row items-center justify-between py-3 border-b border-stone-200/80`}>
+              <View style={tw`flex-row items-center justify-between py-3 border-b border-line/80`}>
                 <View style={tw`flex-1 pr-4`}>
                   <Text style={tw`text-base text-stone-800`}>On my growth paths</Text>
-                  <Text style={tw`text-xs text-stone-500 mt-0.5`}>Only products in your interest areas</Text>
+                  <Text style={tw`text-xs text-ink-3 mt-0.5`}>Only products in your interest areas</Text>
                 </View>
                 <Switch
                   value={onMyPathsOnly}
-                  onValueChange={setOnMyPathsOnly}
-                  trackColor={{ false: '#E7E5E4', true: '#A7F3D0' }}
-                  thumbColor={onMyPathsOnly ? '#059669' : '#F5F5F4'}
+                  onValueChange={(v) => {
+                    toggleFeedback(v);
+                    setOnMyPathsOnly(v);
+                  }}
+                  trackColor={{ false: theme.colors.line, true: tw.color('emerald-200') }}
+                  thumbColor={onMyPathsOnly ? theme.colors.brand : '#F5F5F4'}
                 />
               </View>
 
-              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Sort by</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mt-4 mb-2`}>Sort by</Text>
               <View style={tw`flex-row flex-wrap`}>
                 {(
                   [
@@ -535,104 +573,128 @@ export default function MarketplaceScreen() {
                     { key: 'price_desc', label: 'Price ↓' },
                   ] as const
                 ).map((opt) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={opt.key}
-                    onPress={() => setSortBy(opt.key)}
-                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                      sortBy === opt.key ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    onPress={() => {
+                      feedback.select();
+                      setSortBy(opt.key);
+                    }}
+                    feedback={false}
+                    style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                      sortBy === opt.key ? 'bg-emerald-600' : 'bg-card border border-line'
                     }`}
                   >
                     <Text
                       style={tw`text-sm font-medium ${
-                        sortBy === opt.key ? 'text-white' : 'text-stone-600'
+                        sortBy === opt.key ? 'text-white' : 'text-ink-2'
                       }`}
                     >
                       {opt.label}
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
-              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Min price</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mt-4 mb-2`}>Min price</Text>
               <View style={tw`flex-row flex-wrap`}>
-                <TouchableOpacity
-                  onPress={() => setMinPrice(null)}
-                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                    minPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                <PressableScale
+                  onPress={() => {
+                    feedback.select();
+                    setMinPrice(null);
+                  }}
+                  feedback={false}
+                  style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                    minPrice == null ? 'bg-emerald-600' : 'bg-card border border-line'
                   }`}
                 >
                   <Text
-                    style={tw`text-sm font-medium ${minPrice == null ? 'text-white' : 'text-stone-600'}`}
+                    style={tw`text-sm font-medium ${minPrice == null ? 'text-white' : 'text-ink-2'}`}
                   >
                     Any
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
                 {minPriceTiers.map((tier) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={tier}
-                    onPress={() => setMinPrice(tier)}
-                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                      minPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    onPress={() => {
+                      feedback.select();
+                      setMinPrice(tier);
+                    }}
+                    feedback={false}
+                    style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                      minPrice === tier ? 'bg-emerald-600' : 'bg-card border border-line'
                     }`}
                   >
                     <Text
                       style={tw`text-sm font-medium ${
-                        minPrice === tier ? 'text-white' : 'text-stone-600'
+                        minPrice === tier ? 'text-white' : 'text-ink-2'
                       }`}
                     >
                       ${tier}+
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
-              <Text style={tw`text-sm font-semibold text-stone-700 mt-4 mb-2`}>Max price</Text>
+              <Text style={tw`text-sm font-semibold text-ink-2 mt-4 mb-2`}>Max price</Text>
               <View style={tw`flex-row flex-wrap`}>
-                <TouchableOpacity
-                  onPress={() => setMaxPrice(null)}
-                  style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                    maxPrice == null ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                <PressableScale
+                  onPress={() => {
+                    feedback.select();
+                    setMaxPrice(null);
+                  }}
+                  feedback={false}
+                  style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                    maxPrice == null ? 'bg-emerald-600' : 'bg-card border border-line'
                   }`}
                 >
                   <Text
-                    style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-stone-600'}`}
+                    style={tw`text-sm font-medium ${maxPrice == null ? 'text-white' : 'text-ink-2'}`}
                   >
                     Any
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
                 {priceTiers.map((tier) => (
-                  <TouchableOpacity
+                  <PressableScale
                     key={tier}
-                    onPress={() => setMaxPrice(tier)}
-                    style={tw`px-4 py-2 rounded-full mr-2 mb-2 ${
-                      maxPrice === tier ? 'bg-emerald-600' : 'bg-white border border-stone-200'
+                    onPress={() => {
+                      feedback.select();
+                      setMaxPrice(tier);
+                    }}
+                    feedback={false}
+                    style={tw`px-4 py-2 rounded-chip mr-2 mb-2 ${
+                      maxPrice === tier ? 'bg-emerald-600' : 'bg-card border border-line'
                     }`}
                   >
                     <Text
                       style={tw`text-sm font-medium ${
-                        maxPrice === tier ? 'text-white' : 'text-stone-600'
+                        maxPrice === tier ? 'text-white' : 'text-ink-2'
                       }`}
                     >
                       Under ${tier}
                     </Text>
-                  </TouchableOpacity>
+                  </PressableScale>
                 ))}
               </View>
 
-              <TouchableOpacity onPress={clearShopFilters} style={tw`mt-4 py-3 items-center`}>
+              <PressableScale onPress={clearShopFilters} feedback="selection" style={tw`mt-4 py-3 items-center`}>
                 <Text style={tw`text-emerald-700 font-semibold`}>Clear filters</Text>
-              </TouchableOpacity>
+              </PressableScale>
 
-              <TouchableOpacity
-                onPress={() => setFilterOpen(false)}
-                style={tw`mt-2 py-3.5 bg-emerald-600 rounded-2xl items-center mb-2`}
+              <PressableScale
+                onPress={() => {
+                  feedback.success();
+                  close();
+                }}
+                feedback={false}
+                style={tw`mt-2 py-3.5 bg-emerald-600 rounded-card items-center mb-2`}
               >
                 <Text style={tw`text-white font-semibold`}>Show results</Text>
-              </TouchableOpacity>
+              </PressableScale>
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+        )}
+      </AnimatedBottomSheet>
     </SafeAreaView>
   );
 }

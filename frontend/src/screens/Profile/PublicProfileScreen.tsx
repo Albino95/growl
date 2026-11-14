@@ -1,23 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
+  Animated,
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   Alert,
   Modal,
   Pressable,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { groupGrowthPaths } from '../../utils/categoryLabels';
-import tw from '../../lib/tw';
+import { getCategoryLabel, groupGrowthPaths } from '../../utils/categoryLabels';
+import tw, { theme } from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
+import ProfileHeaderSkeleton from '../../components/profile/ProfileHeaderSkeleton';
 import {
   addFriend,
   removeFriend,
@@ -29,19 +33,38 @@ import {
   reportUser,
 } from '../../services/api/friends';
 import { getUserPosts, type FeedPost } from '../../services/api/feed';
-import { getUserStories, viewStory, type StoryItem } from '../../services/api/stories';
-import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri } from '../../utils/images';
+import { openReelsAtPost, isReelPost } from '../../utils/reelNavigation';
+import { isVideoPostMedia, reelCoverUri } from '../../utils/reelCover';
+import { getUserStories, type StoryItem } from '../../services/api/stories';
+import { resolveAvatarUri, resolveStoryDisplayUri, resolvePostMediaUri, avatarSource } from '../../utils/images';
 import { getPublicProfile, type PublicProfileSummary } from '../../services/api/profile';
 import { getUserPublicJournalEntries } from '../../services/api/journal';
 import { createConversation } from '../../services/api/messages';
 import {
   endorseCandidate,
   getEndorsementStatus,
+  requestEndorsement,
+  respondToEndorsementRequest,
   type EndorsementStatus,
 } from '../../services/api/instructor';
+import InstructorOfferCard from '../../components/instructor/InstructorOfferCard';
+import { StarRow } from '../../components/instructor/StarRating';
+import { openCoachingReachOut } from '../../utils/coachingReachOut';
 import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import EmptyState from '../../components/ui/EmptyState';
+import ProfilePostsGrid from '../../components/profile/ProfilePostsGrid';
 import { alertMessage } from '../../utils/confirmDialog';
+import { toast } from '../../state/useToastStore';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { feedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { haptic } from '../../theme/haptics';
+import { spring } from '../../theme/motion';
+import PressableScale from '../../components/ui/PressableScale';
+import BadgeRow from '../../components/badges/BadgeRow';
+import LevelPill from '../../components/badges/LevelPill';
+import { getUserBadges, type GrowthLevel } from '../../services/api/growth';
 
 type Post = {
   id: string;
@@ -51,6 +74,11 @@ type Post = {
   comments: number;
   createdAt: string;
   category: string;
+  subcategory?: string;
+  isReel?: boolean;
+  isVideo?: boolean;
+  cover?: string;
+  hasLiked?: boolean;
 };
 
 type Story = {
@@ -78,6 +106,7 @@ type PublicUser = PublicProfileSummary;
 type RouteParams = {
   PublicProfile: {
     userId: string;
+    preview?: { username?: string; displayName?: string; avatarUrl?: string | null };
   };
 };
 
@@ -91,6 +120,11 @@ function mapFeedPostToPublicPost(p: FeedPost): Post {
     comments: p.metadata?.comments ?? 0,
     createdAt: p.created_at,
     category: p.category,
+    subcategory: p.subcategory || undefined,
+    isReel: isReelPost(p),
+    isVideo: isVideoPostMedia(p),
+    cover: reelCoverUri(p.metadata as Record<string, unknown> | null | undefined) || undefined,
+    hasLiked: !!p.metadata?.has_liked,
   };
 }
 
@@ -109,9 +143,9 @@ function mapStoryItemToStory(s: StoryItem): Story {
 }
 
 /** Fetches and maps public posts for the selected profile user. */
-async function fetchUserPosts(userId: string): Promise<Post[]> {
+async function fetchUserPosts(userId: string): Promise<{ cards: Post[]; raw: FeedPost[] }> {
   const list = await getUserPosts(userId);
-  return list.map(mapFeedPostToPublicPost);
+  return { cards: list.map(mapFeedPostToPublicPost), raw: list };
 }
 
 /** Fetches and maps profile stories for story strip + viewer navigation. */
@@ -138,16 +172,19 @@ export default function PublicProfileScreen() {
   const { user: currentUser, updateUser } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PublicProfile'>>();
-  const { userId } = route.params;
+  const { userId, preview } = route.params;
   
   const [loading, setLoading] = useState(true);
   const [profileUser, setProfileUser] = useState<PublicUser | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'stories' | 'journal'>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [sourcePosts, setSourcePosts] = useState<FeedPost[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
   const [friendConnected, setFriendConnected] = useState(false);
+  const friendMorph = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
   const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [friendRequestReceived, setFriendRequestReceived] = useState(false);
   const [friendBusy, setFriendBusy] = useState(false);
@@ -157,12 +194,44 @@ export default function PublicProfileScreen() {
   const [messageBusy, setMessageBusy] = useState(false);
   const [endorseStatus, setEndorseStatus] = useState<EndorsementStatus | null>(null);
   const [endorseBusy, setEndorseBusy] = useState(false);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+  const [profileError, setProfileError] = useState<'not_found' | 'error' | null>(null);
+  const [publicBadges, setPublicBadges] = useState<{
+    earned: { id: string; earned_at: string }[];
+    level: GrowthLevel | null;
+  } | null>(null);
+  // Latest route userId; responses for a previous user are ignored.
+  const currentUserIdRef = useRef(userId);
+  currentUserIdRef.current = userId;
 
   const isOwnProfile = currentUser?.id === userId;
 
-  // Reload profile shell when route user changes.
+  // Reload profile shell + first tab content together when route user changes.
   useEffect(() => {
-    loadProfile();
+    setPosts([]);
+    setStories([]);
+    setJournalEntries([]);
+    void loadProfile();
+    void prefetchPrimaryContent();
+  }, [userId]);
+
+  // Level + earned badges (public). Endpoint may 404 until deployed — hide quietly.
+  useEffect(() => {
+    let alive = true;
+    setPublicBadges(null);
+    getUserBadges(userId)
+      .then((res) => {
+        if (!alive || !res) return;
+        setPublicBadges({
+          earned: Array.isArray(res.earned) ? res.earned : [],
+          level: res.level && typeof res.level.points === 'number' ? res.level : null,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
   }, [userId]);
 
   // Relationship status drives follow button and moderation toggle labels.
@@ -174,15 +243,19 @@ export default function PublicProfileScreen() {
       return;
     }
     let cancelled = false;
-    getFriendshipStatus(userId).then((s) => {
-      if (!cancelled) {
-        setFriendConnected(s.connected);
-        setFriendRequestSent(s.requestSent);
-        setFriendRequestReceived(s.requestReceived);
-        setIsBlocked(s.blocked);
-        setIsMuted(s.muted);
-      }
-    });
+    getFriendshipStatus(userId)
+      .then((s) => {
+        if (!cancelled) {
+          setFriendConnected(s.connected);
+          setFriendRequestSent(s.requestSent);
+          setFriendRequestReceived(s.requestReceived);
+          setIsBlocked(s.blocked);
+          setIsMuted(s.muted);
+        }
+      })
+      .catch(() => {
+        // Keep local defaults when status lookup fails.
+      });
     return () => {
       cancelled = true;
     };
@@ -211,6 +284,7 @@ export default function PublicProfileScreen() {
     setEndorseBusy(true);
     try {
       const result = await endorseCandidate(userId);
+      feedback.success();
       if (typeof result.points_total_voter === 'number') {
         updateUser({ points: result.points_total_voter });
       }
@@ -221,77 +295,142 @@ export default function PublicProfileScreen() {
               canEndorse: false,
               alreadyEndorsed: true,
               endorsementCount: result.endorsementCount,
+              pendingIncoming: false,
+              canRequestEndorsement: false,
             }
           : prev
       );
-      alertMessage('Endorsed', `Thanks — ${profileUser?.username ?? 'they'} received your endorsement. You earned growth points too.`);
+      toast.success(`Endorsed ${profileUser?.username ?? 'them'} · points earned`);
     } catch (e) {
+      feedback.error();
       alertMessage('Could not endorse', e instanceof Error ? e.message : 'Try again later');
     } finally {
       setEndorseBusy(false);
     }
   };
 
-  /** Handles friend request send/cancel/accept and remove-friend actions. */
+  const onRequestEndorsement = async () => {
+    if (requestBusy || !endorseStatus?.canRequestEndorsement) return;
+    setRequestBusy(true);
+    try {
+      await requestEndorsement(userId);
+      feedback.send();
+      setEndorseStatus((prev) =>
+        prev
+          ? { ...prev, canRequestEndorsement: false, pendingOutgoing: true }
+          : prev
+      );
+      toast.success('Endorsement request sent');
+    } catch (e) {
+      feedback.error();
+      alertMessage('Could not request', e instanceof Error ? e.message : 'Try again later');
+    } finally {
+      setRequestBusy(false);
+    }
+  };
+
+  const onRespondIncomingRequest = async (status: 'accepted' | 'declined') => {
+    if (!endorseStatus?.pendingIncomingRequestId || endorseBusy) return;
+    setEndorseBusy(true);
+    try {
+      await respondToEndorsementRequest(endorseStatus.pendingIncomingRequestId, status);
+      feedback.success();
+      setEndorseStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              canEndorse: status === 'accepted' ? false : prev.canEndorse,
+              alreadyEndorsed: status === 'accepted' ? true : prev.alreadyEndorsed,
+              pendingIncoming: false,
+              pendingIncomingRequestId: null,
+              endorsementCount:
+                status === 'accepted'
+                  ? (prev.endorsementCount || 0) + 1
+                  : prev.endorsementCount,
+            }
+          : prev
+      );
+      if (status === 'accepted') toast.success(`You endorsed ${profileUser?.username ?? 'them'}`);
+      else toast.info('Declined · they won’t be notified');
+    } catch (e) {
+      feedback.error();
+      alertMessage('Could not respond', e instanceof Error ? e.message : 'Try again');
+    } finally {
+      setEndorseBusy(false);
+    }
+  };
+
+  /**
+   * Handles friend request send/cancel/accept and remove-friend actions.
+   * Optimistic: the button label morphs immediately; the server call runs
+   * behind it and the previous state is restored (with an alert) on failure.
+   */
   const onToggleFriend = async () => {
     if (friendBusy || isOwnProfile) return;
     if (isBlocked) {
-      Alert.alert('Blocked user', 'Unblock this user before connecting.');
+      void alertMessage('Blocked user', 'Unblock this user before connecting.');
       return;
     }
+    const prev = {
+      connected: friendConnected,
+      sent: friendRequestSent,
+      received: friendRequestReceived,
+    };
+    const morph = () => {
+      friendMorph.setValue(reducedMotion ? 1 : 0.86);
+      spring(friendMorph, 1, 'snappy', reducedMotion).start();
+    };
+    const rollback = () => {
+      if (currentUserIdRef.current !== userId) return;
+      setFriendConnected(prev.connected);
+      setFriendRequestSent(prev.sent);
+      setFriendRequestReceived(prev.received);
+      morph();
+    };
     setFriendBusy(true);
     try {
-      if (friendConnected) {
-        await removeFriend(userId);
+      if (prev.connected || prev.sent) {
+        // Remove friend / cancel request.
+        haptic('selection');
         setFriendConnected(false);
         setFriendRequestSent(false);
-        setFriendRequestReceived(false);
-        if (Platform.OS === 'web') {
-          window.alert('Removed from friends.');
-        } else {
-          Alert.alert('Removed', 'Friend connection removed.');
-        }
-      } else if (friendRequestSent) {
+        if (prev.connected) setFriendRequestReceived(false);
+        morph();
         await removeFriend(userId);
-        setFriendRequestSent(false);
-        if (Platform.OS === 'web') {
-          window.alert('Friend request cancelled.');
-        } else {
-          Alert.alert('Cancelled', 'Friend request cancelled.');
-        }
+        toast.success(prev.connected ? 'Removed from friends' : 'Request cancelled');
       } else {
-        const result = await addFriend(userId);
-        setFriendConnected(result.connected);
-        setFriendRequestSent(result.requestSent);
+        haptic('tapLight');
+        // They'd asked us → accepting connects; otherwise we're now "Requested".
+        setFriendConnected(prev.received);
+        setFriendRequestSent(!prev.received);
         setFriendRequestReceived(false);
-        if (Platform.OS === 'web') {
-          window.alert(result.connected ? 'Friend request accepted.' : 'Friend request sent.');
+        morph();
+        const result = await addFriend(userId);
+        if (currentUserIdRef.current === userId) {
+          setFriendConnected(result.connected);
+          setFriendRequestSent(result.requestSent);
+        }
+        if (result.connected) {
+          toast.success(`You and ${profileUser?.username ?? 'they'} are friends`);
         } else {
-          Alert.alert(
-            result.connected ? 'Friends' : 'Request sent',
-            result.connected
-              ? 'You are now friends.'
-              : `${profileUser?.username ?? 'User'} can accept your friend request.`
-          );
+          toast.success('Friend request sent');
         }
       }
     } catch (e) {
+      rollback();
+      feedback.error();
       const msg = e instanceof Error ? e.message : 'Could not update connection';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Error', msg);
-      }
+      void alertMessage('Couldn’t update', msg);
     } finally {
       setFriendBusy(false);
     }
   };
 
-  // Lazily load tab-specific content only after profile metadata is available.
+  // Load tab content when switching tabs (posts are prefetched with the profile).
   useEffect(() => {
-    if (profileUser) {
-      loadContent();
-    }
+    if (!profileUser) return;
+    if (activeTab === 'posts') return;
+    void loadContent();
   }, [profileUser, activeTab, isBlocked]);
 
   useEffect(() => {
@@ -302,16 +441,49 @@ export default function PublicProfileScreen() {
   }, [isBlocked]);
 
   /** Loads public profile header/stats metadata. */
-  const loadProfile = async () => {
+  const loadProfile = async (opts?: { silent?: boolean }) => {
+    const requestedId = userId;
     try {
-      setLoading(true);
-      const userData = await getPublicProfile(userId);
+      if (!opts?.silent) setLoading(true);
+      const userData = await getPublicProfile(requestedId);
+      if (currentUserIdRef.current !== requestedId) return;
       setProfileUser(userData);
+      setProfileError(null);
     } catch (error) {
+      if (currentUserIdRef.current !== requestedId) return;
       console.error('Error loading profile:', error);
-      setProfileUser(null);
+      const msg = error instanceof Error ? error.message : '';
+      // request() errors carry only a message; the backend 404 says "User not found".
+      const notFound = /not found|\(404\)/i.test(msg);
+      setProfileError(notFound ? 'not_found' : 'error');
+      // Keep showing an already-loaded profile when a refresh fails for a network reason.
+      if (notFound || !opts?.silent) setProfileUser(null);
     } finally {
-      setLoading(false);
+      if (currentUserIdRef.current === requestedId) setLoading(false);
+    }
+  };
+
+  const refresh = useRefresh(() =>
+    Promise.all([
+      loadProfile({ silent: true }),
+      activeTab === 'posts' ? prefetchPrimaryContent() : loadContent(),
+    ])
+  );
+
+  /** Prefetch posts while profile metadata loads so the grid appears faster. */
+  const prefetchPrimaryContent = async () => {
+    if (isBlocked) return;
+    const requestedId = userId;
+    try {
+      setLoadingContent(true);
+      const { cards, raw } = await fetchUserPosts(requestedId);
+      if (currentUserIdRef.current !== requestedId) return;
+      setSourcePosts(raw);
+      setPosts(cards);
+    } catch (error) {
+      console.error('Error prefetching posts:', error);
+    } finally {
+      setLoadingContent(false);
     }
   };
 
@@ -325,16 +497,22 @@ export default function PublicProfileScreen() {
       return;
     }
     
+    const requestedId = userId;
+    const stale = () => currentUserIdRef.current !== requestedId;
     try {
       setLoadingContent(true);
       if (activeTab === 'posts') {
-        const userPosts = await fetchUserPosts(userId);
-        setPosts(userPosts);
+        const { cards, raw } = await fetchUserPosts(requestedId);
+        if (stale()) return;
+        setSourcePosts(raw);
+        setPosts(cards);
       } else if (activeTab === 'stories') {
-        const userStories = await fetchUserStories(userId);
+        const userStories = await fetchUserStories(requestedId);
+        if (stale()) return;
         setStories(userStories);
       } else if (activeTab === 'journal') {
-        const entries = await fetchPublicJournalEntries(userId);
+        const entries = await fetchPublicJournalEntries(requestedId);
+        if (stale()) return;
         setJournalEntries(entries);
       }
     } catch (error) {
@@ -363,11 +541,8 @@ export default function PublicProfileScreen() {
         hasViewed: story.hasViewed,
       })),
       initialIndex,
+      // StoryViewer records each view once; this only updates local seen state.
       onStoriesUpdate: (updatedStories: Array<{ id: string; hasViewed?: boolean }>) => {
-        const viewedIds = updatedStories.filter((s) => s.hasViewed).map((s) => s.id);
-        if (viewedIds.length > 0) {
-          Promise.all(viewedIds.map((id) => viewStory(id))).catch(() => undefined);
-        }
         setStories((prev) =>
           prev.map((story) => {
             const updated = updatedStories.find((s) => s.id === story.id);
@@ -408,7 +583,7 @@ export default function PublicProfileScreen() {
       globalThis.alert(`${title}\n\n${message}`);
       return;
     }
-    Alert.alert(title, message);
+    void alertMessage(title, message);
   };
 
   const handleBlockMenuPress = async () => {
@@ -426,13 +601,13 @@ export default function PublicProfileScreen() {
     try {
       if (isBlocked) {
         await unblockUser(userId);
-        notify('Unblocked', `${username} has been unblocked.`);
+        toast.success(`${username} unblocked`);
       } else {
         await blockUser(userId);
         setPosts([]);
         setStories([]);
         setJournalEntries([]);
-        notify('Blocked', `${username} has been blocked.`);
+        toast.success(`${username} blocked`);
       }
       await refreshFriendshipState();
     } catch (error: unknown) {
@@ -450,10 +625,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'spam');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -462,10 +637,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'harassment');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -474,10 +649,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'inappropriate_content');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -486,10 +661,10 @@ export default function PublicProfileScreen() {
         onPress: async () => {
           try {
             await reportUser(userId, 'other');
-            Alert.alert('Reported', 'Thank you for your report. We will review it.');
+            toast.success('Thanks — we’ll review your report');
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not submit report';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -506,15 +681,15 @@ export default function PublicProfileScreen() {
           try {
             if (isMuted) {
               await unmuteUser(userId);
-              Alert.alert('Unmuted', `${profileUser?.username} is now visible in your feed.`);
+              toast.success(`Unmuted ${profileUser?.username ?? ''}`.trim());
             } else {
               await muteUser(userId);
-              Alert.alert('Muted', `You won't see posts from ${profileUser?.username} in your feed.`);
+              toast.success(`Muted ${profileUser?.username ?? ''}`.trim());
             }
             await refreshFriendshipState();
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : 'Could not update mute status';
-            Alert.alert('Error', msg);
+            void alertMessage('Error', msg);
           }
         },
       },
@@ -543,394 +718,802 @@ export default function PublicProfileScreen() {
     }
   };
 
+  const onReachOut = async () => {
+    if (messageBusy || isOwnProfile || !profileUser) return;
+    setMessageBusy(true);
+    try {
+      await openCoachingReachOut(
+        navigation,
+        userId,
+        `Hi ${profileUser.username} — I’d like to talk about a coaching plan.`
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not reach this instructor';
+      notify('Error', msg);
+    } finally {
+      setMessageBusy(false);
+    }
+  };
+
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#10B981" />
-          <Text style={tw`text-gray-500 mt-4`}>Loading profile...</Text>
-        </View>
+      <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+        <ProfileHeaderSkeleton
+          preview={
+            preview && (preview.username || preview.displayName)
+              ? {
+                  name: (preview.username || preview.displayName)!,
+                  avatarUri: resolveAvatarUri(userId, preview.username, preview.avatarUrl),
+                }
+              : null
+          }
+          onBack={
+            <PressableScale
+              onPress={() => navigation.goBack()}
+              style={tw`w-10 h-10 rounded-full bg-raised border border-line/80 items-center justify-center mr-3`}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              pressedScale={0.9}
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={20} color={theme.colors.ink} />
+            </PressableScale>
+          }
+        />
       </SafeAreaView>
     );
   }
 
   if (!profileUser) {
+    const failed = profileError === 'error';
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
+      <SafeAreaView style={tw`flex-1 bg-page`}>
         <View style={tw`flex-1 items-center justify-center px-4`}>
-          <Ionicons name="person-outline" size={64} color="#D1D5DB" />
-          <Text style={tw`text-gray-500 mt-4 text-center text-lg`}>User not found</Text>
-          <TouchableOpacity
+          {failed ? (
+            <ErrorState
+              title="Couldn’t load this profile"
+              onRetry={() => {
+                void loadProfile();
+                void prefetchPrimaryContent();
+              }}
+              style={tw`py-0`}
+            />
+          ) : (
+            <>
+              <Ionicons name="person-outline" size={64} color={theme.colors.iconMuted} />
+              <Text style={tw`text-ink-2 mt-4 text-center text-lg`}>User not found</Text>
+            </>
+          )}
+          <PressableScale
             onPress={() => navigation.goBack()}
-            style={tw`mt-4 bg-green-600 px-6 py-3 rounded-xl`}
+            accessibilityRole="button"
+            style={tw`mt-4 px-6 py-3 rounded-control ${failed ? 'bg-raised' : 'bg-emerald-600'}`}
           >
-            <Text style={tw`text-white font-semibold`}>Go Back</Text>
-          </TouchableOpacity>
+            <Text style={tw`font-semibold ${failed ? 'text-stone-800' : 'text-white'}`}>Go Back</Text>
+          </PressableScale>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`}>
-      {/* Header with Back Button */}
-      <View style={tw`px-4 pt-2 pb-3 border-b border-gray-200 bg-white flex-row items-center`}>
-        <TouchableOpacity
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+      <View style={tw`px-gutter py-2.5 flex-row items-center border-b border-line/50`}>
+        <PressableScale
           onPress={() => navigation.goBack()}
-          style={tw`mr-3`}
+          style={tw`w-10 h-10 rounded-full bg-raised border border-line/80 items-center justify-center mr-3`}
+          accessibilityLabel="Back"
+          pressedScale={0.9}
+          hitSlop={8}
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
-        </TouchableOpacity>
-        <Text style={tw`text-lg font-semibold text-gray-900 flex-1`}>
-          {profileUser.username}
-        </Text>
-        <TouchableOpacity
-          style={tw`w-11 h-11 items-center justify-center`}
+          <Ionicons name="arrow-back" size={20} color={theme.colors.ink} />
+        </PressableScale>
+        <View style={tw`flex-1`}>
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+            Profile
+          </Text>
+          <Text style={tw`text-callout font-bold text-ink`} numberOfLines={1}>
+            {profileUser.username}
+          </Text>
+        </View>
+        <PressableScale
+          style={tw`w-10 h-10 rounded-full bg-raised border border-line/80 items-center justify-center`}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           onPress={openOptionsMenu}
+          accessibilityLabel="More options"
+          pressedScale={0.9}
         >
-          <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
-        </TouchableOpacity>
+          <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.ink2} />
+        </PressableScale>
       </View>
 
       <ScrollView
         style={tw`flex-1`}
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+        refreshControl={
+          <RefreshControl {...refresh} />
+        }
       >
-        {/* Profile Header */}
-        <View style={tw`px-4 pt-6 pb-6 border-b border-gray-200`}>
-          <View style={tw`flex-row items-center mb-4`}>
-            <View style={tw`w-20 h-20 rounded-full overflow-hidden mr-4 bg-green-100`}>
-              <Image
-                source={{ uri: resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar) }}
-                style={tw`w-full h-full`}
-                contentFit="cover"
-              />
-            </View>
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-2xl font-bold text-gray-900`}>
-                {profileUser.username}
-              </Text>
-              {profileUser.isInstructor && (
-                <View style={tw`flex-row items-center mt-1`}>
-                  <Ionicons name="school" size={16} color="#10B981" />
-                  <Text style={tw`text-sm text-green-600 ml-1 font-semibold`}>Instructor</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {profileUser.status ? (
-            <Text style={tw`text-sm text-stone-800 mb-2 leading-5`}>{profileUser.status}</Text>
-          ) : null}
-          {profileUser.bio ? (
-            <Text style={tw`text-sm text-stone-500 mb-4 leading-5`}>{profileUser.bio}</Text>
-          ) : null}
-
-          <View style={tw`flex-row justify-around mb-4 py-2`}>
-            <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.postsCount}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Posts</Text>
-            </View>
-            <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-gray-900`}>{profileUser.storiesCount}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Stories</Text>
-            </View>
-            <View style={tw`items-center`}>
-              <Text style={tw`text-lg font-bold text-emerald-600`}>{profileUser.points}</Text>
-              <Text style={tw`text-xs text-gray-500`}>Points</Text>
-            </View>
-          </View>
-
-          {!isOwnProfile && currentUser?.id ? (
-            <View style={tw`gap-3 mb-4`}>
-              <TouchableOpacity
-                onPress={() => void onToggleFriend()}
-                disabled={friendBusy}
-                style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
-                  friendConnected || friendRequestSent
-                    ? 'bg-stone-100 border border-stone-200'
-                    : friendRequestReceived
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-600'
-                } ${friendBusy ? 'opacity-60' : ''}`}
-              >
-                {friendBusy ? (
-                  <ActivityIndicator
-                    color={friendConnected || friendRequestSent ? '#57534E' : '#fff'}
-                  />
-                ) : (
-                  <Ionicons
-                    name={
-                      friendConnected
-                        ? 'checkmark-circle'
-                        : friendRequestSent
-                          ? 'time'
-                          : friendRequestReceived
-                            ? 'mail-open'
-                            : 'person-add'
-                    }
-                    size={20}
-                    color={friendConnected || friendRequestSent ? '#44403C' : '#fff'}
-                  />
-                )}
-                <Text
-                  style={tw`font-semibold text-base ${
-                    friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
-                  }`}
-                >
-                  {friendBusy
-                    ? 'Updating…'
-                    : friendConnected
-                      ? 'Friends'
-                      : friendRequestSent
-                        ? 'Requested'
-                        : friendRequestReceived
-                          ? 'Accept Request'
-                          : 'Add Friend'}
-                </Text>
-              </TouchableOpacity>
-
-              {friendConnected ? (
-                <TouchableOpacity
-                  onPress={() => void onMessageFriend()}
-                  disabled={messageBusy}
-                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 bg-brand-500 ${
-                    messageBusy ? 'opacity-60' : ''
-                  }`}
-                >
-                  {messageBusy ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+        <View style={tw`px-gutter-wide pt-4 pb-3`}>
+          <View style={tw`bg-card border border-line/80 rounded-sheet px-4 pt-5 pb-4`}>
+            <View style={tw`flex-row items-center mb-3`}>
+              <View style={tw`w-[84px] h-[84px] rounded-full overflow-hidden mr-4 border-2 border-emerald-100 bg-emerald-50`}>
+                <Image
+                  source={avatarSource(
+                    resolveAvatarUri(profileUser.id, profileUser.username, profileUser.avatar)
                   )}
-                  <Text style={tw`font-semibold text-base text-white`}>Message</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {endorseStatus ? (
-                <TouchableOpacity
-                  onPress={() => void onEndorse()}
-                  disabled={!endorseStatus.canEndorse || endorseBusy}
-                  style={tw`py-3.5 rounded-2xl flex-row items-center justify-center gap-2 ${
-                    endorseStatus.alreadyEndorsed
-                      ? 'bg-violet-50 border border-violet-200'
-                      : endorseStatus.canEndorse
-                        ? 'bg-violet-600'
-                        : 'bg-stone-100 border border-stone-200'
-                  } ${endorseBusy ? 'opacity-60' : ''}`}
-                >
-                  {endorseBusy ? (
-                    <ActivityIndicator color={endorseStatus.canEndorse ? '#fff' : '#57534E'} />
-                  ) : (
-                    <Ionicons
-                      name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
-                      size={20}
-                      color={
-                        endorseStatus.alreadyEndorsed
-                          ? '#7C3AED'
-                          : endorseStatus.canEndorse
-                            ? '#fff'
-                            : '#78716C'
-                      }
-                    />
-                  )}
-                  <Text
-                    style={tw`font-semibold text-base ${
-                      endorseStatus.alreadyEndorsed
-                        ? 'text-violet-700'
-                        : endorseStatus.canEndorse
-                          ? 'text-white'
-                          : 'text-stone-500'
-                    }`}
-                  >
-                    {endorseStatus.alreadyEndorsed
-                      ? 'Endorsed'
-                      : endorseStatus.canEndorse
-                        ? 'Endorse as instructor'
-                        : 'No shared growth area'}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
-
-          <View style={tw`bg-emerald-600 rounded-2xl p-4`}>
-            <View style={tw`flex-row items-center justify-between`}>
-              <View>
-                <Text style={tw`text-white text-sm mb-1 opacity-90`}>Total Points</Text>
-                <Text style={tw`text-white text-3xl font-bold`}>{profileUser.points}</Text>
+                  style={tw`w-full h-full`}
+                  contentFit="cover"
+                />
               </View>
-              <Ionicons name="trophy" size={40} color="white" />
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-2xl font-bold text-ink`} numberOfLines={2}>
+                  {profileUser.username}
+                </Text>
+                {profileUser.isInstructor ? (
+                  <View style={tw`flex-row items-center mt-1.5 self-start px-2.5 py-1 rounded-chip bg-emerald-50 border border-emerald-200`}>
+                    <Ionicons name="school" size={13} color="#059669" />
+                    <Text style={tw`text-xs text-emerald-800 font-semibold ml-1`}>Instructor</Text>
+                    {(profileUser.endorsementsReceived || 0) > 0 ? (
+                      <Text style={tw`text-xs text-emerald-700 ml-1.5`}>
+                        · {profileUser.endorsementsReceived} endorsements
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {publicBadges?.level && !isBlocked ? (
+                  <View style={tw`mt-1.5`}>
+                    <LevelPill level={publicBadges.level} />
+                  </View>
+                ) : null}
+              </View>
             </View>
-            {!profileUser.isInstructor && endorseStatus ? (
-              <View style={tw`mt-3 pt-3 border-t border-emerald-400/60`}>
-                <Text style={tw`text-white text-sm`}>
-                  Instructor endorsements: {endorseStatus.endorsementCount}
+
+            {publicBadges && publicBadges.earned.length > 0 && !isBlocked ? (
+              <View style={tw`mb-3`}>
+                <BadgeRow earned={publicBadges.earned} showLocked={false} onPress={null} />
+              </View>
+            ) : null}
+
+            {profileUser.isInstructor && profileUser.teachingHeadline ? (
+              <View style={tw`mb-2 px-3.5 py-3 rounded-card bg-emerald-50 border border-emerald-100`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
+                  Teaching
+                </Text>
+                <Text style={tw`text-body text-stone-800 mt-1 leading-5`}>
+                  {profileUser.teachingHeadline}
                 </Text>
               </View>
             ) : null}
+
+            {profileUser.isInstructor ? (
+              <InstructorOfferCard
+                offer={profileUser.offering}
+                completedPlans={profileUser.completedPlans || 0}
+                endorsements={profileUser.endorsementsReceived || 0}
+                rating={profileUser.rating}
+              />
+            ) : profileUser.followThrough && profileUser.followThrough.count > 0 ? (
+              <View style={tw`mb-3 px-3.5 py-3 rounded-card bg-card border border-line/80`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+                  Follow-through
+                </Text>
+                <View style={tw`flex-row items-center mt-1.5`}>
+                  <StarRow value={profileUser.followThrough.avg} />
+                  <Text style={tw`text-xs text-ink-3 ml-1.5`}>
+                    {profileUser.followThrough.avg} · {profileUser.followThrough.count} coach
+                    {profileUser.followThrough.count === 1 ? '' : 'es'}
+                  </Text>
+                </View>
+                <Text style={tw`text-xs text-ink-3 mt-1`}>
+                  Rated by instructors after 4 completed weeks.
+                </Text>
+              </View>
+            ) : null}
+
+            {profileUser.isInstructor && (profileUser.testimonials || []).length > 0 ? (
+              <View style={tw`mb-3`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
+                  From clients
+                </Text>
+                {profileUser.testimonials!.map((t) => (
+                  <View
+                    key={t.id}
+                    style={tw`mb-2 px-3.5 py-3 rounded-card bg-card border border-line/80`}
+                  >
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <Text style={tw`font-semibold text-ink`}>{t.reviewer.username}</Text>
+                      <StarRow value={t.stars} size={12} />
+                    </View>
+                    {t.body ? (
+                      <Text style={tw`text-footnote text-ink-2 mt-1.5 leading-5`}>{t.body}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : profileUser.isInstructor ? (
+              <Text style={tw`text-xs text-ink-3 mb-3`}>
+                Client reviews appear after 4 completed weeks together.
+              </Text>
+            ) : null}
+
+            {profileUser.status ? (
+              <View style={tw`mb-2 px-3 py-2 rounded-card bg-raised border border-line/60`}>
+                <Text style={tw`text-footnote text-stone-800 leading-5`}>{profileUser.status}</Text>
+              </View>
+            ) : null}
+            {profileUser.bio ? (
+              <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>{profileUser.bio}</Text>
+            ) : null}
+
+            <View style={tw`flex-row bg-raised border border-line/70 rounded-card overflow-hidden mb-3.5`}>
+              <View style={tw`flex-1 items-center py-2.5`}>
+                <Text style={tw`text-lg font-bold text-ink`}>{profileUser.postsCount}</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>Posts</Text>
+              </View>
+              <View style={tw`w-px bg-line/80 my-2`} />
+              <View style={tw`flex-1 items-center py-2.5`}>
+                <Text style={tw`text-lg font-bold text-ink`}>{profileUser.storiesCount}</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>Stories</Text>
+              </View>
+              <View style={tw`w-px bg-line/80 my-2`} />
+              <View style={tw`flex-1 items-center py-2.5`}>
+                <Text style={tw`text-lg font-bold text-emerald-700`}>
+                  {profileUser.isInstructor
+                    ? profileUser.completedPlans || 0
+                    : profileUser.points}
+                </Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                  {profileUser.isInstructor ? 'Plans' : 'Points'}
+                </Text>
+              </View>
+            </View>
+
+            {!isOwnProfile && currentUser?.id ? (
+              <View style={tw`gap-2`}>
+                <View style={tw`flex-row gap-2`}>
+                  <PressableScale
+                    onPress={() => void onToggleFriend()}
+                    disabled={friendBusy}
+                    style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 ${
+                      friendConnected || friendRequestSent
+                        ? 'bg-raised border border-line'
+                        : friendRequestReceived
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-600'
+                    }`}
+                  >
+                    <Animated.View
+                      style={[tw`flex-row items-center gap-1.5`, { transform: [{ scale: friendMorph }] }]}
+                    >
+                      <Ionicons
+                        name={
+                          friendConnected
+                            ? 'checkmark-circle'
+                            : friendRequestSent
+                              ? 'time'
+                              : friendRequestReceived
+                                ? 'mail-open'
+                                : 'person-add'
+                        }
+                        size={iconSize.sm}
+                        color={friendConnected || friendRequestSent ? theme.colors.ink2 : '#fff'}
+                      />
+                      <Text
+                        style={tw`font-bold text-sm ${
+                          friendConnected || friendRequestSent ? 'text-stone-800' : 'text-white'
+                        }`}
+                      >
+                        {friendConnected
+                            ? 'Friends'
+                            : friendRequestSent
+                              ? 'Requested'
+                              : friendRequestReceived
+                                ? 'Accept'
+                                : 'Add friend'}
+                      </Text>
+                    </Animated.View>
+                  </PressableScale>
+
+                  {profileUser.isInstructor &&
+                  profileUser.offering?.accepting === false &&
+                  !friendConnected ? (
+                    <View
+                      accessibilityState={{ disabled: true }}
+                      style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 bg-raised border border-line/80`}
+                    >
+                      <Ionicons name="pause-circle-outline" size={iconSize.sm} color={theme.colors.ink3} />
+                      <Text style={tw`font-bold text-sm text-ink-3`}>Not taking plans</Text>
+                    </View>
+                  ) : profileUser.isInstructor && profileUser.offering?.accepting !== false ? (
+                    <PressableScale
+                      onPress={() => void onReachOut()}
+                      disabled={messageBusy}
+                      style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                        messageBusy ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {messageBusy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Ionicons name="chatbubble-ellipses" size={iconSize.sm} color="#fff" />
+                      )}
+                      <Text style={tw`font-bold text-sm text-white`}>Reach out</Text>
+                    </PressableScale>
+                  ) : friendConnected ? (
+                    <PressableScale
+                      onPress={() => void onMessageFriend()}
+                      disabled={messageBusy}
+                      style={tw`flex-1 py-3 rounded-card flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                        messageBusy ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {messageBusy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Ionicons name="chatbubble-ellipses" size={iconSize.sm} color="#fff" />
+                      )}
+                      <Text style={tw`font-bold text-sm text-white`}>Message</Text>
+                    </PressableScale>
+                  ) : null}
+                </View>
+
+                {endorseStatus?.pendingIncoming && endorseStatus.pendingIncomingRequestId ? (
+                  <View
+                    style={tw`rounded-sheet overflow-hidden border border-red-200 bg-card`}
+                  >
+                    <View style={tw`h-1.5 bg-energy-600`} />
+                    <View style={tw`px-4 py-3.5`}>
+                      <View style={tw`flex-row items-center mb-1`}>
+                        <Ionicons name="ribbon" size={iconSize.xs} color={tw.color('rose-600')} />
+                        <Text
+                          style={tw`text-caption font-semibold tracking-widest text-rose-600 uppercase ml-1.5`}
+                        >
+                          Endorsement ask
+                        </Text>
+                      </View>
+                      <Text style={tw`text-body font-semibold text-ink mt-0.5`}>
+                        They asked for your endorsement
+                      </Text>
+                      <Text style={tw`text-sm text-ink-2 mt-1.5 leading-5`}>
+                        Peer trust unlocks their Instructor Hub — no purchase. Shared paths below.
+                      </Text>
+                      {(endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
+                        <View style={tw`flex-row flex-wrap gap-1.5 mt-3`}>
+                          {endorseStatus.sharedCategories.slice(0, 3).map((key) => (
+                            <View
+                              key={`ask-shared-${key}`}
+                              style={tw`px-2.5 py-1 rounded-chip bg-energy-50 border border-red-200`}
+                            >
+                              <Text style={tw`text-caption font-semibold text-rose-600`}>
+                                {getCategoryLabel(key)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                      <View style={tw`flex-row gap-2 mt-3.5`}>
+                        <PressableScale
+                          onPress={() => void onRespondIncomingRequest('accepted')}
+                          disabled={endorseBusy}
+                          feedback={false}
+                          style={tw`flex-1 py-3 rounded-control flex-row items-center justify-center gap-1.5 bg-emerald-600 ${
+                            endorseBusy ? 'opacity-60' : ''
+                          }`}
+                        >
+                          {endorseBusy ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <Ionicons name="ribbon" size={iconSize.sm} color="#fff" />
+                          )}
+                          <Text style={tw`font-bold text-sm text-white`}>Endorse</Text>
+                        </PressableScale>
+                        <PressableScale
+                          onPress={() => void onRespondIncomingRequest('declined')}
+                          disabled={endorseBusy}
+                          feedback={false}
+                          style={tw`px-4 py-3 rounded-control bg-raised border border-line items-center justify-center`}
+                        >
+                          <Text style={tw`font-semibold text-sm text-ink-2`}>Not now</Text>
+                        </PressableScale>
+                      </View>
+                    </View>
+                  </View>
+                ) : endorseStatus &&
+                  (endorseStatus.alreadyEndorsed ||
+                    endorseStatus.canEndorse ||
+                    (endorseStatus.sharedCategories?.length ?? 0) === 0) ? (
+                  <View
+                    style={tw`rounded-sheet overflow-hidden border ${
+                      endorseStatus.alreadyEndorsed
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : endorseStatus.canEndorse
+                          ? 'border-ink bg-card'
+                          : 'border-line bg-raised'
+                    }`}
+                  >
+                    <View style={tw`px-4 py-3.5`}>
+                      <Text
+                        style={tw`text-caption font-semibold tracking-widest uppercase ${
+                          endorseStatus.alreadyEndorsed || endorseStatus.canEndorse
+                            ? 'text-emerald-700'
+                            : 'text-ink-3'
+                        }`}
+                      >
+                        {endorseStatus.alreadyEndorsed
+                          ? 'Peer trust'
+                          : endorseStatus.canEndorse
+                            ? 'You can endorse'
+                            : 'Endorsement'}
+                      </Text>
+                      <Text style={tw`text-sm text-ink-2 mt-1 leading-5 mb-3`}>
+                        {endorseStatus.alreadyEndorsed
+                          ? 'You’ve already backed them on a shared path.'
+                          : endorseStatus.canEndorse
+                            ? 'Your endorsement helps unlock their Instructor Hub.'
+                            : !(currentUser?.categories && currentUser.categories.length > 0)
+                              ? 'Add growth paths on your profile to endorse peers.'
+                              : 'You need an overlapping growth path to endorse.'}
+                      </Text>
+                      <PressableScale
+                        onPress={() => void onEndorse()}
+                        disabled={!endorseStatus.canEndorse || endorseBusy}
+                        feedback={false}
+                        style={tw`py-3 rounded-control flex-row items-center justify-center gap-1.5 ${
+                          endorseStatus.alreadyEndorsed
+                            ? 'bg-card border border-emerald-200'
+                            : endorseStatus.canEndorse
+                              ? 'bg-ink'
+                              : 'bg-card/70 border border-line'
+                        } ${endorseBusy ? 'opacity-60' : ''}`}
+                      >
+                        {endorseBusy ? (
+                          <ActivityIndicator
+                            color={endorseStatus.canEndorse ? theme.colors.page : theme.colors.ink2}
+                          />
+                        ) : (
+                          <Ionicons
+                            name={endorseStatus.alreadyEndorsed ? 'ribbon' : 'ribbon-outline'}
+                            size={iconSize.sm}
+                            color={
+                              endorseStatus.alreadyEndorsed
+                                ? '#059669'
+                                : endorseStatus.canEndorse
+                                  ? theme.colors.page
+                                  : theme.colors.ink3
+                            }
+                          />
+                        )}
+                        <Text
+                          style={tw`font-bold text-sm ${
+                            endorseStatus.alreadyEndorsed
+                              ? 'text-emerald-700'
+                              : endorseStatus.canEndorse
+                                ? 'text-page'
+                                : 'text-ink-3'
+                          }`}
+                        >
+                          {endorseStatus.alreadyEndorsed
+                            ? 'Endorsed'
+                            : endorseStatus.canEndorse
+                              ? 'Endorse as instructor'
+                              : !(currentUser?.categories && currentUser.categories.length > 0)
+                                ? 'Add your paths to endorse'
+                                : 'Paths don’t overlap yet'}
+                        </Text>
+                      </PressableScale>
+                    </View>
+                  </View>
+                ) : null}
+
+                {endorseStatus?.canRequestEndorsement || endorseStatus?.pendingOutgoing ? (
+                  <View
+                    style={tw`rounded-sheet overflow-hidden border ${
+                      endorseStatus.pendingOutgoing
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : 'border-emerald-600/50 bg-card'
+                    }`}
+                  >
+                    <View
+                      style={tw`h-1.5 ${
+                        endorseStatus.pendingOutgoing ? 'bg-emerald-500' : 'bg-emerald-600'
+                      }`}
+                    />
+                    <View style={tw`px-4 py-3.5`}>
+                      <View style={tw`flex-row items-center mb-1`}>
+                        <Ionicons
+                          name={endorseStatus.pendingOutgoing ? 'time-outline' : 'ribbon-outline'}
+                          size={iconSize.xs}
+                          color="#059669"
+                        />
+                        <Text
+                          style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase ml-1.5`}
+                        >
+                          {endorseStatus.pendingOutgoing
+                            ? 'Request pending'
+                            : 'Ask for endorsement'}
+                        </Text>
+                      </View>
+                      <Text style={tw`text-body font-semibold text-ink mt-0.5`}>
+                        {endorseStatus.pendingOutgoing
+                          ? 'Waiting on their response'
+                          : `Ask ${profileUser?.username ?? 'them'} to endorse you`}
+                      </Text>
+                      <Text style={tw`text-sm text-ink-2 mt-1.5 leading-5`}>
+                        {endorseStatus.pendingOutgoing
+                          ? 'They’ll see a structured ask in Notifications and can endorse with one tap.'
+                          : 'Sends a notification — not a cold DM. Peer trust unlocks your Instructor Hub.'}
+                      </Text>
+                      {(endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
+                        <View style={tw`flex-row flex-wrap gap-1.5 mt-3`}>
+                          {endorseStatus.sharedCategories.slice(0, 3).map((key) => (
+                            <View
+                              key={`req-shared-${key}`}
+                              style={tw`px-2.5 py-1 rounded-chip bg-emerald-50 border border-emerald-100`}
+                            >
+                              <Text style={tw`text-caption font-semibold text-emerald-800`}>
+                                {getCategoryLabel(key)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                      <PressableScale
+                        onPress={() => void onRequestEndorsement()}
+                        disabled={!endorseStatus.canRequestEndorsement || requestBusy}
+                        feedback={false}
+                        style={tw`mt-3.5 py-3 rounded-control flex-row items-center justify-center gap-1.5 ${
+                          endorseStatus.pendingOutgoing
+                            ? 'bg-card border border-emerald-200'
+                            : 'bg-emerald-600'
+                        } ${requestBusy ? 'opacity-60' : ''}`}
+                      >
+                        {requestBusy ? (
+                          <ActivityIndicator
+                            color={endorseStatus.pendingOutgoing ? '#059669' : '#fff'}
+                          />
+                        ) : (
+                          <Ionicons
+                            name={
+                              endorseStatus.pendingOutgoing ? 'time-outline' : 'paper-plane-outline'
+                            }
+                            size={iconSize.sm}
+                            color={endorseStatus.pendingOutgoing ? '#059669' : '#fff'}
+                          />
+                        )}
+                        <Text
+                          style={tw`font-bold text-sm ${
+                            endorseStatus.pendingOutgoing ? 'text-emerald-700' : 'text-white'
+                          }`}
+                        >
+                          {endorseStatus.pendingOutgoing
+                            ? 'Waiting on them'
+                            : 'Send endorsement ask'}
+                        </Text>
+                      </PressableScale>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          {!profileUser.isInstructor && endorseStatus ? (
+            <View style={tw`mt-3 px-4 py-3 rounded-card bg-raised border border-line/80 flex-row items-center`}>
+              <View style={tw`w-10 h-10 rounded-full bg-emerald-600/15 items-center justify-center mr-3`}>
+                <Ionicons name="ribbon" size={20} color="#059669" />
+              </View>
+              <View style={tw`flex-1`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+                  Instructor track
+                </Text>
+                <Text style={tw`text-sm text-stone-800 mt-0.5 font-medium`}>
+                  {endorseStatus.endorsementCount} endorsement
+                  {endorseStatus.endorsementCount === 1 ? '' : 's'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Growth paths */}
+        <View style={tw`px-gutter-wide pb-3`}>
+          <View style={tw`bg-raised border border-line/80 rounded-card p-4`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+              Grow!
+            </Text>
+            <Text style={tw`text-lg font-bold text-ink mt-0.5 mb-3`}>Growth paths</Text>
+
+            {endorseStatus && (endorseStatus.sharedCategories?.length ?? 0) > 0 ? (
+              <View style={tw`mb-3`}>
+                <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase mb-2`}>
+                  Shared with you
+                </Text>
+                <View style={tw`flex-row flex-wrap`}>
+                  {endorseStatus.sharedCategories.map((key) => (
+                    <View
+                      key={`shared-${key}`}
+                      style={tw`bg-emerald-600 px-3 py-1.5 rounded-chip mr-2 mb-2 flex-row items-center`}
+                    >
+                      <Ionicons name="git-compare-outline" size={12} color="#fff" style={tw`mr-1`} />
+                      <Text style={tw`text-sm text-white font-semibold`}>
+                        {getCategoryLabel(key)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {profileUser.categories && profileUser.categories.length > 0 ? (
+              <View>
+                {groupGrowthPaths(profileUser.categories).map((group) => {
+                  const isShared = (endorseStatus?.sharedCategories || []).some((s) => {
+                    const parent = s.includes(':') ? s.split(':')[0] : s;
+                    return parent === group.parentKey || s === group.parentKey;
+                  });
+                  return (
+                    <View
+                      key={group.parentKey}
+                      style={tw`flex-row items-center rounded-card px-3 py-3 mb-2 border ${
+                        isShared
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-card border-line/70'
+                      }`}
+                    >
+                      <View
+                        style={tw`w-10 h-10 rounded-control items-center justify-center mr-3 ${
+                          isShared ? 'bg-emerald-600' : 'bg-emerald-600/12'
+                        }`}
+                      >
+                        <Ionicons
+                          name={group.icon}
+                          size={20}
+                          color={isShared ? '#fff' : '#059669'}
+                        />
+                      </View>
+                      <View style={tw`flex-1`}>
+                        <Text style={tw`text-body font-bold text-ink`}>
+                          {group.parentLabel}
+                        </Text>
+                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                          {group.focusLabels.length > 0
+                            ? group.focusLabels.join(' · ')
+                            : isShared
+                              ? 'Shared path with you'
+                              : 'Growing here'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={tw`text-sm text-ink-2`}>
+                Paths aren’t listed yet — you can still connect and message.
+              </Text>
+            )}
           </View>
         </View>
 
-        {/* Categories */}
-        {profileUser.categories && profileUser.categories.length > 0 && (
-          <View style={tw`px-4 py-4 border-b border-gray-200`}>
-            <Text style={tw`text-lg font-semibold text-gray-900 mb-3`}>Growth Areas</Text>
-            <View style={tw`flex-row flex-wrap`}>
-              {groupGrowthPaths(profileUser.categories).map((group) => {
-                const label =
-                  group.focusLabels.length > 0
-                    ? `${group.parentLabel}: ${group.focusLabels.join(', ')}`
-                    : group.parentLabel;
-                return (
-                  <View
-                    key={group.parentKey}
-                    style={tw`bg-green-100 px-3 py-1.5 rounded-full mr-2 mb-2`}
-                  >
-                    <Text style={tw`text-sm text-green-800 font-medium`}>{label}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
         {/* Tabs */}
-        <View style={tw`flex-row border-b border-gray-200`}>
-          {[
-            { key: 'posts', label: 'Posts', icon: 'grid' },
-            { key: 'stories', label: 'Stories', icon: 'images' },
-            { key: 'journal', label: 'Journal', icon: 'book' },
-          ].map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key as 'posts' | 'stories' | 'journal')}
-              style={tw`flex-1 py-3 items-center border-b-2 ${
-                activeTab === tab.key ? 'border-green-600' : 'border-transparent'
-              }`}
-            >
-              <Ionicons
-                name={tab.icon as any}
-                size={20}
-                color={activeTab === tab.key ? '#10B981' : '#9CA3AF'}
-              />
-              <Text
-                style={tw`text-xs mt-1 ${
-                  activeTab === tab.key ? 'text-green-600 font-semibold' : 'text-gray-500'
-                }`}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={tw`px-gutter-wide pt-1`}>
+          <View style={tw`flex-row gap-5 border-b border-line/80`}>
+            {(
+              [
+                { key: 'posts' as const, label: 'Posts' },
+                { key: 'stories' as const, label: 'Stories' },
+                { key: 'journal' as const, label: 'Journal' },
+              ] as const
+            ).map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <PressableScale
+                  key={tab.key}
+                  feedback={active ? 'selection' : 'chip'}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={tw`pb-2.5 border-b-2 ${
+                    active ? 'border-emerald-600' : 'border-transparent'
+                  }`}
+                >
+                  <Text
+                    style={tw`text-body ${
+                      active ? 'text-ink font-bold' : 'text-ink-3 font-medium'
+                    }`}
+                  >
+                    {tab.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
         </View>
 
         {/* Content */}
         {isBlocked ? (
           <View style={tw`p-6 items-center justify-center`}>
-            <Ionicons name="ban-outline" size={48} color="#9CA3AF" />
-            <Text style={tw`text-gray-700 mt-3 text-center font-semibold`}>You have blocked this user</Text>
-            <Text style={tw`text-gray-500 mt-1 text-center`}>
+            <Ionicons name="ban-outline" size={48} color={theme.colors.iconMuted} />
+            <Text style={tw`text-ink-2 mt-3 text-center font-semibold`}>You have blocked this user</Text>
+            <Text style={tw`text-ink-3 mt-1 text-center`}>
               Unblock them to view their posts, stories, and activity again.
             </Text>
           </View>
         ) : loadingContent ? (
           <View style={tw`p-8 items-center justify-center`}>
-            <ActivityIndicator size="large" color="#10B981" />
+            <ActivityIndicator size="large" color="#059669" />
           </View>
         ) : activeTab === 'posts' ? (
-          <View style={tw`p-4`}>
-            {posts.length > 0 ? (
-              posts.map((post) => (
-                <TouchableOpacity
-                  key={post.id}
-                  style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}
-                  onPress={() => {
-                    if (!profileUser) return;
-                    const rootNavigation = navigation.getParent() || navigation;
-                    (rootNavigation as any).navigate('PostDetail', {
-                      post: {
-                        id: post.id,
-                        userId: profileUser.id,
-                        username: profileUser.username,
-                        avatar: profileUser.avatar,
-                        image: post.image,
-                        caption: post.caption,
-                        category: post.category,
-                        likes: post.likes,
-                        comments: post.comments,
-                        createdAt: post.createdAt,
-                        hasLiked: false,
-                        reaction: null,
-                      },
-                    });
-                  }}
-                >
-                  <View style={tw`flex-row items-center justify-between mb-3`}>
-                    <View style={tw`flex-row items-center`}>
-                      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-gray-100`}>
-                        <Image
-                          source={{ uri: post.image }}
-                          style={tw`w-full h-full`}
-                          contentFit="cover"
-                        />
-                      </View>
-                      <View style={tw`flex-1`}>
-                        <Text style={tw`font-semibold text-gray-900`} numberOfLines={2}>
-                          {post.caption}
-                        </Text>
-                        <Text style={tw`text-xs text-gray-500 mt-1`}>
-                          {new Date(post.createdAt).toLocaleDateString()}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={tw`flex-row items-center gap-4`}>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="heart" size={16} color="#EF4444" />
-                      <Text style={tw`text-sm text-gray-600 ml-1`}>{post.likes}</Text>
-                    </View>
-                    <View style={tw`flex-row items-center`}>
-                      <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                      <Text style={tw`text-sm text-gray-600 ml-1`}>{post.comments}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <EmptyState
-                icon="images-outline"
-                title="No posts yet"
-                description="This user has not shared posts yet."
-              />
-            )}
-          </View>
+          <ProfilePostsGrid
+            posts={posts}
+            emptyTitle={
+              profileUser.postsCount > 0 ? 'Could not load posts' : 'No posts yet'
+            }
+            emptyDescription={
+              profileUser.postsCount > 0
+                ? 'Pull back and open this profile again to retry.'
+                : 'This person has not shared a post yet. You can still add them as a friend.'
+            }
+            onPress={(tile) => {
+              if (!profileUser) return;
+              const post = posts.find((p) => p.id === tile.id);
+              if (!post) return;
+              const rootNavigation = navigation.getParent() || navigation;
+              if (post.isReel) {
+                openReelsAtPost(
+                  rootNavigation,
+                  post.id,
+                  sourcePosts.find((p) => p.id === post.id)
+                );
+                return;
+              }
+              (rootNavigation as any).navigate('PostDetail', {
+                post: {
+                  id: post.id,
+                  userId: profileUser.id,
+                  username: profileUser.username,
+                  avatar: resolveAvatarUri(
+                    profileUser.id,
+                    profileUser.username,
+                    profileUser.avatar
+                  ),
+                  image: post.image,
+                  caption: post.caption,
+                  category: post.category,
+                  subcategory: post.subcategory,
+                  likes: post.likes,
+                  comments: post.comments,
+                  createdAt: post.createdAt,
+                  hasLiked: !!post.hasLiked,
+                  reaction: post.hasLiked ? 'love' : null,
+                },
+              });
+            }}
+          />
         ) : activeTab === 'stories' ? (
           <View style={tw`p-4`}>
             {stories.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={tw`flex-row gap-3`}>
                   {stories.map((story) => (
-                    <TouchableOpacity
+                    <PressableScale
                       key={story.id}
                       style={tw`items-center`}
                       onPress={() => openStoryViewer(story.id)}
                     >
-                      <View style={tw`w-20 h-20 rounded-xl overflow-hidden mb-2 border-2 border-purple-500 bg-gray-100`}>
+                      <View style={tw`w-[72px] h-[128px] rounded-control overflow-hidden mb-2 border-2 border-emerald-500 bg-raised`}>
                         <Image
                           source={{ uri: resolveStoryDisplayUri(story.image, userId, story.id) }}
                           style={tw`w-full h-full`}
-                          contentFit="cover"
+                          contentFit="contain"
                         />
                       </View>
-                      <Text style={tw`text-xs text-gray-500`}>
+                      <Text style={tw`text-xs text-ink-3`}>
                         {story.views} views
                       </Text>
-                      <Text style={tw`text-xs text-gray-400 mt-1`}>
+                      <Text style={tw`text-xs text-ink-3 mt-1`}>
                         {new Date(story.createdAt).toLocaleDateString()}
                       </Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ))}
                 </View>
               </ScrollView>
@@ -946,9 +1529,9 @@ export default function PublicProfileScreen() {
           <View style={tw`p-4`}>
             {journalEntries.length > 0 ? (
               journalEntries.map((entry) => (
-                <View key={entry.id} style={tw`bg-white border border-gray-200 rounded-xl p-4 mb-3`}>
+                <View key={entry.id} style={tw`bg-card border border-line/80 rounded-control p-4 mb-3`}>
                   <View style={tw`flex-row items-center justify-between mb-2`}>
-                    <Text style={tw`text-sm font-semibold text-gray-500`}>
+                    <Text style={tw`text-sm font-semibold text-ink-3`}>
                       {new Date(entry.date).toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
@@ -957,22 +1540,22 @@ export default function PublicProfileScreen() {
                       })}
                     </Text>
                     <View style={tw`flex-row items-center`}>
-                      <Ionicons name="globe" size={16} color="#10B981" />
-                      <Text style={tw`text-xs text-gray-500 ml-1`}>Public</Text>
+                      <Ionicons name="globe" size={16} color="#059669" />
+                      <Text style={tw`text-xs text-ink-3 ml-1`}>Public</Text>
                     </View>
                   </View>
-                  <Text style={tw`text-gray-900 leading-6`}>{entry.content}</Text>
+                  <Text style={tw`text-ink leading-6`}>{entry.content}</Text>
                   {entry.mood && (
                     <View style={tw`mt-2 flex-row items-center`}>
-                      <Ionicons name="happy-outline" size={16} color="#6B7280" />
-                      <Text style={tw`text-xs text-gray-500 ml-1`}>Mood: {entry.mood}</Text>
+                      <Ionicons name="happy-outline" size={16} color={theme.colors.ink3} />
+                      <Text style={tw`text-xs text-ink-3 ml-1`}>Mood: {entry.mood}</Text>
                     </View>
                   )}
                   {entry.tags && entry.tags.length > 0 && (
                     <View style={tw`flex-row flex-wrap mt-2`}>
                       {entry.tags.map((tag, index) => (
-                        <View key={index} style={tw`bg-green-100 px-2 py-1 rounded-full mr-2 mb-1`}>
-                          <Text style={tw`text-xs text-green-800`}>{tag}</Text>
+                        <View key={index} style={tw`bg-emerald-50 border border-emerald-200/80 px-2 py-1 rounded-chip mr-2 mb-1`}>
+                          <Text style={tw`text-xs text-emerald-800`}>{tag}</Text>
                         </View>
                       ))}
                     </View>
@@ -1001,58 +1584,79 @@ export default function PublicProfileScreen() {
             style={tw`absolute inset-0 bg-black/35`}
             onPress={() => setShowOptionsMenu(false)}
           />
-          <View style={tw`bg-white px-4 pt-3 pb-6 rounded-t-3xl`}>
-            <View style={tw`w-12 h-1.5 bg-gray-300 rounded-full self-center mb-4`} />
+          <View style={tw`bg-card px-4 pt-3 pb-6 rounded-t-sheet`}>
+            <View style={tw`w-12 h-1.5 bg-raised rounded-full self-center mb-4`} />
 
             {!isOwnProfile ? (
               <>
-                <Pressable
-                  style={tw`py-4 border-b border-gray-100`}
+                <PressableScale
+                  accessibilityRole="button"
+                  style={tw`py-4 border-b border-line`}
                   onPress={() => void handleBlockMenuPress()}
                 >
-                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-gray-900' : 'text-red-600'}`}>
+                  <Text style={tw`text-base font-semibold ${isBlocked ? 'text-ink' : 'text-red-600'}`}>
                     {isBlocked ? 'Unblock User' : 'Block User'}
                   </Text>
-                </Pressable>
+                </PressableScale>
 
-                <Pressable
-                  style={tw`py-4 border-b border-gray-100`}
+                <PressableScale
+                  accessibilityRole="button"
+                  style={tw`py-4 border-b border-line`}
                   onPress={handleReportMenuPress}
                 >
-                  <Text style={tw`text-base font-semibold text-gray-900`}>Report User</Text>
-                </Pressable>
+                  <Text style={tw`text-base font-semibold text-ink`}>Report User</Text>
+                </PressableScale>
 
-                <Pressable
-                  style={tw`py-4 border-b border-gray-100`}
+                <PressableScale
+                  accessibilityRole="button"
+                  style={tw`py-4 border-b border-line`}
                   onPress={handleMuteMenuPress}
                 >
-                  <Text style={tw`text-base font-semibold text-gray-900`}>
+                  <Text style={tw`text-base font-semibold text-ink`}>
                     {isMuted ? 'Unmute User' : 'Mute User'}
                   </Text>
-                </Pressable>
+                </PressableScale>
               </>
             ) : null}
 
-            <Pressable
-              style={tw`py-4 border-b border-gray-100`}
+            <PressableScale
+              accessibilityRole="button"
+              style={tw`py-4 border-b border-line`}
               onPress={() => {
                 setShowOptionsMenu(false);
-                Alert.alert('Share Profile', `Share ${profileUser?.username}'s profile with others.`);
+                if (!profileUser) return;
+                setSharePayload({
+                  kind: 'profile',
+                  userId: profileUser.id,
+                  username: profileUser.username,
+                  avatar: profileUser.avatar,
+                  isInstructor: profileUser.isInstructor,
+                  teachingHeadline: profileUser.teachingHeadline,
+                  categories: profileUser.categories,
+                  points: profileUser.points,
+                  endorsements: profileUser.endorsementsReceived,
+                });
               }}
             >
-              <Text style={tw`text-base font-semibold text-gray-900`}>Share Profile</Text>
-            </Pressable>
+              <Text style={tw`text-base font-semibold text-ink`}>Share profile card</Text>
+            </PressableScale>
 
-            <Pressable
+            <PressableScale
+              accessibilityRole="button"
               style={tw`py-4 mt-2`}
               onPress={() => setShowOptionsMenu(false)}
             >
-              <Text style={tw`text-base font-semibold text-center text-gray-500`}>Cancel</Text>
-            </Pressable>
+              <Text style={tw`text-base font-semibold text-center text-ink-3`}>Cancel</Text>
+            </PressableScale>
           </View>
         </View>
       </Modal>
 
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
+      />
     </SafeAreaView>
   );
 }

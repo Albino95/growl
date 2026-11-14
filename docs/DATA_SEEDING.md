@@ -19,8 +19,19 @@ npm run migrate
 | `npm run seed:social:dense:remote` | Dense catalog: **40 users**, **120 posts**, **40 stories**, friendships, endorsements, 5 launch instructors |
 | `npm run seed:core:remote` | Core demo accounts (review only — hide from production UI) |
 | `npm run demo:remote` | Full bundle: migrate + core + social + dense + email verify fix |
+| `npm run demo:production` | Same bundle for **production** D1 (`growl-db-prod`) |
+| `npm run refresh:feed:production` | Bump seeded post/story timestamps on prod |
 
 Local equivalents use `:local` suffix (e.g. `seed:social:dense:local`).
+
+If the feed looks empty after an older seed (posts fall outside the home recency window), refresh timestamps:
+
+```bash
+cd backend && npm run refresh:feed:qa          # QA
+cd backend && npm run refresh:feed:production  # Production
+```
+
+This bumps seeded posts/stories into the last few days and tags a subset as reels.
 
 ## Dense seed credentials
 

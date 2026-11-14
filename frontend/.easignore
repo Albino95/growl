@@ -1,0 +1,13 @@
+# Keep EAS project upload small/fast
+node_modules/
+.expo/
+web-build/
+dist/
+coverage/
+**/*.map
+**/.DS_Store
+ios/
+android/
+*.log
+.env*
+!.env.example

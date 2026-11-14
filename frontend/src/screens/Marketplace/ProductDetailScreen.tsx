@@ -1,51 +1,64 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import tw from '../../lib/tw';
-import { getProduct, getProducts, Product } from '../../services/api/marketplace';
-import { getProductImageUrl, getProductImages } from '../../utils/images';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../app/navigation/RootNavigator';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
+import Skeleton from '../../components/ui/Skeleton';
+import PrimaryButton from '../../components/ui/PrimaryButton';
+import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
+import { resolveProductImageUri, resolveAvatarUri, avatarSource } from '../../utils/images';
 import { verticalScrollProps, horizontalScrollProps } from '../../constants/scroll';
 import { rankMarketplaceProducts } from '../../utils/ranking';
 import { useAuth } from '../../store/hooks';
 import SectionLabel from '../../components/ui/SectionLabel';
+import { alertMessage } from '../../utils/confirmDialog';
 
 const { width } = Dimensions.get('window');
 
 type ProductDetailRouteParams = {
   ProductDetail: {
     productId: string;
+    preview?: {
+      title?: string;
+      imageUrl?: string | null;
+      price?: number;
+      currency?: string;
+      sellerName?: string;
+    };
   };
 };
 
 type ProductDetailRouteProp = RouteProp<ProductDetailRouteParams, 'ProductDetail'>;
 
 export default function ProductDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<ProductDetailRouteProp>();
-  const { productId } = route.params;
+  const { productId, preview } = route.params;
   const { user } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [saved, setSaved] = useState(false);
   const [failedImageIndexes, setFailedImageIndexes] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     loadProduct();
+    void getPaymentConfig()
+      .then((cfg) => setPaymentsEnabled(!!cfg?.data?.enabled))
+      .catch(() => setPaymentsEnabled(false));
   }, [productId]);
 
   const loadProduct = async () => {
@@ -55,21 +68,27 @@ export default function ProductDetailScreen() {
       const response = await getProduct(productId);
       if (response.success && response.data) {
         setProduct(response.data);
-        const catalog = await getProducts({});
-        if (catalog.success && Array.isArray(catalog.data?.products)) {
-          const ranked = rankMarketplaceProducts(catalog.data.products, user?.categories || [], {
-            userPoints: user?.points,
-          });
-          setRelatedProducts(
-            ranked.filter((p) => p.id !== productId).slice(0, 6)
-          );
+        // Show the product now; related items fill in when the catalog lands.
+        setLoading(false);
+        try {
+          const catalog = await getProducts({});
+          if (catalog.success && Array.isArray(catalog.data?.products)) {
+            const ranked = rankMarketplaceProducts(catalog.data.products, user?.categories || [], {
+              userPoints: user?.points,
+            });
+            setRelatedProducts(
+              ranked.filter((p) => p.id !== productId).slice(0, 6)
+            );
+          }
+        } catch {
+          // Related items are optional; never bounce the user off a loaded product.
         }
       } else {
-        Alert.alert('Error', 'Failed to load product');
+        void alertMessage('Error', 'Failed to load product');
         navigation.goBack();
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to load product');
+      void alertMessage('Error', error.message || 'Failed to load product');
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -78,13 +97,20 @@ export default function ProductDetailScreen() {
 
   const handleAddToCart = () => {
     if (!product) return;
-    
-    if (product.stock < quantity) {
-      Alert.alert('Out of Stock', 'Not enough items in stock');
+
+    if (!paymentsEnabled) {
+      void alertMessage(
+        'Browsing only',
+        'Checkout is not available in this version. You can browse the catalog; purchases will open in a later update.'
+      );
       return;
     }
 
-    // Navigate to checkout with product
+    if (product.stock < quantity) {
+      void alertMessage('Out of Stock', 'Not enough items in stock');
+      return;
+    }
+
     navigation.navigate('Checkout', {
       items: [
         {
@@ -100,11 +126,65 @@ export default function ProductDetailScreen() {
   };
 
   if (loading) {
+    // First load: same geometry as the loaded page. Whatever the tap site already
+    // knew (route `preview`: image, title, price, seller) renders for real right away;
+    // the rest is skeleton until the product lands.
+    const previewImage = preview?.imageUrl ? resolveProductImageUri(preview.imageUrl) : '';
     return (
-      <SafeAreaView style={tw`flex-1 bg-stone-50`}>
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#059669" />
-          <Text style={tw`mt-4 text-stone-500`}>Loading product…</Text>
+      <SafeAreaView
+        style={tw`flex-1 bg-page`}
+        edges={['top']}
+        accessibilityLabel="Loading product"
+        accessibilityState={{ busy: true }}
+      >
+        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
+          <PressableScale
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
+          </PressableScale>
+          <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
+          <View style={tw`w-6`} />
+        </View>
+        <View style={tw`bg-raised`}>
+          {previewImage ? (
+            <GrowImage source={{ uri: previewImage }} style={{ width, height: 384 }} contentFit="cover" />
+          ) : (
+            <Skeleton style={{ width, height: 384 }} />
+          )}
+        </View>
+        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-card border border-line/80 rounded-card`}>
+          <View style={tw`flex-row items-center mb-4`}>
+            <Skeleton style={tw`w-8 h-8 rounded-full mr-2`} />
+            {preview?.sellerName ? (
+              <Text style={tw`text-sm text-ink-2`}>Sold by {preview.sellerName}</Text>
+            ) : (
+              <Skeleton style={tw`h-3.5 w-28 rounded`} />
+            )}
+          </View>
+          {preview?.title ? (
+            <Text style={tw`text-2xl font-bold text-ink mb-2`}>{preview.title}</Text>
+          ) : (
+            <Skeleton style={tw`h-7 w-3/4 rounded-control mb-2`} />
+          )}
+          <View style={tw`flex-row items-center mb-4`}>
+            {typeof preview?.price === 'number' ? (
+              <Text style={tw`text-3xl font-bold text-brand-700`}>${preview.price.toFixed(2)}</Text>
+            ) : (
+              <Skeleton style={tw`h-9 w-28 rounded-control`} />
+            )}
+          </View>
+          <Skeleton style={tw`h-5 w-28 rounded mb-3`} />
+          <Skeleton style={tw`h-3.5 w-full rounded mb-2`} />
+          <Skeleton style={tw`h-3.5 w-full rounded mb-2`} />
+          <Skeleton style={tw`h-3.5 w-2/3 rounded mb-6`} />
+          <View style={tw`flex-row mb-6`}>
+            <Skeleton style={tw`h-7 w-20 rounded-chip mr-2`} />
+            <Skeleton style={tw`h-7 w-24 rounded-chip`} />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -112,121 +192,135 @@ export default function ProductDetailScreen() {
 
   if (!product) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`}>
+      <SafeAreaView style={tw`flex-1 bg-page`}>
         <View style={tw`flex-1 items-center justify-center px-6`}>
-          <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
-          <Text style={tw`mt-4 text-lg font-semibold text-stone-900`}>Product not found</Text>
-          <TouchableOpacity
+          <Ionicons name="alert-circle-outline" size={64} color={theme.colors.danger} />
+          <Text style={tw`mt-4 text-lg font-semibold text-ink`}>Product not found</Text>
+          <PressableScale
             onPress={() => navigation.goBack()}
-            style={tw`mt-6 px-6 py-3 bg-brand-600 rounded-lg`}
+            style={tw`mt-6 px-6 py-3 bg-brand-600 rounded-card`}
           >
             <Text style={tw`text-white font-semibold`}>Go Back</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </SafeAreaView>
     );
   }
 
-  const productImages = product.images && product.images.length > 0
+  const productImages = (product.images && product.images.length > 0
     ? product.images
     : product.image_url
-    ? [product.image_url]
-    : getProductImages(product.category, product.id, 3);
-
-  const mainImage = productImages[selectedImageIndex] || getProductImageUrl(product.category, product.id);
+      ? [product.image_url]
+      : []
+  )
+    .map((u) => resolveProductImageUri(u))
+    .filter(Boolean);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-stone-50`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false} {...verticalScrollProps}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100 bg-white`}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="arrow-back" size={24} color="#1C1917" />
-          </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-stone-900`}>Product</Text>
-          <TouchableOpacity
-            onPress={() => setSaved(!saved)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name={saved ? 'heart' : 'heart-outline'} size={24} color={saved ? '#DC2626' : '#1C1917'} />
-          </TouchableOpacity>
+        <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
+          <PressableScale accessibilityRole="button" accessibilityLabel="Go back" onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
+          </PressableScale>
+          <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
+          <View style={tw`w-6`} />
         </View>
 
-        <View style={tw`bg-stone-100`}>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onMomentumScrollEnd={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / width);
-              setSelectedImageIndex(index);
-            }}
-            style={tw`h-96`}
-          >
-            {productImages.map((image: string, index: number) => (
-              <Image
-                key={index}
-                source={{
-                  uri: failedImageIndexes[index]
-                    ? getProductImageUrl(product.category, `${product.id}-fallback-${index}`)
-                    : image,
+        <View style={tw`bg-raised`}>
+          {productImages.length > 0 ? (
+            <>
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                onMomentumScrollEnd={(e) => {
+                  const index = Math.round(e.nativeEvent.contentOffset.x / width);
+                  setSelectedImageIndex(index);
                 }}
-                style={{ width, height: 384 }}
-                contentFit="cover"
-                onError={() => {
-                  setFailedImageIndexes((prev) =>
-                    prev[index] ? prev : { ...prev, [index]: true }
-                  );
-                }}
-              />
-            ))}
-          </ScrollView>
-
-          {/* Image Indicators */}
-          {productImages.length > 1 && (
-            <View style={tw`flex-row justify-center py-2`}>
-              {productImages.map((_: string, index: number) => (
-                <View
-                  key={index}
-                  style={tw`w-2 h-2 rounded-full mx-1 ${
-                    index === selectedImageIndex ? 'bg-emerald-600' : 'bg-stone-300'
-                  }`}
-                />
-              ))}
+                style={tw`h-96`}
+              >
+                {productImages.map((image: string, index: number) =>
+                  failedImageIndexes[index] ? (
+                    <View
+                      key={index}
+                      style={[
+                        tw`items-center justify-center bg-stone-200`,
+                        { width, height: 384 },
+                      ]}
+                    >
+                      <Ionicons name="image-outline" size={40} color={theme.colors.iconMuted} />
+                    </View>
+                  ) : (
+                    <GrowImage
+                      key={index}
+                      source={{ uri: image }}
+                      style={{ width, height: 384 }}
+                      contentFit="cover"
+                      onError={() => {
+                        setFailedImageIndexes((prev) =>
+                          prev[index] ? prev : { ...prev, [index]: true }
+                        );
+                      }}
+                    />
+                  )
+                )}
+              </ScrollView>
+              {productImages.length > 1 ? (
+                <View style={tw`flex-row justify-center py-2`}>
+                  {productImages.map((_: string, index: number) => (
+                    <View
+                      key={index}
+                      style={tw`w-2 h-2 rounded-full mx-1 ${
+                        index === selectedImageIndex ? 'bg-brand-600' : 'bg-stone-300'
+                      }`}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <View style={[tw`items-center justify-center bg-stone-200`, { height: 384 }]}>
+              <Ionicons name="image-outline" size={40} color={theme.colors.iconMuted} />
             </View>
           )}
         </View>
 
         {/* Product Info */}
-        <View style={tw`px-4 py-6 bg-white`}>
+        <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-card border border-line/80 rounded-card`}>
           {/* Business Info */}
           {product.business && (
             <View style={tw`flex-row items-center mb-4`}>
-              {product.business.avatar && (
-                <Image
-                  source={{ uri: product.business.avatar }}
-                  style={tw`w-8 h-8 rounded-full mr-2`}
-                />
-              )}
-              <Text style={tw`text-sm text-stone-600`}>
+              <GrowImage
+                source={avatarSource(
+                  resolveAvatarUri(
+                    product.business.id,
+                    product.business.username,
+                    product.business.avatar
+                  )
+                )}
+                style={tw`w-8 h-8 rounded-full mr-2 bg-raised`}
+              />
+              <Text style={tw`text-sm text-ink-2`}>
                 Sold by {product.business.username || 'Business'}
               </Text>
             </View>
           )}
 
           {/* Product Name */}
-          <Text style={tw`text-2xl font-bold text-stone-900 mb-2`}>{product.name}</Text>
+          <Text style={tw`text-2xl font-bold text-ink mb-2`}>{product.name}</Text>
 
           {/* Price */}
           <View style={tw`flex-row items-center mb-4`}>
-            <Text style={tw`text-3xl font-bold text-emerald-700`}>${product.price.toFixed(2)}</Text>
+            <Text style={tw`text-3xl font-bold text-brand-700`}>${product.price.toFixed(2)}</Text>
             {product.stock > 0 && (
-              <View style={tw`ml-4 px-3 py-1 bg-emerald-50 rounded-full`}>
-                <Text style={tw`text-sm font-medium text-emerald-800`}>In stock</Text>
+              <View style={tw`ml-4 px-3 py-1 bg-emerald-50 rounded-chip`}>
+                <Text style={tw`text-sm font-medium text-brand-800`}>In stock</Text>
               </View>
             )}
             {product.stock === 0 && (
-              <View style={tw`ml-4 px-3 py-1 bg-red-100 rounded-full`}>
+              <View style={tw`ml-4 px-3 py-1 bg-red-100 rounded-chip`}>
                 <Text style={tw`text-sm font-medium text-red-700`}>Out of Stock</Text>
               </View>
             )}
@@ -235,23 +329,23 @@ export default function ProductDetailScreen() {
           {/* Description */}
           {product.description && (
             <View style={tw`mb-6`}>
-              <Text style={tw`text-lg font-semibold text-stone-900 mb-2`}>Description</Text>
-              <Text style={tw`text-stone-600 leading-6`}>{product.description}</Text>
+              <Text style={tw`text-lg font-semibold text-ink mb-2`}>Description</Text>
+              <Text style={tw`text-ink-2 leading-6`}>{product.description}</Text>
             </View>
           )}
 
           {/* Category Tags */}
           <View style={tw`flex-row flex-wrap mb-6`}>
             {product.category && (
-              <View style={tw`px-3 py-1 bg-stone-100 rounded-full mr-2 mb-2`}>
-                <Text style={tw`text-sm text-stone-700`}>
+              <View style={tw`px-3 py-1 bg-raised border border-line/60 rounded-chip mr-2 mb-2`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   {product.category.charAt(0).toUpperCase() + product.category.slice(1)}
                 </Text>
               </View>
             )}
             {product.subcategory && (
-              <View style={tw`px-3 py-1 bg-stone-100 rounded-full mr-2 mb-2`}>
-                <Text style={tw`text-sm text-stone-700`}>
+              <View style={tw`px-3 py-1 bg-raised border border-line/60 rounded-chip mr-2 mb-2`}>
+                <Text style={tw`text-sm text-ink-2`}>
                   {product.subcategory.charAt(0).toUpperCase() + product.subcategory.slice(1)}
                 </Text>
               </View>
@@ -260,69 +354,82 @@ export default function ProductDetailScreen() {
 
           {/* Quantity Selector */}
           <View style={tw`mb-6`}>
-            <Text style={tw`text-lg font-semibold text-stone-900 mb-3`}>Quantity</Text>
+            <Text style={tw`text-lg font-semibold text-ink mb-3`}>Quantity</Text>
             <View style={tw`flex-row items-center`}>
-              <TouchableOpacity
+              <PressableScale
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease quantity"
+                accessibilityState={{ disabled: quantity <= 1 }}
                 onPress={() => setQuantity(Math.max(1, quantity - 1))}
-                style={tw`w-10 h-10 items-center justify-center border border-stone-300 rounded-lg`}
+                style={tw`w-10 h-10 items-center justify-center border border-line/80 bg-page rounded-card`}
               >
-                <Ionicons name="remove" size={20} color="#6B7280" />
-              </TouchableOpacity>
-              <Text style={tw`mx-6 text-lg font-semibold text-stone-900`}>{quantity}</Text>
-              <TouchableOpacity
+                <Ionicons name="remove" size={20} color={theme.colors.ink2} />
+              </PressableScale>
+              <Text style={tw`mx-6 text-lg font-semibold text-ink`}>{quantity}</Text>
+              <PressableScale
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Increase quantity"
+                accessibilityState={{ disabled: quantity >= product.stock }}
                 onPress={() => setQuantity(Math.min(product.stock, quantity + 1))}
                 disabled={quantity >= product.stock}
-                style={tw`w-10 h-10 items-center justify-center border border-stone-300 rounded-lg ${
+                style={tw`w-10 h-10 items-center justify-center border border-line/80 bg-page rounded-card ${
                   quantity >= product.stock ? 'opacity-50' : ''
                 }`}
               >
-                <Ionicons name="add" size={20} color="#6B7280" />
-              </TouchableOpacity>
-              <Text style={tw`ml-4 text-sm text-stone-600`}>
+                <Ionicons name="add" size={20} color={theme.colors.ink2} />
+              </PressableScale>
+              <Text style={tw`ml-4 text-sm text-ink-2`}>
                 {product.stock} available
               </Text>
             </View>
           </View>
 
           {/* Shipping Info */}
-          <View style={tw`bg-stone-50 rounded-lg p-4 mb-6`}>
+          <View style={tw`bg-raised border border-line/60 rounded-card p-4 mb-6`}>
             <View style={tw`flex-row items-center mb-2`}>
-              <Ionicons name="car-outline" size={20} color="#059669" />
-              <Text style={tw`ml-2 font-semibold text-stone-900`}>Shipping</Text>
+              <Ionicons name="car-outline" size={20} color={theme.colors.brand} />
+              <Text style={tw`ml-2 font-semibold text-ink`}>Shipping</Text>
             </View>
-            <Text style={tw`text-sm text-stone-600`}>
+            <Text style={tw`text-sm text-ink-2`}>
               Free shipping on orders over $50. Estimated delivery: 3-5 business days.
             </Text>
           </View>
 
           {relatedProducts.length > 0 ? (
-            <View style={tw`mb-4`}>
+            <View style={tw`mb-1`}>
               <SectionLabel variant="caps">You may also like</SectionLabel>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} {...horizontalScrollProps}>
                 {relatedProducts.map((item) => {
-                  const thumb =
-                    item.image_url || item.images?.[0] || getProductImageUrl(item.category, item.id);
+                  const thumb = resolveProductImageUri(item.image_url, item.images);
                   return (
-                    <TouchableOpacity
+                    <PressableScale
                       key={item.id}
                       onPress={() =>
                         (navigation as { navigate: (a: string, b: object) => void }).navigate(
                           'ProductDetail',
-                          { productId: item.id }
+                          { productId: item.id, preview: { title: item.name, imageUrl: thumb, price: item.price, sellerName: item.business?.username } }
                         )
                       }
-                      style={tw`w-36 mr-3 bg-white border border-stone-100 rounded-2xl overflow-hidden`}
+                      style={tw`w-36 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
                     >
-                      <Image source={{ uri: thumb }} style={tw`w-full h-40 bg-stone-100`} contentFit="cover" />
+                      {thumb ? (
+                        <GrowImage source={{ uri: thumb }} style={tw`w-full h-40 bg-raised`} contentFit="cover" />
+                      ) : (
+                        <View style={tw`w-full h-40 bg-raised items-center justify-center`}>
+                          <Ionicons name="image-outline" size={28} color={theme.colors.iconMuted} />
+                        </View>
+                      )}
                       <View style={tw`p-2`}>
-                        <Text style={tw`text-sm font-semibold text-stone-900`} numberOfLines={2}>
+                        <Text style={tw`text-sm font-semibold text-ink`} numberOfLines={2}>
                           {item.name}
                         </Text>
-                        <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
+                        <Text style={tw`text-sm font-bold text-brand-700 mt-1`}>
                           ${item.price.toFixed(2)}
                         </Text>
                       </View>
-                    </TouchableOpacity>
+                    </PressableScale>
                   );
                 })}
               </ScrollView>
@@ -332,26 +439,30 @@ export default function ProductDetailScreen() {
       </ScrollView>
 
       {/* Bottom Action Bar */}
-      <View style={tw`border-t border-stone-200 bg-white px-4 py-3 pb-6`}>
-        <View style={tw`flex-row`}>
-          <TouchableOpacity
-            onPress={handleAddToCart}
-            disabled={product.stock === 0}
-            style={tw`flex-1 mr-2 px-4 py-3.5 bg-stone-100 rounded-2xl items-center ${
-              product.stock === 0 ? 'opacity-50' : ''
-            }`}
-          >
-            <Text style={tw`font-semibold text-stone-900`}>Add to cart</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleBuyNow}
-            disabled={product.stock === 0}
-            style={tw`flex-1 ml-2 px-4 py-3.5 bg-emerald-600 rounded-2xl items-center ${
-              product.stock === 0 ? 'opacity-50' : ''
-            }`}
-          >
-            <Text style={tw`font-semibold text-white`}>Buy now</Text>
-          </TouchableOpacity>
+      <View style={tw`border-t border-line/80 bg-card px-gutter py-3 pb-6`}>
+        {!paymentsEnabled ? (
+          <View style={tw`px-3 py-3 rounded-card bg-raised border border-line/80 mb-2`}>
+            <Text style={tw`text-sm text-ink-2 text-center`}>
+              Catalog browsing only — checkout is not enabled in this release.
+            </Text>
+          </View>
+        ) : null}
+        <View style={tw`flex-row gap-2`}>
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label={paymentsEnabled ? 'Add to cart' : 'Browse only'}
+              variant="ghost"
+              onPress={handleAddToCart}
+              disabled={product.stock === 0}
+            />
+          </View>
+          <View style={tw`flex-1`}>
+            <PrimaryButton
+              label={paymentsEnabled ? 'Buy now' : 'Unavailable'}
+              onPress={handleBuyNow}
+              disabled={product.stock === 0 || !paymentsEnabled}
+            />
+          </View>
         </View>
       </View>
     </SafeAreaView>

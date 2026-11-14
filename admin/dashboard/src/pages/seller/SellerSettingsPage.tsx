@@ -71,7 +71,7 @@ export function SellerSettingsPage() {
 
       <Card padding="lg" className="max-w-xl">
         {loading ? (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-stone-500">Loading…</p>
         ) : (
           <form onSubmit={onSave}>
             <Field label="Display name">

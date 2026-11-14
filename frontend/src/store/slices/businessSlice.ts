@@ -75,6 +75,8 @@ interface BusinessState {
   productsStatus: BusinessLoadStatus;
   ordersStatus: BusinessLoadStatus;
   growStatus: BusinessLoadStatus;
+  customersStatus: BusinessLoadStatus;
+  customersError: string | null;
   error: string | null;
   lastFetchedAt: string | null;
   catalogFilter: 'all' | 'low' | 'out';
@@ -103,6 +105,8 @@ const initialState: BusinessState = {
   productsStatus: 'idle',
   ordersStatus: 'idle',
   growStatus: 'idle',
+  customersStatus: 'idle',
+  customersError: null,
   error: null,
   lastFetchedAt: null,
   catalogFilter: 'all',
@@ -346,8 +350,18 @@ const businessSlice = createSlice({
       .addCase(fetchBusinessSettings.fulfilled, (state, action) => {
         state.settings = action.payload;
       })
+      .addCase(fetchCustomers.pending, (state) => {
+        state.customersStatus = 'loading';
+        state.customersError = null;
+      })
       .addCase(fetchCustomers.fulfilled, (state, action) => {
+        state.customersStatus = 'succeeded';
         state.customers = action.payload;
+      })
+      .addCase(fetchCustomers.rejected, (state, action) => {
+        state.customersStatus = 'failed';
+        state.customersError =
+          typeof action.payload === 'string' ? action.payload : 'Failed to load customers';
       })
       .addCase(fetchNotifications.fulfilled, (state, action) => {
         state.notifications = action.payload;

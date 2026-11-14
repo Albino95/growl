@@ -23,8 +23,8 @@ export function KpiCard({ label, value, icon: Icon, href, hrefLabel, accent = 'b
             <Icon className="h-5 w-5" />
           </div>
         </div>
-        <p className="mt-4 text-sm font-medium text-slate-500">{label}</p>
-        <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{value}</p>
+        <p className="mt-4 text-sm font-medium text-stone-500">{label}</p>
+        <p className="mt-1 text-3xl font-bold tracking-tight text-stone-900">{value}</p>
         {href && (
           <Link to={href} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">
             {hrefLabel || 'View'} <ArrowUpRight className="h-3.5 w-3.5" />
@@ -38,9 +38,9 @@ export function KpiCard({ label, value, icon: Icon, href, hrefLabel, accent = 'b
 export function KpiSkeleton() {
   return (
     <Card padding="md">
-      <div className="h-10 w-10 animate-pulse rounded-lg bg-slate-200" />
-      <div className="mt-4 h-4 w-24 animate-pulse rounded bg-slate-200" />
-      <div className="mt-2 h-8 w-16 animate-pulse rounded bg-slate-200" />
+      <div className="h-10 w-10 animate-pulse rounded-lg bg-surface-muted" />
+      <div className="mt-4 h-4 w-24 animate-pulse rounded bg-surface-muted" />
+      <div className="mt-2 h-8 w-16 animate-pulse rounded bg-surface-muted" />
     </Card>
   );
 }

@@ -107,7 +107,8 @@ describe('Stories Routes', () => {
           Authorization: 'Bearer test-token',
         },
         body: {
-          image_url: 'https://example.com/story.jpg',
+          // createStorySchema only accepts URLs of media uploaded through our API.
+          image_url: 'https://example.com/api/v1/media/stories/story.jpg',
           caption: 'My story',
         },
       });
@@ -151,12 +152,13 @@ describe('Stories Routes', () => {
       let viewRecorded = false;
 
       mockDb.prepare = (query: string) => {
-        if (query.includes('SELECT id, user_id FROM stories')) {
+        if (query.includes('FROM stories WHERE id = ?') && query.includes('user_id')) {
           return {
             bind: () => ({
               first: async () => ({
                 id: 'story-1',
                 user_id: 'user-2', // Different user
+                active: 1, // still inside the 24h window
               }),
             }),
           };
@@ -311,10 +313,18 @@ describe('Stories Routes', () => {
       const response = await feedRoutes.getFeed(request, env);
       const data = await parseJsonResponse(response);
 
+      // Home mode now returns a sectioned payload: friends (and own posts) under
+      // `following`, path-matching non-friends under `suggested`.
       expect(response.status).toBe(200);
-      expect(Array.isArray(data)).toBe(true);
-      expect(data).toHaveLength(1);
-      expect(data[0].id).toBe('friend-post');
+      expect(data.success).toBe(true);
+      const { following, suggested } = data.data;
+      expect(Array.isArray(following)).toBe(true);
+      expect(following).toHaveLength(1);
+      expect(following[0].id).toBe('friend-post');
+      expect(following[0].feed_section).toBe('following');
+      expect(following[0].metadata.is_friend).toBe(true);
+      expect(suggested.map((p: any) => p.id)).toEqual(['stranger-post']);
+      expect(suggested[0].feed_section).toBe('suggested');
     });
 
     it('createComment creates a comment and returns user payload', async () => {
@@ -328,10 +338,10 @@ describe('Stories Routes', () => {
             }),
           };
         }
-        if (query.includes('SELECT id FROM posts WHERE id = ?')) {
+        if (query.includes('FROM posts WHERE id = ?')) {
           return {
             bind: () => ({
-              first: async () => ({ id: 'post-1' }),
+              first: async () => ({ id: 'post-1', user_id: 'post-author' }),
             }),
           };
         }
@@ -389,9 +399,10 @@ describe('Stories Routes', () => {
 
       expect(response.status).toBe(201);
       expect(insertCalled).toBe(true);
-      expect(data.post_id).toBe('post-1');
-      expect(data.content).toBe('Great post!');
-      expect(data.user.username).toBe('Test User');
+      expect(data.success).toBe(true);
+      expect(data.data.post_id).toBe('post-1');
+      expect(data.data.content).toBe('Great post!');
+      expect(data.data.user.username).toBe('Test User');
     });
   });
 });

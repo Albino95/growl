@@ -98,8 +98,8 @@ export function PrivacyRequestsPage() {
       {formOpen && (
         <Card className="mb-6" padding="md">
           <button type="button" className="mb-4 flex w-full items-center justify-between" onClick={() => setFormOpen(false)}>
-            <span className="font-semibold text-slate-800">Create on behalf of user</span>
-            <ChevronUp className="h-4 w-4 text-slate-400" />
+            <span className="font-semibold text-stone-800">Create on behalf of user</span>
+            <ChevronUp className="h-4 w-4 text-stone-400" />
           </button>
           <form onSubmit={onCreate} className="flex flex-wrap items-end gap-4">
             <Field label="User ID"><Input value={newUserId} onChange={(e) => setNewUserId(e.target.value)} required className="min-w-[200px]" /></Field>
@@ -144,7 +144,7 @@ export function PrivacyRequestsPage() {
                   <DataTableCell>{r.email || r.user_id}</DataTableCell>
                   <DataTableCell><Badge variant="info">{r.request_type}</Badge></DataTableCell>
                   <DataTableCell><Badge variant={statusBadge(r.status)}>{r.status}</Badge></DataTableCell>
-                  <DataTableCell className="text-slate-500">{new Date(r.created_at).toLocaleString()}</DataTableCell>
+                  <DataTableCell className="text-stone-500">{new Date(r.created_at).toLocaleString()}</DataTableCell>
                   <DataTableCell>
                     <div className="flex flex-wrap gap-2">
                       <Button variant="ghost" disabled={busyId === r.id} onClick={() => void updateStatus(r.id, 'in_progress')}>Start</Button>

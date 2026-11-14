@@ -1,72 +1,139 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import tw, { theme } from '../../lib/tw';
+import { haptic } from '../../theme/haptics';
+import { duration, easing, pop, press, spring, stagger, timing } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 export type FeedReaction = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
+
+const HEART_ACTIVE = '#F97066';
+const HEART_IDLE_DARK = '#FFFFFF';
 
 type Props = {
   hasLiked: boolean;
   reaction: FeedReaction;
   onPress: () => void;
   onLongPress: () => void;
+  /** Light = feed cards; dark = reels overlay */
+  tone?: 'light' | 'dark';
+  /** Removes feed margin so icon centers in circular reel actions */
+  compact?: boolean;
 };
 
-function ReactionGlyph({ reaction, hasLiked }: { reaction: FeedReaction; hasLiked: boolean }) {
+function ReactionGlyph({
+  reaction,
+  hasLiked,
+  tone = 'light',
+}: {
+  reaction: FeedReaction;
+  hasLiked: boolean;
+  tone?: 'light' | 'dark';
+}) {
   const active = hasLiked || reaction != null;
+  const outlineColor = tone === 'dark' ? HEART_IDLE_DARK : theme.colors.icon;
   if (!active) {
-    return <Ionicons name="heart-outline" size={28} color="#374151" />;
+    return <Ionicons name="heart-outline" size={26} color={outlineColor} />;
   }
   const r = reaction || 'love';
   switch (r) {
     case 'like':
-      return <Text style={tw`text-[26px] leading-none`}>👍</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>👍</Text>;
     case 'laugh':
-      return <Text style={tw`text-[26px] leading-none`}>😂</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>😂</Text>;
     case 'wow':
-      return <Text style={tw`text-[26px] leading-none`}>😮</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>😮</Text>;
     case 'support':
-      return <Text style={tw`text-[26px] leading-none`}>💪</Text>;
+      return <Text style={tw`text-[24px] leading-none`}>💪</Text>;
     case 'love':
     default:
-      return <Ionicons name="heart" size={28} color="#EF4444" />;
+      return <Ionicons name="heart" size={26} color={HEART_ACTIVE} />;
   }
 }
 
-/** Like / reaction control with a bounce when the heart fills. */
-export default function FeedLikeButton({ hasLiked, reaction, onPress, onLongPress }: Props) {
+/** Like / reaction control — pop on like, no leftover ring at rest. */
+export default function FeedLikeButton({
+  hasLiked,
+  reaction,
+  onPress,
+  onLongPress,
+  tone = 'light',
+  compact = false,
+}: Props) {
   const scale = useRef(new Animated.Value(1)).current;
+  const ring = useRef(new Animated.Value(0)).current;
   const prevLiked = useRef(hasLiked);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (hasLiked && !prevLiked.current) {
-      Animated.sequence([
-        Animated.spring(scale, { toValue: 1.4, friction: 3, tension: 240, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 5, tension: 160, useNativeDriver: true }),
+      ring.setValue(0);
+      Animated.parallel([
+        pop(scale, 1.28, 'bouncy', reduced),
+        reduced
+          ? Animated.delay(0)
+          : Animated.sequence([
+              timing(ring, 1, { duration: duration.gentle + 60, easing: easing.out }),
+              // Ensure ring is fully gone after the burst (no faded leftover).
+              Animated.timing(ring, { toValue: 0, duration: 1, useNativeDriver: true }),
+            ]),
       ]).start();
     } else if (!hasLiked && prevLiked.current) {
-      Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }).start();
+      spring(scale, 1, 'snappy', reduced).start();
+      ring.setValue(0);
+    } else {
+      // Already liked on mount / hydrate — never show a stuck ring.
+      ring.setValue(0);
     }
     prevLiked.current = hasLiked;
-  }, [hasLiked, scale]);
+  }, [hasLiked, scale, ring, reduced]);
 
   return (
     <Pressable
-      onPress={() => {
-        triggerPressFeedback();
-        onPress();
+      onPressIn={() => {
+        if (!reduced) spring(scale, press.icon, 'snappy').start();
       }}
+      onPressOut={() => {
+        spring(scale, 1, 'snappy', reduced).start();
+      }}
+      onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
       hitSlop={10}
-      style={tw`mr-3`}
+      style={compact ? tw`items-center justify-center` : tw`mr-3`}
       accessibilityRole="button"
       accessibilityLabel={hasLiked ? 'Unlike' : 'Like'}
     >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <ReactionGlyph reaction={reaction} hasLiked={hasLiked} />
-      </Animated.View>
+      <View style={tw`items-center justify-center w-8 h-8`}>
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: HEART_ACTIVE,
+            // Idle ring value is 0 → opacity 0 (was incorrectly 0.55 before).
+            opacity: ring.interpolate({
+              inputRange: [0, 0.2, 0.7, 1],
+              outputRange: [0, 0.5, 0.2, 0],
+            }),
+            transform: [
+              {
+                scale: ring.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.85, 1.55],
+                }),
+              },
+            ],
+          }}
+        />
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <ReactionGlyph reaction={reaction} hasLiked={hasLiked} tone={tone} />
+        </Animated.View>
+      </View>
     </Pressable>
   );
 }
@@ -86,31 +153,30 @@ export function ReactionPickerBar({
   const enter = useRef(new Animated.Value(0)).current;
   const scales = useRef(items.map(() => new Animated.Value(0.5))).current;
 
+  const reduced = useReducedMotion();
+
   useEffect(() => {
-    Animated.spring(enter, {
-      toValue: 1,
-      friction: 7,
-      tension: 140,
-      useNativeDriver: true,
-    }).start();
+    spring(enter, 1, 'gentle', reduced).start();
+    if (reduced) {
+      scales.forEach((s) => s.setValue(1));
+      return;
+    }
     Animated.stagger(
-      35,
-      scales.map((s) =>
-        Animated.spring(s, {
-          toValue: 1,
-          friction: 4,
-          tension: 200,
-          useNativeDriver: true,
-        })
-      )
+      stagger,
+      scales.map((s) => spring(s, 1, 'bouncy'))
     ).start();
-  }, [enter, scales]);
+  }, [enter, scales, reduced]);
 
   return (
     <Animated.View
       style={[
-        tw`flex-row items-center rounded-full border border-stone-200 bg-white px-2 py-2 shadow-lg`,
+        tw`flex-row items-center rounded-card border border-line/90 bg-card px-2.5 py-2`,
         {
+          shadowColor: '#1C1917',
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 3,
           opacity: enter,
           transform: [
             {
@@ -122,7 +188,7 @@ export function ReactionPickerBar({
             {
               scale: enter.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.92, 1],
+                outputRange: [0.94, 1],
               }),
             },
           ],
@@ -133,15 +199,16 @@ export function ReactionPickerBar({
         <Pressable
           key={item.key}
           onPress={() => {
-            triggerPressFeedback();
+            // Picking a reaction is a like: soft + like tone.
+            haptic('like');
             onPick(item.key);
           }}
           style={({ pressed }) => [
-            tw`mx-1 h-10 w-10 items-center justify-center rounded-full`,
-            pressed ? tw`bg-rose-50` : null,
+            tw`mx-0.5 h-10 w-10 items-center justify-center rounded-control`,
+            pressed ? tw`bg-energy-50` : null,
           ]}
         >
-          <Animated.Text style={[tw`text-2xl`, { transform: [{ scale: scales[index] }] }]}>
+          <Animated.Text style={[tw`text-[22px]`, { transform: [{ scale: scales[index] }] }]}>
             {item.glyph}
           </Animated.Text>
         </Pressable>

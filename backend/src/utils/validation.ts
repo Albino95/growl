@@ -4,6 +4,26 @@ import { error } from './response';
 // Order status enum
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'completed' | 'cancelled';
 
+/** Max serialized size for free-form client metadata blobs (posts, journal, products). */
+export const MAX_CLIENT_METADATA_BYTES = 4096;
+
+function jsonByteLength(value: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value ?? null)).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+const boundedMetadataRecord = z
+  .record(z.any())
+  .refine((v) => jsonByteLength(v) <= MAX_CLIENT_METADATA_BYTES, {
+    message: 'metadata is too large',
+  });
+
+/** Max line items / product ids per order, checkout or campaign request. */
+const MAX_ITEMS = 50;
+
 const strongPasswordSchema = z
   .string()
   .min(12, 'Password must be at least 12 characters')
@@ -23,6 +43,8 @@ export const signUpSchema = z
     password: strongPasswordSchema.optional(),
     passwordHash: clientPasswordHashSchema.optional(),
     username: z.string().min(3, 'Username must be at least 3 characters').max(32).optional(),
+    /** Optional invite code (growth system); redeemed after email verification. */
+    invite_code: z.string().trim().max(32).optional(),
   })
   .refine((data) => !!data.password || !!data.passwordHash, {
     message: 'password or passwordHash is required',
@@ -41,6 +63,10 @@ export const signInSchema = z.object({
 export const verifyEmailSchema = z.object({
   email: z.string().email('Invalid email address'),
   code: z.string().min(6, 'Enter your verification code').max(64),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
 });
 
 export const forgotPasswordSchema = z.object({
@@ -75,12 +101,62 @@ export const ssoSchema = z
     { message: 'Google and Apple require idToken; Facebook requires accessToken', path: ['idToken'] }
   );
 
+/**
+ * Published posts require a real hosted HTTPS media URL.
+ * Local picker URIs / empty / optional media are rejected — never invent stock photos server-side.
+ */
+export function isPublishableMediaUrl(raw: unknown): raw is string {
+  if (typeof raw !== 'string') return false;
+  const s = raw.trim();
+  if (!s) return false;
+  if (!/^https:\/\//i.test(s)) return false;
+  if (/^(blob:|file:|content:|ph:|data:)/i.test(s)) return false;
+  // Must be our uploaded media path (R2 via Worker), not an arbitrary remote placeholder.
+  try {
+    const path = new URL(s).pathname || '';
+    return /\/api\/[^/]+\/media\//i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reel cover / poster image URL kept in post metadata (`metadata.cover_url`).
+ * Accepts our hosted media only: an https URL whose path is `/api/{v}/media/…`,
+ * or the same path relative (`/api/v1/media/…`). Anything else → undefined
+ * (dropped, never blocks publishing).
+ */
+export function sanitizeCoverUrl(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const s = raw.trim();
+  if (!s || s.length > 2048) return undefined;
+  if (/^\/api\/v\d+\/media\/[^\s?#]+/i.test(s) && !s.includes('..')) return s;
+  return isPublishableMediaUrl(s) ? s : undefined;
+}
+
 export const createPostSchema = z.object({
-  image_url: z.string().url().optional(),
-  caption: z.string().max(2000, 'Caption too long').optional(),
+  image_url: z
+    .string({ required_error: 'Image is required' })
+    .trim()
+    .min(1, 'Image is required')
+    .refine((v) => isPublishableMediaUrl(v), {
+      message:
+        'Your photo was not uploaded successfully. The post was not published — keep your draft and try again.',
+    }),
+  caption: z.preprocess(
+    (val) => (val === undefined || val === null ? undefined : String(val)),
+    z.string().max(2000, 'Caption too long').optional()
+  ),
   category: z.string().min(1, 'Category is required'),
-  subcategory: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  subcategory: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return undefined;
+      const s = String(val).trim();
+      return s || undefined;
+    },
+    z.string().optional()
+  ),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 /** Accept only http(s) URLs; strip local picker URIs (file://, ph://, content://) before validate. */
@@ -115,16 +191,18 @@ export const createProductSchema = z.object({
   stock: z.number().int().min(0, 'Stock cannot be negative'),
   image_url: productRemoteImageUrl,
   images: productRemoteImageUrls,
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 export const createOrderSchema = z.object({
-  items: z.array(
-    z.object({
-      product_id: z.string(),
-      quantity: z.number().int().positive(),
-    })
-  ),
+  items: z
+    .array(
+      z.object({
+        product_id: z.string(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .max(MAX_ITEMS, `At most ${MAX_ITEMS} items per order`),
   shipping_address: z.object({
     name: z.string().min(1),
     street: z.string().min(1),
@@ -147,12 +225,14 @@ export const createOrderSchema = z.object({
 });
 
 export const checkoutSessionSchema = z.object({
-  items: z.array(
-    z.object({
-      product_id: z.string(),
-      quantity: z.number().int().positive(),
-    })
-  ),
+  items: z
+    .array(
+      z.object({
+        product_id: z.string(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .max(MAX_ITEMS, `At most ${MAX_ITEMS} items per order`),
   shipping_address: z.object({
     name: z.string().min(1),
     street: z.string().min(1),
@@ -165,23 +245,74 @@ export const checkoutSessionSchema = z.object({
   cancel_url: z.string().url().optional(),
 });
 
+/** Growth-path keys: at most 3 distinct parent paths ("fitness" / "fitness:running"). */
+const categoryListSchema = z
+  .array(z.string().max(80))
+  .max(30)
+  .refine(
+    (cats) => new Set(cats.map((k) => (k.includes(':') ? k.split(':')[0] : k))).size <= 3,
+    { message: 'You can select a maximum of 3 growth paths' }
+  );
+
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, 'Username must be at least 3 characters')
+  .max(32, 'Username must be at most 32 characters');
+
+/** Max serialized size of the client-supplied profile metadata patch. */
+export const MAX_PROFILE_METADATA_BYTES = 8192;
+
+/**
+ * Client-editable profile metadata. Anything not listed here (points, instructor
+ * flags/claims, moderation lists, enforcement, …) is server-owned and silently
+ * dropped. avatar is accepted only via the top-level (https-validated) field.
+ */
+export const profileMetadataSchema = z
+  .object({
+    username: usernameSchema.optional(),
+    bio: z.string().max(300, 'Bio must be at most 300 characters').nullable().optional(),
+    status: z.string().max(120).nullable().optional(),
+    teaching_headline: z.string().max(120).nullable().optional(),
+    categories: categoryListSchema.optional(),
+    decay_timer: z.number().int().min(1).max(365).optional(),
+    notifications_prefs: z
+      .object({
+        notificationsEnabled: z.boolean().optional(),
+        emailNotifications: z.boolean().optional(),
+        pushNotifications: z.boolean().optional(),
+        marketingEmails: z.boolean().optional(),
+      })
+      .optional(),
+    pinned_post_ids: z.array(z.string().max(64)).max(3).optional(),
+  })
+  .strip();
+
 export const updateUserSchema = z.object({
-  username: z.string().min(3).optional(),
-  avatar: z.string().url().optional(),
-  categories: z
-    .array(z.string())
-    .optional()
-    .refine(
-      (cats) => {
-        if (!cats) return true;
-        const parents = new Set(cats.map((k) => (k.includes(':') ? k.split(':')[0] : k)));
-        return parents.size <= 3;
-      },
-      { message: 'You can select a maximum of 3 growth paths' }
-    ),
+  username: usernameSchema.optional(),
+  /**
+   * Avatar URL persisted in user metadata (backend-owned).
+   * Empty string clears. Only https: URLs accepted (API media or seeded hosts).
+   */
+  avatar: z
+    .union([
+      z
+        .string()
+        .url()
+        .refine((u) => /^https:\/\//i.test(u), { message: 'Avatar must be an https URL' }),
+      z.literal(''),
+    ])
+    .optional(),
+  categories: categoryListSchema.optional(),
   /** Post lifespan in days (1–365). Also accepted via metadata.decay_timer. */
   decay_timer: z.number().int().min(1).max(365).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z
+    .record(z.any())
+    .refine((v) => jsonByteLength(v) <= MAX_PROFILE_METADATA_BYTES, {
+      message: 'Profile data is too large',
+    })
+    .pipe(profileMetadataSchema)
+    .optional(),
 });
 
 export const updateOrderStatusSchema = z.object({
@@ -219,7 +350,7 @@ export const createCampaignSchema = z.object({
   budget: z.number().positive(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
-  product_ids: z.array(z.string()).optional(),
+  product_ids: z.array(z.string()).max(MAX_ITEMS).optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -230,7 +361,7 @@ export const updateCampaignSchema = z.object({
   status: z.enum(['active', 'paused', 'completed']).optional(),
   start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),
-  product_ids: z.array(z.string()).optional(),
+  product_ids: z.array(z.string()).max(MAX_ITEMS).optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -271,6 +402,7 @@ export const adminLoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
   totp: z.string().min(6).max(8).optional(),
+  recoveryCode: z.string().min(8).max(32).optional(),
 });
 
 export const adminMfaEnableSchema = z.object({
@@ -286,7 +418,7 @@ export const reportDecisionSchema = z.object({
     reasonText: z.string().min(3),
     enforcement: z
       .object({
-        contentAction: z.enum(['none', 'remove']).optional(),
+        contentAction: z.enum(['none', 'remove', 'hide']).optional(),
         userAction: z.enum(['none', 'warn', 'suspend', 'ban']).optional(),
         strikeDelta: z.number().int().min(0).optional(),
         suspendDays: z.number().int().min(1).max(365).optional(),
@@ -393,16 +525,16 @@ export const createJournalEntrySchema = z.object({
   mood: journalMoodSchema,
   tags: z.array(z.string().max(40)).max(20).optional(),
   is_public: z.boolean().optional().default(false),
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 export const updateJournalEntrySchema = z.object({
   title: z.string().max(200).nullable().optional(),
   content: z.string().min(1).max(5000).optional(),
-  mood: journalMoodSchema.nullable(),
+  mood: journalMoodSchema.nullable().optional(),
   tags: z.array(z.string().max(40)).max(20).optional(),
   is_public: z.boolean().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: boundedMetadataRecord.optional(),
 });
 
 export const createConversationSchema = z.object({
@@ -413,9 +545,58 @@ export const sendMessageSchema = z.object({
   body: z.string().min(1, 'Message cannot be empty').max(4000, 'Message too long'),
 });
 
+export const MESSAGE_REACTION_EMOJIS = ['love', 'fire', 'laugh', 'wow', 'seed', 'clap'] as const;
+
+export const reactToMessageSchema = z.object({
+  emoji: z.enum(MESSAGE_REACTION_EMOJIS),
+});
+
 /**
  * Validate request body against a schema
  */
+// ---- Growth system (docs/GROWTH_SYSTEM.md) ----
+
+/** PUT /me/today — partial update merged with the day's existing check-in. */
+export const todayCheckinSchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'day must be YYYY-MM-DD'),
+  mood: z.number().int().min(1).max(5).nullable().optional(),
+  path: z.string().trim().max(80).nullable().optional(),
+  intention: z.string().trim().max(140, 'Keep your intention under 140 characters').nullable().optional(),
+  rest: z.boolean().optional(),
+  followup: z.enum(['yes', 'partly', 'no']).nullable().optional(),
+});
+
+/** PUT /me/life-mode — 'none' clears; until (optional) is validated against the user's local day. */
+export const lifeModeSchema = z.object({
+  mode: z.enum(['none', 'sick', 'travel', 'break']),
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'until must be YYYY-MM-DD').nullable().optional(),
+});
+
+/** PUT /me/privacy */
+export const privacySettingsSchema = z.object({
+  dm_policy: z.enum(['everyone', 'friends', 'nobody']),
+});
+
+export const badgesSeenSchema = z.object({
+  ids: z.array(z.string().trim().min(1).max(64)).max(50),
+});
+
+export const inviteRedeemSchema = z.object({
+  code: z.string().trim().min(1, 'Invite code is required').max(32),
+});
+
+/** POST /waitlist — public early-access signup (landing site). */
+export const waitlistSignupSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .max(254, 'Email is too long')
+    .email('Invalid email address')
+    .transform((v) => v.toLowerCase()),
+  platform: z.enum(['android', 'ios', 'web']),
+  source: z.string().trim().max(40).optional(),
+});
+
 export async function validateRequest<T>(
   request: Request,
   schema: z.ZodSchema<T>

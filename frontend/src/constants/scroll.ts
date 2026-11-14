@@ -24,9 +24,10 @@ export const verticalScrollProps: Pick<
 
 /** Default FlatList tuning for image-heavy feeds. */
 export const feedListPerformanceProps = {
-  initialNumToRender: 3,
-  maxToRenderPerBatch: 4,
-  windowSize: 7,
+  initialNumToRender: 4,
+  maxToRenderPerBatch: 3,
+  windowSize: 5,
+  updateCellsBatchingPeriod: 50,
   removeClippedSubviews: Platform.OS === 'android',
 } as const;
 

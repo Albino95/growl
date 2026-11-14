@@ -88,9 +88,18 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return legacy === stored;
 }
 
-/** 6-digit email verification code */
+/** Wrong guesses allowed per email-verification or password-reset code. */
+export const MAX_CODE_ATTEMPTS = 5;
+
+/** 6-digit email verification / reset code from a CSPRNG (uniform, no modulo bias). */
 export function generateVerificationToken(): string {
-  return String(100000 + Math.floor(Math.random() * 900000));
+  const range = 900000;
+  const limit = Math.floor(0x100000000 / range) * range;
+  const buf = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(buf);
+  } while (buf[0] >= limit);
+  return String(100000 + (buf[0] % range));
 }
 
 export async function hashVerificationToken(token: string): Promise<string> {

@@ -1,4 +1,4 @@
-import { request } from './http';
+import { request, withIdempotency } from './http';
 
 export type FeedPost = {
   id: string;
@@ -24,6 +24,12 @@ export type FeedPost = {
     isInstructor?: boolean;
     audio_url?: string;
     audio_title?: string;
+    /** Vertical clip published via Create Reel. */
+    format?: 'reel' | 'post' | string;
+    media_type?: 'image' | 'video' | string;
+    content_type?: string;
+    /** Client-side reel video edits (trim, mute, look, text). */
+    video_edit?: Record<string, unknown>;
   };
 };
 
@@ -74,16 +80,30 @@ export async function getForYouFeed(): Promise<ForYouFeedResponse> {
   return request<ForYouFeedResponse>('/feed/feed?mode=foryou');
 }
 
+export async function getFeedPost(postId: string): Promise<FeedPost | null> {
+  try {
+    const res = await request<{ success: boolean; data: FeedPost }>(
+      `/feed/posts/${encodeURIComponent(postId)}`
+    );
+    if (!res.success || !res.data) return null;
+    return res.data;
+  } catch {
+    return null;
+  }
+}
+
 export async function createFeedPost(payload: {
   image_url: string;
   caption?: string;
   category: string;
   subcategory?: string;
   metadata?: Record<string, unknown>;
-}): Promise<{ success: boolean; data: FeedPost }> {
+}, opts?: { idempotencyKey?: string }): Promise<{ success: boolean; data: FeedPost }> {
   return request<{ success: boolean; data: FeedPost }>('/feed/posts', {
     method: 'POST',
     body: JSON.stringify(payload),
+    // Pass the draft's stable key so a retry after a dropped response can't double-post.
+    ...withIdempotency(opts?.idempotencyKey),
   });
 }
 
@@ -101,18 +121,45 @@ export async function getUserPosts(userId: string): Promise<FeedPost[]> {
   return res.data;
 }
 
-export async function getFeedPostComments(postId: string): Promise<FeedComment[]> {
+/** Server page size for comments; a full page means older comments may exist. */
+export const COMMENT_PAGE_SIZE = 50;
+/** Server-side max comment length (createCommentSchema). */
+export const COMMENT_MAX_LENGTH = 1000;
+
+/**
+ * Newest page of comments in chronological order. Pass the oldest loaded
+ * comment as `before` to fetch the page of older comments.
+ */
+export async function getFeedPostComments(
+  postId: string,
+  before?: Pick<FeedComment, 'id' | 'created_at'> | null
+): Promise<FeedComment[]> {
+  const qs = before
+    ? `?before=${encodeURIComponent(before.created_at)}&before_id=${encodeURIComponent(before.id)}`
+    : '';
   const res = await request<{ success: boolean; data: FeedComment[] }>(
-    `/feed/posts/${encodeURIComponent(postId)}/comments`
+    `/feed/posts/${encodeURIComponent(postId)}/comments${qs}`
   );
   if (!res.success || !Array.isArray(res.data)) return [];
   return res.data;
 }
 
-export async function createFeedPostComment(postId: string, content: string): Promise<FeedComment> {
+/** Deletes a comment (allowed for the comment author and the post author). */
+export async function deleteFeedPostComment(postId: string, commentId: string): Promise<void> {
+  await request(
+    `/feed/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function createFeedPostComment(
+  postId: string,
+  content: string,
+  opts?: { idempotencyKey?: string }
+): Promise<FeedComment> {
   const res = await request<{ success: boolean; data: FeedComment }>(
     `/feed/posts/${encodeURIComponent(postId)}/comments`,
-    { method: 'POST', body: JSON.stringify({ content }) }
+    { method: 'POST', body: JSON.stringify({ content }), ...withIdempotency(opts?.idempotencyKey) }
   );
   if (!res.success || !res.data) throw new Error('Could not post comment');
   return res.data;

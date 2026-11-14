@@ -1,77 +1,143 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
   ActivityIndicator,
   RefreshControl,
-  Alert,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
-import { getAvatarUrl } from '../../utils/images';
+import GrowAvatar from '../../components/ui/GrowAvatar';
 import {
   getConversations,
   getMessages,
   sendMessage,
   createConversation,
+  reactToMessage,
+  MESSAGE_MAX_LENGTH,
   type ConversationSummary,
   type ChatMessage,
+  type MessageReactionEmoji,
+  type MessagesPageCursor,
 } from '../../services/api/messages';
-import tw from '../../lib/tw';
-import { CategoryCapsuleRow } from '../../components/ui/CategoryCapsule';
+import { confirmSentMessage, mergeMessages } from '../../components/messages/mergeMessages';
+import HeartBurst from '../../components/feed/HeartBurst';
+import {
+  ReactionPicker,
+  ReactionChips,
+  applyReactionLocal,
+} from '../../components/messages/MessageReactions';
+import {
+  acceptCoachingProposal,
+  declineCoachingProposal,
+  getCoachingThread,
+  sendCoachingProposal,
+  type CoachingThread,
+} from '../../services/api/instructor';
+import ProposalComposeSheet from '../../components/instructor/ProposalComposeSheet';
+import { COACHING_ACTIVE_STATUS, COACHING_BILLING_NOTE } from '../../constants/coaching';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
 import EmptyState from '../../components/ui/EmptyState';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import PressableScale from '../../components/ui/PressableScale';
+import SearchField from '../../components/ui/SearchField';
+import SkeletonCard, { SkeletonList } from '../../components/ui/SkeletonCard';
+import { feedback, triggerFeedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import { isAppActive } from '../../utils/appActive';
+import { alertMessage } from '../../utils/confirmDialog';
+import { ApiError } from '../../services/api/http';
+import { uuidV4 } from '../../services/api/idempotency';
+import {
+  KeyboardDoneAccessory,
+  formInputAccessoryProps,
+} from '../../components/ui/KeyboardDoneAccessory';
+import { TAB_SCREEN_BOTTOM_PADDING, verticalScrollProps } from '../../constants/scroll';
+import ChatWallpaperSheet from '../../components/messages/ChatWallpaperSheet';
+import {
+  useChatWallpaperStore,
+  wallTheme,
+} from '../../state/useChatWallpaperStore';
 
 type InboxTab = 'friends' | 'shop' | 'coaches';
+
+function conversationLane(c: ConversationSummary): InboxTab {
+  if (c.coaching) return 'coaches';
+  if (c.peer.is_business) return 'shop';
+  if (c.peer.is_instructor) return 'coaches';
+  return 'friends';
+}
 
 type ActiveConversation = ConversationSummary & {
   messages: ChatMessage[];
   peer_last_read_at?: string | null;
+  /** Server has messages older than the oldest one loaded. */
+  has_older?: boolean;
+  older_cursor?: MessagesPageCursor | null;
 };
+
+function sameMessageSnapshot(a: ChatMessage[], b: ChatMessage[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i];
+    const right = b[i];
+    if (left.id !== right.id || left.body !== right.body) return false;
+    if ((left.reactions?.mine ?? null) !== (right.reactions?.mine ?? null)) return false;
+    const lc = left.reactions?.counts || {};
+    const rc = right.reactions?.counts || {};
+    const keys = new Set([...Object.keys(lc), ...Object.keys(rc)]);
+    for (const key of keys) {
+      if ((lc as Record<string, number>)[key] !== (rc as Record<string, number>)[key]) return false;
+    }
+  }
+  return true;
+}
+
+function parseMsgTime(iso?: string | null): number {
+  if (!iso) return 0;
+  const raw = String(iso).trim();
+  const normalized = /T/.test(raw)
+    ? raw
+    : raw.replace(' ', 'T') + (raw.endsWith('Z') ? '' : 'Z');
+  const t = new Date(normalized).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
 
 function messageReceipt(
   msg: ChatMessage,
   peerLastReadAt?: string | null
 ): 'sending' | 'sent' | 'seen' {
   if (msg.id.startsWith('temp-')) return 'sending';
-  if (
-    peerLastReadAt &&
-    new Date(peerLastReadAt).getTime() >= new Date(msg.created_at).getTime()
-  ) {
+  const peerRead = parseMsgTime(peerLastReadAt);
+  const created = parseMsgTime(msg.created_at);
+  if (peerRead > 0 && created > 0 && peerRead >= created) {
     return 'seen';
   }
   return 'sent';
 }
 
-function ReceiptTicks({
-  status,
-}: {
-  status: 'sending' | 'sent' | 'seen';
-}) {
+function ReceiptTicks({ status }: { status: 'sending' | 'sent' | 'seen' }) {
   if (status === 'sending') {
-    return <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />;
+    return <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.85)" />;
   }
   if (status === 'seen') {
-    return <Ionicons name="checkmark-done" size={14} color="#A7F3D0" />;
+    return <Ionicons name="checkmark-done" size={16} color="#ECFDF5" />;
   }
-  // Delivered to server — single tick; peer read upgrades to double emerald
-  return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.65)" />;
+  return <Ionicons name="checkmark" size={16} color="rgba(255,255,255,0.9)" />;
 }
 
 type MessagesRouteParams = {
   Messages: {
     conversationId?: string;
     targetUserId?: string;
+    draftText?: string;
   };
 };
 
@@ -97,25 +163,87 @@ function formatMessageTime(iso: string): string {
   });
 }
 
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const today = new Date();
+  const yest = new Date();
+  yest.setDate(today.getDate() - 1);
+  if (dayKey(iso) === dayKey(today.toISOString())) return 'Today';
+  if (dayKey(iso) === dayKey(yest.toISOString())) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 export default function MessagesScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<MessagesRouteParams, 'Messages'>>();
   const { user } = useAuth();
+  const c = useThemeColors();
+  const scheme = useColorSchemeName();
 
   const [inboxTab, setInboxTab] = useState<InboxTab>('friends');
   const [selectedConversation, setSelectedConversation] = useState<ActiveConversation | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [listError, setListError] = useState<string | null>(null);
+  const [thread, setThread] = useState<CoachingThread | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [proposalBusy, setProposalBusy] = useState(false);
+  const [inboxQuery, setInboxQuery] = useState('');
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  /** Sends the recipient refused (DM_NOT_ALLOWED): failed for good, no retry. */
+  const [refusedIds, setRefusedIds] = useState<Set<string>>(new Set());
+  const [wallOpen, setWallOpen] = useState(false);
+  const [pickerId, setPickerId] = useState<string | null>(null);
+  const [burstKey, setBurstKey] = useState(0);
+  const [burstMsgId, setBurstMsgId] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const lastTapRef = useRef<{ id: string; at: number } | null>(null);
+  const hydrateWalls = useChatWallpaperStore((s) => s.hydrate);
+  const setWall = useChatWallpaperStore((s) => s.setWall);
+  const wallById = useChatWallpaperStore((s) => s.byId);
   const messageInputRef = useRef<TextInput>(null);
-  const bootedFromRouteRef = useRef(false);
+  const threadListRef = useRef<FlatList<ChatMessage>>(null);
+  /** Set on first drag in the open thread; gates onStartReached auto-loading. */
+  const threadUserScrolledRef = useRef(false);
+  useEffect(() => {
+    threadUserScrolledRef.current = false;
+  }, [selectedConversation?.id]);
+  const lastRouteBootKey = useRef<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
 
   selectedIdRef.current = selectedConversation?.id ?? null;
+
+  const filteredConversations = useMemo(() => {
+    const q = inboxQuery.trim().toLowerCase();
+    return conversations.filter((c) => {
+      if (conversationLane(c) !== inboxTab) return false;
+      if (!q) return true;
+      const name = (c.peer.username || '').toLowerCase();
+      const last = (c.last_message || '').toLowerCase();
+      return name.includes(q) || last.includes(q);
+    });
+  }, [conversations, inboxTab, inboxQuery]);
+
+  const laneCounts = useMemo(() => {
+    const counts = { friends: 0, shop: 0, coaches: 0 };
+    const unread = { friends: 0, shop: 0, coaches: 0 };
+    for (const c of conversations) {
+      const lane = conversationLane(c);
+      counts[lane] += 1;
+      if (c.unread) unread[lane] += 1;
+    }
+    return { counts, unread };
+  }, [conversations]);
 
   const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoadingConversations(true);
@@ -128,27 +256,36 @@ export default function MessagesScreen() {
       if (!opts?.silent) setConversations([]);
     } finally {
       setLoadingConversations(false);
-      setRefreshing(false);
     }
   }, []);
+  const refresh = useRefresh(() => loadConversations());
 
   const openConversation = useCallback(async (conversation: ConversationSummary) => {
+    feedback.open();
     setLoadingMessages(true);
+    setThread(null);
     setSelectedConversation({ ...conversation, messages: [], unread: false });
     try {
-      const res = await getMessages(conversation.id);
-        setSelectedConversation({
-          ...conversation,
-          unread: false,
-          messages: res.data?.messages ?? [],
-          peer_last_read_at: res.data?.peer_last_read_at ?? null,
-        });
+      const [res, coaching] = await Promise.all([
+        getMessages(conversation.id),
+        getCoachingThread(conversation.peer.id).catch(() => null),
+      ]);
+      setThread(coaching);
+      setSelectedConversation({
+        ...conversation,
+        unread: false,
+        coaching: conversation.coaching || !!coaching?.inquiry,
+        messages: res.data?.messages ?? [],
+        peer_last_read_at: res.data?.peer_last_read_at ?? null,
+        has_older: !!res.data?.has_more,
+        older_cursor: res.data?.next_before ?? null,
+      });
       setConversations((prev) =>
         prev.map((c) => (c.id === conversation.id ? { ...c, unread: false } : c))
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not load messages';
-      Alert.alert('Inbox', msg);
+      void alertMessage('Inbox', msg);
       setSelectedConversation({ ...conversation, messages: [] });
     } finally {
       setLoadingMessages(false);
@@ -157,135 +294,313 @@ export default function MessagesScreen() {
 
   useEffect(() => {
     void loadConversations();
-  }, [loadConversations]);
+    void hydrateWalls();
+  }, [loadConversations, hydrateWalls]);
 
-  // Poll conversation list while on inbox; poll thread while open.
   useEffect(() => {
     const id = setInterval(() => {
+      if (!isAppActive()) return;
       if (selectedIdRef.current) {
         void getMessages(selectedIdRef.current)
           .then((res) => {
-            const msgs = res.data?.messages ?? [];
-            setSelectedConversation((prev) =>
-              prev && prev.id === selectedIdRef.current
-                ? {
-                    ...prev,
-                    messages: msgs,
-                    unread: false,
-                    peer_last_read_at: res.data?.peer_last_read_at ?? prev.peer_last_read_at,
-                  }
-                : prev
-            );
+            const serverPage = res.data?.messages ?? [];
+            setSelectedConversation((prev) => {
+              if (!prev || prev.id !== selectedIdRef.current) return prev;
+              // Merge (never replace): keeps older pages plus temp-/failed sends on screen.
+              const msgs = mergeMessages(prev.messages, serverPage);
+              if (sameMessageSnapshot(prev.messages, msgs) && prev.peer_last_read_at === (res.data?.peer_last_read_at ?? prev.peer_last_read_at)) {
+                return prev;
+              }
+              return {
+                ...prev,
+                messages: msgs,
+                unread: false,
+                peer_last_read_at: res.data?.peer_last_read_at ?? prev.peer_last_read_at,
+              };
+            });
           })
           .catch(() => undefined);
       } else {
         void loadConversations({ silent: true });
       }
-    }, 4000);
+    }, 8000);
     return () => clearInterval(id);
   }, [loadConversations]);
 
+  // Deep-link / draft from profile / journal
   useEffect(() => {
-    const { conversationId, targetUserId } = route.params ?? {};
+    const { conversationId, targetUserId, draftText } = route.params || {};
+    const bootKey = `${conversationId || ''}|${targetUserId || ''}|${draftText || ''}`;
     if (!conversationId && !targetUserId) return;
-    if (bootedFromRouteRef.current) return;
-    bootedFromRouteRef.current = true;
+    if (lastRouteBootKey.current === bootKey) return;
+    lastRouteBootKey.current = bootKey;
 
-    const boot = async () => {
-      let list = conversations;
-      if (!list.length) {
-        try {
-          const res = await getConversations();
-          list = res.data?.conversations ?? [];
-          setConversations(list);
-        } catch {
-          list = [];
+    if (typeof draftText === 'string' && draftText.trim()) {
+      setMessageText(draftText);
+    }
+
+    void (async () => {
+      try {
+        if (conversationId) {
+          const found = conversations.find((c) => c.id === conversationId);
+          if (found) {
+            await openConversation(found);
+            return;
+          }
         }
-      }
-
-      if (conversationId) {
-        const found = list.find((c) => c.id === conversationId);
-        if (found) {
-          await openConversation(found);
-          return;
-        }
-      }
-
-      if (targetUserId) {
-        try {
+        if (targetUserId) {
+          const existing = conversations.find((c) => c.peer.id === targetUserId);
+          if (existing) {
+            await openConversation(existing);
+            return;
+          }
           const created = await createConversation(targetUserId);
-          await openConversation(created.data.conversation);
-          void loadConversations({ silent: true });
-        } catch (e) {
-          Alert.alert(
-            'Cannot message',
-            e instanceof Error ? e.message : 'You can only message mutual friends.'
-          );
+          const summary = created.data?.conversation;
+          if (summary) {
+            setConversations((prev) => {
+              if (prev.some((c) => c.id === summary.id)) return prev;
+              return [summary, ...prev];
+            });
+            await openConversation(summary);
+          }
         }
+      } catch (e) {
+        void alertMessage(
+          'Inbox',
+          e instanceof Error ? e.message : 'Could not open conversation'
+        );
       }
-    };
+    })();
+  }, [route.params, conversations, openConversation]);
 
-    void boot();
-  }, [route.params, conversations, openConversation, loadConversations]);
-
-  const handleSendMessage = async () => {
-    if (!messageText.trim() || !selectedConversation || sending) return;
-
-    const body = messageText.trim();
-    setMessageText('');
+  /**
+   * `retryId` re-sends an existing failed bubble in place. The temp id is also
+   * the Idempotency-Key (valid: [A-Za-z0-9_\-:.]{8,128}), so a retry of a send
+   * that actually reached the server can't deliver the message twice.
+   */
+  const handleSendMessage = async (preset?: string, retryId?: string) => {
+    const body = (preset ?? messageText).trim();
+    if (!body || !selectedConversation || sending) return;
+    if (/^(grow!?|🌱|still growing\.?)$/i.test(body)) {
+      feedback.celebrate();
+    } else {
+      feedback.send();
+    }
     setSending(true);
-    triggerPressFeedback();
-
-    const optimistic: ChatMessage = {
-      id: `temp-${Date.now()}`,
+    const tempId = retryId ?? `temp-${uuidV4()}`;
+    const existing = retryId
+      ? selectedConversation.messages.find((m) => m.id === retryId)
+      : undefined;
+    const optimistic: ChatMessage = existing ?? {
+      id: tempId,
       conversation_id: selectedConversation.id,
-      sender_id: user?.id || 'me',
+      sender_id: user?.id || '',
       body,
       created_at: new Date().toISOString(),
       is_own: true,
+      reactions: { counts: {}, mine: null },
     };
-
-    setSelectedConversation((prev) =>
-      prev
-        ? {
-            ...prev,
-            messages: [...prev.messages, optimistic],
-            last_message: body,
-            last_message_at: optimistic.created_at,
-          }
-        : prev
-    );
-
+    if (!existing) {
+      setSelectedConversation((prev) =>
+        prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev
+      );
+    }
+    if (!preset) setMessageText('');
+    setFailedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(tempId);
+      return next;
+    });
     try {
-      const res = await sendMessage(selectedConversation.id, body);
+      const res = await sendMessage(selectedConversation.id, body, { idempotencyKey: tempId });
       const saved = res.data;
       setSelectedConversation((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          messages: prev.messages.map((m) => (m.id === optimistic.id ? saved : m)),
-          last_message: saved.body,
-          last_message_at: saved.created_at,
+          messages: saved ? confirmSentMessage(prev.messages, tempId, saved) : prev.messages,
+          last_message: saved?.body ?? body,
+          last_message_at: saved?.created_at ?? optimistic.created_at,
         };
       });
-      void loadConversations({ silent: true });
+      setConversations((prev) => {
+        const next = prev.map((c) =>
+          c.id === selectedConversation.id
+            ? {
+                ...c,
+                last_message: saved?.body ?? body,
+                last_message_at: saved?.created_at ?? optimistic.created_at,
+              }
+            : c
+        );
+        return next.sort(
+          (a, b) => parseMsgTime(b.last_message_at) - parseMsgTime(a.last_message_at)
+        );
+      });
     } catch (e) {
-      setSelectedConversation((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          messages: prev.messages.filter((m) => m.id !== optimistic.id),
-        };
-      });
-      setMessageText(body);
-      Alert.alert('Send failed', e instanceof Error ? e.message : 'Try again.');
+      setFailedIds((prev) => new Set([...prev, tempId]));
+      if (e instanceof ApiError && e.code === 'DM_NOT_ALLOWED') {
+        // The recipient's privacy setting: retrying won't help, so no retry loop.
+        setRefusedIds((prev) => new Set([...prev, tempId]));
+        void alertMessage("Couldn't send", e.message || "This person isn't taking messages right now.");
+      } else {
+        void alertMessage('Send failed', e instanceof Error ? e.message : 'Tap the message to try again.');
+      }
     } finally {
       setSending(false);
     }
   };
 
+  const retryFailed = (tempId: string) => {
+    const msg = selectedConversation?.messages.find((m) => m.id === tempId);
+    if (!msg || sending || refusedIds.has(tempId)) return;
+    // Same bubble, same key: handleSendMessage clears the failed mark.
+    void handleSendMessage(msg.body, tempId);
+  };
+
+  const toggleReact = useCallback(async (messageId: string, emoji: MessageReactionEmoji) => {
+    const convId = selectedIdRef.current;
+    if (!convId || messageId.startsWith('temp-')) return;
+    setSelectedConversation((prev) => {
+      if (!prev || prev.id !== convId) return prev;
+      return {
+        ...prev,
+        messages: prev.messages.map((m) =>
+          m.id === messageId
+            ? { ...m, reactions: applyReactionLocal(m.reactions, emoji) }
+            : m
+        ),
+      };
+    });
+    const current = selectedConversation?.messages.find((m) => m.id === messageId);
+    const adding = current?.reactions?.mine !== emoji;
+    if (emoji === 'love' && adding) {
+      setBurstMsgId(messageId);
+      setBurstKey((k) => k + 1);
+    }
+    if (emoji === 'seed' && adding) feedback.egg();
+    else feedback.like(adding);
+    try {
+      const next = await reactToMessage(convId, messageId, emoji);
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== convId) return prev;
+        return {
+          ...prev,
+          messages: prev.messages.map((m) =>
+            m.id === messageId ? { ...m, reactions: next } : m
+          ),
+        };
+      });
+    } catch {
+      try {
+        const res = await getMessages(convId);
+        setSelectedConversation((prev) =>
+          prev && prev.id === convId
+            ? { ...prev, messages: mergeMessages(prev.messages, res.data?.messages ?? []) }
+            : prev
+        );
+      } catch {
+        /* keep optimistic */
+      }
+    }
+  }, [selectedConversation?.messages]);
+
+  // Follow the newest message only; prepending older history must not jump to the bottom.
+  const lastMessageId =
+    selectedConversation?.messages[selectedConversation.messages.length - 1]?.id ?? null;
+  useEffect(() => {
+    if (!lastMessageId) return;
+    const t = setTimeout(() => {
+      threadListRef.current?.scrollToEnd({ animated: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [selectedConversation?.id, lastMessageId]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const conv = selectedConversation;
+    if (!conv || loadingOlder || !conv.has_older || !conv.older_cursor) return;
+    const convId = conv.id;
+    setLoadingOlder(true);
+    try {
+      const res = await getMessages(convId, { cursor: conv.older_cursor });
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== convId) return prev;
+        return {
+          ...prev,
+          messages: mergeMessages(prev.messages, res.data?.messages ?? []),
+          has_older: !!res.data?.has_more,
+          older_cursor: res.data?.next_before ?? null,
+        };
+      });
+    } catch (e) {
+      void alertMessage('Inbox', e instanceof Error ? e.message : 'Could not load earlier messages');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [selectedConversation, loadingOlder]);
+
+  const reloadThread = async (peerId: string) => {
+    try {
+      setThread(await getCoachingThread(peerId));
+    } catch {
+      /* keep current */
+    }
+  };
+
+  const handleAcceptProposal = async () => {
+    if (!thread?.proposal || proposalBusy) return;
+    setProposalBusy(true);
+    try {
+      await acceptCoachingProposal(thread.proposal.id);
+      feedback.open();
+      if (selectedConversation) {
+        await openConversation(selectedConversation);
+        await reloadThread(selectedConversation.peer.id);
+      }
+    } catch (e) {
+      void alertMessage('Proposal', e instanceof Error ? e.message : 'Could not accept');
+    } finally {
+      setProposalBusy(false);
+    }
+  };
+
+  const handleDeclineProposal = async () => {
+    if (!thread?.proposal || proposalBusy) return;
+    setProposalBusy(true);
+    try {
+      await declineCoachingProposal(thread.proposal.id);
+      if (selectedConversation) await reloadThread(selectedConversation.peer.id);
+    } catch (e) {
+      void alertMessage('Proposal', e instanceof Error ? e.message : 'Could not decline');
+    } finally {
+      setProposalBusy(false);
+    }
+  };
+
+  const handleSendProposal = async (input: {
+    weeks: number;
+    sessions_per_week: number;
+    weekly_fee_eur: number;
+    note?: string;
+  }) => {
+    if (!selectedConversation || proposalBusy) return;
+    setProposalBusy(true);
+    try {
+      await sendCoachingProposal({
+        client_id: selectedConversation.peer.id,
+        ...input,
+      });
+      setComposeOpen(false);
+      feedback.send();
+      await openConversation(selectedConversation);
+    } catch (e) {
+      void alertMessage('Proposal', e instanceof Error ? e.message : 'Could not send');
+    } finally {
+      setProposalBusy(false);
+    }
+  };
+
   const goBackRoot = () => {
-    // Prefer the navigator that pushed this screen (e.g. Business stack → BusinessMessages).
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
@@ -303,285 +618,619 @@ export default function MessagesScreen() {
   };
 
   if (selectedConversation) {
+    const canSend = !!messageText.trim() && !sending;
+    const baseWall = wallTheme(wallById[selectedConversation.id], scheme);
+    // The default Linen wash follows the app theme (cream by day, night soil in dark);
+    // the other walls are fixed palettes the user picked on purpose.
+    const isLinen = baseWall.id === 'linen';
+    const wall = isLinen
+      ? {
+          ...baseWall,
+          page: c.page,
+          header: c.page,
+          peerBubble: c.card,
+          peerBorder: scheme === 'dark' ? c.line : baseWall.peerBorder,
+          peerText: c.ink,
+          meta: c.ink3,
+          composer: c.card,
+        }
+      : baseWall;
+    const darkWall = !!wall.dark || (isLinen && scheme === 'dark');
+    const chrome = isLinen ? c.ink : darkWall ? '#FFFcf7' : '#1C1917';
+    const chromeMuted = isLinen ? c.ink3 : darkWall ? '#A8A29E' : '#6B645E';
+    const chip = isLinen ? c.raised : darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6';
     return (
-      <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
+      <SafeAreaView style={[tw`flex-1`, { backgroundColor: wall.page }]} edges={['top']}>
         <KeyboardAvoidingView
           style={tw`flex-1`}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          <View style={tw`flex-row items-center px-4 py-3`}>
-            <TouchableOpacity
+          <View
+            style={[
+              tw`px-gutter py-2.5 flex-row items-center`,
+              { backgroundColor: wall.header, borderBottomColor: darkWall ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.06)', borderBottomWidth: 1 },
+            ]}
+          >
+            <PressableScale
               onPress={() => setSelectedConversation(null)}
-              style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+              pressedScale={0.9}
+              hitSlop={8}
+              accessibilityLabel="Back"
+              style={[
+                tw`mr-3 w-10 h-10 rounded-full items-center justify-center`,
+                { backgroundColor: chip },
+              ]}
             >
-              <Ionicons name="arrow-back" size={20} color="#1C1917" />
-            </TouchableOpacity>
-            <Pressable
+              <Ionicons name="arrow-back" size={20} color={chrome} />
+            </PressableScale>
+            <PressableScale
+              pressedScale={0.98}
               onPress={() => {
                 const root = navigation.getParent() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', {
                   userId: selectedConversation.peer.id,
+                  preview: { username: selectedConversation.peer.username, avatarUrl: selectedConversation.peer.avatar },
                 });
               }}
               style={tw`flex-row items-center flex-1`}
             >
-              <View style={tw`w-10 h-10 rounded-full bg-stone-100 overflow-hidden mr-3 border border-stone-200`}>
-                <Image
-                  source={{
-                    uri: getAvatarUrl(
-                      selectedConversation.peer.id,
-                      selectedConversation.peer.username,
-                      selectedConversation.peer.avatar
-                    ),
-                  }}
-                  style={tw`w-full h-full`}
-                  contentFit="cover"
+              <View style={tw`w-10 h-10 rounded-full overflow-hidden mr-3`}>
+                <GrowAvatar
+                  userId={selectedConversation.peer.id}
+                  username={selectedConversation.peer.username}
+                  uri={selectedConversation.peer.avatar}
+                  size={40}
                 />
               </View>
               <View style={tw`flex-1`}>
-                <Text style={tw`font-semibold text-stone-900`}>
+                <Text style={[tw`text-callout font-bold`, { color: chrome }]} numberOfLines={1}>
                   {selectedConversation.peer.username}
                 </Text>
-                <Text style={tw`text-xs text-stone-500`}>Friend · tap for profile</Text>
+                <Text style={[tw`text-footnote mt-0.5`, { color: chromeMuted }]}>
+                  {thread?.inquiry
+                    ? 'Coaching · tap for profile'
+                    : selectedConversation.coaching
+                      ? 'Coaching · tap for profile'
+                      : 'Friend · tap for profile'}
+                </Text>
               </View>
-            </Pressable>
+            </PressableScale>
+            <PressableScale
+              onPress={() => {
+                feedback.open();
+                setWallOpen(true);
+              }}
+              pressedScale={0.9}
+              hitSlop={8}
+              style={[
+                tw`w-10 h-10 rounded-full items-center justify-center`,
+                { backgroundColor: chip },
+              ]}
+              accessibilityLabel="Change chat background"
+            >
+              <Ionicons name="color-palette-outline" size={18} color={chrome} />
+            </PressableScale>
           </View>
 
+          {thread?.inquiry ? (
+            <View style={tw`mx-gutter mt-3 p-3 rounded-card bg-emerald-50 border border-emerald-100`}>
+              {thread.contract?.status === 'active' ? (
+                <>
+                  <Text style={tw`text-sm font-bold text-ink`}>{COACHING_ACTIVE_STATUS}</Text>
+                  <Text style={tw`text-xs text-ink-2 mt-0.5`}>{COACHING_BILLING_NOTE}</Text>
+                  <Text style={tw`text-xs text-ink-2 mt-0.5`}>
+                    {thread.contract.weeks} wk · {thread.contract.sessions_per_week}× · €
+                    {thread.contract.weekly_fee_eur}/week
+                  </Text>
+                  <PressableScale
+                    onPress={() =>
+                      navigateFromRoot(navigation, 'CoachingContract', {
+                        contractId: thread.contract!.id,
+                      })
+                    }
+                    style={tw`mt-2 py-2 rounded-control bg-emerald-600 items-center`}
+                  >
+                    <Text style={tw`text-white font-bold text-sm`}>Open plan</Text>
+                  </PressableScale>
+                </>
+              ) : thread.proposal?.status === 'sent' && thread.role === 'client' ? (
+                <>
+                  <Text style={tw`text-sm font-bold text-ink`}>Proposal waiting</Text>
+                  <Text style={tw`text-xs text-ink-2 mt-0.5`}>
+                    {thread.proposal.weeks} wk · {thread.proposal.sessions_per_week}× · €
+                    {thread.proposal.weekly_fee_eur}/week · €{thread.proposal.total_eur} total
+                    {thread.proposal.trial_days ? ` · ${thread.proposal.trial_days}-day trial` : ''}
+                  </Text>
+                  <View style={tw`flex-row gap-2 mt-2`}>
+                    <PressableScale
+                      onPress={() => void handleAcceptProposal()}
+                      disabled={proposalBusy}
+                      style={tw`flex-1 py-2 rounded-control bg-emerald-600 items-center`}
+                    >
+                      <Text style={tw`text-white font-bold text-sm`}>Accept</Text>
+                    </PressableScale>
+                    <PressableScale
+                      onPress={() => void handleDeclineProposal()}
+                      disabled={proposalBusy}
+                      style={tw`flex-1 py-2 rounded-control bg-raised items-center`}
+                    >
+                      <Text style={tw`text-ink font-bold text-sm`}>Decline</Text>
+                    </PressableScale>
+                  </View>
+                </>
+              ) : thread.proposal?.status === 'sent' && thread.role === 'instructor' ? (
+                <Text style={tw`text-sm text-ink-2`}>
+                  Proposal sent · waiting for {selectedConversation.peer.username}
+                </Text>
+              ) : thread.role === 'instructor' ? (
+                <PressableScale
+                  onPress={() => setComposeOpen(true)}
+                  style={tw`py-2 rounded-control bg-emerald-600 items-center`}
+                >
+                  <Text style={tw`text-white font-bold text-sm`}>Send a proposal</Text>
+                </PressableScale>
+              ) : (
+                <Text style={tw`text-sm text-ink-2`}>
+                  Talk first. Your coach can send a written plan after you discuss.
+                </Text>
+              )}
+            </View>
+          ) : null}
+
           {loadingMessages && selectedConversation.messages.length === 0 ? (
-            <View style={tw`flex-1 items-center justify-center`}>
-              <ActivityIndicator color="#059669" />
+            <View style={tw`flex-1 px-gutter pt-4`}>
+              <SkeletonCard variant="message" />
+              <SkeletonCard variant="message" />
             </View>
           ) : (
             <FlatList
+              ref={threadListRef}
               data={selectedConversation.messages}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={tw`px-4 py-2 pb-4`}
-              renderItem={({ item }) => (
-                <View style={tw`mb-2.5 flex-row ${item.is_own ? 'justify-end' : 'justify-start'}`}>
-                  <View
-                    style={[
-                      tw`max-w-[78%] rounded-2xl px-4 py-2.5`,
-                      item.is_own
-                        ? tw`bg-emerald-600 rounded-tr-md`
-                        : tw`bg-white border border-stone-200/80 rounded-tl-md`,
-                    ]}
+              contentContainerStyle={tw`px-gutter py-3 pb-4`}
+              {...verticalScrollProps}
+              onScrollBeginDrag={() => {
+                setPickerId(null);
+                threadUserScrolledRef.current = true;
+              }}
+              // Keeps the visible message in place when older history is prepended.
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              // Auto-load older history near the top — only once the user has dragged,
+              // so the initial scroll-to-latest can't trigger it. Button stays as fallback.
+              onStartReachedThreshold={0.4}
+              onStartReached={() => {
+                if (threadUserScrolledRef.current) void loadOlderMessages();
+              }}
+              ListHeaderComponent={
+                selectedConversation.has_older ? (
+                  <PressableScale
+                    onPress={() => void loadOlderMessages()}
+                    disabled={loadingOlder}
+                    style={tw`self-center my-2 px-4 py-2 rounded-chip ${
+                      darkWall ? 'bg-white/10' : 'bg-black/5'
+                    }`}
+                    accessibilityRole="button"
+                    accessibilityLabel="Load earlier messages"
                   >
-                    <Text
-                      style={tw`text-[15px] leading-5 ${
-                        item.is_own ? 'text-white' : 'text-stone-900'
-                      }`}
-                    >
-                      {item.body}
-                    </Text>
-                    <View style={tw`flex-row items-center justify-end mt-1`}>
-                      <Text
-                        style={tw`text-[10px] mr-1 ${
-                          item.is_own ? 'text-emerald-100' : 'text-stone-400'
-                        }`}
-                      >
-                        {formatMessageTime(item.created_at)}
+                    {loadingOlder ? (
+                      <ActivityIndicator size="small" color={wall.meta} />
+                    ) : (
+                      <Text style={[tw`text-footnote font-semibold`, { color: wall.meta }]}>
+                        Load earlier messages
                       </Text>
-                      {item.is_own ? (
-                        <ReceiptTicks
-                          status={messageReceipt(item, selectedConversation.peer_last_read_at)}
-                        />
-                      ) : null}
-                    </View>
+                    )}
+                  </PressableScale>
+                ) : null
+              }
+              renderItem={({ item, index }) => {
+                const failed = failedIds.has(item.id);
+                const refused = refusedIds.has(item.id);
+                const pending = item.id.startsWith('temp-');
+                const prev = selectedConversation.messages[index - 1];
+                const showDay = !prev || dayKey(prev.created_at) !== dayKey(item.created_at);
+                const align = item.is_own ? 'items-end' : 'items-start';
+                return (
+                  <View style={tw`${align} mb-1.5`}>
+                    {showDay ? (
+                      <View style={tw`items-center my-3 self-stretch`}>
+                        <View
+                          style={[
+                            tw`px-3 py-1 rounded-full`,
+                            { backgroundColor: chip },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              tw`text-caption font-semibold`,
+                              { color: isLinen ? c.ink2 : darkWall ? '#E7E5E4' : '#57534E' },
+                            ]}
+                          >
+                            {formatDayLabel(item.created_at)}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
+                    {pickerId === item.id ? (
+                      <ReactionPicker
+                        mine={item.reactions?.mine ?? null}
+                        dark={darkWall}
+                        onPick={(emoji) => {
+                          setPickerId(null);
+                          void toggleReact(item.id, emoji);
+                        }}
+                      />
+                    ) : null}
+                    <PressableScale
+                      pressedScale={0.98}
+                      onPress={() => {
+                        if (failed) {
+                          retryFailed(item.id);
+                          return;
+                        }
+                        if (pending) return;
+                        const now = Date.now();
+                        const last = lastTapRef.current;
+                        if (last && last.id === item.id && now - last.at < 320) {
+                          lastTapRef.current = null;
+                          void toggleReact(item.id, 'love');
+                          return;
+                        }
+                        lastTapRef.current = { id: item.id, at: now };
+                        if (pickerId === item.id) setPickerId(null);
+                      }}
+                      onLongPress={() => {
+                        if (failed || pending) return;
+                        feedback.select();
+                        setPickerId((cur) => (cur === item.id ? null : item.id));
+                      }}
+                      delayLongPress={360}
+                      style={tw`max-w-[78%]`}
+                    >
+                      <View
+                        style={[
+                          tw`rounded-sheet px-3.5 py-2.5`,
+                          item.is_own
+                            ? {
+                                backgroundColor: failed ? '#EF4444' : wall.ownBubble,
+                                borderBottomRightRadius: 6,
+                              }
+                            : {
+                                backgroundColor: wall.peerBubble,
+                                borderColor: wall.peerBorder,
+                                borderWidth: 1,
+                                borderBottomLeftRadius: 6,
+                              },
+                        ]}
+                      >
+                        {burstMsgId === item.id ? (
+                          <HeartBurst triggerKey={burstKey} size={56} />
+                        ) : null}
+                        <Text
+                          style={[
+                            tw`text-body`,
+                            { lineHeight: 21, color: item.is_own ? wall.ownText : wall.peerText },
+                          ]}
+                        >
+                          {item.body}
+                        </Text>
+                        <View style={tw`flex-row items-center justify-end mt-1`}>
+                          <Text
+                            style={[
+                              tw`text-caption font-normal mr-1`,
+                              { color: item.is_own ? 'rgba(255,255,255,0.75)' : wall.meta },
+                            ]}
+                          >
+                            {refused
+                              ? 'Not delivered'
+                              : failed
+                                ? 'Tap to retry'
+                                : formatMessageTime(item.created_at)}
+                          </Text>
+                          {item.is_own && !failed ? (
+                            <ReceiptTicks
+                              status={messageReceipt(item, selectedConversation.peer_last_read_at)}
+                            />
+                          ) : null}
+                        </View>
+                      </View>
+                    </PressableScale>
+                    <ReactionChips
+                      reactions={item.reactions}
+                      own={item.is_own}
+                      dark={darkWall}
+                      onPressChip={(emoji) => void toggleReact(item.id, emoji)}
+                    />
                   </View>
-                </View>
-              )}
+                );
+              }}
               ListEmptyComponent={
                 <View style={tw`items-center py-16 px-6`}>
-                  <Text style={tw`text-stone-600 text-center`}>
-                    No messages yet. Say hello — keep it kind.
+                  <View
+                    style={[
+                      tw`w-14 h-14 rounded-full items-center justify-center mb-3`,
+                      { backgroundColor: chip },
+                    ]}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={24} color={c.brand} />
+                  </View>
+                  <Text style={[tw`text-body text-center`, { color: chromeMuted }]}>
+                    No messages yet. Say hello — keep it kind.{'\n'}
+                    Double-tap a note for ❤️ · hold for more.
                   </Text>
                 </View>
               }
             />
           )}
 
-          <View style={tw`px-4 pb-3 pt-2 bg-[#F3EEE4]`}>
-            <View style={tw`flex-row items-end bg-white border border-stone-200 rounded-full px-3 py-1.5`}>
-              <TextInput
-                ref={messageInputRef}
-                placeholder="Message..."
-                value={messageText}
-                onChangeText={setMessageText}
-                multiline
-                style={tw`flex-1 text-base text-stone-900 max-h-24 py-2 px-1`}
-                placeholderTextColor="#A8A29E"
-                returnKeyType="default"
-                blurOnSubmit={false}
-              />
-              {messageText.trim() ? (
-                <TouchableOpacity
-                  onPress={() => void handleSendMessage()}
-                  disabled={sending}
-                  style={tw`bg-emerald-600 rounded-full w-10 h-10 items-center justify-center mb-0.5 ${
-                    sending ? 'opacity-60' : ''
-                  }`}
-                >
-                  <Ionicons name="send" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    messageInputRef.current?.blur();
-                    Keyboard.dismiss();
-                  }}
-                  style={tw`px-3 py-2 mb-0.5`}
-                >
-                  <Text style={tw`text-xs text-stone-500 font-semibold`}>Done</Text>
-                </TouchableOpacity>
-              )}
+          <View
+            style={[
+              tw`px-gutter pt-2 pb-3`,
+              {
+                backgroundColor: wall.page,
+                borderTopColor: darkWall ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.06)',
+                borderTopWidth: 1,
+              },
+            ]}
+          >
+            <View style={tw`flex-row items-end gap-2`}>
+              <View
+                style={[
+                  tw`flex-1 flex-row items-end border rounded-sheet px-3.5 py-1 min-h-[48px]`,
+                  {
+                    backgroundColor: wall.composer,
+                    borderColor: darkWall ? 'rgba(255,255,255,0.08)' : 'rgba(28,25,23,0.08)',
+                  },
+                ]}
+              >
+                <TextInput
+                  ref={messageInputRef}
+                  {...formInputAccessoryProps({ multiline: true })}
+                  placeholder="Message…"
+                  value={messageText}
+                  onChangeText={setMessageText}
+                  maxLength={MESSAGE_MAX_LENGTH}
+                  multiline
+                  style={[
+                    tw`flex-1 text-body max-h-28 py-2.5`,
+                    { color: wall.peerText },
+                  ]}
+                  placeholderTextColor={wall.meta}
+                  textAlignVertical="top"
+                />
+              </View>
+              <PressableScale
+                pressedScale={0.9}
+                onPress={() => {
+                  if (!canSend) return;
+                  void handleSendMessage();
+                }}
+                onLongPress={() => {
+                  if (sending || messageText.trim()) return;
+                  feedback.egg();
+                  void handleSendMessage('🌱');
+                }}
+                delayLongPress={420}
+                disabled={sending}
+                style={[
+                  tw`w-12 h-12 rounded-full items-center justify-center`,
+                  {
+                    backgroundColor: canSend ? c.brand : chip,
+                    opacity: sending ? 0.6 : 1,
+                  },
+                ]}
+                accessibilityLabel="Send message"
+              >
+                {sending ? (
+                  <ActivityIndicator color={canSend ? '#FFFFFF' : chromeMuted} />
+                ) : (
+                  <Ionicons
+                    name="send"
+                    size={18}
+                    color={canSend ? '#FFFFFF' : isLinen ? c.iconMuted : '#A8A29E'}
+                  />
+                )}
+              </PressableScale>
             </View>
           </View>
+          <KeyboardDoneAccessory />
+          <ProposalComposeSheet
+            visible={composeOpen}
+            offering={thread?.offering}
+            busy={proposalBusy}
+            onClose={() => setComposeOpen(false)}
+            onSend={(input) => void handleSendProposal(input)}
+          />
+          <ChatWallpaperSheet
+            visible={wallOpen}
+            current={wall.id}
+            onClose={() => setWallOpen(false)}
+            onPick={(id) => setWall(selectedConversation.id, id)}
+          />
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F3EEE4]`} edges={['top']}>
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <View style={tw`flex-row items-center mb-1`}>
-          <TouchableOpacity
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+      <GrowChromeHeader
+        leftAccessory={
+          <PressableScale
             onPress={goBackRoot}
-            style={tw`mr-3 w-10 h-10 rounded-full bg-white/80 border border-stone-200 items-center justify-center`}
+            pressedScale={0.9}
+            hitSlop={8}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+            accessibilityLabel="Back"
           >
-            <Ionicons name="arrow-back" size={20} color="#1C1917" />
-          </TouchableOpacity>
-          <View style={tw`flex-1`}>
-            <Text style={tw`text-[11px] tracking-[3px] uppercase text-stone-500 font-semibold`}>
-              Grow!
-            </Text>
-            <Text style={tw`text-3xl text-stone-900 mt-0.5`}>Inbox</Text>
-          </View>
-        </View>
-        <Text style={tw`text-sm text-stone-500 mb-3 ml-13`}>
-          Message friends. Shop and coach threads open when you have a real connection.
+            <Ionicons name="arrow-back" size={18} color={c.ink} />
+          </PressableScale>
+        }
+      />
+
+      <View style={tw`px-gutter-wide pt-3 pb-2`}>
+        <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+          Messages
+        </Text>
+        <Text style={tw`text-title font-bold text-ink mt-0.5`}>Inbox</Text>
+        <Text style={tw`text-body text-ink-3 mt-1 mb-3`}>
+          Friends, coaches, and shop support — each in its own lane.
         </Text>
 
-        <CategoryCapsuleRow
-          items={[
-            { key: 'friends', label: 'Friends', icon: 'people-outline' },
-            { key: 'shop', label: 'Shop', icon: 'storefront-outline' },
-            { key: 'coaches', label: 'Coaches', icon: 'school-outline' },
-          ]}
-          selectedKey={inboxTab}
-          onSelect={(key) => setInboxTab((key as InboxTab) || 'friends')}
-          showAll={false}
-          allowDeselect={false}
+        <SearchField
+          value={inboxQuery}
+          onChangeText={setInboxQuery}
+          placeholder="Search a name or last message…"
         />
+
+        <View style={tw`flex-row gap-5 border-b border-line/80`}>
+          {(
+            [
+              { key: 'friends' as const, label: 'Friends' },
+              { key: 'coaches' as const, label: 'Coaches' },
+              { key: 'shop' as const, label: 'Shop' },
+            ] as const
+          ).map((tab) => {
+            const active = inboxTab === tab.key;
+            const unread = laneCounts.unread[tab.key];
+            return (
+              <PressableScale
+                key={tab.key}
+                onPress={() => {
+                  triggerFeedback(active ? 'selection' : 'chip');
+                  setInboxTab(tab.key);
+                }}
+                style={tw`pb-2.5 border-b-2 flex-row items-center ${
+                  active ? 'border-emerald-600' : 'border-transparent'
+                }`}
+              >
+                <Text
+                  style={tw`text-body ${
+                    active ? 'text-ink font-bold' : 'text-ink-3 font-medium'
+                  }`}
+                >
+                  {tab.label}
+                </Text>
+                {unread > 0 ? (
+                  <View
+                    style={tw`ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center ${
+                      active ? 'bg-emerald-600' : 'bg-energy-600'
+                    }`}
+                  >
+                    <Text maxFontSizeMultiplier={1.3} style={tw`text-caption font-bold text-white`}>
+                      {unread}
+                    </Text>
+                  </View>
+                ) : null}
+              </PressableScale>
+            );
+          })}
+        </View>
       </View>
 
       {listError ? (
-        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100`}>
+        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-control bg-red-50 border border-red-100`}>
           <Text style={tw`text-sm text-red-700`}>{listError}</Text>
         </View>
       ) : null}
 
-      {inboxTab === 'shop' ? (
-        <EmptyState
-          icon="storefront-outline"
-          title="Shop messages"
-          description="When you order from a seller, you can message them here about shipping and support."
-          actionLabel="Browse shop"
-          onAction={() => {
-            const root = navigation.getParent() || navigation;
-            root.navigate('Individual' as never);
-            // Land on Marketplace tab via nested navigate after a tick is fragile; use Marketplace from stack if available
-            setTimeout(() => {
-              try {
-                (navigation as any).navigate('Individual', { screen: 'Marketplace' });
-              } catch {
-                /* ignore */
-              }
-            }, 0);
-          }}
-        />
-      ) : inboxTab === 'coaches' ? (
-        <EmptyState
-          icon="school-outline"
-          title="Coach messages"
-          description="Once you connect with an instructor, your coaching chats will live here."
-          actionLabel="Explore people"
-          onAction={() => {
-            try {
-              (navigation as any).navigate('Individual', { screen: 'Explore' });
-            } catch {
-              goBackRoot();
-            }
-          }}
-        />
-      ) : loadingConversations && conversations.length === 0 ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator color="#059669" size="large" />
+      {loadingConversations && conversations.length === 0 ? (
+        <View style={tw`flex-1 px-gutter-wide pt-2`}>
+          <SkeletonList variant="inbox" count={5} />
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={filteredConversations}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={tw`px-5 pb-10`}
+          contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                void loadConversations();
-              }}
-              tintColor="#059669"
-            />
+            <RefreshControl {...refresh} />
           }
           renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => {
-                triggerPressFeedback();
-                void openConversation(item);
-              }}
-              style={tw`flex-row items-center py-3.5 mb-1 bg-white/70 border border-stone-200/80 rounded-2xl px-3`}
+            <PressableScale
+              onPress={() => void openConversation(item)}
+              style={tw`flex-row items-center py-3.5 border-b border-line/60`}
             >
               <View style={tw`relative`}>
-                <View style={tw`w-14 h-14 rounded-full bg-stone-100 overflow-hidden border border-stone-200`}>
-                  <Image
-                    source={{
-                      uri: getAvatarUrl(item.peer.id, item.peer.username, item.peer.avatar),
-                    }}
-                    style={tw`w-full h-full`}
-                    contentFit="cover"
+                <View style={tw`w-14 h-14 rounded-full overflow-hidden border border-emerald-100 bg-emerald-50`}>
+                  <GrowAvatar
+                    userId={item.peer.id}
+                    username={item.peer.username}
+                    uri={item.peer.avatar}
+                    size={56}
                   />
                 </View>
                 {item.unread ? (
-                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white`} />
+                  <View style={tw`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card`} />
                 ) : null}
               </View>
               <View style={tw`flex-1 ml-3`}>
                 <View style={tw`flex-row items-center justify-between mb-0.5`}>
                   <Text
-                    style={tw`font-semibold ${item.unread ? 'text-stone-900' : 'text-stone-800'}`}
+                    style={tw`font-bold text-ink`}
+                    numberOfLines={1}
                   >
                     {item.peer.username}
                   </Text>
-                  <Text style={tw`text-xs text-stone-400`}>
+                  <Text style={tw`text-xs text-ink-3 ml-2`}>
                     {formatRelativeTime(item.last_message_at)}
                   </Text>
                 </View>
-                <Text
-                  style={tw`text-sm ${item.unread ? 'text-stone-800 font-medium' : 'text-stone-500'}`}
-                  numberOfLines={1}
-                >
-                  {item.last_message || 'Start a conversation'}
-                </Text>
+                <View style={tw`flex-row items-center`}>
+                  {item.coaching || item.peer.is_instructor ? (
+                    <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-emerald-50`}>
+                      <Text style={tw`text-caption font-bold text-emerald-800`}>Coach</Text>
+                    </View>
+                  ) : item.peer.is_business ? (
+                    <View style={tw`mr-1.5 px-1.5 py-0.5 rounded-full bg-raised`}>
+                      <Text style={tw`text-caption font-bold text-ink-2`}>Shop</Text>
+                    </View>
+                  ) : null}
+                  <Text
+                    style={tw`flex-1 text-sm ${item.unread ? 'text-ink font-medium' : 'text-ink-3'}`}
+                    numberOfLines={1}
+                  >
+                    {item.last_message
+                      ? `${item.last_sender_id && item.last_sender_id === user?.id ? 'You: ' : ''}${item.last_message}`
+                      : 'Start a conversation'}
+                  </Text>
+                </View>
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           )}
           ListEmptyComponent={
-            <EmptyState
-              icon="chatbubbles-outline"
-              title="No conversations yet"
-              description="Message a friend from their profile. Only mutual friends can chat here."
-            />
+            inboxTab === 'shop' ? (
+              <EmptyState
+                icon="storefront-outline"
+                title="No shop threads yet"
+                description="When you message a seller, support chats land here."
+                actionLabel="Browse shop"
+                onAction={() => {
+                  try {
+                    (navigation as { navigate: (a: string, b: object) => void }).navigate(
+                      'Individual',
+                      { screen: 'Marketplace' }
+                    );
+                  } catch {
+                    goBackRoot();
+                  }
+                }}
+              />
+            ) : inboxTab === 'coaches' ? (
+              <EmptyState
+                icon="school-outline"
+                title="No coach threads yet"
+                description="Reach out from an instructor’s page — coaching chats land here."
+                actionLabel="Find instructors"
+                onAction={() => navigateFromRoot(navigation, 'Instructors')}
+              />
+            ) : (
+              <EmptyState
+                icon="chatbubbles-outline"
+                title="No conversations yet"
+                description="Message a friend from their profile. Only mutual friends can chat here."
+              />
+            )
           }
         />
       )}

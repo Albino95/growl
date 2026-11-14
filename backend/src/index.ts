@@ -1,3 +1,7 @@
+import { enforceWriteLimit } from './utils/writeLimits';
+import { withIdempotency } from './utils/idempotency';
+import * as meRoutes from './routes/me';
+import { runGroupMaintenance } from './routes/groups';
 import { Env } from './types';
 import { attachCors, cors, error, json } from './utils/response';
 import * as authRoutes from './routes/auth';
@@ -5,6 +9,7 @@ import * as feedRoutes from './routes/feed';
 import * as commentRoutes from './routes/comments';
 import * as marketplaceRoutes from './routes/marketplace';
 import * as instructorRoutes from './routes/instructor';
+import * as coachingRoutes from './routes/coaching';
 import * as businessRoutes from './routes/business';
 import * as profileRoutes from './routes/profile';
 import * as storiesRoutes from './routes/stories';
@@ -13,6 +18,9 @@ import * as mediaRoutes from './routes/media';
 import * as privacyRoutes from './routes/privacy';
 import * as journalRoutes from './routes/journal';
 import * as messagesRoutes from './routes/messages';
+import * as notificationsRoutes from './routes/notifications';
+import * as seedsRoutes from './routes/seeds';
+import * as groupsRoutes from './routes/groups';
 import * as adminAuthRoutes from './routes/admin/auth';
 import * as adminModerationRoutes from './routes/admin/moderation';
 import * as adminUsersRoutes from './routes/admin/users';
@@ -20,18 +28,49 @@ import * as adminPrivacyRoutes from './routes/admin/privacy';
 import * as adminBusinessRoutes from './routes/admin/business';
 import * as adminAuditRoutes from './routes/admin/audit';
 import * as adminDashboardRoutes from './routes/admin/dashboard';
+import * as appReviewsRoutes from './routes/appReviews';
+import * as growthRoutes from './routes/growth';
+import * as waitlistRoutes from './routes/waitlist';
+import { purgeExpiredUnverifiedUsers } from './jobs/purgeUnverifiedUsers';
 
 /**
  * Main request handler
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const response = await handleRequest(request, env);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const response = await handleRequest(request, env, ctx);
     return attachCors(request, env, response);
+  },
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      purgeExpiredUnverifiedUsers(env)
+        .then((removed) => {
+          if (removed > 0) {
+            console.log(`[cron] Purged ${removed} expired unverified signup(s)`);
+          }
+        })
+        .catch((err) => console.error('[cron] purgeExpiredUnverifiedUsers', err))
+    );
+    // Circle pruning/rebalancing used to run on every GET /groups; now hourly.
+    ctx.waitUntil(
+      runGroupMaintenance(env).catch((err) => console.error('[cron] runGroupMaintenance', err))
+    );
+    ctx.waitUntil(
+      storiesRoutes
+        .purgeExpiredStories(env)
+        .then((removed) => {
+          if (removed > 0) console.log(`[cron] Purged ${removed} old stor(y/ies)`);
+        })
+        .catch((err) => console.error('[cron] purgeExpiredStories', err))
+    );
   },
 };
 
-async function handleRequest(request: Request, env: Env): Promise<Response> {
+async function handleRequest(
+  request: Request,
+  env: Env,
+  executionCtx: ExecutionContext
+): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return cors(request, env);
@@ -42,6 +81,12 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
     // API version prefix
     const apiPrefix = `/api/${env.API_VERSION || 'v1'}`;
+
+    // Per-account limits on social writes (messages, comments, likes, reports…)
+    if (path.startsWith(apiPrefix)) {
+      const limited = await enforceWriteLimit(request, env, path.slice(apiPrefix.length));
+      if (limited) return limited;
+    }
 
     // Root route - API information
     if (path === '/' || path === '') {
@@ -78,6 +123,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           social: {
             friends: `${apiPrefix}/social/friends`,
             friendshipStatus: `${apiPrefix}/social/friends/status/:userId`,
+            search: `${apiPrefix}/social/search`,
+            syncCohort: `${apiPrefix}/social/friends/sync-cohort`,
+            connections: `${apiPrefix}/social/friends/connections`,
           },
           stories: `${apiPrefix}/stories`,
           journal: `${apiPrefix}/journal/entries`,
@@ -109,6 +157,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (path === `${apiPrefix}/auth/verify-email` && request.method === 'POST') {
         return authRoutes.verifyEmail(request, env);
       }
+      if (path === `${apiPrefix}/auth/resend-verification` && request.method === 'POST') {
+        return authRoutes.resendVerification(request, env);
+      }
       if (path === `${apiPrefix}/auth/refresh` && request.method === 'POST') {
         return authRoutes.refresh(request, env);
       }
@@ -124,14 +175,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         return feedRoutes.getFeed(request, env);
       }
       if (path === `${apiPrefix}/feed/posts` && request.method === 'POST') {
-        return feedRoutes.createPost(request, env);
+        return withIdempotency(request, env, () => feedRoutes.createPost(request, env));
       }
 
       // Get user posts (check before generic post routes)
       const userPostsMatch = path.match(new RegExp(`^${apiPrefix}/feed/posts/user/([^/]+)$`));
       if (userPostsMatch) {
         const userId = userPostsMatch[1];
-        console.log('[index.ts] Matched user posts route for userId:', userId);
         if (request.method === 'GET') {
           return feedRoutes.getUserPosts(request, env, userId);
         }
@@ -168,7 +218,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           return commentRoutes.getComments(request, env, postId);
         }
         if (request.method === 'POST') {
-          return commentRoutes.createComment(request, env, postId);
+          return withIdempotency(request, env, () => commentRoutes.createComment(request, env, postId));
         }
       }
 
@@ -212,6 +262,12 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (path === `${apiPrefix}/marketplace/products` && request.method === 'POST') {
         return marketplaceRoutes.createProduct(request, env);
       }
+      // Order by id (before status match is already status-specific)
+      const orderByIdMatch = path.match(new RegExp(`^${apiPrefix}/marketplace/orders/([^/]+)$`));
+      if (orderByIdMatch && request.method === 'GET') {
+        return marketplaceRoutes.getOrder(request, env, orderByIdMatch[1]);
+      }
+
       // Order status update (check before generic orders route)
       const orderStatusMatch = path.match(new RegExp(`^${apiPrefix}/marketplace/orders/([^/]+)/status$`));
       if (orderStatusMatch) {
@@ -231,6 +287,64 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       // Instructor routes
       if (path === `${apiPrefix}/instructor/hub` && request.method === 'GET') {
         return instructorRoutes.getInstructorHub(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/offering` && request.method === 'GET') {
+        return coachingRoutes.getMyOffering(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/offering` && request.method === 'PUT') {
+        return coachingRoutes.updateMyOffering(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/inquiries` && request.method === 'POST') {
+        return coachingRoutes.startInquiry(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/inquiries` && request.method === 'GET') {
+        return coachingRoutes.listInquiries(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/thread` && request.method === 'GET') {
+        return coachingRoutes.getThread(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/proposals` && request.method === 'POST') {
+        return coachingRoutes.sendProposal(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/contracts` && request.method === 'GET') {
+        return coachingRoutes.listContracts(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/reviews` && request.method === 'POST') {
+        return coachingRoutes.upsertReview(request, env);
+      }
+      if (path === `${apiPrefix}/instructor/reviews/eligibility` && request.method === 'GET') {
+        return coachingRoutes.getReviewEligibility(request, env);
+      }
+
+      const proposalRespondMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/proposals/([^/]+)/(accept|decline)$`)
+      );
+      if (proposalRespondMatch && request.method === 'POST') {
+        const proposalId = proposalRespondMatch[1];
+        return proposalRespondMatch[2] === 'accept'
+          ? coachingRoutes.acceptProposal(request, env, proposalId)
+          : coachingRoutes.declineProposal(request, env, proposalId);
+      }
+
+      const contractAssignMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/contracts/([^/]+)/assignments$`)
+      );
+      if (contractAssignMatch && request.method === 'POST') {
+        return coachingRoutes.assignHomework(request, env, contractAssignMatch[1]);
+      }
+
+      const contractCompleteMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/contracts/([^/]+)/complete$`)
+      );
+      if (contractCompleteMatch && request.method === 'POST') {
+        return coachingRoutes.completeContract(request, env, contractCompleteMatch[1]);
+      }
+
+      const contractMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/contracts/([^/]+)$`)
+      );
+      if (contractMatch && request.method === 'GET') {
+        return coachingRoutes.getContract(request, env, contractMatch[1]);
       }
 
       const instructorPartnershipReqMatch = path.match(
@@ -281,8 +395,46 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (path === `${apiPrefix}/instructor/eligibility` && request.method === 'GET') {
         return instructorRoutes.getEligibility(request, env);
       }
+      if (
+        path === `${apiPrefix}/instructor/eligibility/suggest-endorsers` &&
+        request.method === 'GET'
+      ) {
+        return instructorRoutes.suggestEndorsers(request, env);
+      }
       if (path === `${apiPrefix}/instructor/claim` && request.method === 'POST') {
         return instructorRoutes.claimInstructor(request, env);
+      }
+
+      if (
+        path === `${apiPrefix}/instructor/endorsement-requests` &&
+        request.method === 'GET'
+      ) {
+        return instructorRoutes.listIncomingEndorsementRequests(request, env);
+      }
+
+      const endorsementRequestRespondMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/endorsement-requests/([^/]+)$`)
+      );
+      if (endorsementRequestRespondMatch && request.method === 'PATCH') {
+        return instructorRoutes.respondToEndorsementRequest(
+          request,
+          env,
+          endorsementRequestRespondMatch[1]
+        );
+      }
+
+      const requestEndorsementMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/candidates/([^/]+)/request-endorsement$`)
+      );
+      if (requestEndorsementMatch && request.method === 'POST') {
+        return instructorRoutes.requestEndorsement(request, env, requestEndorsementMatch[1]);
+      }
+
+      const instructorReviewsMatch = path.match(
+        new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)/reviews$`)
+      );
+      if (instructorReviewsMatch && request.method === 'GET') {
+        return coachingRoutes.listInstructorReviews(request, env, instructorReviewsMatch[1]);
       }
 
       const instructorMatch = path.match(new RegExp(`^${apiPrefix}/instructor/instructors/([^/]+)$`));
@@ -420,6 +572,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }
       }
 
+      const storyViewersMatch = path.match(new RegExp(`^${apiPrefix}/stories/([^/]+)/viewers$`));
+      if (storyViewersMatch && request.method === 'GET') {
+        return storiesRoutes.getStoryViewers(request, env, storyViewersMatch[1]);
+      }
+
       const userStoriesMatch = path.match(new RegExp(`^${apiPrefix}/stories/user/([^/]+)$`));
       if (userStoriesMatch) {
         const userId = userStoriesMatch[1];
@@ -447,12 +604,45 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (path === `${apiPrefix}/media/upload` && request.method === 'POST') {
         return mediaRoutes.uploadMedia(request, env);
       }
+      const audioMatch = path.match(new RegExp(`^${apiPrefix}/media/audio/([^/]+)$`));
+      if (audioMatch && (request.method === 'GET' || request.method === 'HEAD')) {
+        return mediaRoutes.getLibraryAudio(request, env, audioMatch[1]);
+      }
       const mediaMatch = path.match(new RegExp(`^${apiPrefix}/media/(.+)$`));
-      if (mediaMatch && request.method === 'GET') {
+      if (mediaMatch && (request.method === 'GET' || request.method === 'HEAD')) {
         return mediaRoutes.getMedia(request, env, mediaMatch[1]);
       }
 
       // Journal routes
+      if (path === `${apiPrefix}/journal/circle` && request.method === 'GET') {
+        return journalRoutes.getCircleJournalEntries(request, env);
+      }
+      if (path === `${apiPrefix}/journal/reflections` && request.method === 'GET') {
+        return journalRoutes.getJournalReflections(request, env);
+      }
+      if (path === `${apiPrefix}/journal/mute` && request.method === 'POST') {
+        return journalRoutes.muteJournalAuthor(request, env);
+      }
+
+      const journalFeelMatch = path.match(
+        new RegExp(`^${apiPrefix}/journal/entries/([^/]+)/feel$`)
+      );
+      if (journalFeelMatch && request.method === 'POST') {
+        return journalRoutes.feelJournalEntry(request, env, journalFeelMatch[1]);
+      }
+
+      const journalRepliesMatch = path.match(
+        new RegExp(`^${apiPrefix}/journal/entries/([^/]+)/replies$`)
+      );
+      if (journalRepliesMatch) {
+        if (request.method === 'GET') {
+          return journalRoutes.listJournalReplies(request, env, journalRepliesMatch[1]);
+        }
+        if (request.method === 'POST') {
+          return journalRoutes.createJournalReply(request, env, journalRepliesMatch[1]);
+        }
+      }
+
       const journalUserMatch = path.match(new RegExp(`^${apiPrefix}/journal/entries/user/([^/]+)$`));
       if (journalUserMatch && request.method === 'GET') {
         return journalRoutes.getUserPublicJournalEntries(request, env, journalUserMatch[1]);
@@ -473,10 +663,22 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         return journalRoutes.getJournalEntries(request, env);
       }
       if (path === `${apiPrefix}/journal/entries` && request.method === 'POST') {
-        return journalRoutes.createJournalEntry(request, env);
+        return withIdempotency(request, env, () => journalRoutes.createJournalEntry(request, env));
       }
 
       // Messages routes
+      const messageReactionMatch = path.match(
+        new RegExp(`^${apiPrefix}/messages/conversations/([^/]+)/messages/([^/]+)/reaction$`)
+      );
+      if (messageReactionMatch && request.method === 'PUT') {
+        return messagesRoutes.reactToMessage(
+          request,
+          env,
+          messageReactionMatch[1],
+          messageReactionMatch[2]
+        );
+      }
+
       const conversationMessagesMatch = path.match(
         new RegExp(`^${apiPrefix}/messages/conversations/([^/]+)/messages$`)
       );
@@ -486,7 +688,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           return messagesRoutes.getMessages(request, env, conversationId);
         }
         if (request.method === 'POST') {
-          return messagesRoutes.sendMessage(request, env, conversationId);
+          return withIdempotency(request, env, () => messagesRoutes.sendMessage(request, env, conversationId));
         }
       }
 
@@ -495,6 +697,102 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
       if (path === `${apiPrefix}/messages/conversations` && request.method === 'POST') {
         return messagesRoutes.createConversation(request, env);
+      }
+      if (path === `${apiPrefix}/messages/unread-count` && request.method === 'GET') {
+        return messagesRoutes.unreadCount(request, env);
+      }
+
+      // Growth seeds (Garden)
+      if (path === `${apiPrefix}/seeds` && request.method === 'GET') {
+        return seedsRoutes.listSeeds(request, env);
+      }
+      if (path === `${apiPrefix}/seeds` && request.method === 'POST') {
+        return seedsRoutes.createSeed(request, env);
+      }
+      const seedMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)$`));
+      if (seedMatch && request.method === 'GET') {
+        return seedsRoutes.getSeed(request, env, seedMatch[1]);
+      }
+      const seedWaterMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/water$`));
+      if (seedWaterMatch && request.method === 'POST') {
+        return seedsRoutes.waterSeed(request, env, seedWaterMatch[1]);
+      }
+      const seedAcceptMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/accept$`));
+      if (seedAcceptMatch && request.method === 'POST') {
+        return seedsRoutes.acceptSeedInvite(request, env, seedAcceptMatch[1]);
+      }
+      const seedMatureMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/mature$`));
+      if (seedMatureMatch && request.method === 'POST') {
+        return seedsRoutes.matureSeed(request, env, seedMatureMatch[1]);
+      }
+      const seedInviteMatch = path.match(new RegExp(`^${apiPrefix}/seeds/([^/]+)/invite$`));
+      if (seedInviteMatch && request.method === 'POST') {
+        return seedsRoutes.inviteToSeed(request, env, seedInviteMatch[1]);
+      }
+
+      // Growth circles (starting groups + user groups)
+      if (path === `${apiPrefix}/groups` && request.method === 'GET') {
+        return groupsRoutes.listGroups(request, env);
+      }
+      if (path === `${apiPrefix}/groups` && request.method === 'POST') {
+        return groupsRoutes.createGroup(request, env);
+      }
+      if (path === `${apiPrefix}/groups/prefs` && request.method === 'PATCH') {
+        return groupsRoutes.updateCirclePrefs(request, env);
+      }
+      if (path === `${apiPrefix}/groups/place` && request.method === 'POST') {
+        return groupsRoutes.placeGroup(request, env);
+      }
+      const groupJoinMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/join$`));
+      if (groupJoinMatch && request.method === 'POST') {
+        return groupsRoutes.joinGroup(request, env, groupJoinMatch[1]);
+      }
+      const groupLeaveMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/leave$`));
+      if (groupLeaveMatch && request.method === 'POST') {
+        return groupsRoutes.leaveGroup(request, env, groupLeaveMatch[1]);
+      }
+      const groupPulseMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/pulse$`));
+      if (groupPulseMatch && request.method === 'POST') {
+        return groupsRoutes.pulseGroup(request, env, groupPulseMatch[1]);
+      }
+      const groupCallMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)/call-interest$`));
+      if (groupCallMatch && request.method === 'POST') {
+        return groupsRoutes.callInterest(request, env, groupCallMatch[1]);
+      }
+      const groupMatch = path.match(new RegExp(`^${apiPrefix}/groups/([^/]+)$`));
+      if (groupMatch && request.method === 'GET') {
+        return groupsRoutes.getGroup(request, env, groupMatch[1]);
+      }
+
+      // In-app beta reviews (pre-store)
+      if (path === `${apiPrefix}/app-reviews` && request.method === 'GET') {
+        return appReviewsRoutes.listAppReviews(request, env);
+      }
+      if (path === `${apiPrefix}/app-reviews` && request.method === 'PUT') {
+        return appReviewsRoutes.upsertAppReview(request, env);
+      }
+      const appReviewReplyMatch = path.match(
+        new RegExp(`^${apiPrefix}/app-reviews/([^/]+)/reply$`)
+      );
+      if (appReviewReplyMatch && request.method === 'POST') {
+        return appReviewsRoutes.replyAppReview(request, env, appReviewReplyMatch[1]);
+      }
+
+      // Consumer activity notifications
+      if (path === `${apiPrefix}/notifications` && request.method === 'GET') {
+        return notificationsRoutes.listNotifications(request, env);
+      }
+      if (path === `${apiPrefix}/notifications/unread-count` && request.method === 'GET') {
+        return notificationsRoutes.unreadCount(request, env);
+      }
+      if (path === `${apiPrefix}/notifications/read-all` && request.method === 'POST') {
+        return notificationsRoutes.markAllRead(request, env);
+      }
+      const notificationReadMatch = path.match(
+        new RegExp(`^${apiPrefix}/notifications/([^/]+)/read$`)
+      );
+      if (notificationReadMatch && request.method === 'PATCH') {
+        return notificationsRoutes.markRead(request, env, notificationReadMatch[1]);
       }
 
       // Friends / cohort social graph
@@ -517,7 +815,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
 
       if (path === `${apiPrefix}/social/friends/sync-cohort` && request.method === 'POST') {
-        return friendsRoutes.syncCohortFriendsRoute(request, env);
+        return friendsRoutes.syncCohortFriendsRoute(request, env, executionCtx);
+      }
+      if (path === `${apiPrefix}/social/search` && request.method === 'GET') {
+        return friendsRoutes.searchPeople(request, env);
       }
       if (path === `${apiPrefix}/social/friends/connections` && request.method === 'GET') {
         return friendsRoutes.listConnections(request, env);
@@ -527,6 +828,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
       if (path === `${apiPrefix}/social/friends` && request.method === 'POST') {
         return friendsRoutes.addFriend(request, env);
+      }
+      if (path === `${apiPrefix}/social/blocks` && request.method === 'GET') {
+        return friendsRoutes.listBlocks(request, env);
       }
       if (path === `${apiPrefix}/social/block` && request.method === 'POST') {
         return friendsRoutes.blockUser(request, env);
@@ -556,7 +860,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         return profileRoutes.getProfile(request, env);
       }
       if (path === `${apiPrefix}/profile` && request.method === 'PUT') {
-        return profileRoutes.updateProfile(request, env);
+        return profileRoutes.updateProfile(request, env, executionCtx);
       }
 
       // Admin routes
@@ -698,6 +1002,68 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
       if (path === `${apiPrefix}/admin/audit/logs` && request.method === 'GET') {
         return adminAuditRoutes.listAuditLogs(request, env);
+      }
+
+      // Public early-access waitlist (letsgrow.lu); rate limited per visitor inside the handler
+      if (path === `${apiPrefix}/waitlist` && request.method === 'POST') {
+        return waitlistRoutes.joinWaitlist(request, env);
+      }
+
+      // Growth system (docs/GROWTH_SYSTEM.md): streak, Today, badges, recap, progress, challenges, invites
+      if (path === `${apiPrefix}/me/streak` && request.method === 'GET') {
+        return growthRoutes.getMyStreak(request, env);
+      }
+      if (path === `${apiPrefix}/me/today`) {
+        if (request.method === 'GET') return growthRoutes.getToday(request, env);
+        if (request.method === 'PUT' || request.method === 'POST') {
+          return withIdempotency(request, env, () => growthRoutes.putToday(request, env));
+        }
+      }
+      if (path === `${apiPrefix}/me/life-mode`) {
+        if (request.method === 'GET') return meRoutes.getLifeMode(request, env);
+        if (request.method === 'PUT') return meRoutes.putLifeMode(request, env);
+      }
+      if (path === `${apiPrefix}/me/privacy`) {
+        if (request.method === 'GET') return meRoutes.getPrivacy(request, env);
+        if (request.method === 'PUT') return meRoutes.putPrivacy(request, env);
+      }
+      if (path === `${apiPrefix}/me/badges` && request.method === 'GET') {
+        return growthRoutes.getMyBadges(request, env);
+      }
+      if (path === `${apiPrefix}/me/badges/seen` && request.method === 'POST') {
+        return growthRoutes.markBadgesSeen(request, env);
+      }
+      if (path === `${apiPrefix}/me/recap` && request.method === 'GET') {
+        return growthRoutes.getRecap(request, env);
+      }
+      if (path === `${apiPrefix}/me/progress` && request.method === 'GET') {
+        return growthRoutes.getProgress(request, env);
+      }
+      if (path === `${apiPrefix}/me/invite` && request.method === 'GET') {
+        return growthRoutes.getMyInvite(request, env);
+      }
+      if (path === `${apiPrefix}/me/invite/redeem` && request.method === 'POST') {
+        return growthRoutes.redeemMyInvite(request, env);
+      }
+      const userBadgesMatch = path.match(new RegExp(`^${apiPrefix}/users/([^/]+)/badges$`));
+      if (userBadgesMatch && request.method === 'GET') {
+        return growthRoutes.getUserBadges(request, env, userBadgesMatch[1]);
+      }
+      const inviteLookupMatch = path.match(new RegExp(`^${apiPrefix}/invites/([^/]+)$`));
+      if (inviteLookupMatch && request.method === 'GET') {
+        return growthRoutes.lookupInvite(request, env, inviteLookupMatch[1]);
+      }
+      if (path === `${apiPrefix}/challenges` && request.method === 'GET') {
+        return growthRoutes.listChallenges(request, env);
+      }
+      const challengeJoinMatch = path.match(new RegExp(`^${apiPrefix}/challenges/([^/]+)/join$`));
+      if (challengeJoinMatch) {
+        if (request.method === 'POST') return growthRoutes.joinChallenge(request, env, challengeJoinMatch[1]);
+        if (request.method === 'DELETE') return growthRoutes.leaveChallenge(request, env, challengeJoinMatch[1]);
+      }
+      const challengeMatch = path.match(new RegExp(`^${apiPrefix}/challenges/([^/]+)$`));
+      if (challengeMatch && request.method === 'GET') {
+        return growthRoutes.getChallengeDetail(request, env, challengeMatch[1]);
       }
 
       // Health check / ping endpoint

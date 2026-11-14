@@ -1,23 +1,23 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-} from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import CommentsScreen from '../Comments/CommentsScreen';
-import CO2Calculator from '../../components/ui/CO2Calculator';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
-import { toggleFeedPostLike } from '../../services/api/feed';
-import tw from '../../lib/tw';
+import GrowAvatar from '../../components/ui/GrowAvatar';
+import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
+import ErrorState from '../../components/ui/ErrorState';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { feedback } from '../../utils/interactionFeedback';
+import { toast } from '../../state/useToastStore';
+import { haptic } from '../../theme/haptics';
+import { useAppDispatch } from '../../store/hooks';
+import { patchFeedPostEngagement } from '../../store/slices/feedSlice';
 
 type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
@@ -46,6 +46,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
+  const dispatch = useAppDispatch();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { post: initialPost } = route.params;
@@ -56,10 +57,60 @@ export default function PostDetailScreen() {
   const [post, setPost] = useState<Post>({ ...initialPost, image: imageUri, avatar: avatarUri });
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+
+  /** True when the server copy couldn't be loaded (offline, or the post is gone). */
+  const [hydrateFailed, setHydrateFailed] = useState(false);
+  const [hydrateAttempt, setHydrateAttempt] = useState(0);
+
+  // Hydrate like state from the server — route params are often stale after re-login.
+  useEffect(() => {
+    let cancelled = false;
+    getFeedPost(initialPost.id)
+      .then((remote) => {
+        if (cancelled) return;
+        if (!remote) {
+          setHydrateFailed(true);
+          return;
+        }
+        setHydrateFailed(false);
+        const liked = !!remote.metadata?.has_liked;
+        setPost((prev) => ({
+          ...prev,
+          likes: Number(remote.metadata?.likes ?? prev.likes),
+          comments: Number(remote.metadata?.comments ?? prev.comments),
+          hasLiked: liked,
+          reaction: liked ? prev.reaction || 'love' : null,
+          image: resolvePostMediaUri(remote.image_url, remote.category, remote.id) || prev.image,
+          caption: remote.caption || prev.caption,
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setHydrateFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPost.id, hydrateAttempt]);
+
+  const openShareCard = () => {
+    feedback.open();
+    setSharePayload({
+      kind: 'post',
+      postId: post.id,
+      userId: post.userId,
+      username: post.username,
+      avatar: post.avatar,
+      caption: post.caption,
+      imageUrl: post.image,
+      category: post.category,
+      subcategory: post.subcategory,
+    });
+  };
 
   const renderReactionIcon = () => {
     const active = post.hasLiked || post.reaction != null;
-    if (!active) return <Ionicons name="heart-outline" size={28} color="#374151" />;
+    if (!active) return <Ionicons name="heart-outline" size={28} color={theme.colors.icon} />;
     const r = post.reaction || 'love';
     switch (r) {
       case 'like':
@@ -77,86 +128,175 @@ export default function PostDetailScreen() {
     }
   };
 
+  // Keep the feed's copy of this post in sync with likes made here, so the
+  // count and heart match when the user goes back.
+  const engagementSynced = useRef(false);
+  useEffect(() => {
+    if (!engagementSynced.current) {
+      engagementSynced.current = true;
+      return;
+    }
+    dispatch(patchFeedPostEngagement({ id: post.id, likes: post.likes, has_liked: post.hasLiked }));
+  }, [dispatch, post.id, post.likes, post.hasLiked]);
+
+  /** True while a like/reaction toggle is in flight; further taps are ignored until it settles. */
+  const likePendingRef = useRef(false);
+  const postRef = useRef(post);
+  postRef.current = post;
+
+  /** Optimistic like: flip heart + count now, reconcile with the server, roll back on failure. */
   const toggleLike = async () => {
+    if (likePendingRef.current) return;
+    likePendingRef.current = true;
+    const before = postRef.current;
+    const wasLiked = !!before.hasLiked || before.reaction != null;
+    const nextLiked = !wasLiked;
+    // Like = soft + like tone; unlike = light, silent.
+    haptic(nextLiked ? 'like' : 'unlike');
+    setPost((prev) => ({
+      ...prev,
+      hasLiked: nextLiked,
+      likes: nextLiked ? before.likes + 1 : Math.max(0, before.likes - 1),
+      reaction: nextLiked ? prev.reaction || 'love' : null,
+    }));
     try {
-      const res = await toggleFeedPostLike(post.id);
+      const res = await toggleFeedPostLike(before.id);
       const liked = !!res.data?.liked;
-      setPost((prev) => ({
-        ...prev,
-        hasLiked: liked,
-        likes: liked ? prev.likes + (prev.hasLiked ? 0 : 1) : Math.max(0, prev.likes - (prev.hasLiked ? 1 : 0)),
-        reaction: liked ? prev.reaction || 'love' : null,
-      }));
+      if (liked !== nextLiked) {
+        // Server disagrees (e.g. stale state) — trust it.
+        setPost((prev) => ({
+          ...prev,
+          hasLiked: liked,
+          likes: liked
+            ? wasLiked
+              ? before.likes
+              : before.likes + 1
+            : Math.max(0, before.likes - (wasLiked ? 1 : 0)),
+          reaction: liked ? prev.reaction || 'love' : null,
+        }));
+      }
     } catch {
       setPost((prev) => ({
         ...prev,
-        hasLiked: !prev.hasLiked,
-        likes: prev.hasLiked ? Math.max(0, prev.likes - 1) : prev.likes + 1,
-        reaction: prev.hasLiked ? null : 'love',
+        hasLiked: before.hasLiked,
+        likes: before.likes,
+        reaction: before.reaction ?? null,
       }));
+      toast.info('Couldn’t update like — check your connection', { icon: 'cloud-offline-outline' });
+    } finally {
+      likePendingRef.current = false;
     }
   };
 
+  /** Optimistic reaction pick: only touches the server when liked/unliked actually flips. */
   const setReaction = async (reaction: ReactionType) => {
     setShowReactionPicker(false);
-    const wasLiked = post.hasLiked || post.reaction != null;
+    if (likePendingRef.current) return;
+    const before = postRef.current;
+    const wasLiked = !!before.hasLiked || before.reaction != null;
+    const willLike = reaction !== null;
+    if (willLike && !wasLiked) haptic('tapLight');
+    setPost((prev) => ({
+      ...prev,
+      reaction,
+      hasLiked: willLike,
+      likes:
+        willLike === wasLiked
+          ? before.likes
+          : willLike
+            ? before.likes + 1
+            : Math.max(0, before.likes - 1),
+    }));
+    if (willLike === wasLiked) return;
+    likePendingRef.current = true;
     try {
-      if (reaction === null) {
-        if (wasLiked) await toggleFeedPostLike(post.id);
-        setPost((prev) => ({
-          ...prev,
-          reaction: null,
-          hasLiked: false,
-          likes: Math.max(0, prev.likes - (wasLiked ? 1 : 0)),
-        }));
-        return;
-      }
-      if (!wasLiked) await toggleFeedPostLike(post.id);
+      await toggleFeedPostLike(before.id);
+    } catch {
       setPost((prev) => ({
         ...prev,
-        reaction,
-        hasLiked: true,
-        likes: prev.likes + (wasLiked ? 0 : 1),
+        reaction: before.reaction ?? null,
+        hasLiked: before.hasLiked,
+        likes: before.likes,
       }));
-    } catch {
-      /* keep local state */
+      toast.info('Couldn’t update reaction — check your connection', {
+        icon: 'cloud-offline-outline',
+      });
+    } finally {
+      likePendingRef.current = false;
     }
   };
 
   const navigateToProfile = () => {
     const rootNavigation = navigation.getParent() || navigation;
-    rootNavigation.navigate('PublicProfile' as never, { userId: post.userId } as never);
+    rootNavigation.dispatch(
+      CommonActions.navigate('PublicProfile', {
+        userId: post.userId,
+        preview: { username: post.username, avatarUrl: post.avatar },
+      }),
+    );
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
-      <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-200 bg-white`}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#374151" />
-          </TouchableOpacity>
-          <Text style={tw`text-lg font-semibold text-stone-900`}>Post</Text>
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
-          </TouchableOpacity>
+    <SafeAreaView style={tw`flex-1 bg-card`} edges={['top']}>
+      <KeyboardAvoidingView
+        style={tw`flex-1`}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View
+          style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line bg-card`}
+        >
+          <PressableScale
+            pressedScale={0.9}
+            onPress={() => navigation.goBack()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.icon} />
+          </PressableScale>
+          <Text style={tw`text-callout font-semibold text-ink`}>Post</Text>
+          <PressableScale
+            pressedScale={0.9}
+            onPress={openShareCard}
+            hitSlop={10}
+            accessibilityLabel="Share post"
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.icon} />
+          </PressableScale>
         </View>
 
         <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
-          <View style={tw`flex-row items-center justify-between px-4 py-3 border-b border-stone-100`}>
-            <TouchableOpacity style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
-              <Image
-                source={{ uri: post.avatar }}
-                style={tw`w-12 h-12 rounded-full mr-3 bg-stone-100`}
-                contentFit="cover"
+          {hydrateFailed ? (
+            <ErrorState
+              compact
+              title="Couldn’t refresh this post"
+              message="It may have been removed, or you’re offline."
+              onRetry={() => {
+                setHydrateFailed(false);
+                setHydrateAttempt((n) => n + 1);
+              }}
+              style={tw`border-b border-line`}
+            />
+          ) : null}
+          <View
+            style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line`}
+          >
+            <PressableScale style={tw`flex-row items-center flex-1`} onPress={navigateToProfile}>
+              <GrowAvatar
+                userId={post.userId}
+                username={post.username}
+                uri={post.avatar}
+                size={48}
+                style={tw`mr-3`}
               />
               <View style={tw`flex-1`}>
-                <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
-                <Text style={tw`text-xs text-stone-500`}>
+                <Text style={tw`font-bold text-ink text-base`}>{post.username}</Text>
+                <Text style={tw`text-xs text-ink-3`}>
                   {post.timestamp ||
                     (post.createdAt ? new Date(post.createdAt).toLocaleDateString() : '')}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
 
           <View style={tw`w-full bg-stone-50`}>
@@ -168,60 +308,92 @@ export default function PostDetailScreen() {
             />
           </View>
 
-          <View style={tw`px-4 py-3 border-b border-stone-100`}>
+          <View style={tw`px-gutter py-3 border-b border-line`}>
             <View style={tw`flex-row items-center justify-between mb-3`}>
               <View style={tw`flex-row items-center`}>
-                <TouchableOpacity
+                <PressableScale
+                  pressedScale={0.9}
                   onPress={() => void toggleLike()}
                   onLongPress={() => setShowReactionPicker(!showReactionPicker)}
                   style={tw`mr-3`}
+                  accessibilityRole="button"
+                  accessibilityLabel={post.hasLiked || post.reaction != null ? 'Unlike' : 'Like'}
+                  accessibilityState={{ selected: !!post.hasLiked || post.reaction != null }}
                 >
                   {renderReactionIcon()}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowComments(true)} style={tw`mr-3`}>
-                  <Ionicons name="chatbubble-outline" size={26} color="#374151" />
-                </TouchableOpacity>
-                <TouchableOpacity>
-                  <Ionicons name="paper-plane-outline" size={26} color="#374151" />
-                </TouchableOpacity>
+                </PressableScale>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Comments"
+                  pressedScale={0.9}
+                  onPress={() => setShowComments(true)}
+                  style={tw`mr-3`}
+                >
+                  <Ionicons name="chatbubble-outline" size={26} color={theme.colors.icon} />
+                </PressableScale>
+                <PressableScale
+                  accessibilityRole="button"
+                  pressedScale={0.9}
+                  onPress={openShareCard}
+                  accessibilityLabel="Share post card"
+                >
+                  <Ionicons name="paper-plane-outline" size={26} color={theme.colors.brand} />
+                </PressableScale>
               </View>
-              <TouchableOpacity>
-                <Ionicons name="bookmark-outline" size={26} color="#374151" />
-              </TouchableOpacity>
             </View>
 
             {showReactionPicker && (
-              <View style={tw`absolute left-4 top-12 bg-white rounded-full px-3 py-2 flex-row items-center shadow-lg border border-stone-200 z-10`}>
-                <TouchableOpacity onPress={() => void setReaction('like')} style={tw`mx-1`}>
+              <View
+                style={tw`absolute left-4 top-12 bg-card rounded-chip px-3 py-2 flex-row items-center shadow-lg border border-line z-10`}
+              >
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('like')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>👍</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('love')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('love')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>❤️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('laugh')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('laugh')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>😂</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('wow')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('wow')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>😮</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void setReaction('support')} style={tw`mx-1`}>
+                </PressableScale>
+                <PressableScale
+                  pressedScale={0.9}
+                  onPress={() => void setReaction('support')}
+                  style={tw`mx-1`}
+                >
                   <Text style={tw`text-2xl`}>💪</Text>
-                </TouchableOpacity>
+                </PressableScale>
               </View>
             )}
 
-            <Text style={tw`font-bold text-stone-900 mb-2 text-base`}>
+            <Text style={tw`font-bold text-ink mb-2 text-base`}>
               {post.likes} {post.likes === 1 ? 'like' : 'likes'}
             </Text>
 
             <View style={tw`mb-2 flex-row flex-wrap`}>
-              <TouchableOpacity onPress={navigateToProfile}>
-                <Text style={tw`font-bold text-stone-900 text-base`}>{post.username}</Text>
-              </TouchableOpacity>
-              <Text style={tw`text-stone-900 text-base`}> {post.caption}</Text>
+              <PressableScale onPress={navigateToProfile}>
+                <Text style={tw`font-bold text-ink text-base`}>{post.username}</Text>
+              </PressableScale>
+              <Text style={tw`text-ink text-base`}> {post.caption}</Text>
             </View>
-
-            <CO2Calculator category={post.category} activityType="post" />
 
             {post.daysUntilDecay !== undefined && (
               <View style={tw`mt-2`}>
@@ -229,13 +401,13 @@ export default function PostDetailScreen() {
               </View>
             )}
 
-            <TouchableOpacity onPress={() => setShowComments(true)} style={tw`mt-2`}>
-              <Text style={tw`text-stone-500 text-sm`}>
+            <PressableScale onPress={() => setShowComments(true)} style={tw`mt-2`}>
+              <Text style={tw`text-ink-3 text-sm`}>
                 {post.comments > 0
                   ? `View all ${post.comments} ${post.comments === 1 ? 'comment' : 'comments'}`
                   : 'Add a comment…'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -250,11 +422,18 @@ export default function PostDetailScreen() {
           <CommentsScreen
             postId={post.id}
             postUsername={post.username}
+            postUserId={post.userId}
             postCaption={post.caption}
             onClose={() => setShowComments(false)}
           />
         </Modal>
       )}
+
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
+      />
     </SafeAreaView>
   );
 }

@@ -1,15 +1,15 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
-  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import { useFocusEffect, useNavigation, useScrollToTop } from '@react-navigation/native';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
+import { useRefresh } from '../../hooks/useRefresh';
 import { useBusinessDashboard } from '../../hooks/useBusinessDashboard';
 import {
   setCatalogFilter,
@@ -17,7 +17,13 @@ import {
   fetchNotifications,
   markNotificationReadLocal,
 } from '../../store/slices/businessSlice';
-import { markBusinessNotificationRead } from '../../services/api/business';
+import {
+  markBusinessNotificationRead,
+  orderBusinessTotal,
+  orderCurrency,
+} from '../../services/api/business';
+import MarketplaceCheckoutBanner from '../../components/business/MarketplaceCheckoutBanner';
+import { formatCurrency } from '../../utils/money';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { verticalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import BusinessScreen from '../../components/business/BusinessScreen';
@@ -52,13 +58,13 @@ function SectionHeading({
 }) {
   return (
     <View style={tw`flex-row items-center justify-between mb-2`}>
-      <Text style={tw`text-[11px] font-semibold tracking-widest text-stone-500 uppercase`}>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
         {title}
       </Text>
       {action && onAction ? (
-        <TouchableOpacity onPress={onAction}>
+        <PressableScale onPress={onAction}>
           <Text style={tw`text-sm font-semibold text-emerald-700`}>{action}</Text>
-        </TouchableOpacity>
+        </PressableScale>
       ) : null}
     </View>
   );
@@ -71,7 +77,6 @@ export default function BizDashboard() {
   const unreadCount = useAppSelector((s) => s.business.unreadNotificationCount);
   const { period, setPeriod, kpis, timeseries, status, error, loading, refresh } =
     useBusinessDashboard();
-  const [refreshing, setRefreshing] = useState(false);
 
   const stackNav = navigation.getParent?.() || navigation;
 
@@ -87,14 +92,12 @@ export default function BizDashboard() {
     }, [dispatch])
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refresh, dispatch]);
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
+
+  const pull = useRefresh(() =>
+    Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()])
+  );
 
   const handleNotificationPress = useCallback(
     (id: string, refType?: string | null, refId?: string | null) => {
@@ -168,13 +171,11 @@ export default function BizDashboard() {
   const recent = (kpis?.recent_orders || []).slice(0, 5);
   const net = kpis?.net_revenue ?? kpis?.total_revenue ?? 0;
   const aov = kpis?.aov ?? 0;
-  const availablePayout = net * 0.92;
-  const feePending = net * 0.08;
 
   const notificationBadge =
     unreadCount > 0 ? (
-      <View style={tw`min-w-[22px] h-[22px] rounded-full bg-red-500 items-center justify-center px-1`}>
-        <Text style={tw`text-[11px] font-bold text-white`}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+      <View style={tw`min-w-[22px] h-[22px] rounded-chip bg-red-500 items-center justify-center px-1`}>
+        <Text style={tw`text-caption font-bold text-white`}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
       </View>
     ) : null;
 
@@ -240,36 +241,33 @@ export default function BizDashboard() {
       headerRight={notificationBadge}
     >
       <ScrollView
+        ref={scrollRef}
         style={tw`flex-1`}
         contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         {...verticalScrollProps}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#059669"
-            colors={['#059669']}
-          />
+          <RefreshControl {...pull} />
         }
       >
-        <View style={tw`px-5 mb-4`}>
+        <View style={tw`px-gutter-wide mb-4`}>
+          <MarketplaceCheckoutBanner style={tw`mb-3`} />
           <PeriodToggle value={period} onChange={setPeriod} />
         </View>
 
-        <View style={tw`px-5 mb-6`}>
+        <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Action inbox" />
           {error ? (
             <View style={tw`mb-3 py-2`}>
               <Text style={tw`text-sm text-red-700 mb-1`}>{error}</Text>
-              <TouchableOpacity onPress={() => void refresh({ force: true })}>
+              <PressableScale onPress={() => void refresh({ force: true })}>
                 <Text style={tw`text-sm font-semibold text-emerald-700`}>Retry</Text>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           ) : null}
           {loading ? <SkeletonCard variant="product" /> : <ActionInbox items={inboxItems} />}
         </View>
 
-        <View style={tw`px-5 mb-6`}>
+        <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Key metrics" action="Full analytics" onAction={openAnalytics} />
           {loading ? (
             <View style={tw`gap-3`}>
@@ -279,7 +277,7 @@ export default function BizDashboard() {
             <View style={tw`flex-row flex-wrap gap-2.5`}>
               <KpiCard
                 label="Net revenue"
-                value={`$${Number(net).toFixed(2)}`}
+                value={formatCurrency(Number(net))}
                 change={`${kpis?.deltas?.net_revenue_pct ?? 0}%`}
                 trend={(kpis?.deltas?.net_revenue_pct ?? 0) >= 0 ? 'up' : 'down'}
                 icon="cash-outline"
@@ -295,7 +293,7 @@ export default function BizDashboard() {
               />
               <KpiCard
                 label="AOV"
-                value={`$${Number(aov).toFixed(2)}`}
+                value={formatCurrency(Number(aov))}
                 change="avg"
                 trend="neutral"
                 icon="cart-outline"
@@ -316,31 +314,18 @@ export default function BizDashboard() {
           )}
         </View>
 
-        <View style={tw`px-5 mb-6`}>
-          <SectionHeading title="Payout balance" />
-          <View style={tw`flex-row`}>
-            <View style={tw`flex-1 pr-4`}>
-              <Text style={tw`text-xs text-stone-500`}>Available</Text>
-              <Text style={tw`text-xl font-bold text-emerald-700 mt-0.5`}>
-                ${availablePayout.toFixed(2)}
-              </Text>
-            </View>
-            <View style={tw`flex-1 border-l border-stone-200/80 pl-4`}>
-              <Text style={tw`text-xs text-stone-500`}>Platform fee hold</Text>
-              <Text style={tw`text-xl font-bold text-stone-800 mt-0.5`}>
-                ${feePending.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-          <Text style={tw`text-xs text-stone-500 mt-2 leading-4`}>
-            Estimated from net revenue this period. Transfers settle through your connected payout method.
+        <View style={tw`px-gutter-wide mb-6`}>
+          <SectionHeading title="Payouts" />
+          <Text style={tw`text-sm text-ink-3 leading-5`}>
+            Payouts aren't enabled yet. Your revenue figures above are tracked, but no balance is
+            available to withdraw.
           </Text>
         </View>
 
-        <View style={tw`px-5 mb-6`}>
+        <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Order rhythm" action="Analytics" onAction={openAnalytics} />
           {timeseries.length === 0 ? (
-            <Text style={tw`text-sm text-stone-500`}>No order volume in this period yet.</Text>
+            <Text style={tw`text-sm text-ink-3`}>No order volume in this period yet.</Text>
           ) : (
             <View style={tw`flex-row items-end justify-between h-28`}>
               {timeseries.map((p) => {
@@ -349,7 +334,7 @@ export default function BizDashboard() {
                 return (
                   <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
                     <View style={[tw`w-full rounded-t-md bg-emerald-600/80`, { height: h }]} />
-                    <Text style={tw`text-[9px] text-stone-400 mt-1`} numberOfLines={1}>
+                    <Text style={tw`text-caption text-ink-3 mt-1`} numberOfLines={1}>
                       {label}
                     </Text>
                   </View>
@@ -359,68 +344,68 @@ export default function BizDashboard() {
           )}
         </View>
 
-        <View style={tw`px-5 mb-6`}>
+        <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Recent orders" action="View all" onAction={() => navigation.navigate('Orders')} />
           {recent.length === 0 ? (
             <View style={tw`py-6 items-center`}>
-              <Ionicons name="receipt-outline" size={32} color="#A8A29E" />
-              <Text style={tw`text-stone-500 mt-2 text-sm`}>No orders in this period</Text>
+              <Ionicons name="receipt-outline" size={32} color={theme.colors.iconMuted} />
+              <Text style={tw`text-ink-3 mt-2 text-sm`}>No orders in this period</Text>
             </View>
           ) : (
             recent.map((order) => {
               const shipping = parseShippingAddress(order.shipping_address);
               return (
-                <TouchableOpacity
+                <PressableScale
                   key={order.id}
-                  style={tw`flex-row items-center py-3 border-b border-stone-200/70`}
+                  style={tw`flex-row items-center py-3 border-b border-line/70`}
                   onPress={() => stackNav.navigate('BusinessOrderDetail', { orderId: order.id })}
                 >
                   <View style={tw`flex-1 pr-2`}>
-                    <Text style={tw`font-semibold text-stone-900`}>
+                    <Text style={tw`font-semibold text-ink`}>
                       {shipping?.name || 'Customer'}
                     </Text>
-                    <Text style={tw`text-xs text-stone-400 mt-0.5`}>
+                    <Text style={tw`text-xs text-ink-3 mt-0.5`}>
                       {formatTimeAgo(order.created_at)}
                     </Text>
                   </View>
                   <View style={tw`items-end`}>
-                    <Text style={tw`font-bold text-stone-900`}>
-                      ${Number(order.total || 0).toFixed(2)}
+                    <Text style={tw`font-bold text-ink`}>
+                      {formatCurrency(orderBusinessTotal(order), orderCurrency(order))}
                     </Text>
                     <View style={tw`mt-1`}>
                       <OrderStatusPill status={order.status || 'pending'} />
                     </View>
                   </View>
-                </TouchableOpacity>
+                </PressableScale>
               );
             })
           )}
         </View>
 
-        <View style={tw`px-5 mb-4`}>
+        <View style={tw`px-gutter-wide mb-4`}>
           <SectionHeading title="Quick actions" />
           <View style={tw`flex-row flex-wrap -mx-1`}>
             {quickActions.map((action) => (
-              <Pressable
+              <PressableScale
                 key={action.label}
                 onPress={action.onPress}
                 style={tw`w-1/3 px-1 mb-2`}
               >
                 <View style={tw`items-center py-3`}>
-                  <View style={tw`w-10 h-10 rounded-full bg-[#EAE4D6] items-center justify-center mb-1.5`}>
-                    <Ionicons name={action.icon} size={20} color="#059669" />
+                  <View style={tw`w-10 h-10 rounded-full bg-raised items-center justify-center mb-1.5`}>
+                    <Ionicons name={action.icon} size={20} color={theme.colors.brand} />
                   </View>
                   <Text style={tw`text-xs font-semibold text-stone-800 text-center`} numberOfLines={1}>
                     {action.label}
                   </Text>
                 </View>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
         </View>
 
         {status === 'loading' && kpis ? (
-          <Text style={tw`text-center text-xs text-stone-400 mb-4`}>Refreshing…</Text>
+          <Text style={tw`text-center text-xs text-ink-3 mb-4`}>Refreshing…</Text>
         ) : null}
       </ScrollView>
     </BusinessScreen>

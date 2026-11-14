@@ -1,15 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../../components/ui/PressableScale';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
+import { useRefresh } from '../../hooks/useRefresh';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchCustomers } from '../../store/slices/businessSlice';
 import { feedListPerformanceProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import type { BusinessCustomer } from '../../services/api/business';
+import { formatCurrency } from '../../utils/money';
 
 function formatDate(dateString: string) {
   const d = new Date(dateString);
@@ -21,14 +26,15 @@ export default function CustomersScreen() {
   const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
   const customers = useAppSelector((s) => s.business.customers);
-  const [refreshing, setRefreshing] = useState(false);
+  const customersStatus = useAppSelector((s) => s.business.customersStatus);
+  const customersError = useAppSelector((s) => s.business.customersError);
   const [loading, setLoading] = useState(customers.length === 0);
 
   const load = useCallback(async () => {
     try {
       await dispatch(fetchCustomers()).unwrap();
     } catch {
-      // silent — empty state handles
+      // error is stored in the slice (customersError) and rendered below
     } finally {
       setLoading(false);
     }
@@ -38,67 +44,66 @@ export default function CustomersScreen() {
     void load();
   }, [load]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
+  const refresh = useRefresh(load);
 
   const openCustomerOrders = (customer: BusinessCustomer) => {
     const tabNav = navigation.getParent()?.getParent?.() || navigation.getParent?.() || navigation;
     tabNav.navigate('BusinessMain', {
       screen: 'Orders',
-      params: { search: customer.username || customer.email || customer.user_id },
+      // OrdersScreen search matches order id, shipping name and buyer user_id; the
+      // user_id is the only one guaranteed to match this customer's orders.
+      params: { search: customer.user_id },
     });
   };
 
   const renderCustomer = ({ item }: { item: BusinessCustomer }) => (
-    <TouchableOpacity
-      style={tw`py-4 border-b border-stone-200/70`}
+    <PressableScale
+      style={tw`py-4 border-b border-line/70`}
       onPress={() => openCustomerOrders(item)}
-      activeOpacity={0.85}
     >
       <View style={tw`flex-row items-center`}>
-        <View style={tw`w-11 h-11 rounded-full bg-[#EAE4D6] items-center justify-center mr-3`}>
+        <View style={tw`w-11 h-11 rounded-full bg-raised items-center justify-center mr-3`}>
           <Text style={tw`text-lg`}>{item.avatar || '👤'}</Text>
         </View>
         <View style={tw`flex-1 pr-2`}>
-          <Text style={tw`text-base font-bold text-stone-900`}>{item.username}</Text>
-          <Text style={tw`text-xs text-stone-500 mt-0.5`}>{item.email}</Text>
+          <Text style={tw`text-base font-bold text-ink`}>{item.username}</Text>
+          <Text style={tw`text-xs text-ink-3 mt-0.5`}>{item.email}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#A8A29E" />
+        <Ionicons name="chevron-forward" size={iconSize.sm} color={theme.colors.iconMuted} />
       </View>
       <View style={tw`flex-row mt-3`}>
         <View style={tw`flex-1`}>
-          <Text style={tw`text-xs text-stone-500`}>LTV</Text>
-          <Text style={tw`text-sm font-bold text-emerald-700`}>${Number(item.total_spent).toFixed(2)}</Text>
+          <Text style={tw`text-xs text-ink-3`}>LTV</Text>
+          <Text style={tw`text-sm font-bold text-emerald-700`}>
+            {formatCurrency(Number(item.total_spent || 0))}
+          </Text>
         </View>
         <View style={tw`flex-1`}>
-          <Text style={tw`text-xs text-stone-500`}>Orders</Text>
-          <Text style={tw`text-sm font-bold text-stone-900`}>{item.order_count}</Text>
+          <Text style={tw`text-xs text-ink-3`}>Orders</Text>
+          <Text style={tw`text-sm font-bold text-ink`}>{item.order_count}</Text>
         </View>
         <View style={tw`flex-1`}>
-          <Text style={tw`text-xs text-stone-500`}>Last order</Text>
-          <Text style={tw`text-sm font-semibold text-stone-700`}>{formatDate(item.last_order_at)}</Text>
+          <Text style={tw`text-xs text-ink-3`}>Last order</Text>
+          <Text style={tw`text-sm font-semibold text-ink-2`}>{formatDate(item.last_order_at)}</Text>
         </View>
       </View>
-    </TouchableOpacity>
+    </PressableScale>
   );
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['bottom']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['bottom']}>
       <FlatList
         style={tw`flex-1`}
         data={customers}
         keyExtractor={(item) => item.user_id}
         renderItem={renderCustomer}
         contentContainerStyle={[
-          tw`px-5 pt-2`,
+          tw`px-gutter-wide pt-2`,
           customers.length === 0 ? tw`flex-grow` : null,
           { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" colors={['#059669']} />
+          <RefreshControl {...refresh} />
         }
         {...feedListPerformanceProps}
         ListEmptyComponent={
@@ -107,6 +112,15 @@ export default function CustomersScreen() {
               <SkeletonCard variant="product" />
               <SkeletonCard variant="product" />
             </View>
+          ) : customersStatus === 'failed' ? (
+            <ErrorState
+              title="Couldn’t load customers"
+              message={customersError || 'Check your connection and try again.'}
+              onRetry={() => {
+                setLoading(true);
+                void load();
+              }}
+            />
           ) : (
             <BusinessEmptyState
               icon="people-outline"

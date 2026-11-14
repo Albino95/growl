@@ -1,40 +1,63 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   SectionList,
-  TouchableOpacity,
+  FlatList,
   RefreshControl,
-  ActivityIndicator,
-  Alert,
-  Pressable,
   ScrollView,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import tw from '../../lib/tw';
+import tw, { theme, useColorSchemeName } from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import SearchField from '../../components/ui/SearchField';
 import EmptyState from '../../components/ui/EmptyState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import PressableScale from '../../components/ui/PressableScale';
 import MoodWeekStrip from '../../components/journal/MoodWeekStrip';
-import JournalComposeModal from '../../components/journal/JournalComposeModal';
+import JournalComposeModal, {
+  type JournalComposePayload,
+} from '../../components/journal/JournalComposeModal';
+import AnimatedBottomSheet from '../../components/ui/AnimatedBottomSheet';
+import { pickOnThisDay } from '../../components/journal/onThisDay';
+import { toast } from '../../state/useToastStore';
+import { JOURNAL_DRAFT_NS, ON_THIS_DAY_NS, drafts } from '../../services/drafts';
+import CircleJournalCard from '../../components/journal/CircleJournalCard';
+import JournalQuoteReplySheet from '../../components/journal/JournalQuoteReplySheet';
+import JournalModeSwitcher, {
+  type JournalMode,
+} from '../../components/journal/JournalModeSwitcher';
+import CirclePresenceStrip from '../../components/journal/CirclePresenceStrip';
+import JournalReflectionsSheet from '../../components/journal/JournalReflectionsSheet';
 import {
   ALL_MOODS,
   MOOD_META,
-  computeStreak,
   dateKeyFromIso,
   formatHeroDate,
   formatSectionTitle,
   growthPathFromTags,
   localDateKey,
+  moodWash,
   promptForDay,
 } from '../../components/journal/journalMeta';
 import {
+  getCircleJournalEntries,
+  getJournalReflections,
+  type CircleJournalEntry,
+  type JournalReflection,
+} from '../../services/api/journal';
+import { createConversation } from '../../services/api/messages';
+import { useActivationStore } from '../../state/useActivationStore';
+import { useGrowthStore, type ComposeDraft } from '../../state/useGrowthStore';
+import {
   verticalScrollProps,
   feedListPerformanceProps,
-  horizontalScrollProps,
   TAB_SCREEN_BOTTOM_PADDING,
 } from '../../constants/scroll';
 import { useAppDispatch, useAppSelector, useAuth } from '../../store/hooks';
@@ -42,12 +65,20 @@ import CATEGORIES from '../../data/categories';
 import {
   fetchJournalEntries,
   addJournalEntry,
+  editJournalEntry,
   removeJournalEntry,
   type JournalEntry,
   type JournalMood,
 } from '../../store/slices/journalSlice';
-import { triggerPressFeedback } from '../../utils/interactionFeedback';
+import { feedback } from '../../utils/interactionFeedback';
+import { useRefresh } from '../../hooks/useRefresh';
+import { getReducedMotion } from '../../hooks/useReducedMotion';
+import { spring } from '../../theme/motion';
 import type { IndividualTabsParamList } from '../../app/navigation/tabs/IndividualTabs';
+import ShareCardSheet, { type ShareCardPayload } from '../../components/share/ShareCardSheet';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { SHOW_CIRCLES } from '../../constants/featureFlags';
+import { SkeletonList } from '../../components/ui/SkeletonCard';
 
 type ViewTab = 'today' | 'timeline';
 type VisibilityFilter = 'all' | 'private' | 'shared';
@@ -65,31 +96,41 @@ function pathLabel(key: string | null): string | null {
 
 function EntryCard({
   entry,
-  onDelete,
+  onMenu,
+  onShare,
 }: {
   entry: JournalEntry;
-  onDelete: (id: string) => void;
+  /** ••• / long-press: Edit, Share, Delete. */
+  onMenu: (entry: JournalEntry) => void;
+  onShare?: (entry: JournalEntry) => void;
 }) {
   const mood = (entry.mood as JournalMood | null) || null;
   const meta = mood ? MOOD_META[mood] : null;
   const path = growthPathFromTags(entry.tags || []);
   const isPublic = entry.isPublic ?? entry.is_public;
+  const scheme = useColorSchemeName();
 
   return (
-    <View
+    <Pressable
+      onLongPress={() => {
+        feedback.open();
+        onMenu(entry);
+      }}
+      delayLongPress={350}
+      accessibilityHint="Long-press for options"
       style={[
-        tw`mb-3 px-4 py-4 rounded-2xl`,
+        tw`mb-3 p-4 rounded-card`,
         {
-          backgroundColor: meta?.wash || '#FFFcf7',
+          backgroundColor: mood && meta ? moodWash(mood, scheme) : theme.colors.card,
           borderWidth: 1,
-          borderColor: 'rgba(28,25,23,0.06)',
+          borderColor: scheme === 'dark' ? theme.colors.line : 'rgba(28,25,23,0.06)',
         },
       ]}
     >
       <View style={tw`flex-row items-center justify-between mb-2`}>
         <View style={tw`flex-row items-center flex-1`}>
           {meta ? <Text style={tw`text-base mr-2`}>{meta.glyph}</Text> : null}
-          <Text style={tw`text-xs text-stone-500`}>
+          <Text style={tw`text-xs text-ink-3`}>
             {new Date(entry.created_at).toLocaleTimeString('en-US', {
               hour: 'numeric',
               minute: '2-digit',
@@ -100,37 +141,155 @@ function EntryCard({
         <View style={tw`flex-row items-center gap-3`}>
           <Ionicons
             name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
-            size={14}
-            color="#78716C"
+            size={iconSize.xs}
+            color={theme.colors.ink3}
           />
-          <TouchableOpacity onPress={() => onDelete(entry.id)} hitSlop={10}>
-            <Ionicons name="trash-outline" size={16} color="#A8A29E" />
-          </TouchableOpacity>
+          {isPublic && onShare ? (
+            <PressableScale
+              feedback="open"
+              onPress={() => onShare(entry)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Share voice card"
+            >
+              <Ionicons name="share-outline" size={16} color={theme.colors.brand} />
+            </PressableScale>
+          ) : null}
+          <PressableScale
+            feedback="open"
+            onPress={() => onMenu(entry)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Entry options"
+          >
+            <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.iconMuted} />
+          </PressableScale>
         </View>
       </View>
-      <Text style={tw`text-stone-900 text-[16px] leading-6`}>{entry.content}</Text>
+      <Text style={tw`text-ink text-callout font-normal`}>{entry.content}</Text>
       {path ? (
         <View style={tw`mt-3 self-start px-2.5 py-1 rounded-full bg-stone-900/5`}>
-          <Text style={tw`text-[11px] font-semibold text-stone-600`}>{pathLabel(path)}</Text>
+          <Text style={tw`text-caption font-semibold text-ink-2`}>{pathLabel(path)}</Text>
         </View>
       ) : null}
-    </View>
+    </Pressable>
+  );
+}
+
+function EntryMenuSheet({
+  entry,
+  onClose,
+  onEdit,
+  onShare,
+  onDelete,
+}: {
+  entry: JournalEntry | null;
+  onClose: () => void;
+  onEdit: (entry: JournalEntry) => void;
+  onShare: (entry: JournalEntry) => void;
+  onDelete: (entry: JournalEntry) => void;
+}) {
+  const isPublic = entry ? entry.isPublic ?? entry.is_public : false;
+  const rows: {
+    key: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    run: (e: JournalEntry) => void;
+    danger?: boolean;
+  }[] = [
+    { key: 'edit', icon: 'create-outline', label: 'Edit', run: onEdit },
+    ...(isPublic
+      ? [{ key: 'share', icon: 'share-outline' as const, label: 'Share as card', run: onShare }]
+      : []),
+    { key: 'delete', icon: 'trash-outline', label: 'Delete', run: onDelete, danger: true },
+  ];
+  // Run the chosen action only once the sheet's own Modal is gone (iOS can't
+  // present the composer / a dialog while another Modal is still dismissing).
+  const pendingRef = useRef<(() => void) | null>(null);
+  const handleClosed = () => {
+    onClose();
+    const run = pendingRef.current;
+    pendingRef.current = null;
+    if (run) setTimeout(run, 300);
+  };
+  return (
+    <AnimatedBottomSheet visible={!!entry} onClose={handleClosed} maxHeightRatio={0.45}>
+      {({ close }) => (
+        <View style={tw`px-gutter pt-1 pb-4`}>
+          {entry ? (
+            <Text style={tw`text-footnote text-ink-3 mb-2 px-2`} numberOfLines={1}>
+              {entry.content}
+            </Text>
+          ) : null}
+          {rows.map((row) => (
+            <PressableScale
+              key={row.key}
+              feedback={row.danger ? 'delete' : 'open'}
+              onPress={() => {
+                const target = entry;
+                if (target) pendingRef.current = () => row.run(target);
+                close();
+              }}
+              accessibilityRole="button"
+              style={tw`flex-row items-center px-2 py-3.5 rounded-control`}
+            >
+              <Ionicons
+                name={row.icon}
+                size={iconSize.sm}
+                color={row.danger ? tw.color('red-600') : theme.colors.ink2}
+              />
+              <Text
+                style={tw`text-body ml-3 ${row.danger ? 'text-red-600 font-semibold' : 'text-ink'}`}
+              >
+                {row.label}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+      )}
+    </AnimatedBottomSheet>
   );
 }
 
 export default function JournalScreen() {
+  const scheme = useColorSchemeName();
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const route = useRoute<RouteProp<IndividualTabsParamList, 'Journal'>>();
   const navigation = useNavigation<BottomTabNavigationProp<IndividualTabsParamList, 'Journal'>>();
   const { entries, isLoading, isSaving, error } = useAppSelector((s) => s.journal);
 
+  const [mode, setMode] = useState<JournalMode>('pages');
   const [viewTab, setViewTab] = useState<ViewTab>('today');
   const [composeOpen, setComposeOpen] = useState(false);
+  /** Prefill handed over by the Home Today card ("Write more"). */
+  const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
   const [focusDateKey, setFocusDateKey] = useState<string | null>(null);
+  const [circleEntries, setCircleEntries] = useState<CircleJournalEntry[]>([]);
+  const [circleLoading, setCircleLoading] = useState(false);
+  const [circleError, setCircleError] = useState<string | null>(null);
+  const [replyEntry, setReplyEntry] = useState<CircleJournalEntry | null>(null);
+  const [voiceFilterUserId, setVoiceFilterUserId] = useState<string | null>(null);
+  const [reflections, setReflections] = useState<JournalReflection[]>([]);
+  const [reflectionsLoading, setReflectionsLoading] = useState(false);
+  const [reflectionsOpen, setReflectionsOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
+  const [menuEntry, setMenuEntry] = useState<JournalEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
+  /** Day key the "On this day" card was dismissed for (persisted per user). */
+  const [onThisDayDismissedFor, setOnThisDayDismissedFor] = useState<string | null>(null);
+
+  const contentOpacity = useRef(new Animated.Value(1)).current;
+  const contentSlide = useRef(new Animated.Value(0)).current;
+  // Only one of these scrollers is mounted at a time; each listens for tab re-press.
+  const voicesListRef = useRef<FlatList<CircleJournalEntry>>(null);
+  const todayScrollRef = useRef<ScrollView>(null);
+  const pagesListRef = useRef<SectionList<any, any>>(null);
+  useScrollToTop(voicesListRef);
+  useScrollToTop(todayScrollRef);
+  useScrollToTop(pagesListRef);
 
   const userPath = useMemo(() => {
     const cats = Array.isArray(user?.categories) ? user.categories : [];
@@ -141,29 +300,97 @@ export default function JournalScreen() {
   const todayPrompt = useMemo(() => promptForDay(new Date(), userPath), [userPath]);
 
   const loadEntries = useCallback(async () => {
-    await dispatch(fetchJournalEntries()).unwrap();
+    try {
+      await dispatch(fetchJournalEntries()).unwrap();
+    } catch (e) {
+      // The slice stores the error and drives the banner; just avoid an unhandled rejection.
+      console.warn('[Journal] load entries failed', e);
+    }
   }, [dispatch]);
+
+  const loadCircle = useCallback(async () => {
+    setCircleLoading(true);
+    setCircleError(null);
+    try {
+      const res = await getCircleJournalEntries({ limit: 40 });
+      setCircleEntries(res.data?.entries ?? []);
+    } catch (e) {
+      setCircleError(e instanceof Error ? e.message : 'Could not load circle');
+      setCircleEntries([]);
+    } finally {
+      setCircleLoading(false);
+    }
+  }, []);
+
+  const loadReflections = useCallback(async () => {
+    setReflectionsLoading(true);
+    try {
+      const res = await getJournalReflections({ limit: 30 });
+      setReflections(res.data?.reflections ?? []);
+    } catch {
+      setReflections([]);
+    } finally {
+      setReflectionsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadEntries();
-  }, [loadEntries]);
+    void loadReflections();
+    void loadCircle();
+  }, [loadEntries, loadReflections, loadCircle]);
 
-  // Open compose when launched from the dock Create menu.
+  const filteredCircleEntries = useMemo(() => {
+    if (!voiceFilterUserId) return circleEntries;
+    return circleEntries.filter((e) => e.user_id === voiceFilterUserId);
+  }, [circleEntries, voiceFilterUserId]);
+
   useEffect(() => {
     if (route.params?.openCompose) {
+      setComposeDraft(useGrowthStore.getState().takeComposeDraft());
       setComposeOpen(true);
       setViewTab('today');
       navigation.setParams({ openCompose: undefined });
     }
   }, [route.params?.openCompose, navigation]);
 
-  const dateKeys = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of entries) set.add(dateKeyFromIso(e.created_at));
-    return set;
-  }, [entries]);
+  const animateModeChange = useCallback(
+    (next: JournalMode) => {
+      if (next === mode) return;
+      feedback.transition();
+      Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 0,
+          duration: 110,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentSlide, {
+          toValue: next === 'voices' ? -8 : 8,
+          duration: 110,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setMode(next);
+        if (next === 'voices') setVoiceFilterUserId(null);
+        contentSlide.setValue(getReducedMotion() ? 0 : next === 'voices' ? 8 : -8);
+        Animated.parallel([
+          Animated.timing(contentOpacity, {
+            toValue: 1,
+            duration: 180,
+            useNativeDriver: true,
+          }),
+          spring(contentSlide, 0, 'gentle', getReducedMotion()),
+        ]).start();
+      });
+    },
+    [mode, contentOpacity, contentSlide]
+  );
 
-  const streak = useMemo(() => computeStreak(dateKeys), [dateKeys]);
+  // Server growth streak (posts, stories, journal, check-ins; rest days keep it alive).
+  const streak = useGrowthStore((s) => s.streak?.current ?? 0);
+  useEffect(() => {
+    void useGrowthStore.getState().refresh({ userId: user?.id ?? null });
+  }, [user?.id]);
 
   const todayKey = localDateKey();
   const todayEntries = useMemo(
@@ -220,334 +447,736 @@ export default function JournalScreen() {
       .slice(0, 3) as [JournalMood, number][];
   }, [entries]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
+  const refresh = useRefresh(async () => {
+    if (mode === 'voices') {
+      await Promise.all([loadCircle(), loadReflections()]);
+    } else {
+      await Promise.all([loadEntries(), loadReflections()]);
+    }
+  });
+
+  const sharedCount = useMemo(
+    () => entries.filter((e) => e.isPublic ?? e.is_public).length,
+    [entries]
+  );
+
+  const openProfile = (userId: string, preview?: { username?: string; avatarUrl?: string | null }) => {
+    feedback.open();
+    const root = navigation.getParent?.() || navigation;
+    (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId, preview });
+  };
+
+  const messageAboutEntry = async (
+    entry: CircleJournalEntry,
+    opts?: { quote?: string; body?: string }
+  ) => {
     try {
-      await loadEntries();
-    } finally {
-      setRefreshing(false);
+      const res = await createConversation(entry.user_id);
+      const snippet = (opts?.quote || entry.content).trim().slice(0, 80);
+      const draft =
+        opts?.body && opts?.quote
+          ? `About “${snippet}${opts.quote.length > 80 ? '…' : ''}”: ${opts.body}`
+          : `Read your journal — “${snippet}${entry.content.length > 80 ? '…' : ''}” hit me.`;
+      feedback.send();
+      const root = navigation.getParent?.() || navigation;
+      (root as { navigate: (a: string, b: object) => void }).navigate('Messages', {
+        conversationId: res.data.conversation.id,
+        targetUserId: entry.user_id,
+        draftText: draft,
+      });
+    } catch (e) {
+      feedback.error();
+      void alertMessage(
+        'Cannot message',
+        e instanceof Error ? e.message : 'You can only message mutual friends.'
+      );
     }
   };
 
-  const handleSave = async (payload: {
-    content: string;
-    mood?: JournalMood;
-    is_public: boolean;
-    tags: string[];
-    metadata?: Record<string, unknown>;
-  }) => {
-    try {
-      await dispatch(addJournalEntry(payload)).unwrap();
+  const handleSave = async ({ entryId, idempotencyKey, ...payload }: JournalComposePayload) => {
+    if (entryId) {
+      // Optimistic: the slice patches the row immediately and rolls back on failure.
       setComposeOpen(false);
+      setEditingEntry(null);
+      try {
+        await dispatch(
+          editJournalEntry({
+            entryId,
+            payload: {
+              content: payload.content,
+              // The update schema requires `mood` (null clears it).
+              mood: payload.mood ?? null,
+              is_public: payload.is_public,
+              tags: payload.tags,
+              metadata: payload.metadata ?? {},
+            },
+          })
+        ).unwrap();
+        feedback.success();
+        toast.success('Entry updated');
+      } catch (e) {
+        feedback.error();
+        void alertMessage(
+          'Couldn’t update entry',
+          e instanceof Error ? e.message : 'Your changes weren’t saved. Please try again.'
+        );
+      }
+      return;
+    }
+    try {
+      await dispatch(addJournalEntry({ ...payload, idempotencyKey })).unwrap();
+      void drafts.clear(JOURNAL_DRAFT_NS, user?.id);
+      useActivationStore.getState().markJournaled();
+      // Activity changed — today now counts toward the streak.
+      void useGrowthStore.getState().refresh({ force: true });
+      feedback.success();
+      setComposeOpen(false);
+      setComposeDraft(null);
       setViewTab('today');
     } catch (e) {
+      feedback.error();
       const msg = e instanceof Error ? e.message : 'Could not save entry';
-      Alert.alert('Error', msg);
+      void alertMessage('Error', msg);
     }
   };
 
   const handleDelete = (entryId: string) => {
-    Alert.alert('Delete entry', 'Remove this journal entry?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => void dispatch(removeJournalEntry(entryId)),
-      },
-    ]);
+    void confirmAsync('Delete entry', 'Remove this journal entry?', {
+      confirmLabel: 'Delete',
+      destructive: true,
+    }).then((ok) => {
+      if (!ok) return;
+      feedback.delete();
+      void dispatch(removeJournalEntry(entryId));
+    });
+  };
+
+  const openCompose = () => {
+    feedback.open();
+    setComposeDraft(null);
+    setEditingEntry(null);
+    setComposeOpen(true);
+  };
+
+  const openEdit = (entry: JournalEntry) => {
+    setComposeDraft(null);
+    setEditingEntry(entry);
+    setComposeOpen(true);
+  };
+
+  const shareOwnEntry = (e: JournalEntry) => {
+    const mood = e.mood as JournalMood | null;
+    const path = growthPathFromTags(e.tags || []);
+    setSharePayload({
+      kind: 'voice',
+      entryId: e.id,
+      userId: user?.id || '',
+      username: user?.username || 'You',
+      avatar: user?.avatar,
+      content: e.content,
+      moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
+      pathLabel: pathLabel(path),
+    });
+  };
+
+  // --- On this day ----------------------------------------------------------
+  // Uses loaded entries only (latest 100): the list API has no date filter yet.
+  useEffect(() => {
+    let cancelled = false;
+    void drafts.load<{ dateKey: string }>(ON_THIS_DAY_NS, user?.id).then((saved) => {
+      if (!cancelled) setOnThisDayDismissedFor(saved?.data.dateKey ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  // todayKey keeps the pick fresh across midnight.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const onThisDay = useMemo(() => pickOnThisDay(entries), [entries, todayKey]);
+  const showOnThisDay = !!onThisDay && onThisDayDismissedFor !== todayKey;
+
+  const dismissOnThisDay = () => {
+    feedback.close();
+    setOnThisDayDismissedFor(todayKey);
+    void drafts.save(ON_THIS_DAY_NS, user?.id, { dateKey: todayKey });
+  };
+
+  const openOnThisDay = () => {
+    if (!onThisDay) return;
+    feedback.open();
+    setSearchQuery('');
+    setVisibility('all');
+    setFocusDateKey(onThisDay.dateKey);
+    setViewTab('timeline');
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-surface-page`} edges={['top']}>
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
       <GrowChromeHeader
         right={
-          <Pressable
-            onPress={() => {
-              triggerPressFeedback();
-              setComposeOpen(true);
-            }}
-            style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
-            accessibilityLabel="New journal entry"
-          >
-            <Ionicons name="pencil" size={17} color="#059669" />
-          </Pressable>
+          <View style={tw`flex-row items-center gap-2`}>
+            {SHOW_CIRCLES ? (
+              <PressableScale
+                feedback="open"
+                onPress={() => navigateFromRoot(navigation, 'Circles')}
+                pressedScale={0.9}
+                hitSlop={8}
+                style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+                accessibilityRole="button"
+                accessibilityLabel="Circles"
+              >
+                <Ionicons name="people-outline" size={17} color={theme.colors.brand} />
+              </PressableScale>
+            ) : null}
+            <PressableScale
+              feedback="open"
+              onPress={openCompose}
+              pressedScale={0.9}
+              hitSlop={8}
+              style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+              accessibilityRole="button"
+              accessibilityLabel="New journal entry"
+            >
+              <Ionicons name="pencil" size={17} color={theme.colors.brand} />
+            </PressableScale>
+          </View>
         }
       />
 
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <Text style={tw`text-lg font-bold text-stone-900 mb-3`} numberOfLines={1}>
-          Journal
-        </Text>
+      <View style={tw`px-gutter-wide pt-2 pb-2`}>
+        <View style={tw`flex-row items-center justify-between mb-2`}>
+          <View style={tw`flex-1 pr-3`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+              Journal
+            </Text>
+            <Text style={tw`text-title font-bold text-ink mt-0.5`} numberOfLines={1}>
+              {mode === 'pages' ? 'Your pages' : 'Voices'}
+            </Text>
+          </View>
+          {mode === 'pages' && reflections.length > 0 ? (
+            <PressableScale
+              feedback="open"
+              onPress={() => setReflectionsOpen(true)}
+              style={tw`px-3 py-2 rounded-full bg-energy-50 border border-red-200 flex-row items-center`}
+            >
+              <Ionicons name="chatbubbles-outline" size={iconSize.xs} color={tw.color('rose-600')} />
+              <Text style={tw`text-xs font-bold text-rose-600 ml-1`}>{reflections.length}</Text>
+            </PressableScale>
+          ) : null}
+        </View>
 
-        <View style={tw`flex-row bg-white/60 rounded-full p-1 border border-stone-200/80`}>
-          {([
-            { key: 'today', label: 'Today' },
-            { key: 'timeline', label: 'Timeline' },
-          ] as const).map((tab) => {
-            const active = viewTab === tab.key;
-            return (
-              <Pressable
-                key={tab.key}
-                onPress={() => setViewTab(tab.key)}
-                style={tw`flex-1 py-2.5 rounded-full items-center ${
-                  active ? 'bg-stone-900' : ''
-                }`}
-              >
-                <Text
-                  style={tw`text-sm font-semibold ${
-                    active ? 'text-white' : 'text-stone-500'
+        <JournalModeSwitcher
+          mode={mode}
+          onChange={animateModeChange}
+          voicesCount={circleEntries.length}
+          reflectionsCount={reflections.length}
+        />
+
+        {mode === 'pages' ? (
+          <View style={tw`flex-row mt-3 gap-5`}>
+            {(
+              [
+                { key: 'today' as const, label: 'Today' },
+                { key: 'timeline' as const, label: 'Timeline' },
+              ] as const
+            ).map((tab) => {
+              const active = viewTab === tab.key;
+              return (
+                <PressableScale
+                  key={tab.key}
+                  feedback="select"
+                  onPress={() => {
+                    if (viewTab === tab.key) return;
+                    setViewTab(tab.key);
+                  }}
+                  style={tw`pb-1.5 border-b-2 ${
+                    active ? 'border-emerald-600' : 'border-transparent'
                   }`}
                 >
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                  <Text
+                    style={tw`text-body ${
+                      active ? 'text-ink font-bold' : 'text-ink-3 font-medium'
+                    }`}
+                  >
+                    {tab.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={tw`text-body text-ink-3 mt-2.5`}>
+            Sit with a friend’s note — reply to a line or message privately.
+          </Text>
+        )}
       </View>
 
-      {error ? (
-        <View style={tw`mx-5 mb-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100`}>
+      {mode === 'pages' && error ? (
+        <View style={tw`mx-gutter-wide mb-2 px-3 py-2 rounded-control bg-red-50 border border-red-100`}>
           <Text style={tw`text-sm text-red-700`}>{error}</Text>
         </View>
       ) : null}
+      {mode === 'voices' && circleError ? (
+        <View style={tw`mx-gutter-wide mb-2 px-3 py-2 rounded-control bg-red-50 border border-red-100`}>
+          <Text style={tw`text-sm text-red-700`}>{circleError}</Text>
+        </View>
+      ) : null}
 
-      {viewTab === 'today' ? (
-        <ScrollView
-          style={tw`flex-1`}
-          contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void onRefresh()}
-              tintColor="#1C1917"
-            />
-          }
-          {...verticalScrollProps}
-        >
-          <View
-            style={[
-              tw`mx-5 mt-2 mb-4 rounded-3xl px-5 pt-5 pb-5 overflow-hidden`,
-              {
-                backgroundColor: '#EAE4D6',
-                borderWidth: 1,
-                borderColor: 'rgba(28,25,23,0.06)',
-              },
-            ]}
+      <Animated.View
+        style={{
+          flex: 1,
+          opacity: contentOpacity,
+          transform: [{ translateX: contentSlide }],
+        }}
+      >
+        {mode === 'voices' ? (
+          <FlatList
+            ref={voicesListRef}
+            data={filteredCircleEntries}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[tw`px-gutter-wide pt-1`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+            {...feedListPerformanceProps}
+            {...verticalScrollProps}
+            refreshControl={
+              <RefreshControl {...refresh} />
+            }
+            ListHeaderComponent={
+              <View>
+                <CirclePresenceStrip
+                  entries={circleEntries}
+                  selectedUserId={voiceFilterUserId}
+                  onSelect={setVoiceFilterUserId}
+                />
+                {voiceFilterUserId ? (
+                  <Text style={tw`text-sm text-ink-3 mb-3`}>
+                    Showing one voice ·{' '}
+                    <Text
+                      style={tw`text-emerald-700 font-semibold`}
+                      onPress={() => {
+                        feedback.select();
+                        setVoiceFilterUserId(null);
+                      }}
+                    >
+                      Clear
+                    </Text>
+                  </Text>
+                ) : null}
+              </View>
+            }
+            renderItem={({ item }) => (
+              <CircleJournalCard
+                entry={item}
+                onOpenProfile={(id) => openProfile(id, { username: item.username, avatarUrl: item.avatar })}
+                onMessage={(e) => void messageAboutEntry(e)}
+                onReplyToLine={(e) => {
+                  feedback.open();
+                  setReplyEntry(e);
+                }}
+                onShare={(e) => {
+                  const mood = e.mood as keyof typeof MOOD_META | null;
+                  const path = growthPathFromTags(e.tags || []);
+                  setSharePayload({
+                    kind: 'voice',
+                    entryId: e.id,
+                    userId: e.user_id,
+                    username: e.username,
+                    avatar: e.avatar,
+                    content: e.content,
+                    moodLabel: mood && MOOD_META[mood] ? MOOD_META[mood].label : null,
+                    pathLabel: pathLabel(path),
+                  });
+                }}
+                onMuted={(userId) =>
+                  setCircleEntries((prev) => prev.filter((e) => e.user_id !== userId))
+                }
+              />
+            )}
+            ListEmptyComponent={
+              circleLoading ? (
+                <SkeletonList variant="journal" count={3} />
+              ) : voiceFilterUserId ? (
+                <EmptyState
+                  icon="person-outline"
+                  title="No pages from them"
+                  description="They haven’t shared a public journal recently — or you muted them."
+                  actionLabel="Show everyone"
+                  onAction={() => setVoiceFilterUserId(null)}
+                />
+              ) : (
+                <View>
+                  <EmptyState
+                    icon="radio-outline"
+                    title="Voices is quiet"
+                    description="When friends share a public journal, their notes land here. You can reply to a sentence or message privately."
+                    actionLabel="Invite a friend"
+                    onAction={() => {
+                      feedback.open();
+                      navigateFromRoot(navigation, 'Invite');
+                    }}
+                  />
+                  <PressableScale
+                    feedback="open"
+                    onPress={() => {
+                      animateModeChange('pages');
+                      openCompose();
+                    }}
+                    accessibilityRole="button"
+                    style={tw`self-center px-4 py-2.5`}
+                  >
+                    <Text style={tw`text-body font-semibold text-ink-2`}>
+                      Or share one of your pages
+                    </Text>
+                  </PressableScale>
+                </View>
+              )
+            }
+          />
+        ) : viewTab === 'today' ? (
+          <ScrollView
+            ref={todayScrollRef}
+            style={tw`flex-1`}
+            contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
+            refreshControl={
+              <RefreshControl {...refresh} tintColor={theme.colors.ink} />
+            }
+            {...verticalScrollProps}
           >
             <View
-              pointerEvents="none"
               style={[
-                tw`absolute -top-16 -right-10 w-48 h-48 rounded-full`,
-                { backgroundColor: 'rgba(16,185,129,0.12)' },
+                tw`mx-gutter-wide mt-1 mb-3 rounded-sheet p-5 overflow-hidden`,
+                {
+                  backgroundColor: theme.colors.raised,
+                  borderWidth: 1,
+                  borderColor: scheme === 'dark' ? theme.colors.line : 'rgba(28,25,23,0.06)',
+                },
               ]}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                tw`absolute -bottom-20 -left-12 w-56 h-56 rounded-full`,
-                { backgroundColor: 'rgba(245,158,11,0.10)' },
-              ]}
-            />
-            <View style={tw`flex-row items-start justify-between mb-4`}>
-              <View style={tw`flex-1 pr-3`}>
-                <Text style={tw`text-stone-500 text-sm`}>{formatHeroDate()}</Text>
-                <Text style={tw`text-2xl text-stone-900 mt-2 leading-8`}>{todayPrompt}</Text>
-              </View>
-              {streak > 0 ? (
-                <View style={tw`items-center`}>
-                  <View
-                    style={tw`w-14 h-14 rounded-full border-2 border-stone-900/20 items-center justify-center bg-white/50`}
-                  >
-                    <Text style={tw`text-lg font-bold text-stone-900`}>{streak}</Text>
-                  </View>
-                  <Text style={tw`text-[10px] text-stone-500 mt-1 font-medium`}>day streak</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <MoodWeekStrip
-              entries={entries}
-              onSelectDay={(key) => {
-                setFocusDateKey(key);
-                setViewTab('timeline');
-              }}
-            />
-
-            <Pressable
-              onPress={() => {
-                triggerPressFeedback();
-                setComposeOpen(true);
-              }}
-              style={tw`mt-5 bg-stone-900 rounded-2xl py-3.5 items-center flex-row justify-center`}
             >
-              <Ionicons name="create-outline" size={18} color="#fff" />
-              <Text style={tw`text-white font-semibold ml-2`}>
-                {todayEntries.length > 0 ? 'Write another entry' : "Write today's entry"}
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={tw`px-5 mb-2`}>
-            <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
-              Today
-            </Text>
-            {isLoading && entries.length === 0 ? (
-              <ActivityIndicator color="#1C1917" style={tw`py-8`} />
-            ) : todayEntries.length === 0 ? (
-              <View style={tw`py-6 px-4 rounded-2xl bg-white/50 border border-dashed border-stone-300`}>
-                <Text style={tw`text-stone-600 text-center leading-6`}>
-                  No entry yet. A few honest lines are enough.
-                </Text>
-              </View>
-            ) : (
-              todayEntries.map((entry) => (
-                <EntryCard key={entry.id} entry={entry} onDelete={handleDelete} />
-              ))
-            )}
-          </View>
-
-          {moodCounts.length > 0 ? (
-            <View style={tw`px-5 mt-2`}>
-              <Text style={tw`text-xs font-semibold tracking-widest text-stone-500 uppercase mb-3`}>
-                Recent moods
-              </Text>
-              <View style={tw`flex-row flex-wrap gap-2`}>
-                {moodCounts.map(([mood, count]) => (
-                  <View
-                    key={mood}
-                    style={[
-                      tw`flex-row items-center px-3 py-2 rounded-full`,
-                      { backgroundColor: MOOD_META[mood].wash },
-                    ]}
-                  >
-                    <Text style={tw`mr-1.5`}>{MOOD_META[mood].glyph}</Text>
-                    <Text style={tw`text-sm text-stone-700 font-medium`}>
-                      {MOOD_META[mood].label}
-                    </Text>
-                    <Text style={tw`text-xs text-stone-500 ml-1.5`}>{count}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-        </ScrollView>
-      ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            tw`px-5 pt-2`,
-            { paddingBottom: TAB_SCREEN_BOTTOM_PADDING },
-          ]}
-          stickySectionHeadersEnabled
-          {...feedListPerformanceProps}
-          {...verticalScrollProps}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void onRefresh()}
-              tintColor="#1C1917"
-            />
-          }
-          ListHeaderComponent={
-            <View style={tw`mb-2`}>
-              <SearchField
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search entries, mood, path"
+              <View
+                pointerEvents="none"
+                style={[
+                  tw`absolute -top-16 -right-10 w-48 h-48 rounded-full`,
+                  { backgroundColor: 'rgba(16,185,129,0.12)' },
+                ]}
               />
-              <ScrollView
-                horizontal
-                {...horizontalScrollProps}
-                style={tw`mt-3 mb-1`}
-                contentContainerStyle={tw`gap-2 pr-2`}
-              >
-                {(
-                  [
-                    { key: 'all', label: 'All' },
-                    { key: 'private', label: 'Private' },
-                    { key: 'shared', label: 'Shared' },
-                  ] as const
-                ).map((f) => {
-                  const active = visibility === f.key;
-                  return (
-                    <Pressable
-                      key={f.key}
-                      onPress={() => setVisibility(f.key)}
-                      style={tw`px-3.5 py-1.5 rounded-full border ${
-                        active
-                          ? 'bg-stone-900 border-stone-900'
-                          : 'bg-white/70 border-stone-200'
-                      }`}
+              <View style={tw`flex-row items-start justify-between mb-4`}>
+                <View style={tw`flex-1 pr-3`}>
+                  <Text style={tw`text-ink-3 text-body`}>{formatHeroDate()}</Text>
+                  <Text style={tw`text-title text-ink mt-2 leading-7`}>{todayPrompt}</Text>
+                </View>
+                {streak > 0 ? (
+                  <View style={tw`items-center`}>
+                    <View
+                      style={tw`w-14 h-14 rounded-full border-2 border-energy-600 items-center justify-center bg-energy-50`}
                     >
-                      <Text
-                        style={tw`text-sm ${
-                          active ? 'text-white font-semibold' : 'text-stone-600'
-                        }`}
-                      >
-                        {f.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                {focusDateKey ? (
-                  <Pressable
-                    onPress={() => setFocusDateKey(null)}
-                    style={tw`px-3.5 py-1.5 rounded-full bg-amber-100 border border-amber-200 flex-row items-center`}
-                  >
-                    <Text style={tw`text-sm text-amber-900 mr-1`}>
-                      {formatSectionTitle(focusDateKey)}
-                    </Text>
-                    <Ionicons name="close" size={14} color="#92400E" />
-                  </Pressable>
+                      <Text style={tw`text-callout font-bold text-bloom-ink`}>{streak}</Text>
+                    </View>
+                    <Text style={tw`text-caption text-bloom-ink mt-1 font-medium`}>day streak</Text>
+                  </View>
                 ) : null}
-              </ScrollView>
-            </View>
-          }
-          renderSectionHeader={({ section }) => (
-            <View style={tw`py-2 bg-[#F3EEE4]`}>
-              <Text style={tw`text-sm font-semibold text-stone-600`}>{section.title}</Text>
-            </View>
-          )}
-          renderItem={({ item }) => <EntryCard entry={item} onDelete={handleDelete} />}
-          ListEmptyComponent={
-            isLoading ? (
-              <View style={tw`py-12 items-center`}>
-                <ActivityIndicator color="#1C1917" />
               </View>
-            ) : searchQuery.trim() || focusDateKey || visibility !== 'all' ? (
-              <EmptyState
-                icon="search-outline"
-                title="No matches"
-                description="Try clearing filters or search."
-                actionLabel="Reset"
-                onAction={() => {
-                  setSearchQuery('');
-                  setFocusDateKey(null);
-                  setVisibility('all');
+
+              <MoodWeekStrip
+                entries={entries}
+                onSelectDay={(key) => {
+                  feedback.select();
+                  setFocusDateKey(key);
+                  setViewTab('timeline');
                 }}
               />
-            ) : (
-              <EmptyState
-                icon="book-outline"
-                title="Your timeline is empty"
-                description="Start with today’s check-in. Private by default — share only when you want to."
-                actionLabel="Write today’s entry"
-                onAction={() => setComposeOpen(true)}
-              />
-            )
-          }
-        />
-      )}
+
+              <PressableScale
+                feedback="open"
+                onPress={openCompose}
+                style={tw`mt-5 bg-ink rounded-card py-3.5 items-center flex-row justify-center`}
+              >
+                <Ionicons name="create-outline" size={iconSize.sm} color={theme.colors.page} />
+                <Text style={tw`text-page font-semibold ml-2`}>
+                  {todayEntries.length > 0 ? 'Write another entry' : "Write today's entry"}
+                </Text>
+              </PressableScale>
+            </View>
+
+            {showOnThisDay && onThisDay ? (
+              <PressableScale
+                feedback="open"
+                onPress={openOnThisDay}
+                accessibilityRole="button"
+                accessibilityLabel={`${onThisDay.heading} Open entry`}
+                style={tw`mx-gutter-wide mb-3 p-4 rounded-card bg-card border border-line/80`}
+              >
+                <View style={tw`flex-row items-center mb-1.5`}>
+                  <Ionicons name="time-outline" size={iconSize.xs} color={theme.colors.ink3} />
+                  <Text style={tw`text-footnote font-semibold text-ink-2 ml-1.5 flex-1`}>
+                    {onThisDay.heading}
+                  </Text>
+                  <PressableScale
+                    onPress={dismissOnThisDay}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Hide for today"
+                  >
+                    <Ionicons name="close" size={iconSize.xs} color={theme.colors.iconMuted} />
+                  </PressableScale>
+                </View>
+                <Text style={tw`text-body text-ink leading-6`} numberOfLines={3}>
+                  “{onThisDay.excerpt}”
+                </Text>
+              </PressableScale>
+            ) : null}
+
+            {(reflections.length > 0 || sharedCount > 0) && (
+              <PressableScale
+                feedback="open"
+                onPress={() => setReflectionsOpen(true)}
+                style={tw`mx-gutter-wide mb-3 p-4 rounded-card bg-card border border-line/80 flex-row items-center`}
+              >
+                <View
+                  style={tw`w-10 h-10 rounded-full bg-energy-50 items-center justify-center mr-3`}
+                >
+                  <Ionicons name="chatbubbles" size={iconSize.sm} color={tw.color('rose-600')} />
+                </View>
+                <View style={tw`flex-1 pr-2`}>
+                  <Text style={tw`text-body font-bold text-ink`}>Reflections</Text>
+                  <Text style={tw`text-sm text-ink-3 mt-0.5`} numberOfLines={2}>
+                    {reflections.length > 0
+                      ? `${reflections.length} ${
+                          reflections.length === 1 ? 'person sat' : 'people sat'
+                        } with a line you shared`
+                      : `${sharedCount} shared ${
+                          sharedCount === 1 ? 'page' : 'pages'
+                        } · replies will land here`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={theme.colors.iconMuted} />
+              </PressableScale>
+            )}
+
+            {circleEntries.length > 0 ? (
+              <PressableScale
+                feedback="transition"
+                onPress={() => animateModeChange('voices')}
+                style={tw`mx-gutter-wide mb-3 p-4 rounded-card bg-emerald-50 border border-emerald-200/80 flex-row items-center`}
+              >
+                <View
+                  style={tw`w-10 h-10 rounded-full bg-emerald-600 items-center justify-center mr-3`}
+                >
+                  <Ionicons name="radio" size={iconSize.sm} color="#FFFFFF" />
+                </View>
+                <View style={tw`flex-1 pr-2`}>
+                  <Text style={tw`text-body font-bold text-emerald-900`}>New voices nearby</Text>
+                  <Text style={tw`text-sm text-emerald-800/80 mt-0.5`} numberOfLines={1}>
+                    {circleEntries.length} public{' '}
+                    {circleEntries.length === 1 ? 'note' : 'notes'} from your circle
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={theme.colors.brand} />
+              </PressableScale>
+            ) : null}
+
+            <View style={tw`px-gutter-wide mb-2`}>
+              <Text style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
+                Today
+              </Text>
+              {isLoading && entries.length === 0 ? (
+                <SkeletonList variant="journal" count={2} />
+              ) : todayEntries.length === 0 ? (
+                <View
+                  style={tw`py-6 px-4 rounded-card bg-card/50 border border-dashed border-stone-300`}
+                >
+                  <Text style={tw`text-ink-2 text-center leading-6`}>
+                    No entry yet. A few honest lines are enough.
+                  </Text>
+                </View>
+              ) : (
+                todayEntries.map((entry) => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    onMenu={setMenuEntry}
+                    onShare={shareOwnEntry}
+                  />
+                ))
+              )}
+            </View>
+
+            {moodCounts.length > 0 ? (
+              <View style={tw`px-gutter-wide mt-2`}>
+                <Text
+                  style={tw`text-xs font-semibold tracking-widest text-ink-3 uppercase mb-3`}
+                >
+                  Recent moods
+                </Text>
+                <View style={tw`flex-row flex-wrap gap-2`}>
+                  {moodCounts.map(([mood, count]) => (
+                    <View
+                      key={mood}
+                      style={[
+                        tw`flex-row items-center px-3 py-2 rounded-full`,
+                        { backgroundColor: moodWash(mood, scheme) },
+                      ]}
+                    >
+                      <Text style={tw`mr-1.5`}>{MOOD_META[mood].glyph}</Text>
+                      <Text style={tw`text-sm text-ink-2 font-medium`}>
+                        {MOOD_META[mood].label}
+                      </Text>
+                      <Text style={tw`text-xs text-ink-3 ml-1.5`}>{count}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+          </ScrollView>
+        ) : (
+          <SectionList
+            ref={pagesListRef}
+            sections={sections}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
+            stickySectionHeadersEnabled
+            {...feedListPerformanceProps}
+            {...verticalScrollProps}
+            refreshControl={
+              <RefreshControl {...refresh} tintColor={theme.colors.ink} />
+            }
+            ListHeaderComponent={
+              <View style={tw`mb-2`}>
+                <SearchField
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search entries, mood, path"
+                />
+                <View style={tw`mt-3 mb-1 flex-row flex-wrap gap-2`}>
+                  {(
+                    [
+                      { key: 'all', label: 'All' },
+                      { key: 'private', label: 'Private' },
+                      { key: 'shared', label: 'Shared' },
+                    ] as const
+                  ).map((f) => {
+                    const active = visibility === f.key;
+                    return (
+                      <PressableScale
+                        key={f.key}
+                        feedback="select"
+                        onPress={() => setVisibility(f.key)}
+                        style={tw`px-3.5 py-1.5 rounded-full border ${
+                          active
+                            ? 'bg-ink border-ink'
+                            : 'bg-card/70 border-line'
+                        }`}
+                      >
+                        <Text
+                          style={tw`text-sm ${
+                            active ? 'text-page font-semibold' : 'text-ink-2'
+                          }`}
+                        >
+                          {f.label}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                  {focusDateKey ? (
+                    <PressableScale
+                      feedback="close"
+                      onPress={() => setFocusDateKey(null)}
+                      style={tw`px-3.5 py-1.5 rounded-full bg-amber-100 border border-amber-200 flex-row items-center`}
+                    >
+                      <Text style={tw`text-sm text-amber-900 mr-1`}>
+                        {formatSectionTitle(focusDateKey)}
+                      </Text>
+                      <Ionicons name="close" size={iconSize.xs} color={tw.color('amber-800')} />
+                    </PressableScale>
+                  ) : null}
+                </View>
+              </View>
+            }
+            renderSectionHeader={({ section }) => (
+              <View style={tw`py-2 bg-page`}>
+                <Text style={tw`text-sm font-semibold text-ink-2`}>{section.title}</Text>
+              </View>
+            )}
+            renderItem={({ item }) => (
+              <EntryCard entry={item} onMenu={setMenuEntry} onShare={shareOwnEntry} />
+            )}
+            ListEmptyComponent={
+              isLoading ? (
+                <SkeletonList variant="journal" count={4} />
+              ) : searchQuery.trim() || focusDateKey || visibility !== 'all' ? (
+                <EmptyState
+                  icon="search-outline"
+                  title="No matches"
+                  description="Try clearing filters or search."
+                  actionLabel="Reset"
+                  onAction={() => {
+                    setSearchQuery('');
+                    setFocusDateKey(null);
+                    setVisibility('all');
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  icon="book-outline"
+                  title="Your timeline is empty"
+                  description="Start with today’s check-in. Private by default — share only when you want to."
+                  actionLabel="Write today’s entry"
+                  onAction={openCompose}
+                />
+              )
+            }
+          />
+        )}
+      </Animated.View>
 
       <JournalComposeModal
         visible={composeOpen}
         isSaving={isSaving}
         initialPrompt={todayPrompt}
-        preferredPath={userPath}
-        onClose={() => setComposeOpen(false)}
+        preferredPath={composeDraft?.path ?? userPath}
+        initialMood={composeDraft?.mood ?? null}
+        initialContent={composeDraft?.intention ?? null}
+        editingEntry={editingEntry}
+        onClose={() => {
+          feedback.close();
+          setComposeOpen(false);
+          setComposeDraft(null);
+          setEditingEntry(null);
+        }}
         onSave={(payload) => void handleSave(payload)}
+      />
+
+      <JournalQuoteReplySheet
+        visible={!!replyEntry}
+        entry={replyEntry}
+        onClose={() => setReplyEntry(null)}
+        onPrivateReply={(entry, quote, body) => {
+          void messageAboutEntry(entry, { quote, body });
+        }}
+      />
+
+      <JournalReflectionsSheet
+        visible={reflectionsOpen}
+        loading={reflectionsLoading}
+        reflections={reflections}
+        onClose={() => setReflectionsOpen(false)}
+        onOpenVoices={() => {
+          setReflectionsOpen(false);
+          animateModeChange('voices');
+        }}
+      />
+
+      <EntryMenuSheet
+        entry={menuEntry}
+        onClose={() => setMenuEntry(null)}
+        onEdit={openEdit}
+        onShare={shareOwnEntry}
+        onDelete={(e) => handleDelete(e.id)}
+      />
+
+      <ShareCardSheet
+        visible={!!sharePayload}
+        payload={sharePayload}
+        onClose={() => setSharePayload(null)}
       />
     </SafeAreaView>
   );

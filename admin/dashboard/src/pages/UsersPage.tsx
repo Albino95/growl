@@ -66,7 +66,7 @@ export function UsersPage() {
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
       <div className="relative mb-6 max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
         <Input className="pl-10" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email, name, or user ID…" />
       </div>
 
@@ -96,7 +96,7 @@ export function UsersPage() {
                   </DataTableCell>
                   <DataTableCell><Badge variant={statusBadge(u.account_status || 'active')}>{u.account_status || 'active'}</Badge></DataTableCell>
                   <DataTableCell>{u.strike_count ?? 0}</DataTableCell>
-                  <DataTableCell className="text-slate-500">{new Date(u.created_at).toLocaleDateString()}</DataTableCell>
+                  <DataTableCell className="text-stone-500">{new Date(u.created_at).toLocaleDateString()}</DataTableCell>
                 </DataTableRow>
               ))}
             </DataTableBody>
@@ -109,7 +109,7 @@ export function UsersPage() {
           <Button variant="outline" disabled={offset === 0 || loading} onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}>
             Previous
           </Button>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-stone-500">
             Page {Math.floor(offset / PAGE_SIZE) + 1} of {Math.ceil(total / PAGE_SIZE)}
           </span>
           <Button
