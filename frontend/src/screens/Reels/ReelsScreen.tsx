@@ -40,6 +40,8 @@ import {
 import GrowLoader from '../../components/ui/GrowLoader';
 import tw from '../../lib/tw';
 import PressableScale from '../../components/ui/PressableScale';
+import { useAuth } from '../../store/hooks';
+import { confirmAndDeletePost } from '../../services/deletePost';
 
 type ReelRow = FeedPost & { liked: boolean; reaction: FeedReaction };
 
@@ -179,6 +181,7 @@ export default function ReelsScreen() {
         }
       : null;
   const [items, setItems] = useState<ReelRow[]>(() => (seedRow ? [seedRow] : []));
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(!seedRow);
   const [refreshing, setRefreshing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(
@@ -687,6 +690,27 @@ export default function ReelsScreen() {
                 </View>
                 <Text style={tw`text-white text-xs mt-1 font-semibold`}>{formatCompact(comments)}</Text>
               </PressableScale>
+              {authUser?.id && item.user_id === authUser.id ? (
+                <PressableScale
+                  style={tw`items-center`}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete reel"
+                  onPress={() => {
+                    const snapshot = items;
+                    void confirmAndDeletePost(item.id, {
+                      onRemoved: () => {
+                        if (snapshot.length <= 1) goBack();
+                        setItems((prev) => prev.filter((r) => r.id !== item.id));
+                      },
+                      onRestore: () => setItems(snapshot),
+                    });
+                  }}
+                >
+                  <View style={tw`w-12 h-12 rounded-full bg-black/40 items-center justify-center`}>
+                    <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+                  </View>
+                </PressableScale>
+              ) : null}
             </View>
           </View>
         </View>

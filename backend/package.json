@@ -61,6 +61,7 @@
     "test:ui": "NODE_OPTIONS=--experimental-global-webcrypto vitest --ui",
     "test:coverage": "NODE_OPTIONS=--experimental-global-webcrypto vitest run --coverage",
     "test:integration": "node tests/test-api.js",
+    "e2e:qa": "node scripts/e2e/run.mjs",
     "test:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-api.js",
     "test:social-smoke": "node tests/test-social-smoke.js",
     "test:social-smoke:local": "API_BASE_URL=http://localhost:8787/api/v1 node tests/test-social-smoke.js",

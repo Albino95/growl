@@ -17,7 +17,8 @@ import ShareCardSheet, { type ShareCardPayload } from '../../components/share/Sh
 import { feedback } from '../../utils/interactionFeedback';
 import { toast } from '../../state/useToastStore';
 import { haptic } from '../../theme/haptics';
-import { useAppDispatch } from '../../store/hooks';
+import { useAppDispatch, useAuth } from '../../store/hooks';
+import { confirmAndDeletePost } from '../../services/deletePost';
 import { patchFeedPostEngagement } from '../../store/slices/feedSlice';
 
 type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
@@ -56,6 +57,8 @@ export default function PostDetailScreen() {
   const avatarUri = resolveAvatarUri(initialPost.userId, initialPost.username, initialPost.avatar);
 
   const [post, setPost] = useState<Post>({ ...initialPost, image: imageUri, avatar: avatarUri });
+  const { user } = useAuth();
+  const isOwnPost = !!user?.id && post.userId === user.id;
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null);
@@ -256,14 +259,31 @@ export default function PostDetailScreen() {
             <Ionicons name="arrow-back" size={24} color={theme.colors.icon} />
           </PressableScale>
           <Text style={tw`text-callout font-semibold text-ink`}>Post</Text>
-          <PressableScale
-            pressedScale={0.9}
-            onPress={openShareCard}
-            hitSlop={10}
-            accessibilityLabel="Share post"
-          >
-            <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.icon} />
-          </PressableScale>
+          <View style={tw`flex-row items-center`}>
+            {isOwnPost ? (
+              <PressableScale
+                pressedScale={0.9}
+                onPress={() =>
+                  void confirmAndDeletePost(post.id, { onRemoved: () => navigation.goBack() })
+                }
+                hitSlop={10}
+                style={tw`mr-4`}
+                accessibilityRole="button"
+                accessibilityLabel="Delete post"
+              >
+                <Ionicons name="trash-outline" size={22} color={theme.colors.icon} />
+              </PressableScale>
+            ) : null}
+            <PressableScale
+              pressedScale={0.9}
+              onPress={openShareCard}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Share post"
+            >
+              <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.icon} />
+            </PressableScale>
+          </View>
         </View>
 
         <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>

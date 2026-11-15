@@ -15,6 +15,8 @@ type Props = {
   /** Client on an active plan can mark open homework done. */
   canMarkDone: boolean;
   onMarkDone: (item: CoachingAssignment) => void;
+  /** Coach: open the feedback sheet for this homework. */
+  onFeedback?: (item: CoachingAssignment) => void;
 };
 
 type Extra = { detail: string | null; lastNote: string | null };
@@ -23,7 +25,7 @@ type Extra = { detail: string | null; lastNote: string | null };
  * Coaching homework rendered inline on the plan (no Garden / seed screens).
  * Detail and the latest note come from the homework's backing record.
  */
-export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }: Props) {
+export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, onFeedback }: Props) {
   const [extra, setExtra] = useState<Extra | null>(null);
   const done = item.status === 'done';
 
@@ -57,7 +59,7 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
       style={tw`mb-2.5 px-3.5 py-3 rounded-card bg-card border ${
         done ? 'border-emerald-200' : 'border-line/80'
       }`}
-      accessible={!canMarkDone || done}
+      accessible={!(canMarkDone && !done) && !(isCoach && done && onFeedback)}
       accessibilityLabel={`${item.title}. ${done ? 'Done' : 'To do'}${due ? `. Due ${due}` : ''}`}
     >
       <View style={tw`flex-row items-center justify-between`}>
@@ -116,10 +118,33 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone }:
         </PressableScale>
       ) : null}
 
+      {item.coach_feedback ? (
+        <View style={tw`mt-2 px-3 py-2 rounded-control bg-emerald-50 border border-emerald-100`}>
+          <Text style={tw`text-caption font-bold tracking-widest text-emerald-800 uppercase`}>
+            {isCoach ? 'Your feedback' : 'Coach feedback'}
+          </Text>
+          <Text style={tw`text-sm text-ink mt-0.5 leading-5`}>{item.coach_feedback}</Text>
+        </View>
+      ) : null}
+
       {isCoach && !done ? (
         <Text style={tw`text-xs text-ink-3 mt-1.5`}>
           Waiting for your client to mark this done.
         </Text>
+      ) : null}
+
+      {isCoach && done && onFeedback ? (
+        <PressableScale
+          onPress={() => onFeedback(item)}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.coach_feedback ? 'Edit' : 'Give'} feedback on ${item.title}`}
+          style={tw`mt-2.5 py-2.5 rounded-control bg-raised border border-line flex-row items-center justify-center gap-1.5`}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color={tw.color('emerald-700')} />
+          <Text style={tw`text-ink font-bold text-sm`}>
+            {item.coach_feedback ? 'Edit feedback' : 'Give feedback'}
+          </Text>
+        </PressableScale>
       ) : null}
     </View>
   );

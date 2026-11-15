@@ -55,6 +55,8 @@ export async function getJournalEntries(request: Request, env: Env): Promise<Res
   const visibility = url.searchParams.get('visibility');
   const limit = clampInt(url.searchParams.get('limit'), 50, 1, 100);
   const offset = clampInt(url.searchParams.get('offset'), 0, 0, 10000);
+  // Optional text search (own entries only): content, title, mood and tags.
+  const q = (url.searchParams.get('q') || '').trim().slice(0, 80);
 
   let query: string;
   const bindings: (string | number)[] = [];
@@ -69,6 +71,13 @@ export async function getJournalEntries(request: Request, env: Env): Promise<Res
     } else if (visibility === 'private') {
       query += ' AND is_public = 0';
     }
+    if (q) {
+      const like = `%${escapeLike(q.toLowerCase())}%`;
+      query +=
+        " AND (LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(title, '')) LIKE ? ESCAPE '\\'" +
+        " OR LOWER(COALESCE(mood, '')) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(tags, '')) LIKE ? ESCAPE '\\')";
+      bindings.push(like, like, like, like);
+    }
   }
 
   query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
@@ -77,7 +86,7 @@ export async function getJournalEntries(request: Request, env: Env): Promise<Res
   try {
     const rows = await env.DB.prepare(query).bind(...bindings).all<JournalRow>();
     const entries = (rows.results || []).map(formatJournalEntry);
-    return json({ entries, total: entries.length, limit, offset });
+    return json({ entries, total: entries.length, limit, offset, has_more: entries.length >= limit });
   } catch (err) {
     console.error('[getJournalEntries]', err);
     return error('DATABASE_ERROR', 'Failed to fetch journal entries', 500);
@@ -281,7 +290,7 @@ function clampInt(raw: string | null, fallback: number, min: number, max: number
   return Math.min(max, Math.max(min, n));
 }
 
-function mutedJournalIdsFromMetadata(metadataJson: string | null | undefined): Set<string> {
+export function mutedJournalIdsFromMetadata(metadataJson: string | null | undefined): Set<string> {
   try {
     const meta = JSON.parse(metadataJson || '{}') as { mutedJournalUserIds?: unknown };
     const list = Array.isArray(meta.mutedJournalUserIds) ? meta.mutedJournalUserIds : [];
@@ -758,4 +767,9 @@ export async function muteJournalAuthor(request: Request, env: Env): Promise<Res
     console.error('[muteJournalAuthor]', err);
     return error('DATABASE_ERROR', 'Failed to update mute', 500);
   }
+}
+
+/** Escapes LIKE wildcards so a search for "50%" matches literally (ESCAPE '\\'). */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }

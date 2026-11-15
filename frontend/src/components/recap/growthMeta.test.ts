@@ -3,6 +3,7 @@ import type { WeeklyRecap } from '../../services/api/growth';
 import {
   CHECKIN_MOODS,
   checkinMoodMeta,
+  eveningPrompt,
   firstNameOf,
   followupReply,
   isEvening,
@@ -146,5 +147,15 @@ describe('CHECKIN_MOODS', () => {
 
   it('Okay (3) is a real emoji', () => {
     expect(checkinMoodMeta(3)?.glyph).toBe('🙂');
+  });
+});
+
+describe('eveningPrompt', () => {
+  it('asks how the intention went, trimmed for long intentions', () => {
+    expect(eveningPrompt('Run 5k')).toBe('Closing the day — how did “Run 5k” go?');
+    expect(eveningPrompt('')).toBe('Closing the day — what’s one thing worth keeping?');
+    const long = 'x'.repeat(100);
+    expect(eveningPrompt(long)).toContain('…');
+    expect(eveningPrompt(long).length).toBeLessThan(100);
   });
 });

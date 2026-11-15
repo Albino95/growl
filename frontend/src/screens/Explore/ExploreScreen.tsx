@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useScrollToTop, useRoute } from '@react-navigation/native';
+import { usePostEventsStore } from '../../state/usePostEventsStore';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
@@ -113,6 +114,14 @@ export default function ExploreScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [shopPicks, setShopPicks] = useState<RankedProduct<ApiProduct>[]>([]);
   const [gridPosts, setGridPosts] = useState<FeedPost[]>([]);
+  // Your own post deleted elsewhere → drop it here without a refetch.
+  const deletedPostIds = usePostEventsStore((s) => s.deletedIds);
+  useEffect(() => {
+    if (deletedPostIds.length === 0) return;
+    const gone = new Set(deletedPostIds);
+    setGridPosts((prev) => (prev.some((p) => gone.has(p.id)) ? prev.filter((p) => !gone.has(p.id)) : prev));
+    setReels((prev) => (prev.some((p) => gone.has(p.id)) ? prev.filter((p) => !gone.has(p.id)) : prev));
+  }, [deletedPostIds]);
   const [searchFocused, setSearchFocused] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
   const route = useRoute();

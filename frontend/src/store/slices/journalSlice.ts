@@ -17,14 +17,22 @@ interface JournalState {
   /** Pre-edit snapshots for optimistic edits (rolled back on failure). */
   editSnapshots: Record<string, JournalEntry>;
   isLoading: boolean;
+  /** More (older) entries exist on the server beyond what's loaded. */
+  hasMore: boolean;
+  isLoadingMore: boolean;
   isSaving: boolean;
   error: string | null;
 }
+
+/** Page size for the own-journal list (server max). */
+export const JOURNAL_PAGE_SIZE = 100;
 
 const initialState: JournalState = {
   entries: [],
   editSnapshots: {},
   isLoading: false,
+  hasMore: false,
+  isLoadingMore: false,
   isSaving: false,
   error: null,
 };
@@ -33,11 +41,32 @@ export const fetchJournalEntries = createAsyncThunk(
   'journal/fetchEntries',
   async (_arg?: void) => {
     // Own practice log (private + shared). Public discovery lives on profiles.
-    const response = await getJournalEntries({ scope: 'mine', limit: 100 });
+    const response = await getJournalEntries({ scope: 'mine', limit: JOURNAL_PAGE_SIZE });
     if (response.success && response.data?.entries) {
       return response.data.entries;
     }
     throw new Error('Failed to fetch journal entries');
+  }
+);
+
+/** Next (older) page, appended and de-duplicated. No-op while one is in flight. */
+export const fetchMoreJournalEntries = createAsyncThunk(
+  'journal/fetchMore',
+  async (_arg: void, { getState }) => {
+    const { journal } = getState() as { journal: JournalState };
+    const response = await getJournalEntries({
+      scope: 'mine',
+      limit: JOURNAL_PAGE_SIZE,
+      offset: journal.entries.length,
+    });
+    if (response.success && response.data?.entries) return response.data.entries;
+    throw new Error('Failed to load older entries');
+  },
+  {
+    condition: (_arg, { getState }) => {
+      const { journal } = getState() as { journal: JournalState };
+      return journal.hasMore && !journal.isLoadingMore && !journal.isLoading;
+    },
   }
 );
 
@@ -105,6 +134,8 @@ const journalSlice = createSlice({
       state.entries = [];
       state.editSnapshots = {};
       state.isLoading = false;
+      state.hasMore = false;
+      state.isLoadingMore = false;
       state.error = null;
     },
   },
@@ -116,11 +147,27 @@ const journalSlice = createSlice({
       })
       .addCase(fetchJournalEntries.fulfilled, (state, action: PayloadAction<JournalEntry[]>) => {
         state.entries = action.payload;
+        state.hasMore = action.payload.length >= JOURNAL_PAGE_SIZE;
         state.isLoading = false;
       })
       .addCase(fetchJournalEntries.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.error.message || 'Failed to fetch journal entries';
+      });
+
+    builder
+      .addCase(fetchMoreJournalEntries.pending, (state) => {
+        state.isLoadingMore = true;
+      })
+      .addCase(fetchMoreJournalEntries.fulfilled, (state, action: PayloadAction<JournalEntry[]>) => {
+        const seen = new Set(state.entries.map((e) => e.id));
+        for (const e of action.payload) if (!seen.has(e.id)) state.entries.push(e);
+        state.hasMore = action.payload.length >= JOURNAL_PAGE_SIZE;
+        state.isLoadingMore = false;
+      })
+      .addCase(fetchMoreJournalEntries.rejected, (state) => {
+        // Quiet: the next scroll retries.
+        state.isLoadingMore = false;
       });
 
     builder

@@ -52,6 +52,8 @@ export type FeedComment = {
   user_id: string;
   content: string;
   created_at: string;
+  /** Top-level comment this replies to (one level); null/absent = top-level. */
+  parent_id?: string | null;
   user: {
     id: string;
     username?: string;
@@ -190,6 +192,11 @@ export async function getFeedPostComments(
   return res.data;
 }
 
+/** Deletes your own post for everyone (DELETE /feed/posts/:id — author only). */
+export async function deleteFeedPost(postId: string): Promise<void> {
+  await request(`/feed/posts/${encodeURIComponent(postId)}`, { method: 'DELETE' });
+}
+
 /** Deletes a comment (allowed for the comment author and the post author). */
 export async function deleteFeedPostComment(postId: string, commentId: string): Promise<void> {
   await request(
@@ -201,11 +208,13 @@ export async function deleteFeedPostComment(postId: string, commentId: string): 
 export async function createFeedPostComment(
   postId: string,
   content: string,
-  opts?: { idempotencyKey?: string }
+  opts?: { idempotencyKey?: string; parentId?: string | null }
 ): Promise<FeedComment> {
+  // parent_id is only sent for replies, so the body stays identical for plain comments.
+  const body = opts?.parentId ? { content, parent_id: opts.parentId } : { content };
   const res = await request<{ success: boolean; data: FeedComment }>(
     `/feed/posts/${encodeURIComponent(postId)}/comments`,
-    { method: 'POST', body: JSON.stringify({ content }), ...withIdempotency(opts?.idempotencyKey) }
+    { method: 'POST', body: JSON.stringify(body), ...withIdempotency(opts?.idempotencyKey) }
   );
   if (!res.success || !res.data) throw new Error('Could not post comment');
   return res.data;

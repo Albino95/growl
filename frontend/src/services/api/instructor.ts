@@ -146,7 +146,14 @@ export type CoachingInquiry = {
   role?: 'instructor' | 'client';
   instructor?: CoachingPerson;
   client?: CoachingPerson;
+  /** Pipeline (wave 4 API; absent on older servers). */
+  stage?: CoachingPipelineStage;
+  proposal_status?: string | null;
+  proposal_at?: string | null;
+  active_contract_id?: string | null;
 };
+
+export type CoachingPipelineStage = 'talking' | 'proposal_sent' | 'declined' | 'active' | 'closed';
 
 export type CoachingProposal = {
   id: string;
@@ -186,6 +193,8 @@ export type CoachingContract = {
   completed_at: string | null;
   created_at: string;
   billing?: 'coming';
+  /** Client consented to share Today check-ins with the coach (default off). */
+  share_checkins?: boolean;
   role?: 'instructor' | 'client';
   instructor?: CoachingPerson;
   client?: CoachingPerson;
@@ -212,6 +221,8 @@ export type CoachingAssignment = {
   last_photo: string | null;
   last_action: string | null;
   last_activity_at: string | null;
+  coach_feedback?: string | null;
+  coach_feedback_at?: string | null;
 };
 
 export type CoachingThread = {
@@ -491,14 +502,16 @@ export async function sendCoachingProposal(input: {
 }
 
 export async function acceptCoachingProposal(
-  proposalId: string
+  proposalId: string,
+  opts?: { shareCheckins?: boolean }
 ): Promise<{ proposal: CoachingProposal; contract: CoachingContract | null }> {
   const res = await request<{
     success: boolean;
     data: { proposal: CoachingProposal; contract: CoachingContract | null };
   }>(`/instructor/proposals/${encodeURIComponent(proposalId)}/accept`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    // Sharing Today check-ins with the coach is opt-in only.
+    body: JSON.stringify(opts?.shareCheckins === true ? { share_checkins: true } : {}),
   });
   if (!res.success || !res.data) throw new Error('Failed to accept proposal');
   return res.data;

@@ -51,6 +51,18 @@ const SOLD_PAYMENT_SQL = `o.payment_status IN ('paid', 'refunded')`;
 /** Max day span for the sales CSV export. */
 export const MAX_EXPORT_RANGE_DAYS = 366;
 
+/**
+ * products.hidden_reason for products the seller removed but that still have order history
+ * (hard delete would cascade into order_items). Hidden from buyers and from the seller.
+ */
+export const SELLER_ARCHIVED_REASON = 'seller_archived';
+
+/** SQL predicate (alias `p` optional) excluding seller-archived products. */
+export function notArchivedSql(alias = ''): string {
+  const col = alias ? `${alias}.hidden_reason` : 'hidden_reason';
+  return `COALESCE(${col}, '') != '${SELLER_ARCHIVED_REASON}'`;
+}
+
 /** Max rows returned by list endpoints that are not paginated yet. */
 const LIST_LIMIT = 500;
 
@@ -125,6 +137,13 @@ async function businessOwnsOrder(
     .first<Order>();
 }
 
+/** Settings → "In-app alerts" off means no new business notifications are recorded. */
+export function inAppAlertsEnabled(notificationsPrefs: string | null | undefined): boolean {
+  const prefs = safeParse<Record<string, unknown>>(notificationsPrefs, {});
+  const v = prefs.inAppAlerts ?? prefs.notificationsEnabled;
+  return v !== false;
+}
+
 export async function createBusinessNotification(
   env: Env,
   businessId: string,
@@ -134,6 +153,12 @@ export async function createBusinessNotification(
   ref?: { ref_type?: string; ref_id?: string }
 ): Promise<void> {
   try {
+    const prefs = await env.DB.prepare(
+      'SELECT notifications_prefs FROM business_settings WHERE business_id = ?'
+    )
+      .bind(businessId)
+      .first<{ notifications_prefs: string | null }>();
+    if (!inAppAlertsEnabled(prefs?.notifications_prefs)) return;
     await env.DB.prepare(
       `INSERT INTO business_notifications
       (id, business_id, type, title, body, ref_type, ref_id, read_at, created_at)
@@ -151,6 +176,65 @@ export async function createBusinessNotification(
       .run();
   } catch (err) {
     console.error('[createBusinessNotification] Error:', err);
+  }
+}
+
+/** Low-stock threshold from business_settings.analytics_prefs (default 10, min 1). */
+export function lowStockThresholdFrom(analyticsPrefs: string | null | undefined): number {
+  const prefs = safeParse<Record<string, unknown>>(analyticsPrefs, {});
+  return Math.max(1, Number(prefs.low_stock_threshold ?? 10) || 10);
+}
+
+/**
+ * After stock was taken for `items`, notify each seller once per product whose stock just
+ * crossed below their low-stock threshold (or hit zero). Never throws.
+ */
+export async function notifyLowStockCrossings(
+  env: Env,
+  items: Array<{ product_id: string; quantity: number }>
+): Promise<void> {
+  try {
+    const taken = new Map<string, number>();
+    for (const it of items) {
+      if (!it?.product_id) continue;
+      taken.set(it.product_id, (taken.get(it.product_id) || 0) + Number(it.quantity || 0));
+    }
+    const ids = [...taken.keys()].slice(0, 90);
+    if (ids.length === 0) return;
+    const rows = await env.DB.prepare(
+      `SELECT p.id, p.user_id, p.name, p.stock, bs.analytics_prefs
+       FROM products p
+       LEFT JOIN business_settings bs ON bs.business_id = p.user_id
+       WHERE p.id IN (${ids.map(() => '?').join(',')})`
+    )
+      .bind(...ids)
+      .all<{ id: string; user_id: string; name: string; stock: number; analytics_prefs: string | null }>();
+    for (const row of rows.results || []) {
+      const threshold = lowStockThresholdFrom(row.analytics_prefs);
+      const after = Number(row.stock || 0);
+      const before = after + (taken.get(row.id) || 0);
+      if (after <= 0 && before > 0) {
+        await createBusinessNotification(
+          env,
+          row.user_id,
+          'out_of_stock',
+          `${row.name} is sold out`,
+          'Restock it so customers can keep finding it in the shop.',
+          { ref_type: 'product', ref_id: row.id }
+        );
+      } else if (after > 0 && after < threshold && before >= threshold) {
+        await createBusinessNotification(
+          env,
+          row.user_id,
+          'low_stock',
+          `${row.name} is running low`,
+          `${after} left (your alert threshold is ${threshold}).`,
+          { ref_type: 'product', ref_id: row.id }
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[notifyLowStockCrossings] Error:', err);
   }
 }
 
@@ -210,20 +294,16 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
     )
       .bind(auth.userId)
       .first<{ analytics_prefs: string | null }>();
-    const analyticsPrefs = safeParse<Record<string, unknown>>(settingsRow?.analytics_prefs, {});
-    const lowStockThreshold = Math.max(
-      1,
-      Number(analyticsPrefs.low_stock_threshold ?? 10) || 10
-    );
+    const lowStockThreshold = lowStockThresholdFrom(settingsRow?.analytics_prefs);
 
-    const [productsResult, stockCounts, unitsSoldRow, nowOverview, prevOverview, recentOrders, partnerStats] =
+    const [productsResult, stockCounts, unitsSoldRow, nowOverview, prevOverview, recentOrders, partnerStats, openOrdersRow] =
       await Promise.all([
         env.DB.prepare(
           `SELECT
             COUNT(*) AS count,
             COALESCE(SUM(stock), 0) AS total_stock,
             COALESCE(SUM(stock * price), 0) AS inventory_value
-          FROM products WHERE user_id = ?`
+          FROM products WHERE user_id = ? AND ${notArchivedSql()}`
         )
           .bind(auth.userId)
           .first<{ count: number; total_stock: number; inventory_value: number }>(),
@@ -231,7 +311,7 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
           `SELECT
             COALESCE(SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END), 0) AS out_of_stock_count,
             COALESCE(SUM(CASE WHEN stock > 0 AND stock < ? THEN 1 ELSE 0 END), 0) AS low_stock_count
-          FROM products WHERE user_id = ?`
+          FROM products WHERE user_id = ? AND ${notArchivedSql()}`
         )
           .bind(lowStockThreshold, auth.userId)
           .first<{ out_of_stock_count: number; low_stock_count: number }>(),
@@ -283,6 +363,17 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
         )
           .bind(auth.userId, auth.userId)
           .first<{ active_partners: number; pending_requests: number }>(),
+        // Work to do is live, not period-bound: a paid order from last month that was never
+        // shipped still needs shipping.
+        env.DB.prepare(
+          `SELECT COUNT(DISTINCT o.id) AS n
+           FROM orders o
+           JOIN order_items oi ON oi.order_id = o.id
+           JOIN products p ON p.id = oi.product_id
+           WHERE p.user_id = ? AND o.status IN ('pending', 'processing') AND o.payment_status = 'paid'`
+        )
+          .bind(auth.userId)
+          .first<{ n: number }>(),
       ]);
 
     const grossRevenue = Number(nowOverview?.gross_revenue || 0);
@@ -295,7 +386,7 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
     const totalOrders = Number(nowOverview?.total_orders || 0);
     const prevOrders = Number(prevOverview?.total_orders || 0);
     const completedOrders = Number(nowOverview?.completed_orders || 0);
-    const pendingOrders = Number(nowOverview?.pending_orders || 0);
+    const pendingOrders = Number(openOrdersRow?.n ?? nowOverview?.pending_orders ?? 0);
     const lowStockCount = Number(stockCounts?.low_stock_count || 0);
     const outOfStockCount = Number(stockCounts?.out_of_stock_count || 0);
     const pendingPartnerRequests = Number(partnerStats?.pending_requests || 0);
@@ -329,6 +420,10 @@ export async function getDashboard(request: Request, env: Env): Promise<Response
         deltas: {
           orders_pct: deltaPct(totalOrders, prevOrders),
           net_revenue_pct: deltaPct(netRevenue, prevNetRevenue),
+          // Raw previous-period values so the app can say "no earlier data" instead of
+          // showing a made-up +100% / 0%.
+          previous_orders: prevOrders,
+          previous_net_revenue: prevNetRevenue,
         },
         recent_orders: (recentOrders.results || []).map((order) => ({
           ...order,
@@ -564,7 +659,7 @@ export async function getBusinessProducts(request: Request, env: Env): Promise<R
             AND ${SOLD_PAYMENT_SQL}
         ), 0) AS units_sold
        FROM products p
-       WHERE p.user_id = ?
+       WHERE p.user_id = ? AND ${notArchivedSql('p')}
        ORDER BY p.created_at DESC
        LIMIT ?`
     )
@@ -1380,7 +1475,7 @@ export async function exportProductsCsv(request: Request, env: Env): Promise<Res
     const rows = await env.DB.prepare(
       `SELECT id, name, category, subcategory, price, stock, created_at, updated_at
        FROM products
-       WHERE user_id = ?
+       WHERE user_id = ? AND ${notArchivedSql()}
        ORDER BY created_at DESC`
     )
       .bind(auth.userId)

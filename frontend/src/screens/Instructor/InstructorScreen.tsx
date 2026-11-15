@@ -45,8 +45,12 @@ import { feedback } from '../../utils/interactionFeedback';
 import PressableScale from '../../components/ui/PressableScale';
 import tw, { theme } from '../../lib/tw';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
-import { COACHING_ACTIVE_STATUS, COACHING_LIMITS } from '../../constants/coaching';
+import { COACHING_ACTIVE_STATUS, COACHING_BILLING_NOTE, COACHING_LIMITS } from '../../constants/coaching';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
+import ErrorState from '../../components/ui/ErrorState';
+import { planProgress } from '../../components/coaching/planProgress';
+import { formatHomeworkDate } from '../../components/coaching/homeworkDates';
+import { onboardingSteps, pipelineGroups } from './instructorPipeline';
 
 type HubTab = 'overview' | 'students' | 'community' | 'partnerships';
 
@@ -187,9 +191,50 @@ function OfferField({
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
+        accessibilityLabel={label}
         style={tw`bg-page border border-line/80 rounded-control px-3 py-2 text-body text-ink`}
       />
     </View>
+  );
+}
+
+function PipelineHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <Text
+      accessibilityRole="header"
+      style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-4`}
+    >
+      {label} · {count}
+    </Text>
+  );
+}
+
+function PipelineRow({
+  row,
+  hint,
+  onPress,
+}: {
+  row: CoachingInquiry;
+  hint: string;
+  onPress: () => void;
+}) {
+  const name = row.client?.username || 'Client';
+  return (
+    <PressableScale
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}. ${hint}`}
+      style={tw`flex-row items-center py-3 border-b border-line/80`}
+    >
+      <AvatarBubble avatar={row.client?.avatar} name={name} />
+      <View style={tw`flex-1 ml-3`}>
+        <Text style={tw`font-semibold text-ink`}>{name}</Text>
+        <Text style={tw`text-xs text-ink-3 mt-0.5`} numberOfLines={2}>
+          {hint}
+        </Text>
+      </View>
+      <Ionicons name="chatbubble-outline" size={17} color={theme.colors.iconMuted} />
+    </PressableScale>
   );
 }
 
@@ -218,6 +263,7 @@ export default function InstructorScreen({ navigation }: any) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<EndorsementSuggestion[]>([]);
   const [justClaimed, setJustClaimed] = useState(false);
+  const [eligError, setEligError] = useState<string | null>(null);
   const [offering, setOffering] = useState<InstructorOffering | null>(null);
   const [completedPlans, setCompletedPlans] = useState(0);
   const [inquiries, setInquiries] = useState<CoachingInquiry[]>([]);
@@ -230,6 +276,7 @@ export default function InstructorScreen({ navigation }: any) {
     accepting: true,
   });
   const [offerBusy, setOfferBusy] = useState(false);
+  const [hubError, setHubError] = useState<string | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
   const [acceptingBusy, setAcceptingBusy] = useState(false);
   // True while the offer form has edits that aren't saved yet, so a focus reload won't clobber them.
@@ -248,9 +295,11 @@ export default function InstructorScreen({ navigation }: any) {
       ]);
       setEligibility(elig);
       setSuggestions(sug);
-    } catch {
+      setEligError(null);
+    } catch (e) {
       setEligibility(null);
       setSuggestions([]);
+      setEligError(e instanceof Error ? e.message : 'Could not load your progress');
     }
   }, []);
 
@@ -280,9 +329,11 @@ export default function InstructorScreen({ navigation }: any) {
         }
       }
       setInquiries(inquiryRows.filter((i) => i.role === 'instructor' && i.status !== 'closed'));
+      setHubError(null);
       setContracts(contractRows.filter((c) => c.role === 'instructor'));
-    } catch {
+    } catch (e) {
       setHub(null);
+      setHubError(e instanceof Error ? e.message : 'Could not load hub');
     }
   }, []);
 
@@ -547,10 +598,47 @@ export default function InstructorScreen({ navigation }: any) {
             <ActivityIndicator color={theme.colors.brand} style={tw`mt-8`} />
           ) : eligibility ? (
             <View style={tw`border-t border-line/80 pt-5`}>
+              <View style={tw`mb-5`} accessibilityRole="list">
+                {onboardingSteps(eligibility).map((step, i) => (
+                  <View
+                    key={step.key}
+                    style={tw`flex-row items-start mb-2.5`}
+                    accessible
+                    accessibilityLabel={`Step ${i + 1}: ${step.label}. ${step.done ? 'Done' : step.current ? 'Next step' : 'Later'}${step.detail ? `. ${step.detail}` : ''}`}
+                  >
+                    <View
+                      style={tw`w-6 h-6 rounded-full items-center justify-center mr-3 ${
+                        step.done ? 'bg-emerald-600' : step.current ? 'border-2 border-emerald-600' : 'bg-raised'
+                      }`}
+                    >
+                      {step.done ? (
+                        <Ionicons name="checkmark" size={14} color="#fff" />
+                      ) : (
+                        <Text style={tw`text-caption font-bold ${step.current ? 'text-emerald-700' : 'text-ink-3'}`}>
+                          {i + 1}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={tw`flex-1`}>
+                      <Text style={tw`text-body font-semibold ${step.done ? 'text-ink-3' : 'text-ink'}`}>
+                        {step.label}
+                      </Text>
+                      {step.detail ? (
+                        <Text style={tw`text-footnote text-ink-3 mt-0.5`}>{step.detail}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
               <Text style={tw`text-sm text-ink-3 mb-1`}>
                 Endorsements {eligibility.endorsementsReceived}/{eligibility.endorsementsNeeded}
               </Text>
-              <View style={tw`h-1.5 bg-stone-200/80 rounded-full mb-5 overflow-hidden`}>
+              <View
+                style={tw`h-1.5 bg-stone-200/80 rounded-full mb-5 overflow-hidden`}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Endorsements"
+                accessibilityValue={{ min: 0, max: eligibility.endorsementsNeeded, now: Math.min(eligibility.endorsementsReceived, eligibility.endorsementsNeeded) }}
+              >
                 <View
                   style={[
                     tw`h-full bg-emerald-600`,
@@ -566,7 +654,12 @@ export default function InstructorScreen({ navigation }: any) {
               <Text style={tw`text-sm text-ink-3 mb-1`}>
                 Posts {eligibility.postCount}/{eligibility.postsNeeded}
               </Text>
-              <View style={tw`h-1.5 bg-stone-200/80 rounded-full mb-6 overflow-hidden`}>
+              <View
+                style={tw`h-1.5 bg-stone-200/80 rounded-full mb-6 overflow-hidden`}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Posts"
+                accessibilityValue={{ min: 0, max: Math.max(eligibility.postsNeeded, 1), now: Math.min(eligibility.postCount, Math.max(eligibility.postsNeeded, 1)) }}
+              >
                 <View
                   style={[
                     tw`h-full bg-emerald-600`,
@@ -591,6 +684,8 @@ export default function InstructorScreen({ navigation }: any) {
                   <PressableScale
                     onPress={() => void onClaim()}
                     disabled={claimBusy}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: claimBusy }}
                     style={tw`bg-energy-600 rounded-control py-3.5 items-center ${claimBusy ? 'opacity-60' : ''}`}
                   >
                     <Text style={tw`text-white font-bold`}>
@@ -673,9 +768,11 @@ export default function InstructorScreen({ navigation }: any) {
               )}
             </View>
           ) : (
-            <Text style={tw`text-center text-ink-3 mt-6`}>
-              Could not load eligibility. Pull to refresh.
-            </Text>
+            <ErrorState
+              title="Couldn’t load your progress"
+              message={eligError || 'Check your connection and try again.'}
+              onRetry={() => void reload()}
+            />
           )}
         </ScrollView>
       </SafeAreaView>
@@ -683,11 +780,12 @@ export default function InstructorScreen({ navigation }: any) {
   }
 
   const stats = hub?.stats;
+  const pipeline = pipelineGroups(inquiries, contracts);
   const tabs: { key: HubTab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     {
       key: 'students',
-      label: `Students${inquiries.length || contracts.length ? ` · ${inquiries.length + contracts.filter((c) => c.status === 'active').length}` : ''}`,
+      label: `Students${pipeline.openCount ? ` · ${pipeline.openCount}` : ''}`,
     },
     { key: 'community', label: `Community${stats?.endorsers ? ` · ${stats.endorsers}` : ''}` },
     {
@@ -756,6 +854,8 @@ export default function InstructorScreen({ navigation }: any) {
             key={tab.key}
             onPress={() => setActiveTab(tab.key)}
             feedback={activeTab === tab.key ? 'selection' : 'chip'}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === tab.key }}
             style={tw`mr-5 pb-2.5 border-b-2 ${
               activeTab === tab.key ? 'border-emerald-600' : 'border-transparent'
             }`}
@@ -791,7 +891,8 @@ export default function InstructorScreen({ navigation }: any) {
                   </Text>
                   <Text style={tw`text-lg font-bold text-ink mt-1`}>Instructor unlocked</Text>
                   <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>
-                    Teach today: post a tip, check your inbox, or greet someone who endorsed you.
+                    Next: check your offer below — weekly fee, times per week and trial — then share
+                    your profile so people on your paths can reach out.
                   </Text>
                   <PressableScale onPress={() => setJustClaimed(false)} style={tw`mt-3`}>
                     <Text style={tw`text-sm font-semibold text-rose-600`}>Dismiss</Text>
@@ -803,11 +904,19 @@ export default function InstructorScreen({ navigation }: any) {
                 <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
                   Your offer
                 </Text>
-                <Text style={tw`text-sm text-ink-3 mt-1 mb-3`}>
-                  New proposals use your current trial length.{' '}
-                  {formatCurrency(offering?.weekly_fee_eur ?? 10, offering?.currency)}/week ·{' '}
-                  {completedPlans} completed plans.
+                <Text style={tw`text-sm text-ink-3 mt-1 leading-5`}>
+                  Shown on your profile. Proposals start from these numbers ·{' '}
+                  {completedPlans} completed plan{completedPlans === 1 ? '' : 's'}.
                 </Text>
+                <Text style={tw`text-xs text-ink-3 mt-1 mb-3 leading-4`}>{COACHING_BILLING_NOTE}</Text>
+                {!offerDraft.accepting ? (
+                  <View style={tw`mb-3 px-3 py-2 rounded-control bg-amber-50 border border-amber-200 flex-row items-center`}>
+                    <Ionicons name="pause-circle-outline" size={16} color={tw.color('amber-700')} />
+                    <Text style={tw`text-footnote text-amber-800 ml-1.5 flex-1`}>
+                      Paused — new people can’t reach out until you turn plans back on.
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={tw`flex-row gap-2 mb-2`}>
                   <OfferField
                     label="€ / week"
@@ -836,6 +945,7 @@ export default function InstructorScreen({ navigation }: any) {
                   <PressableScale
                     onPress={() => void toggleAccepting()}
                     disabled={acceptingBusy}
+                    accessibilityLabel="Accepting new plans"
                     accessibilityRole="switch"
                     accessibilityState={{ checked: offerDraft.accepting, disabled: acceptingBusy }}
                     style={tw`px-3 py-2 rounded-control ${
@@ -853,6 +963,8 @@ export default function InstructorScreen({ navigation }: any) {
                   <PressableScale
                     onPress={() => void saveOffering()}
                     disabled={offerBusy}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: offerBusy }}
                     style={tw`px-4 py-2 rounded-control bg-emerald-600 ${offerBusy ? 'opacity-60' : ''}`}
                   >
                     <Text style={tw`text-white text-xs font-bold`}>
@@ -898,11 +1010,11 @@ export default function InstructorScreen({ navigation }: any) {
                   icon: 'school-outline' as const,
                   label: 'Students',
                   subtitle:
-                    inquiries.length > 0
-                      ? `${inquiries.length} talking · ${contracts.filter((c) => c.status === 'active').length} active plans`
+                    pipeline.openCount > 0
+                      ? pipeline.summary
                       : 'Reach-outs, proposals, and homework',
                   onPress: () => setActiveTab('students'),
-                  highlight: inquiries.length > 0,
+                  highlight: pipeline.needsYou > 0,
                 },
                 {
                   icon: 'people-outline' as const,
@@ -1009,91 +1121,114 @@ export default function InstructorScreen({ navigation }: any) {
           {activeTab === 'students' ? (
             <View style={tw`px-gutter-wide pt-2`}>
               <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
-                People who reached out. Send a proposal after you talk. Homework lives on their coaching plan.
+                Talk first, send a written proposal, then assign homework on the plan.
               </Text>
-              {contracts.filter((c) => c.status === 'active').length > 0 ? (
+
+              {pipeline.openCount === 0 && pipeline.completed.length === 0 ? (
+                <EmptyState
+                  icon="chatbubbles-outline"
+                  title={offerDraft.accepting ? 'No reach-outs yet' : 'You’re paused'}
+                  description={
+                    offerDraft.accepting
+                      ? 'When someone taps Reach out on your profile, they show up here. Post a tip on your paths so people find you.'
+                      : 'Turn “Accepting plans” back on in Overview so people can reach out.'
+                  }
+                />
+              ) : null}
+
+              {pipeline.active.length > 0 ? (
                 <>
-                  <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
-                    Active plans
-                  </Text>
-                  {contracts
-                    .filter((c) => c.status === 'active')
-                    .map((c) => (
+                  <PipelineHeader label="Active plans" count={pipeline.active.length} />
+                  {pipeline.active.map((c) => {
+                    const p = planProgress(c.started_at, c.ends_at, c.weeks);
+                    return (
                       <PressableScale
                         key={c.id}
                         onPress={() =>
                           navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
                         }
-                        style={tw`mb-2 px-3.5 py-3 rounded-card bg-card border border-line/80`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${c.client?.username || 'Client'}, week ${p.week} of ${p.total}. Open plan`}
+                        style={tw`mb-2 px-3.5 py-3 rounded-card bg-card border border-line/80 flex-row items-center`}
                       >
-                        <Text style={tw`font-bold text-ink`}>
-                          {c.client?.username || 'Client'}
-                        </Text>
-                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
-                          {c.weeks} wk · {c.sessions_per_week}× ·{' '}
-                          {formatCurrency(c.weekly_fee_eur, c.currency)}/week · {COACHING_ACTIVE_STATUS}
-                        </Text>
+                        <AvatarBubble avatar={c.client?.avatar} name={c.client?.username || 'Client'} size={36} />
+                        <View style={tw`flex-1 ml-3`}>
+                          <Text style={tw`font-bold text-ink`}>{c.client?.username || 'Client'}</Text>
+                          <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                            Week {p.week} of {p.total}
+                            {p.daysLeft != null ? ` · ${p.daysLeft}d left` : ''} · {c.sessions_per_week}× ·{' '}
+                            {formatCurrency(c.weekly_fee_eur, c.currency)}/week
+                          </Text>
+                          <Text style={tw`text-caption text-ink-3 mt-0.5`}>{COACHING_ACTIVE_STATUS}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
                       </PressableScale>
-                    ))}
+                    );
+                  })}
                 </>
               ) : null}
 
-              <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-3`}>
-                Talking
-              </Text>
-              {inquiries.length === 0 ? (
-                <EmptyState
-                  icon="chatbubbles-outline"
-                  title="No reach-outs yet"
-                  description="When someone taps Reach out on your page, the thread lands here."
-                />
-              ) : (
-                inquiries.map((row) => (
-                  <PressableScale
-                    key={row.id}
-                    onPress={() =>
-                      openMessages(row.client_id)
-                    }
-                    style={tw`flex-row items-center py-3 border-b border-line/80`}
-                  >
-                    <AvatarBubble
-                      avatar={row.client?.avatar}
-                      name={row.client?.username || 'Client'}
-                    />
-                    <View style={tw`flex-1 ml-3`}>
-                      <Text style={tw`font-semibold text-ink`}>
-                        {row.client?.username || 'Client'}
-                      </Text>
-                      <Text style={tw`text-xs text-ink-3 mt-0.5`}>Open coaching thread</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
-                  </PressableScale>
-                ))
-              )}
-
-              {contracts.filter((c) => c.status === 'completed').length > 0 ? (
+              {pipeline.talking.length > 0 ? (
                 <>
-                  <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2 mt-5`}>
-                    Completed
-                  </Text>
-                  {contracts
-                    .filter((c) => c.status === 'completed')
-                    .map((c) => (
-                      <PressableScale
-                        key={c.id}
-                        onPress={() =>
-                          navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
-                        }
-                        style={tw`py-3 border-b border-line/80`}
-                      >
-                        <Text style={tw`font-semibold text-ink`}>
-                          {c.client?.username || 'Client'}
-                        </Text>
-                        <Text style={tw`text-xs text-ink-3 mt-0.5`}>
-                          {formatCurrency(c.total_eur, c.currency)} · {c.weeks} weeks
-                        </Text>
-                      </PressableScale>
-                    ))}
+                  <PipelineHeader label="Talking · send a proposal" count={pipeline.talking.length} />
+                  {pipeline.talking.map((row) => (
+                    <PipelineRow
+                      key={row.id}
+                      row={row}
+                      hint={`Reached out ${formatHomeworkDate(row.created_at) ?? ''} · open chat to propose a plan`}
+                      onPress={() => openMessages(row.client_id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+
+              {pipeline.proposalSent.length > 0 ? (
+                <>
+                  <PipelineHeader label="Proposal sent · waiting on client" count={pipeline.proposalSent.length} />
+                  {pipeline.proposalSent.map((row) => (
+                    <PipelineRow
+                      key={row.id}
+                      row={row}
+                      hint={`Sent ${formatHomeworkDate(row.proposal_at) ?? ''} · a friendly nudge in chat helps`}
+                      onPress={() => openMessages(row.client_id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+
+              {pipeline.declined.length > 0 ? (
+                <>
+                  <PipelineHeader label="Declined · talk it through" count={pipeline.declined.length} />
+                  {pipeline.declined.map((row) => (
+                    <PipelineRow
+                      key={row.id}
+                      row={row}
+                      hint="Ask what would work better, then send a new proposal"
+                      onPress={() => openMessages(row.client_id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+
+              {pipeline.completed.length > 0 ? (
+                <>
+                  <PipelineHeader label="Completed" count={pipeline.completed.length} />
+                  {pipeline.completed.map((c) => (
+                    <PressableScale
+                      key={c.id}
+                      onPress={() =>
+                        navigateFromRoot(navigation, 'CoachingContract', { contractId: c.id })
+                      }
+                      accessibilityRole="button"
+                      style={tw`py-3 border-b border-line/80`}
+                    >
+                      <Text style={tw`font-semibold text-ink`}>{c.client?.username || 'Client'}</Text>
+                      <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                        {c.weeks} weeks · {formatCurrency(c.total_eur, c.currency)} agreed · rate follow-through
+                        after 4 weeks
+                      </Text>
+                    </PressableScale>
+                  ))}
                 </>
               ) : null}
             </View>
@@ -1352,9 +1487,11 @@ export default function InstructorScreen({ navigation }: any) {
           ) : null}
 
           {!hub && !loading ? (
-            <Text style={tw`text-center text-ink-3 mt-8 px-5`}>
-              Could not load hub. Pull to refresh.
-            </Text>
+            <ErrorState
+              title="Couldn’t load your hub"
+              message={hubError || 'Check your connection and try again.'}
+              onRetry={() => void reload()}
+            />
           ) : null}
         </ScrollView>
       )}

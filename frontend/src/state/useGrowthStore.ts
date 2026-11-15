@@ -45,6 +45,10 @@ export type ComposeDraft = {
   mood: JournalMood | null;
   path: string | null;
   intention: string | null;
+  /** Open as a shared (circle) page — the Sunday circle recap's "share one moment". */
+  share?: boolean;
+  /** Prompt override shown above the text field. */
+  prompt?: string | null;
 };
 
 type GrowthState = {

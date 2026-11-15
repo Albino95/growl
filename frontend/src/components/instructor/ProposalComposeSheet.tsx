@@ -13,7 +13,8 @@ import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
 import type { InstructorOffering } from '../../services/api/instructor';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
-import { COACHING_LIMITS } from '../../constants/coaching';
+import { COACHING_BILLING_NOTE, COACHING_LIMITS } from '../../constants/coaching';
+import { proposalTemplates } from './proposalTemplates';
 
 type Props = {
   visible: boolean;
@@ -72,6 +73,7 @@ export default function ProposalComposeSheet({
   const [weekly, setWeekly] = useState(String(offering?.weekly_fee_eur ?? 10));
   const [note, setNote] = useState('');
   const [showError, setShowError] = useState(false);
+  const [templateKey, setTemplateKey] = useState<string | null>('offer');
 
   // The sheet stays mounted while closed (and before the offering loads); re-seed on open.
   const seedWeeks = offering?.typical_weeks ?? 2;
@@ -83,9 +85,10 @@ export default function ProposalComposeSheet({
     setSessions(String(seedSessions));
     setWeekly(String(seedWeekly));
     setShowError(false);
+    setTemplateKey('offer');
   }, [visible, seedWeeks, seedSessions, seedWeekly]);
   useEffect(() => {
-    if (visible) setNote('');
+    if (visible) setNote(proposalTemplates(null)[0].note);
   }, [visible]);
 
   const parsed = useMemo(() => parseProposal(weeks, sessions, weekly), [weeks, sessions, weekly]);
@@ -93,6 +96,30 @@ export default function ProposalComposeSheet({
   const total = parsed.ok ? Math.round(parsed.weeks * parsed.weekly * 100) / 100 : null;
 
   const trial = offering?.trial_days ?? 0;
+  const templates = useMemo(
+    () =>
+      proposalTemplates({
+        weekly_fee_eur: seedWeekly,
+        sessions_per_week: seedSessions,
+        typical_weeks: seedWeeks,
+      }),
+    [seedWeekly, seedSessions, seedWeeks]
+  );
+  const applyTemplate = (key: string) => {
+    const t = templates.find((x) => x.key === key);
+    if (!t) return;
+    setTemplateKey(key);
+    setWeeks(String(t.weeks));
+    setSessions(String(t.sessions));
+    setWeekly(String(t.weekly));
+    // Only fill the note when the coach hasn't written their own.
+    setNote((cur) => (!cur.trim() || templates.some((x) => x.note === cur) ? t.note : cur));
+    setShowError(false);
+  };
+  const edit = (setter: (v: string) => void) => (v: string) => {
+    setTemplateKey(null);
+    setter(v);
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -113,15 +140,38 @@ export default function ProposalComposeSheet({
               <Ionicons name="close" size={18} color={theme.colors.ink} />
             </PressableScale>
           </View>
-          <Text style={tw`text-sm text-ink-3 mb-4 leading-5`}>
-            Trial is {trial} day{trial === 1 ? '' : 's'} from your offer. No charge in this chat —
-            you’ll confirm the plan together first.
+          <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
+            {trial > 0 ? `Includes your ${trial}-day trial. ` : ''}
+            {COACHING_BILLING_NOTE}
           </Text>
 
+          <View style={tw`flex-row flex-wrap mb-2`} accessibilityRole="radiogroup">
+            {templates.map((t) => {
+              const on = templateKey === t.key;
+              return (
+                <PressableScale
+                  key={t.key}
+                  onPress={() => applyTemplate(t.key)}
+                  feedback="chip"
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on, checked: on }}
+                  accessibilityLabel={`${t.label}: ${t.weeks} weeks, ${t.sessions} per week`}
+                  style={tw`mr-2 mb-2 px-3 py-1.5 rounded-chip border ${
+                    on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                  }`}
+                >
+                  <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                    {t.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
+
           <View style={tw`flex-row gap-2 mb-3`}>
-            <Field label="Weeks" value={weeks} onChange={setWeeks} />
-            <Field label="Times / week" value={sessions} onChange={setSessions} />
-            <Field label="€ / week" value={weekly} onChange={setWeekly} />
+            <Field label="Weeks" value={weeks} onChange={edit(setWeeks)} />
+            <Field label="Times / week" value={sessions} onChange={edit(setSessions)} />
+            <Field label="€ / week" value={weekly} onChange={edit(setWeekly)} />
           </View>
 
           <View style={tw`px-3.5 py-3 rounded-card bg-card border border-line/80 mb-3`}>
@@ -131,7 +181,9 @@ export default function ProposalComposeSheet({
             <Text style={tw`text-xl font-bold text-ink mt-0.5`}>
               {total != null ? formatCurrency(total, currency) : '—'}
             </Text>
-            <Text style={tw`text-xs text-ink-3 mt-0.5`}>Written total for the plan</Text>
+            <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+              Written total — agreed between you, not charged in the app
+            </Text>
           </View>
 
           {showError && !parsed.ok ? (
@@ -144,6 +196,8 @@ export default function ProposalComposeSheet({
             placeholder="Note for the client (optional)"
             placeholderTextColor={theme.colors.placeholder}
             multiline
+            maxLength={800}
+            accessibilityLabel="Note for the client"
             style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-4`}
           />
 
@@ -161,6 +215,8 @@ export default function ProposalComposeSheet({
               });
             }}
             disabled={busy}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!busy }}
             style={tw`py-3.5 rounded-card bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
           >
             {busy ? (
@@ -193,6 +249,7 @@ function Field({
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
+        accessibilityLabel={label}
         style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 text-body text-ink`}
       />
     </View>

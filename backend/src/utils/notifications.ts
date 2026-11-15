@@ -9,6 +9,7 @@ export type NotificationType =
   | 'endorsement_accepted'
   | 'post_like'
   | 'post_comment'
+  | 'comment_reply'
   | 'instructor_claim'
   | 'group_join'
   | 'group_invite'

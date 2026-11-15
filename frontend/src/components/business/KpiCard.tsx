@@ -8,19 +8,24 @@ type Props = {
   label: string;
   value: string;
   change?: string;
+  /** Spoken form of `change` (e.g. "up 12 percent from last period"). */
+  changeA11y?: string;
   trend?: 'up' | 'down' | 'neutral';
   icon: keyof typeof Ionicons.glyphMap;
   onPress?: () => void;
 };
 
 /** Flat metric tile — no heavy card chrome. */
-export default function KpiCard({ label, value, change, trend = 'neutral', icon, onPress }: Props) {
+export default function KpiCard({ label, value, change, changeA11y, trend = 'neutral', icon, onPress }: Props) {
   const color = trend === 'up' ? theme.colors.brand : trend === 'down' ? theme.colors.danger : theme.colors.ink3;
   const Wrapper = onPress ? PressableScale : View;
   return (
     <Wrapper
       onPress={onPress}
       style={tw`bg-raised/55 rounded-card px-3.5 py-3 flex-1 min-w-[46%]`}
+      accessible
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${label}: ${value}${change != null ? `, ${changeA11y || change}` : ''}`}
     >
       <View style={tw`flex-row items-center justify-between mb-2`}>
         <Ionicons name={icon} size={18} color={color} />

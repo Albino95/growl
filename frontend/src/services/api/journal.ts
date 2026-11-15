@@ -38,6 +38,8 @@ export interface JournalEntriesResponse {
     total: number;
     limit: number;
     offset: number;
+    /** Newer servers: a full page was returned, more may follow. */
+    has_more?: boolean;
   };
 }
 
@@ -69,10 +71,13 @@ export async function getJournalEntries(params?: {
   visibility?: 'public' | 'private';
   limit?: number;
   offset?: number;
+  /** Server-side text search over own entries (older servers ignore it). */
+  q?: string;
 }): Promise<JournalEntriesResponse> {
   const query = new URLSearchParams();
   if (params?.scope) query.append('scope', params.scope);
   if (params?.visibility) query.append('visibility', params.visibility);
+  if (params?.q && params.q.trim()) query.append('q', params.q.trim());
   if (params?.limit) query.append('limit', String(params.limit));
   if (params?.offset) query.append('offset', String(params.offset));
   const qs = query.toString();

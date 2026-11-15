@@ -63,7 +63,11 @@ type ContractRow = {
   ends_at: string;
   completed_at: string | null;
   created_at: string;
+  share_checkins?: number | null;
 };
+
+/** Plain-language status line for plans — coaching has no in-app payment. */
+export const NO_PAYMENT_NOTE = 'No payment through Grow! yet — agree payment directly with your coach.';
 
 function parseMeta(raw: string | null | undefined): Record<string, unknown> {
   try {
@@ -124,6 +128,7 @@ function mapContract(row: ContractRow) {
     completed_at: row.completed_at,
     created_at: row.created_at,
     billing: 'coming' as const,
+    share_checkins: !!row.share_checkins,
   };
 }
 
@@ -354,7 +359,16 @@ export async function listInquiries(request: Request, env: Env): Promise<Respons
     const rows = await env.DB.prepare(
       `SELECT i.*,
         iu.metadata AS instructor_metadata,
-        cu.metadata AS client_metadata
+        cu.metadata AS client_metadata,
+        (SELECT p.status FROM coaching_proposals p
+          WHERE p.instructor_id = i.instructor_id AND p.client_id = i.client_id
+          ORDER BY p.created_at DESC LIMIT 1) AS proposal_status,
+        (SELECT p.created_at FROM coaching_proposals p
+          WHERE p.instructor_id = i.instructor_id AND p.client_id = i.client_id
+          ORDER BY p.created_at DESC LIMIT 1) AS proposal_at,
+        (SELECT c.id FROM coaching_contracts c
+          WHERE c.instructor_id = i.instructor_id AND c.client_id = i.client_id AND c.status = 'active'
+          ORDER BY c.started_at DESC LIMIT 1) AS active_contract_id
        FROM coaching_inquiries i
        JOIN users iu ON iu.id = i.instructor_id
        JOIN users cu ON cu.id = i.client_id
@@ -363,9 +377,21 @@ export async function listInquiries(request: Request, env: Env): Promise<Respons
        LIMIT 40`
     )
       .bind(ctx.userId, ctx.userId)
-      .all<InquiryRow & { instructor_metadata: string; client_metadata: string }>();
+      .all<
+        InquiryRow & {
+          instructor_metadata: string;
+          client_metadata: string;
+          proposal_status: string | null;
+          proposal_at: string | null;
+          active_contract_id: string | null;
+        }
+      >();
 
     const inquiries = (rows.results || []).map((row) => ({
+      proposal_status: row.proposal_status ?? null,
+      proposal_at: row.proposal_at ?? null,
+      active_contract_id: row.active_contract_id ?? null,
+      stage: pipelineStage(row.status, row.proposal_status, row.active_contract_id),
       id: row.id,
       instructor_id: row.instructor_id,
       client_id: row.client_id,
@@ -383,6 +409,22 @@ export async function listInquiries(request: Request, env: Env): Promise<Respons
     console.error('[listInquiries]', err);
     return error('DATABASE_ERROR', 'Failed to load inquiries', 500);
   }
+}
+
+/**
+ * Where a coaching relationship stands, for the instructor's pipeline:
+ * talking → proposal_sent → (declined | active). 'closed' inquiries stay closed.
+ */
+export function pipelineStage(
+  inquiryStatus: string,
+  proposalStatus: string | null | undefined,
+  activeContractId: string | null | undefined
+): 'active' | 'proposal_sent' | 'declined' | 'talking' | 'closed' {
+  if (activeContractId) return 'active';
+  if (inquiryStatus === 'closed') return 'closed';
+  if (proposalStatus === 'sent') return 'proposal_sent';
+  if (proposalStatus === 'declined') return 'declined';
+  return 'talking';
 }
 
 async function loadThreadForPair(env: Env, userId: string, peerId: string) {
@@ -500,6 +542,21 @@ export async function sendProposal(request: Request, env: Env): Promise<Response
       .first<{ id: string; metadata: string }>();
     if (!client) return error('NOT_FOUND', 'Client not found', 404);
 
+    // One active plan per pair: a second accepted proposal would create a duplicate plan.
+    const active = await env.DB.prepare(
+      `SELECT id FROM coaching_contracts
+       WHERE instructor_id = ? AND client_id = ? AND status = 'active' LIMIT 1`
+    )
+      .bind(ctx.userId, clientId)
+      .first<{ id: string }>();
+    if (active) {
+      return error(
+        'ACTIVE_PLAN',
+        'You already have an active plan with this client. Mark it complete before sending a new proposal.',
+        409
+      );
+    }
+
     let inquiry = await env.DB.prepare(
       `SELECT * FROM coaching_inquiries WHERE instructor_id = ? AND client_id = ?`
     )
@@ -609,6 +666,15 @@ async function respondProposal(
   if ('error' in auth && auth.error) return auth.error;
   const ctx = auth.ctx!;
 
+  // Optional: the client may opt in to sharing Today check-ins when accepting. Default OFF.
+  let shareCheckins = false;
+  try {
+    const raw = (await request.json()) as { share_checkins?: unknown } | null;
+    shareCheckins = raw?.share_checkins === true;
+  } catch {
+    /* empty body is fine */
+  }
+
   try {
     const proposal = await env.DB.prepare(`SELECT * FROM coaching_proposals WHERE id = ?`)
       .bind(proposalId)
@@ -648,8 +714,9 @@ async function respondProposal(
       await env.DB.prepare(
         `INSERT INTO coaching_contracts
           (id, proposal_id, inquiry_id, instructor_id, client_id, weeks, sessions_per_week,
-           weekly_fee_eur, total_eur, trial_days, currency, draw, status, started_at, ends_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'weekly', 'active', ?, ?, ?)`
+           weekly_fee_eur, total_eur, trial_days, currency, draw, status, started_at, ends_at, created_at,
+           share_checkins, share_checkins_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'weekly', 'active', ?, ?, ?, ?, ?)`
       )
         .bind(
           contractId,
@@ -665,7 +732,9 @@ async function respondProposal(
           proposal.currency,
           started,
           ends,
-          now
+          now,
+          shareCheckins ? 1 : 0,
+          shareCheckins ? now : null
         )
         .run();
       contract = await env.DB.prepare(`SELECT * FROM coaching_contracts WHERE id = ?`)
@@ -681,7 +750,7 @@ async function respondProposal(
             generateId('msg'),
             proposal.conversation_id,
             ctx.userId,
-            'Plan accepted. Plan active · billing coming.',
+            `Plan accepted. ${NO_PAYMENT_NOTE}`,
             now
           )
           .run();
@@ -704,7 +773,7 @@ async function respondProposal(
           : `${clientName} declined your proposal`,
       body:
         decision === 'accepted'
-          ? 'Plan active · billing coming. Assign homework when you are ready.'
+          ? 'Plan active. Assign homework when you are ready. Agree payment directly — there is no payment through Grow!.'
           : 'You can send another proposal after you talk.',
       refType: decision === 'accepted' && contract ? 'coaching_contract' : 'conversation',
       refId: decision === 'accepted' && contract ? contract.id : proposal.conversation_id,
@@ -817,6 +886,8 @@ async function loadAssignments(env: Env, contractId: string) {
       last_photo: string | null;
       last_action: string | null;
       last_activity_at: string | null;
+      coach_feedback?: string | null;
+      coach_feedback_at?: string | null;
     }>();
 
   return (rows.results || []).map((row) => ({
@@ -840,6 +911,8 @@ async function loadAssignments(env: Env, contractId: string) {
     last_photo: row.last_photo,
     last_action: row.last_action,
     last_activity_at: row.last_activity_at,
+    coach_feedback: row.coach_feedback ?? null,
+    coach_feedback_at: row.coach_feedback_at ?? null,
   }));
 }
 
@@ -1212,6 +1285,33 @@ async function reviewStateForPair(
 }
 
 /**
+ * Who is coach and who is client between two people. An actual plan between them
+ * wins (so two instructors who coach each other resolve correctly); otherwise the
+ * instructor flag decides, as before.
+ */
+async function resolvePairRoles(
+  env: Env,
+  meId: string,
+  meIsInstructor: boolean,
+  peerId: string,
+  peerIsInstructor: boolean
+): Promise<{ instructorId: string; clientId: string } | null> {
+  const row = await env.DB.prepare(
+    `SELECT instructor_id, client_id FROM coaching_contracts
+     WHERE (instructor_id = ? AND client_id = ?) OR (instructor_id = ? AND client_id = ?)
+     ORDER BY CASE status WHEN 'completed' THEN 0 ELSE 1 END, created_at DESC
+     LIMIT 1`
+  )
+    .bind(meId, peerId, peerId, meId)
+    .first<{ instructor_id: string; client_id: string }>();
+  if (row) return { instructorId: row.instructor_id, clientId: row.client_id };
+  const instructorId = meIsInstructor ? meId : peerIsInstructor ? peerId : '';
+  const clientId = instructorId === meId ? peerId : meId;
+  if (!instructorId || instructorId === clientId) return null;
+  return { instructorId, clientId };
+}
+
+/**
  * GET /api/v1/instructor/reviews/eligibility?peer_id=
  */
 export async function getReviewEligibility(request: Request, env: Env): Promise<Response> {
@@ -1227,9 +1327,14 @@ export async function getReviewEligibility(request: Request, env: Env): Promise<
       .first<{ id: string; is_instructor: number }>();
     if (!peer) return error('NOT_FOUND', 'User not found', 404);
 
-    const instructorId = ctx.user!.is_instructor ? ctx.userId! : peer.is_instructor ? peerId : '';
-    const clientId = instructorId === ctx.userId ? peerId : ctx.userId!;
-    if (!instructorId || instructorId === clientId) {
+    const pair = await resolvePairRoles(
+      env,
+      ctx.userId!,
+      !!ctx.user!.is_instructor,
+      peerId,
+      !!peer.is_instructor
+    );
+    if (!pair) {
       return json({
         weeks_completed: 0,
         weeks_needed: REVIEW_MIN_WEEKS,
@@ -1238,7 +1343,7 @@ export async function getReviewEligibility(request: Request, env: Env): Promise<
         mine: null,
       });
     }
-    return json(await reviewStateForPair(env, ctx.userId!, instructorId, clientId));
+    return json(await reviewStateForPair(env, ctx.userId!, pair.instructorId, pair.clientId));
   } catch (err) {
     console.error('[getReviewEligibility]', err);
     return error('DATABASE_ERROR', 'Failed to load review eligibility', 500);
@@ -1273,11 +1378,16 @@ export async function listInstructorReviews(
         typeof meta.avatar === 'string' ? meta.avatar : null
       );
     });
-    const avg =
-      reviews.length === 0
-        ? 0
-        : Math.round((reviews.reduce((s, r) => s + r.stars, 0) / reviews.length) * 10) / 10;
-    return json({ reviews, rating: { avg, count: reviews.length } });
+    // Rating covers ALL reviews, not just the 12 most recent shown.
+    const agg = await env.DB.prepare(
+      `SELECT AVG(stars) AS avg, COUNT(*) AS n FROM coaching_reviews
+       WHERE instructor_id = ? AND direction = 'client_to_instructor'`
+    )
+      .bind(instructorId)
+      .first<{ avg: number | null; n: number }>();
+    const count = Number(agg?.n) || 0;
+    const avg = count ? Math.round((Number(agg?.avg) || 0) * 10) / 10 : 0;
+    return json({ reviews, rating: { avg, count } });
   } catch (err) {
     console.error('[listInstructorReviews]', err);
     return error('DATABASE_ERROR', 'Failed to load reviews', 500);
@@ -1326,12 +1436,17 @@ export async function upsertReview(request: Request, env: Env): Promise<Response
       .first<{ id: string; is_instructor: number }>();
     if (!peer) return error('NOT_FOUND', 'User not found', 404);
 
-    const iAmCoach = !!ctx.user!.is_instructor;
-    const instructorId = iAmCoach ? ctx.userId! : peer.is_instructor ? peerId : '';
-    const clientId = instructorId === ctx.userId ? peerId : ctx.userId!;
-    if (!instructorId || instructorId === clientId) {
+    const pair = await resolvePairRoles(
+      env,
+      ctx.userId!,
+      !!ctx.user!.is_instructor,
+      peerId,
+      !!peer.is_instructor
+    );
+    if (!pair) {
       return error('FORBIDDEN', 'Reviews are only between a coach and their client', 403);
     }
+    const { instructorId, clientId } = pair;
 
     const weeks = await completedWeeksTogether(env, instructorId, clientId);
     if (weeks < REVIEW_MIN_WEEKS) {
@@ -1342,9 +1457,7 @@ export async function upsertReview(request: Request, env: Env): Promise<Response
       );
     }
 
-    const direction = iAmCoach && instructorId === ctx.userId
-      ? 'instructor_to_client'
-      : 'client_to_instructor';
+    const direction = instructorId === ctx.userId ? 'instructor_to_client' : 'client_to_instructor';
     if (direction === 'instructor_to_client' && instructorId !== ctx.userId) {
       return error('FORBIDDEN', 'Only the instructor can rate this client', 403);
     }

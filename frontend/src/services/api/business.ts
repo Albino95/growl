@@ -8,6 +8,8 @@ import { getToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
 import { request } from './http';
 import type { Product, Order } from './marketplace';
+import { newIdempotencyKey } from './idempotency';
+import type { BulkEditItem, ContactReason, OnboardingStatus } from './businessHelpers';
 export type { Order };
 
 const BASE_URL: string =
@@ -110,6 +112,9 @@ export interface DashboardKPIs {
   deltas?: {
     orders_pct: number;
     net_revenue_pct: number;
+    /** Wave 4: raw previous-period values (absent on older servers). */
+    previous_orders?: number;
+    previous_net_revenue?: number;
   };
   recent_orders?: Order[];
 }
@@ -195,7 +200,12 @@ export type MarketingCampaign = {
   updated_at: string;
 };
 
-export type BusinessProduct = Product & { units_sold?: number };
+export type BusinessProduct = Product & {
+  units_sold?: number;
+  /** Hidden from the shop (e.g. by moderation). */
+  is_hidden?: number | boolean;
+  hidden_reason?: string | null;
+};
 
 export async function getDashboard(period: BusinessPeriod = 'week'): Promise<DashboardResponse> {
   return request<DashboardResponse>(`/business/dashboard?period=${period}`);
@@ -560,5 +570,43 @@ export async function updatePromoCode(
   if (!res.success || !res.data) {
     throw new Error('Could not update promo code');
   }
+  return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Wave 4
+
+export async function getBusinessOnboarding(): Promise<OnboardingStatus> {
+  const res = await request<{ success: boolean; data: OnboardingStatus }>('/business/onboarding');
+  return res.data;
+}
+
+export async function duplicateBusinessProduct(productId: string): Promise<BusinessProduct> {
+  const res = await request<{ success: boolean; data: BusinessProduct }>(
+    `/business/products/${encodeURIComponent(productId)}/duplicate`,
+    { method: 'POST', idempotencyKey: newIdempotencyKey() }
+  );
+  return res.data;
+}
+
+export async function bulkUpdateBusinessProducts(
+  items: BulkEditItem[]
+): Promise<{ updated: number; products: Array<{ id: string; price: number; stock: number }> }> {
+  const res = await request<{
+    success: boolean;
+    data: { updated: number; products: Array<{ id: string; price: number; stock: number }> };
+  }>('/business/products/bulk', { method: 'PATCH', body: JSON.stringify({ items }) });
+  return res.data;
+}
+
+export async function getOrderContact(orderId: string): Promise<{
+  can_message: boolean;
+  reason: ContactReason;
+  customer: { id: string; username: string | null };
+}> {
+  const res = await request<{
+    success: boolean;
+    data: { can_message: boolean; reason: ContactReason; customer: { id: string; username: string | null } };
+  }>(`/business/orders/${encodeURIComponent(orderId)}/contact`);
   return res.data;
 }

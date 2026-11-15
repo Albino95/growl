@@ -42,6 +42,16 @@ import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import { SHOW_SEEDS } from '../../constants/featureFlags';
 import HomeworkCard from '../../components/coaching/HomeworkCard';
 import HomeworkDoneSheet from '../../components/coaching/HomeworkDoneSheet';
+import HomeworkFeedbackSheet from '../../components/coaching/HomeworkFeedbackSheet';
+import CheckinSharingCard from '../../components/coaching/CheckinSharingCard';
+import SessionNotesCard from '../../components/coaching/SessionNotesCard';
+import {
+  DUE_OPTIONS,
+  dueDateFor,
+  planProgress,
+  planStatusLabel,
+} from '../../components/coaching/planProgress';
+import { formatHomeworkDate } from '../../components/coaching/homeworkDates';
 
 type Route = RouteProp<{ CoachingContract: { contractId: string } }, 'CoachingContract'>;
 
@@ -61,6 +71,10 @@ export default function CoachingContractScreen() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [doneItem, setDoneItem] = useState<CoachingAssignment | null>(null);
+  const [feedbackItem, setFeedbackItem] = useState<CoachingAssignment | null>(null);
+  const [dueKey, setDueKey] = useState<string>('week');
+  // Bumped on pull-to-refresh so child cards (notes, check-ins) reload too.
+  const [reloadKey, setReloadKey] = useState(0);
   const hasContractRef = useRef(false);
 
   const isCoach = contract?.instructor_id === user?.id;
@@ -95,20 +109,18 @@ export default function CoachingContractScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      const path = (user?.categories || [])[0] || '';
-      const [category_key, subcategory_key] = path.includes(':')
-        ? path.split(':')
-        : [path, 'practice'];
+      // The server files homework on the CLIENT's own paths; don't send the coach's.
+      const due = DUE_OPTIONS.find((o) => o.key === dueKey) ?? DUE_OPTIONS[0];
       await assignCoachingHomework(contractId, {
         title: title.trim() || undefined,
         goal_detail: detail.trim() || undefined,
-        category_key: category_key || undefined,
-        subcategory_key: subcategory_key || undefined,
+        due_at: dueDateFor(due.days),
       });
       feedback.send();
       setAssignOpen(false);
       setTitle('');
       setDetail('');
+      setDueKey('week');
       await load();
     } catch (e) {
       alertMessage('Homework', e instanceof Error ? e.message : 'Could not assign');
@@ -189,6 +201,7 @@ export default function CoachingContractScreen() {
               refreshing={refreshing}
               onRefresh={() => {
                 setRefreshing(true);
+                setReloadKey((k) => k + 1);
                 void load();
               }}
               tintColor={theme.colors.brand}
@@ -202,7 +215,16 @@ export default function CoachingContractScreen() {
             {isCoach ? contract.client?.username : contract.instructor?.username}
           </Text>
           <Text style={tw`text-sm text-ink-3 mt-1`}>
-            {contract.status === 'active' ? COACHING_ACTIVE_STATUS : contract.status}
+            {contract.status === 'active'
+              ? (() => {
+                  const p = planProgress(contract.started_at, contract.ends_at, contract.weeks);
+                  return `${COACHING_ACTIVE_STATUS} · Week ${p.week} of ${p.total}${
+                    p.daysLeft != null ? ` · ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left` : ''
+                  }`;
+                })()
+              : `${planStatusLabel(contract.status)}${
+                  contract.completed_at ? ` · ${formatHomeworkDate(contract.completed_at) ?? ''}` : ''
+                }`}
           </Text>
           {contract.status === 'active' ? (
             <Text style={tw`text-xs text-ink-3 mt-1 leading-4`}>{COACHING_BILLING_NOTE}</Text>
@@ -239,6 +261,17 @@ export default function CoachingContractScreen() {
               </PressableScale>
             ) : null}
           </View>
+
+          <CheckinSharingCard
+            contractId={contract.id}
+            isCoach={isCoach}
+            shared={!!contract.share_checkins}
+            active={contract.status === 'active'}
+            reloadKey={reloadKey}
+            onSharedChange={(v) => setContract((c) => (c ? { ...c, share_checkins: v } : c))}
+          />
+
+          {isCoach ? <SessionNotesCard contractId={contract.id} reloadKey={reloadKey} /> : null}
 
           <View style={tw`mt-3 px-4 py-3.5 rounded-card bg-card border border-line/80`}>
             <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
@@ -291,6 +324,7 @@ export default function CoachingContractScreen() {
                 isCoach={isCoach}
                 canMarkDone={!isCoach && contract.status === 'active'}
                 onMarkDone={setDoneItem}
+                onFeedback={isCoach ? setFeedbackItem : undefined}
               />
             ))
           ) : (
@@ -364,6 +398,8 @@ export default function CoachingContractScreen() {
               onChangeText={setTitle}
               placeholder="This week’s practice"
               placeholderTextColor={theme.colors.placeholder}
+              maxLength={120}
+              accessibilityLabel="Homework title"
               style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink mb-2`}
             />
             <TextInput
@@ -372,8 +408,34 @@ export default function CoachingContractScreen() {
               placeholder="What good looks like"
               placeholderTextColor={theme.colors.placeholder}
               multiline
-              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-4`}
+              maxLength={800}
+              accessibilityLabel="What good looks like"
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-3`}
             />
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5`}>
+              Due
+            </Text>
+            <View style={tw`flex-row flex-wrap mb-3`} accessibilityRole="radiogroup">
+              {DUE_OPTIONS.map((o) => {
+                const on = o.key === dueKey;
+                return (
+                  <PressableScale
+                    key={o.key}
+                    onPress={() => setDueKey(o.key)}
+                    feedback="chip"
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on, checked: on }}
+                    style={tw`mr-2 mb-2 px-3 py-1.5 rounded-chip border ${
+                      on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                    }`}
+                  >
+                    <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                      {o.label}
+                    </Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
             <PressableScale
               onPress={() => void onAssign()}
               disabled={busy}
@@ -391,6 +453,12 @@ export default function CoachingContractScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <HomeworkFeedbackSheet
+        assignment={feedbackItem}
+        onClose={() => setFeedbackItem(null)}
+        onSaved={() => void load()}
+      />
 
       <HomeworkDoneSheet
         visible={!!doneItem}

@@ -21,6 +21,7 @@ import BusinessScreen from '../../components/business/BusinessScreen';
 import SearchField from '../../components/ui/SearchField';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { haptic } from '../../theme/haptics';
 import { parseShippingAddress, safeParseJson } from '../../utils/safeJson';
 import {
   isOrderAwaitingPayment,
@@ -30,6 +31,7 @@ import {
 } from '../../services/api/business';
 import MarketplaceCheckoutBanner from '../../components/business/MarketplaceCheckoutBanner';
 import { formatCurrency } from '../../utils/money';
+import { ORDER_FILTERS, orderFilterLabel } from '../../services/api/businessHelpers';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 
 const NEXT_STATUS: Record<string, string | null> = {
@@ -69,15 +71,20 @@ export default function OrdersScreen() {
   const advanceStatus = async (orderId: string, current: string) => {
     const next = NEXT_STATUS[current];
     if (!next) return;
-    const ok = await confirmAsync('Update status', `Mark this order as ${next}?`, {
-      confirmLabel: `Mark ${next}`,
-    });
+    const ok = await confirmAsync(
+      `Mark as ${next}?`,
+      next === 'shipped'
+        ? 'Open the order first if you want to add a tracking number.'
+        : `The order moves to “${next}”.`,
+      { confirmLabel: `Mark ${next}` }
+    );
     if (!ok) return;
     setAdvancingId(orderId);
     try {
       const response = await updateOrderStatus(orderId, next);
       if (response.success && response.data) {
         dispatch(patchLocalOrderStatus({ orderId, status: response.data.status }));
+        haptic('success');
       }
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Failed to update status');
@@ -142,6 +149,9 @@ export default function OrdersScreen() {
           onPress={() =>
             navigation.getParent()?.navigate('BusinessOrderDetail', { orderId: order.id })
           }
+          accessibilityRole="button"
+          accessibilityLabel={`Order ${order.id.slice(-8).toUpperCase()} from ${customer}, ${formatCurrency(orderBusinessTotal(order), orderCurrency(order))}, ${awaitingPayment ? 'awaiting payment' : order.status || 'pending'}`}
+          accessibilityHint="Opens order details"
         >
           <View style={tw`flex-row items-start justify-between mb-2`}>
             <View style={tw`flex-1 pr-2`}>
@@ -179,6 +189,8 @@ export default function OrdersScreen() {
             }`}
             disabled={advancingId === order.id}
             onPress={() => void advanceStatus(order.id, order.status || 'pending')}
+            accessibilityRole="button"
+            accessibilityLabel={`Mark order ${order.id.slice(-8).toUpperCase()} as ${next}`}
           >
             <Text style={tw`text-white font-semibold`}>
               {advancingId === order.id ? 'Updating…' : `Mark ${next}`}
@@ -214,10 +226,12 @@ export default function OrdersScreen() {
         </View>
         <ScrollView horizontal {...horizontalScrollProps} showsHorizontalScrollIndicator={false} style={tw`mt-3`}>
           <View style={tw`flex-row gap-2 pr-4`}>
-            {['all', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
+            {ORDER_FILTERS.map((status) => (
               <PressableScale
                 key={status}
                 onPress={() => dispatch(setOrdersFilter(status))}
+                accessibilityRole="button"
+                accessibilityState={{ selected: statusFilter === status }}
                 style={tw`px-3.5 py-2 rounded-chip ${
                   statusFilter === status
                     ? 'bg-emerald-600'
@@ -229,7 +243,7 @@ export default function OrdersScreen() {
                     statusFilter === status ? 'text-white' : 'text-ink-2'
                   }`}
                 >
-                  {status === 'pending' ? 'To fulfill' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {orderFilterLabel(status)}
                 </Text>
               </PressableScale>
             ))}
@@ -271,9 +285,25 @@ export default function OrdersScreen() {
                   ? 'No matching orders'
                   : statusFilter === 'all'
                     ? 'No orders yet'
-                    : `No ${statusFilter} orders`
+                    : statusFilter === 'pending'
+                      ? 'Nothing to fulfill'
+                      : `No ${statusFilter} orders`
               }
-              description="Orders from the marketplace will show up here."
+              description={
+                searchQuery
+                  ? 'Search matches the customer name or the order number.'
+                  : statusFilter === 'all'
+                    ? 'When customers order from your catalog, each order lands here with the next step to take.'
+                    : 'You’re all caught up here.'
+              }
+              actionLabel={searchQuery ? 'Clear search' : statusFilter !== 'all' ? 'Show all orders' : undefined}
+              onAction={
+                searchQuery
+                  ? () => setSearchQuery('')
+                  : statusFilter !== 'all'
+                    ? () => dispatch(setOrdersFilter('all'))
+                    : undefined
+              }
             />
           )
         }

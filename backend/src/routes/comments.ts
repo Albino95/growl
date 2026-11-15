@@ -16,7 +16,15 @@ const COMMENT_NOTIFY_COALESCE_MINUTES = 10;
 
 const createCommentSchema = z.object({
   content: z.string().min(1, 'Comment content is required').max(1000, 'Comment too long'),
+  /** Optional: reply to a top-level comment on the same post (one level only). */
+  parent_id: z.string().min(1).max(128).optional().nullable(),
 });
+
+/** True when migration 0043 (post_engagement.parent_id) hasn't been applied yet. */
+function isMissingParentColumn(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /no such column:?\s*(pe\.)?parent_id|has no column named parent_id/i.test(msg);
+}
 
 /**
  * GET /api/v1/feed/posts/:postId/comments
@@ -80,6 +88,7 @@ export async function getComments(
         created_at: string;
         user_metadata: string;
         is_instructor: boolean;
+        parent_id?: string | null;
       }>();
     const rows = (comments.results || []).slice().reverse();
 
@@ -96,6 +105,7 @@ export async function getComments(
         user_id: comment.user_id,
         content: comment.content,
         created_at: comment.created_at,
+        parent_id: comment.parent_id ?? null,
         user: {
           id: comment.user_id,
           username: userMeta.username,
@@ -145,15 +155,53 @@ export async function createComment(
   if (!validation.success) return validation.response;
 
   const { content } = validation.data;
+  const requestedParent = (validation.data.parent_id || '').trim() || null;
+
+  // Replies are one level deep: replying to a reply attaches to its top-level comment.
+  let parent: { id: string; user_id: string } | null = null;
+  if (requestedParent) {
+    try {
+      const row = await env.DB.prepare(
+        `SELECT id, user_id, parent_id FROM post_engagement
+         WHERE id = ? AND post_id = ? AND type = 'comment'`
+      )
+        .bind(requestedParent, postId)
+        .first<{ id: string; user_id: string; parent_id: string | null }>();
+      if (!row) return error('COMMENT_NOT_FOUND', 'The comment you replied to was deleted', 404);
+      // Thread under the top-level comment; notify the person actually replied to.
+      parent = { id: row.parent_id || row.id, user_id: row.user_id };
+    } catch (err) {
+      // Server without migration 0043: post as a plain comment rather than failing.
+      if (!isMissingParentColumn(err)) throw err;
+      parent = null;
+    }
+  }
 
   try {
     const commentId = generateId('comment');
-    await env.DB.prepare(
-      `INSERT INTO post_engagement (id, post_id, user_id, type, content, created_at)
-       VALUES (?, ?, ?, 'comment', ?, datetime('now'))`
-    )
-      .bind(commentId, postId, ctx.userId, content)
-      .run();
+    let storedParentId: string | null = null;
+    if (parent) {
+      try {
+        await env.DB.prepare(
+          `INSERT INTO post_engagement (id, post_id, user_id, type, content, created_at, parent_id)
+           VALUES (?, ?, ?, 'comment', ?, datetime('now'), ?)`
+        )
+          .bind(commentId, postId, ctx.userId, content, parent.id)
+          .run();
+        storedParentId = parent.id;
+      } catch (err) {
+        if (!isMissingParentColumn(err)) throw err;
+        parent = null;
+      }
+    }
+    if (!storedParentId) {
+      await env.DB.prepare(
+        `INSERT INTO post_engagement (id, post_id, user_id, type, content, created_at)
+         VALUES (?, ?, ?, 'comment', ?, datetime('now'))`
+      )
+        .bind(commentId, postId, ctx.userId, content)
+        .run();
+    }
 
     // Update engagement score
     await updateEngagementScore(env, postId);
@@ -171,14 +219,35 @@ export async function createComment(
       userMeta = {};
     }
 
+    const commenterName = userMeta.username?.trim() || (await resolveUsername(env, ctx.userId));
+    const snippet = content.length > 140 ? `${content.slice(0, 137)}...` : content;
+    if (
+      parent &&
+      parent.user_id !== ctx.userId &&
+      parent.user_id !== post.user_id &&
+      !(await isBlocked(env, ctx.userId, parent.user_id))
+    ) {
+      await createUserNotification(env, {
+        userId: parent.user_id,
+        actorId: ctx.userId,
+        type: 'comment_reply',
+        title: `${commenterName} replied to your comment`,
+        body: snippet,
+        refType: 'post',
+        refId: postId,
+        coalesceWithinMinutes: COMMENT_NOTIFY_COALESCE_MINUTES,
+      });
+    }
     if (post.user_id !== ctx.userId) {
-      const commenterName = userMeta.username?.trim() || (await resolveUsername(env, ctx.userId));
       await createUserNotification(env, {
         userId: post.user_id,
         actorId: ctx.userId,
         type: 'post_comment',
-        title: `${commenterName} commented on your post`,
-        body: content.length > 140 ? `${content.slice(0, 137)}...` : content,
+        title:
+          parent && parent.user_id === post.user_id
+            ? `${commenterName} replied to your comment`
+            : `${commenterName} commented on your post`,
+        body: snippet,
         refType: 'post',
         refId: postId,
         coalesceWithinMinutes: COMMENT_NOTIFY_COALESCE_MINUTES,
@@ -192,6 +261,7 @@ export async function createComment(
         user_id: ctx.userId,
         content,
         created_at: new Date().toISOString(),
+        parent_id: storedParentId,
         user: {
           id: ctx.userId,
           username: userMeta.username,
@@ -246,6 +316,16 @@ export async function deleteComment(
     )
       .bind(commentId, postId, 'comment')
       .run();
+    // Replies go with their thread (no orphaned "replying to" rows).
+    try {
+      await env.DB.prepare(
+        `DELETE FROM post_engagement WHERE parent_id = ? AND post_id = ? AND type = 'comment'`
+      )
+        .bind(commentId, postId)
+        .run();
+    } catch (err) {
+      if (!isMissingParentColumn(err)) throw err;
+    }
 
     // Update engagement score
     await updateEngagementScore(env, postId);

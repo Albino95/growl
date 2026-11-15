@@ -70,6 +70,11 @@ import {
 } from '../../services/api/instructor';
 import BadgeRow from '../../components/badges/BadgeRow';
 import BuddiesPreview from '../../components/buddies/BuddiesPreview';
+import { usePublishQueue } from '../../state/usePublishQueue';
+import { usePostEventsStore } from '../../state/usePostEventsStore';
+
+/** Profile tab refocus within this window skips the network. */
+const PROFILE_STALE_MS = 30_000;
 import LevelPill from '../../components/badges/LevelPill';
 import ProgressTab from '../../components/progress/ProgressTab';
 import { getMyBadges, getStreak, type MyBadges, type Streak } from '../../services/api/growth';
@@ -376,12 +381,62 @@ export default function ProfileScreen({ navigation: navProp }: any) {
     }
   }, [user?.id]);
 
+  /**
+   * Refocusing the tab within 30 s reuses what's on screen (this load fans out to ~8
+   * requests). Pull-to-refresh, a finished publish and account changes always reload.
+   */
+  const lastProfileLoadRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
       if (connectionsSheetRef.current) return;
+      if (lastProfileLoadRef.current && Date.now() - lastProfileLoadRef.current < PROFILE_STALE_MS) return;
+      lastProfileLoadRef.current = Date.now();
       void loadProfileContent();
     }, [loadProfileContent])
   );
+  useEffect(() => {
+    lastProfileLoadRef.current = 0;
+  }, [user?.id]);
+  // Edits saved elsewhere (Edit profile updates the auth user) win over the cached
+  // header copy, so skipping a refocus fetch never shows a stale bio/avatar.
+  useEffect(() => {
+    setProfileMeta((prev) => ({
+      username: user?.username ?? prev.username,
+      avatar: user?.avatar ?? prev.avatar,
+      bio: user?.bio !== undefined ? user.bio : prev.bio,
+      status: user?.status !== undefined ? user.status : prev.status,
+    }));
+  }, [user?.username, user?.avatar, user?.bio, user?.status]);
+
+  // A background publish finished → show the new post without waiting for staleness.
+  const lastSharedAt = usePublishQueue((s) => s.lastSharedAt);
+  useEffect(() => {
+    if (!lastSharedAt) return;
+    lastProfileLoadRef.current = Date.now();
+    void loadProfileContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSharedAt]);
+
+  // Deleted anywhere (Post detail, Home menu) → drop it here at once.
+  const deletedPostIds = usePostEventsStore((s) => s.deletedIds);
+  const prevDeletedRef = useRef<string[]>([]);
+  useEffect(() => {
+    const prev = prevDeletedRef.current;
+    prevDeletedRef.current = deletedPostIds;
+    // A delete failed and was rolled back → reload so the post comes back.
+    if (prev.some((id) => !deletedPostIds.includes(id))) {
+      lastProfileLoadRef.current = Date.now();
+      void loadProfileContent();
+      return;
+    }
+    if (deletedPostIds.length === 0) return;
+    const gone = new Set(deletedPostIds);
+    setPosts((prev) => (prev.some((p) => gone.has(p.id)) ? prev.filter((p) => !gone.has(p.id)) : prev));
+    setSourcePosts((prev) =>
+      prev.some((p) => gone.has(p.id)) ? prev.filter((p) => !gone.has(p.id)) : prev
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deletedPostIds]);
 
   useEffect(() => {
     setDecayDays(user?.decayTimer || 7);

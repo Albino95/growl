@@ -29,6 +29,7 @@ import {
   checkinMoodMeta,
   firstNameOf,
   followupReply,
+  eveningPrompt,
   isEvening,
   moodReply,
   streakLabel,
@@ -372,10 +373,14 @@ function TodayCard() {
 
   const onWriteMore = () => {
     haptic('tapLight');
+    // Evening, loop closed: a blank page that asks how it went (not the morning
+    // intention pasted back in as the entry text).
+    const closing = isEvening() && !!checkin?.intention && !!(followupLine || checkin?.followup);
     useGrowthStore.getState().setComposeDraft({
       mood: journalMoodFromCheckin(checkin?.mood ?? null),
       path: checkin?.path ?? null,
-      intention: checkin?.intention ?? null,
+      intention: closing ? null : checkin?.intention ?? null,
+      prompt: closing ? eveningPrompt(checkin?.intention ?? '') : null,
     });
     navigation.navigate('Journal', { openCompose: true });
   };
@@ -397,6 +402,7 @@ function TodayCard() {
         followup: value,
       });
       animateLayout();
+      setError(null);
       setFollowupLine(followupReply(value));
     } catch {
       haptic('error');
@@ -519,6 +525,8 @@ function TodayCard() {
     const label = pathLabel(checkin.path);
     const moodMeta = checkinMoodMeta(checkin.mood);
     const doneFollowup = followupLine || followupReply(checkin.followup);
+    // Evening and the loop is closed → the journal nudge becomes "close the day".
+    const closingTime = isEvening() && !!(followupLine || checkin.followup);
     return (
       <View style={tw`mx-gutter mb-3`}>
         <PressableScale
@@ -562,7 +570,11 @@ function TodayCard() {
                   disabled={saving}
                   onPress={() => void onFollowup(o.value)}
                   accessibilityRole="button"
-                  style={tw`flex-1 py-2 rounded-chip items-center ${
+                  accessibilityState={{ disabled: !!saving }}
+                  accessibilityLabel={
+                    o.value === 'no' ? o.label : `${o.label}${label ? `, I grew in ${label} today` : ''}`
+                  }
+                  style={tw`flex-1 py-2 min-h-[40px] justify-center rounded-chip items-center ${
                     o.value === 'yes' ? 'bg-emerald-600' : 'bg-raised'
                   }`}
                 >
@@ -632,7 +644,11 @@ function TodayCard() {
               color={sundaySit ? theme.colors.energy : theme.colors.brand}
             />
             <Text style={tw`flex-1 ml-2 text-footnote text-ink-2`} numberOfLines={1}>
-              {sundaySit ? 'Sunday sit — a quiet page for the week' : 'Write more about today, privately'}
+              {sundaySit
+                ? 'Sunday sit — a quiet page for the week'
+                : closingTime
+                  ? 'Close the day — one line on how it went'
+                  : 'Write more about today, privately'}
             </Text>
             <Ionicons name="chevron-forward" size={14} color={theme.colors.iconMuted} />
           </PressableScale>

@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, FlatList, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -25,7 +25,14 @@ import { openCoachingReachOut } from '../../utils/coachingReachOut';
 import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { feedback } from '../../utils/interactionFeedback';
 import { alertMessage } from '../../utils/confirmDialog';
-import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import { TAB_SCREEN_BOTTOM_PADDING, horizontalScrollProps } from '../../constants/scroll';
+import { COACHING_BILLING_NOTE } from '../../constants/coaching';
+import {
+  applyDiscoveryFilter,
+  DISCOVERY_FILTERS,
+  isNewCoach,
+  type DiscoveryFilter,
+} from '../../components/instructor/discoveryFilters';
 
 export default function InstructorsScreen() {
   const navigation = useNavigation();
@@ -34,10 +41,12 @@ export default function InstructorsScreen() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<DiscoveryFilter>('all');
+  const serverPaths = filter === 'paths';
 
   const load = useCallback(async () => {
     try {
-      const list = await listInstructors({ limit: 40, forPaths: false });
+      const list = await listInstructors({ limit: 40, forPaths: serverPaths });
       setItems(list);
       setLoadError(null);
     } catch (e) {
@@ -46,7 +55,8 @@ export default function InstructorsScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [serverPaths]);
+  const shown = useMemo(() => applyDiscoveryFilter(items, filter), [items, filter]);
   const refresh = useRefresh(load);
 
   useFocusEffect(
@@ -92,6 +102,8 @@ export default function InstructorsScreen() {
               onPress={() =>
                 getRootNavigator(navigation)?.navigate('Individual', { screen: 'Instructor' })
               }
+              accessibilityRole="button"
+              accessibilityLabel="Open your Instructor Hub"
               style={tw`px-3 h-9 rounded-full bg-emerald-600 items-center justify-center`}
             >
               <Text style={tw`text-white text-xs font-bold`}>Hub</Text>
@@ -101,7 +113,7 @@ export default function InstructorsScreen() {
       />
 
       <FlatList
-        data={items}
+        data={shown}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: TAB_SCREEN_BOTTOM_PADDING }}
         refreshControl={
@@ -113,9 +125,40 @@ export default function InstructorsScreen() {
               Instructors
             </Text>
             <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>Find a coach</Text>
-            <Text style={tw`text-sm text-ink-3 mt-1.5 mb-4 leading-5`}>
+            <Text style={tw`text-sm text-ink-3 mt-1.5 leading-5`}>
               Talk first. Then a written weekly plan. Reviews open after 4 completed weeks together.
             </Text>
+            <Text style={tw`text-xs text-ink-3 mt-1 mb-3 leading-4`}>{COACHING_BILLING_NOTE}</Text>
+            <ScrollView
+              {...horizontalScrollProps}
+              style={tw`-mx-5 mb-3`}
+              contentContainerStyle={tw`px-5`}
+              accessibilityRole="tablist"
+            >
+              {DISCOVERY_FILTERS.map((f) => {
+                const on = filter === f.key;
+                return (
+                  <PressableScale
+                    key={f.key}
+                    onPress={() => {
+                      if (on) return;
+                      if ((f.key === 'paths') !== serverPaths) setLoading(true);
+                      setFilter(f.key);
+                    }}
+                    feedback="chip"
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: on }}
+                    style={tw`mr-2 px-3.5 py-2 rounded-chip border ${
+                      on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                    }`}
+                  >
+                    <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                      {f.label}
+                    </Text>
+                  </PressableScale>
+                );
+              })}
+            </ScrollView>
             {user?.isInstructor ? (
               <PressableScale
                 onPress={() =>
@@ -147,11 +190,21 @@ export default function InstructorsScreen() {
                 void load();
               }}
             />
+          ) : filter !== 'all' && items.length > 0 ? (
+            <EmptyState
+              icon="funnel-outline"
+              title="No coaches match"
+              description="Try another filter — new coaches appear as people on your paths claim instructor."
+              actionLabel="Show all"
+              onAction={() => setFilter('all')}
+            />
           ) : (
             <EmptyState
               icon="school-outline"
-              title="No instructors yet"
+              title={filter === 'paths' ? 'No coaches on your paths yet' : 'No instructors yet'}
               description="Peer-endorsed coaches will show here. Ask someone on your path to claim instructor."
+              actionLabel={filter !== 'all' ? 'Show all' : undefined}
+              onAction={filter !== 'all' ? () => setFilter('all') : undefined}
             />
           )
         }
@@ -161,10 +214,16 @@ export default function InstructorsScreen() {
             (item.categories[0] && getCategoryLabel(item.categories[0])) ||
             'Coach';
           const offer = formatOfferLine(item);
+          const paused = item.accepting === false;
+          const fresh = isNewCoach(item);
           return (
             <FadeInUp delay={Math.min(index * 40, 160)}>
               <PressableScale
                 onPress={() => navigateFromRoot(navigation, 'PublicProfile', { userId: item.id, preview: { username: item.username, avatarUrl: item.avatar } })}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.username}, ${item.teaching_headline || `teaching ${path}`}${
+                  item.rating_count && item.rating_avg ? `, rated ${item.rating_avg} from ${item.rating_count}` : ''
+                }${paused ? ', not taking new plans' : ''}. Open profile`}
                 style={tw`mb-3 px-4 py-4 rounded-sheet bg-card border border-line/80`}
               >
                 <View style={tw`flex-row items-center`}>
@@ -176,9 +235,16 @@ export default function InstructorsScreen() {
                     style={tw`mr-3`}
                   />
                   <View style={tw`flex-1`}>
-                    <Text style={tw`text-lg font-bold text-ink`} numberOfLines={1}>
-                      {item.username}
-                    </Text>
+                    <View style={tw`flex-row items-center`}>
+                      <Text style={tw`text-lg font-bold text-ink flex-shrink`} numberOfLines={1}>
+                        {item.username}
+                      </Text>
+                      {fresh ? (
+                        <View style={tw`ml-2 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100`}>
+                          <Text style={tw`text-caption font-semibold text-emerald-800`}>New</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={tw`text-footnote text-ink-3 mt-0.5`} numberOfLines={2}>
                       {item.teaching_headline || `Teaching ${path}`}
                     </Text>
@@ -197,18 +263,26 @@ export default function InstructorsScreen() {
                   </View>
                 </View>
                 <View style={tw`flex-row items-center justify-between mt-3`}>
-                  <Text style={tw`text-footnote font-semibold text-emerald-800 flex-1`} numberOfLines={1}>
-                    {offer || path}
+                  <Text
+                    style={tw`text-footnote font-semibold flex-1 ${paused ? 'text-ink-3' : 'text-emerald-800'}`}
+                    numberOfLines={1}
+                  >
+                    {paused ? 'Not taking new plans right now' : offer || path}
                   </Text>
                   <PressableScale
                     onPress={() => void onReachOut(item)}
-                    disabled={busyId === item.id}
-                    style={tw`ml-2 px-3 py-2 rounded-control bg-emerald-600`}
+                    disabled={busyId === item.id || paused}
+                    accessibilityRole="button"
+                    accessibilityLabel={paused ? `${item.username} is paused` : `Reach out to ${item.username}`}
+                    accessibilityState={{ disabled: busyId === item.id || paused, busy: busyId === item.id }}
+                    style={tw`ml-2 px-3 py-2 rounded-control ${paused ? 'bg-raised border border-line' : 'bg-emerald-600'}`}
                   >
                     {busyId === item.id ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={tw`text-white text-xs font-bold`}>Reach out</Text>
+                      <Text style={tw`text-xs font-bold ${paused ? 'text-ink-3' : 'text-white'}`}>
+                        {paused ? 'Paused' : 'Reach out'}
+                      </Text>
                     )}
                   </PressableScale>
                 </View>

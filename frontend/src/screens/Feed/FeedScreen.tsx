@@ -77,6 +77,8 @@ import CheckInSpotlight from '../../components/onboarding/CheckInSpotlight';
 import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 import { getReducedMotion } from '../../hooks/useReducedMotion';
 import WeeklyRecapCard from '../../components/recap/WeeklyRecapCard';
+import CircleWeekCard from '../../components/recap/CircleWeekCard';
+import { confirmAndDeletePost } from '../../services/deletePost';
 import { isRecapWindow } from '../../components/recap/growthMeta';
 import { useGrowthStore } from '../../state/useGrowthStore';
 import { useActivationStore } from '../../state/useActivationStore';
@@ -898,6 +900,7 @@ export default function FeedScreen({ navigation, route }: any) {
         <TodayCard />
       </CheckInSpotlight>
       <WeeklyRecapCard />
+      <CircleWeekCard />
 
       <View style={tw`mx-4 mb-3 px-4 py-3 rounded-card bg-raised/80 border border-line/70`}>
         <Text style={tw`text-caption tracking-[2px] uppercase text-ink-3 font-semibold`}>
@@ -1555,11 +1558,21 @@ export default function FeedScreen({ navigation, route }: any) {
                     </PressableScale>
                   </>
                 ) : (
-                  <View style={tw`mt-1 px-3.5 py-3 rounded-card bg-raised`}>
-                    <Text style={tw`text-sm text-ink-2 leading-5`}>
-                      Tip: tap the share icon under any post — yours or a friend’s — for an Instagram-ready card.
-                    </Text>
-                  </View>
+                  <PressableScale
+                    onPress={() => {
+                      close();
+                      setTimeout(() => void confirmAndDeletePost(target.id), 220);
+                    }}
+                    feedback={false}
+                    accessibilityRole="button"
+                    accessibilityHint="Asks before deleting"
+                    style={tw`flex-row items-center py-3.5 px-3.5 mb-2 rounded-card bg-card border border-line/80`}
+                  >
+                    <View style={tw`w-10 h-10 rounded-control bg-red-50 items-center justify-center mr-3`}>
+                      <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
+                    </View>
+                    <Text style={tw`text-base font-semibold text-red-700`}>Delete post</Text>
+                  </PressableScale>
                 )}
 
                 <PressableScale onPress={close} feedback={false} style={tw`mt-2 py-3 items-center`}>

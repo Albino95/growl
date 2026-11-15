@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,8 @@ import {
   exportProductsCsv,
 } from '../../services/api/business';
 import { uploadMediaFile } from '../../services/api/media';
-import { fetchBusinessSettings } from '../../store/slices/businessSlice';
+import { fetchBusinessProducts, fetchBusinessSettings } from '../../store/slices/businessSlice';
+import StorefrontPreview from '../../components/business/StorefrontPreview';
 import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { toast } from '../../state/useToastStore';
 import { downloadCsv } from '../../utils/csvDownload';
@@ -45,6 +46,11 @@ export default function BizSettings() {
   const dispatch = useAppDispatch();
   const savedSettings = useAppSelector((s) => s.business.settings);
   const period = useAppSelector((s) => s.business.period);
+  const products = useAppSelector((s) => s.business.products);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  // Apply server settings once; later store refreshes (e.g. from another screen) must not
+  // overwrite what the seller is typing.
+  const appliedOnce = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,12 +77,15 @@ export default function BizSettings() {
     const load = async () => {
       try {
         setLoading(true);
+        if (appliedOnce.current) return;
         if (savedSettings) {
+          appliedOnce.current = true;
           applySettings(savedSettings);
           setLoading(false);
           return;
         }
         const result = await dispatch(fetchBusinessSettings()).unwrap();
+        appliedOnce.current = true;
         applySettings(result);
       } catch (e: unknown) {
         alertMessage('Error', e instanceof Error ? e.message : 'Could not load settings');
@@ -106,8 +115,8 @@ export default function BizSettings() {
 
   const saveSettings = async () => {
     const threshold = Number(lowStockThreshold);
-    if (!Number.isFinite(threshold) || threshold < 0) {
-      alertMessage('Invalid threshold', 'Low stock threshold must be a non-negative number.');
+    if (!Number.isInteger(threshold) || threshold < 1) {
+      alertMessage('Check the low-stock alert', 'Use a whole number of 1 or more, e.g. 5.');
       return;
     }
     try {
@@ -134,8 +143,8 @@ export default function BizSettings() {
           default_shipping_note: defaultShippingNote.trim(),
         },
       });
-      await dispatch(fetchBusinessSettings()).unwrap();
-      setLogoLocalUri(null);
+      const fresh = await dispatch(fetchBusinessSettings()).unwrap();
+      applySettings(fresh);
       toast.success('Settings saved');
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not save settings');
@@ -182,8 +191,8 @@ export default function BizSettings() {
   };
 
   const openStorefrontPreview = () => {
-    const tabNav = navigation.getParent?.()?.getParent?.() || navigation.getParent?.() || navigation;
-    tabNav.navigate('BusinessMain', { screen: 'Catalog' });
+    if (products.length === 0) void dispatch(fetchBusinessProducts());
+    setPreviewOpen(true);
   };
 
   const stackNav = navigation.getParent?.() || navigation;
@@ -242,7 +251,7 @@ export default function BizSettings() {
           <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
             Ops
           </Text>
-          <Text style={tw`text-sm text-ink-2 mb-1`}>Low stock threshold (units)</Text>
+          <Text style={tw`text-sm text-ink-2 mb-1`}>Low-stock alert below (units)</Text>
           <TextInput
                         {...formInputAccessoryProps()}
             value={lowStockThreshold}
@@ -252,7 +261,7 @@ export default function BizSettings() {
             placeholder="10"
             placeholderTextColor={theme.colors.ink3}
           />
-          <Text style={tw`text-sm text-ink-2 mb-1`}>Default shipping note</Text>
+          <Text style={tw`text-sm text-ink-2 mb-1`}>Shipping or pickup note</Text>
           <TextInput
             {...formInputAccessoryProps({ multiline: true })}
             value={defaultShippingNote}
@@ -273,9 +282,15 @@ export default function BizSettings() {
           <View style={tw`flex-row items-center justify-between py-2`}>
             <View style={tw`flex-row items-center flex-1 pr-3`}>
               <Ionicons name="notifications-outline" size={20} color={theme.colors.ink3} />
-              <Text style={tw`text-ink ml-3`}>In-app alerts</Text>
+              <View style={tw`ml-3 flex-1`}>
+                <Text style={tw`text-ink`}>In-app alerts</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                  New orders, low stock and sold-out products on your Home tab
+                </Text>
+              </View>
             </View>
             <Switch
+              accessibilityLabel="In-app alerts"
               value={inAppAlerts}
               onValueChange={(v) => {
                 toggleFeedback(v);
@@ -343,8 +358,10 @@ export default function BizSettings() {
             <View style={tw`flex-row items-center flex-1`}>
               <Ionicons name="storefront-outline" size={22} color={EMERALD} />
               <View style={tw`ml-3 flex-1`}>
-                <Text style={tw`font-semibold text-ink`}>Your products</Text>
-                <Text style={tw`text-xs text-ink-3 mt-0.5`}>Open catalog tab</Text>
+                <Text style={tw`font-semibold text-ink`}>See how customers see you</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                  Your saved name, logo, shipping note and visible products
+                </Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.colors.iconMuted} />
@@ -455,6 +472,16 @@ export default function BizSettings() {
         </View>
       </ScrollView>
       <KeyboardDoneAccessory />
+      <StorefrontPreview
+        visible={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        businessName={savedSettings?.business_name || businessName}
+        logoUrl={savedSettings?.logo_url || null}
+        shippingNote={String(
+          (savedSettings?.analytics_prefs as Record<string, unknown> | undefined)?.default_shipping_note ?? ''
+        )}
+        products={products}
+      />
     </SafeAreaView>
   );
 }

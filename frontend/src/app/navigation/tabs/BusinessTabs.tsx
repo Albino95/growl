@@ -23,6 +23,8 @@ export default function BusinessTabs() {
   // Subscribe so tab bar colours re-resolve when the scheme flips.
   useColorSchemeName();
   const lowStockCount = useAppSelector((s) => s.business.kpis?.low_stock_count ?? 0);
+  // Open paid orders (live, not period-bound) — the work waiting on the seller.
+  const toFulfillCount = useAppSelector((s) => s.business.kpis?.pending_orders ?? 0);
 
   return (
     <Tab.Navigator
@@ -66,9 +68,20 @@ export default function BusinessTabs() {
         options={{
           tabBarLabel: 'Catalog',
           tabBarBadge: lowStockCount > 0 ? lowStockCount : undefined,
+          tabBarAccessibilityLabel:
+            lowStockCount > 0 ? `Catalog, ${lowStockCount} low on stock` : 'Catalog',
         }}
       />
-      <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarLabel: 'Orders' }} />
+      <Tab.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{
+          tabBarLabel: 'Orders',
+          tabBarBadge: toFulfillCount > 0 ? (toFulfillCount > 99 ? '99+' : toFulfillCount) : undefined,
+          tabBarAccessibilityLabel:
+            toFulfillCount > 0 ? `Orders, ${toFulfillCount} to fulfill` : 'Orders',
+        }}
+      />
       <Tab.Screen name="Grow" component={GrowScreen} options={{ tabBarLabel: 'Grow' }} />
     </Tab.Navigator>
   );

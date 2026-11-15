@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -32,18 +32,11 @@ import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { alertMessage } from '../../utils/confirmDialog';
 import { SHOW_CIRCLES, SHOW_SEEDS } from '../../constants/featureFlags';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
-
-function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return '';
-  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
-  if (mins < 1) return 'now';
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d`;
-}
+import {
+  groupNotifications,
+  timeAgo,
+  type NotificationRow,
+} from '../../components/activity/notificationGroups';
 
 /** Rose ink for hearts / asks — scheme-aware (rose-600 lightens in dark). Call in render. */
 function roseInk(): string {
@@ -101,6 +94,15 @@ function metaForType(type: string): {
       return {
         icon: 'chatbubble',
         label: 'Comment',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
+    case 'comment_reply':
+      return {
+        icon: 'return-down-forward',
+        label: 'Reply',
         tint: theme.colors.brand,
         chipBg: 'bg-emerald-50',
         chipText: 'text-emerald-800',
@@ -192,15 +194,23 @@ export default function NotificationsScreen() {
   const loadingMoreRef = useRef(false);
 
   const unread = useMemo(() => items.filter((n) => n.unread).length, [items]);
+  // Day sections + "ann and 3 others liked your post" rows. Recomputed when items change.
+  const sections = useMemo(() => groupNotifications(items), [items]);
+  /** First load shows the skeleton; later focuses refresh in place (no flash). */
+  const loadedOnceRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
       const res = await listNotifications({ limit: PAGE_SIZE });
       setItems(res.notifications);
       setHasMore(res.notifications.length >= PAGE_SIZE);
+      loadedOnceRef.current = true;
     } catch {
-      setItems([]);
-      setHasMore(false);
+      // Keep what's on screen when a background refresh fails; only blank a first load.
+      if (!loadedOnceRef.current) {
+        setItems([]);
+        setHasMore(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -229,19 +239,21 @@ export default function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      if (!loadedOnceRef.current) setLoading(true);
       void load();
     }, [load])
   );
 
-  const openItem = async (item: ActivityNotification) => {
-    feedback.open();
-    if (item.unread) {
-      void markNotificationRead(item.id);
+  // The row's PressableScale already plays the "open" feedback — no second haptic here.
+  const openItem = async (row: NotificationRow) => {
+    const item = row.lead;
+    const unreadIds = row.members.filter((m) => m.unread).map((m) => m.id);
+    if (unreadIds.length > 0) {
+      for (const id of unreadIds) void markNotificationRead(id).catch(() => undefined);
+      const ids = new Set(unreadIds);
+      const readAt = new Date().toISOString();
       setItems((prev) =>
-        prev.map((n) =>
-          n.id === item.id ? { ...n, unread: false, read_at: new Date().toISOString() } : n
-        )
+        prev.map((n) => (ids.has(n.id) ? { ...n, unread: false, read_at: readAt } : n))
       );
     }
 
@@ -387,6 +399,7 @@ export default function NotificationsScreen() {
             onPress={() => navigation.goBack()}
             pressedScale={0.9}
             hitSlop={8}
+            accessibilityRole="button"
             style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
             accessibilityLabel="Back"
           >
@@ -449,9 +462,18 @@ export default function NotificationsScreen() {
           <SkeletonList variant="notification" count={6} />
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
+        <SectionList
+          sections={sections}
+          keyExtractor={(row) => row.key}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <Text
+              accessibilityRole="header"
+              style={tw`text-caption font-semibold tracking-widest uppercase text-ink-3 mt-1 mb-2 ml-1`}
+            >
+              {section.title}
+            </Text>
+          )}
           contentContainerStyle={tw`px-gutter pb-28 ${items.length === 0 ? 'flex-1' : ''}`}
           refreshControl={
             <RefreshControl {...refresh} />
@@ -472,7 +494,9 @@ export default function NotificationsScreen() {
               description="When someone endorses you, sends a friend request, or likes a post, it shows up here."
             />
           }
-          renderItem={({ item, index }) => {
+          renderItem={({ item: row, index }) => {
+            const item = row.lead;
+            const rowUnread = row.unread;
             const meta = metaForType(item.type);
             const avatar = item.actor
               ? resolveAvatarUri(item.actor.id, item.actor.username, item.actor.avatar)
@@ -488,9 +512,9 @@ export default function NotificationsScreen() {
 
             // One screen-reader element per row; inner buttons become actions.
             const rowLabel = [
-              item.unread ? 'Unread' : '',
+              rowUnread ? 'Unread' : '',
               meta.label,
-              item.title,
+              row.title,
               item.body || '',
               timeAgo(item.created_at),
             ]
@@ -509,7 +533,7 @@ export default function NotificationsScreen() {
             return (
               <FadeInUp delay={Math.min(index, 8) * 35}>
               <PressableScale
-                onPress={() => void openItem(item)}
+                onPress={() => void openItem(row)}
                 feedback="open"
                 accessibilityRole="button"
                 accessibilityLabel={rowLabel}
@@ -523,7 +547,7 @@ export default function NotificationsScreen() {
                 style={tw`mb-3 rounded-sheet border overflow-hidden ${
                   actionable
                     ? 'bg-card border-red-200'
-                    : item.unread
+                    : rowUnread
                       ? 'bg-card border-emerald-200/90'
                       : 'bg-card border-line/80'
                 }`}
@@ -534,7 +558,7 @@ export default function NotificationsScreen() {
                       width: 5,
                       backgroundColor: actionable
                         ? theme.colors.energy
-                        : item.unread
+                        : rowUnread
                           ? meta.rail
                           : theme.colors.line,
                     }}
@@ -544,6 +568,7 @@ export default function NotificationsScreen() {
                     <View style={tw`p-4 flex-row items-start`}>
                       <PressableScale
                         pressedScale={0.92}
+                        accessibilityRole="button"
                         onPress={(e) => {
                           e.stopPropagation?.();
                           openActorProfile(item);
@@ -569,7 +594,7 @@ export default function NotificationsScreen() {
                         >
                           <Ionicons name={meta.icon} size={12} color={meta.tint} />
                         </View>
-                        {item.unread ? (
+                        {rowUnread ? (
                           <View
                             style={tw`absolute -top-0.5 -left-0.5 w-2.5 h-2.5 rounded-full bg-energy-600 border-2 border-card`}
                           />
@@ -589,9 +614,9 @@ export default function NotificationsScreen() {
                         </View>
                         {/* Unread = bold title + dot on the avatar (not colour alone). */}
                         <Text
-                          style={tw`text-body ${item.unread ? 'font-bold' : 'font-medium'} text-ink leading-5`}
+                          style={tw`text-body ${rowUnread ? 'font-bold' : 'font-medium'} text-ink leading-5`}
                         >
-                          {item.title}
+                          {row.title}
                         </Text>
                         {item.body ? (
                           <Text
@@ -670,6 +695,8 @@ export default function NotificationsScreen() {
                                 <PressableScale
                                   onPress={() => void onRespondRequest(item, 'accepted')}
                                   disabled={busyId === item.id}
+                                  accessibilityRole="button"
+                                  accessibilityState={{ disabled: busyId === item.id }}
                                   style={tw`flex-1 py-3 rounded-control bg-emerald-600 items-center flex-row justify-center gap-1.5 ${
                                     busyId === item.id ? 'opacity-60' : ''
                                   }`}
@@ -680,6 +707,8 @@ export default function NotificationsScreen() {
                                 <PressableScale
                                   onPress={() => void onRespondRequest(item, 'declined')}
                                   disabled={busyId === item.id}
+                                  accessibilityRole="button"
+                                  accessibilityState={{ disabled: busyId === item.id }}
                                   style={tw`px-4 py-3 rounded-control bg-card border border-line items-center`}
                                 >
                                   <Text style={tw`text-ink-2 font-semibold text-sm`}>

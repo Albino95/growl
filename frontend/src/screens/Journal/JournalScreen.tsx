@@ -8,6 +8,7 @@ import {
   ScrollView,
   Animated,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,7 +48,13 @@ import {
   promptForDay,
 } from '../../components/journal/journalMeta';
 import {
+  matchesJournalQuery,
+  mergeEntriesById,
+  shouldSearchServer,
+} from '../../components/journal/journalSearch';
+import {
   getCircleJournalEntries,
+  getJournalEntries,
   getJournalReflections,
   type CircleJournalEntry,
   type JournalReflection,
@@ -64,6 +71,7 @@ import { useAppDispatch, useAppSelector, useAuth } from '../../store/hooks';
 import CATEGORIES from '../../data/categories';
 import {
   fetchJournalEntries,
+  fetchMoreJournalEntries,
   addJournalEntry,
   editJournalEntry,
   removeJournalEntry,
@@ -257,7 +265,9 @@ export default function JournalScreen() {
   const { user } = useAuth();
   const route = useRoute<RouteProp<IndividualTabsParamList, 'Journal'>>();
   const navigation = useNavigation<BottomTabNavigationProp<IndividualTabsParamList, 'Journal'>>();
-  const { entries, isLoading, isSaving, error } = useAppSelector((s) => s.journal);
+  const { entries, isLoading, isSaving, error, hasMore, isLoadingMore } = useAppSelector(
+    (s) => s.journal
+  );
 
   const [mode, setMode] = useState<JournalMode>('pages');
   const [viewTab, setViewTab] = useState<ViewTab>('today');
@@ -398,8 +408,34 @@ export default function JournalScreen() {
     [entries, todayKey]
   );
 
+  // Older pages not loaded yet → also ask the server (debounced) so search covers everything.
+  const [serverHits, setServerHits] = useState<{ q: string; entries: JournalEntry[] } | null>(null);
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!shouldSearchServer(q, hasMore)) {
+      setServerHits(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      getJournalEntries({ scope: 'mine', q, limit: 100 })
+        .then((res) => {
+          if (!cancelled) setServerHits({ q, entries: res.data?.entries ?? [] });
+        })
+        .catch(() => {
+          /* local results still show */
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [searchQuery, hasMore]);
+
   const filteredEntries = useMemo(() => {
-    let list = entries;
+    const q = searchQuery.trim();
+    let list =
+      q && serverHits && serverHits.q === q ? mergeEntriesById(entries, serverHits.entries) : entries;
     if (visibility === 'private') {
       list = list.filter((e) => !(e.isPublic ?? e.is_public));
     } else if (visibility === 'shared') {
@@ -408,15 +444,9 @@ export default function JournalScreen() {
     if (focusDateKey) {
       list = list.filter((e) => dateKeyFromIso(e.created_at) === focusDateKey);
     }
-    const q = searchQuery.trim().toLowerCase();
     if (!q) return list;
-    return list.filter(
-      (e) =>
-        e.content.toLowerCase().includes(q) ||
-        e.tags.some((t) => t.toLowerCase().includes(q)) ||
-        (e.mood && e.mood.toLowerCase().includes(q))
-    );
-  }, [entries, visibility, searchQuery, focusDateKey]);
+    return list.filter((e) => matchesJournalQuery(e, q));
+  }, [entries, visibility, searchQuery, focusDateKey, serverHits]);
 
   const sections: DateSection[] = useMemo(() => {
     const grouped = new Map<string, JournalEntry[]>();
@@ -1099,6 +1129,20 @@ export default function JournalScreen() {
             renderItem={({ item }) => (
               <EntryCard entry={item} onMenu={setMenuEntry} onShare={shareOwnEntry} />
             )}
+            // Older pages load as you scroll (only for the unfiltered timeline).
+            onEndReachedThreshold={0.5}
+            onEndReached={() => {
+              if (hasMore && !searchQuery.trim() && !focusDateKey) {
+                void dispatch(fetchMoreJournalEntries());
+              }
+            }}
+            ListFooterComponent={
+              isLoadingMore ? (
+                <View style={tw`py-4 items-center`} accessibilityLabel="Loading older entries">
+                  <ActivityIndicator color={theme.colors.ink3} />
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
               isLoading ? (
                 <SkeletonList variant="journal" count={4} />
@@ -1131,10 +1175,11 @@ export default function JournalScreen() {
       <JournalComposeModal
         visible={composeOpen}
         isSaving={isSaving}
-        initialPrompt={todayPrompt}
+        initialPrompt={composeDraft?.prompt || todayPrompt}
         preferredPath={composeDraft?.path ?? userPath}
         initialMood={composeDraft?.mood ?? null}
         initialContent={composeDraft?.intention ?? null}
+        initialPublic={!!composeDraft?.share}
         editingEntry={editingEntry}
         onClose={() => {
           feedback.close();

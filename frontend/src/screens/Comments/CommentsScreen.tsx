@@ -35,6 +35,8 @@ import { haptic } from '../../theme/haptics';
 import RichText from '../../components/text/RichText';
 import MentionSuggestions from '../../components/mentions/MentionSuggestions';
 import { useMentionAutocomplete } from '../../components/mentions/useMentionAutocomplete';
+import EmptyState from '../../components/ui/EmptyState';
+import { idsRemovedWith, threadComments, type ThreadedRow } from './commentThreads';
 
 function formatCommentTime(iso: string): string {
   const date = new Date(iso);
@@ -92,9 +94,11 @@ export default function CommentsScreen({
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Top-level comment the composer replies to (one level), or null. */
+  const [replyTo, setReplyTo] = useState<{ id: string; username: string } | null>(null);
   const { user } = useAuth();
   const navigation = useNavigation();
-  const listRef = useRef<FlatList<CommentRow>>(null);
+  const listRef = useRef<FlatList<ThreadedRow<CommentRow>>>(null);
   const inputRef = useRef<TextInput | null>(null);
   const mention = useMentionAutocomplete(commentText, setCommentText, inputRef);
   /** Temp ids whose send is in flight — guards double retries. */
@@ -130,6 +134,7 @@ export default function CommentsScreen({
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const threaded = React.useMemo(() => threadComments(comments), [comments]);
   // Post author can moderate their thread; fall back to username match when the
   // caller didn't pass the author id.
   const isPostAuthor = postUserId
@@ -184,7 +189,7 @@ export default function CommentsScreen({
    * Optimistic send: a `tmp-…` row appears at once (dimmed), then is swapped for
    * the server row. On failure the row stays, marked "Couldn't send · Tap to retry".
    */
-  const submitComment = async (text: string, retryId?: string) => {
+  const submitComment = async (text: string, retryId?: string, parentId?: string | null) => {
     if (!text) return;
     // The temp id doubles as the Idempotency-Key (valid: [A-Za-z0-9_\-:.]{8,128}),
     // so "Tap to retry" re-sends the same key and can never post twice.
@@ -196,12 +201,14 @@ export default function CommentsScreen({
         prev.map((c) => (c.id === retryId ? { ...c, pending: true, failed: false } : c))
       );
     } else {
+      // Replies land inside their thread, so don't jump to the bottom for them.
       const temp: CommentRow = {
         id: tempId,
         post_id: postId,
         user_id: user?.id ?? '',
         content: text,
         created_at: new Date().toISOString(),
+        parent_id: parentId ?? null,
         user: {
           id: user?.id ?? '',
           username: user?.username,
@@ -210,11 +217,14 @@ export default function CommentsScreen({
         pending: true,
       };
       setComments((prev) => mergeComments(prev, [temp]));
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      if (!parentId) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     }
     let created: FeedComment;
     try {
-      created = await createFeedPostComment(postId, text, { idempotencyKey: tempId });
+      created = await createFeedPostComment(postId, text, {
+        idempotencyKey: tempId,
+        parentId: parentId ?? null,
+      });
     } catch {
       sendingIdsRef.current.delete(tempId);
       feedback.error();
@@ -238,16 +248,28 @@ export default function CommentsScreen({
 
   const deleteComment = async (comment: FeedComment) => {
     if (deletingId) return;
-    const ok = await confirmAsync('Delete comment?', 'This removes the comment for everyone.', {
+    const hasReplies = comments.some((c) => c.parent_id === comment.id);
+    const ok = await confirmAsync(
+      'Delete comment?',
+      hasReplies
+        ? 'This removes the comment and its replies for everyone.'
+        : 'This removes the comment for everyone.',
+      {
       confirmLabel: 'Delete',
       destructive: true,
-    });
+      }
+    );
     if (!ok) return;
     setDeletingId(comment.id);
     try {
       await deleteFeedPostComment(postId, comment.id);
       countDirtyRef.current = true;
-      setComments((prev) => prev.filter((c) => c.id !== comment.id));
+      // Replies are removed with their parent (server does the same).
+      setComments((prev) => {
+        const gone = idsRemovedWith(prev, comment.id);
+        return prev.filter((c) => !gone.has(c.id));
+      });
+      if (replyTo?.id === comment.id) setReplyTo(null);
     } catch (e) {
       void alertMessage('Comments', e instanceof Error ? e.message : 'Could not delete comment.');
     } finally {
@@ -261,13 +283,21 @@ export default function CommentsScreen({
     feedback.send();
     // Clear instantly — the text lives on in the optimistic row (and its retry).
     setCommentText('');
-    void submitComment(text);
+    const parentId = replyTo?.id ?? null;
+    setReplyTo(null);
+    void submitComment(text, undefined, parentId);
   };
 
   const retrySendComment = (row: CommentRow) => {
     if (!row.failed) return;
     haptic('tapLight');
-    void submitComment(row.content, row.id);
+    void submitComment(row.content, row.id, row.parent_id ?? null);
+  };
+
+  const startReply = (row: ThreadedRow<CommentRow>) => {
+    haptic('selection');
+    setReplyTo({ id: row.threadId, username: row.comment.user?.username || 'Member' });
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   return (
@@ -317,6 +347,8 @@ export default function CommentsScreen({
                 <Text style={tw`ml-2 flex-1 text-sm text-red-800`}>{loadError}</Text>
                 <PressableScale
                   onPress={() => void loadComments()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading comments"
                   style={tw`ml-2 px-3 py-1.5 rounded-chip bg-[#DC2626]`}
                 >
                   <Text style={tw`text-xs font-semibold text-white`}>Retry</Text>
@@ -332,8 +364,8 @@ export default function CommentsScreen({
           ) : (
             <FlatList
               ref={listRef}
-              data={comments}
-              keyExtractor={(item) => item.id}
+              data={threaded}
+              keyExtractor={(row) => row.comment.id}
               contentContainerStyle={tw`px-gutter py-3 pb-6`}
               {...verticalScrollProps}
               {...feedListPerformanceProps}
@@ -365,18 +397,25 @@ export default function CommentsScreen({
                   </PressableScale>
                 ) : null
               }
-              renderItem={({ item }) => {
+              renderItem={({ item: row }) => {
+                const item = row.comment;
+                const isReply = row.depth === 1;
                 const uname = item.user?.username || 'Member';
                 const local = isLocalComment(item);
                 const canDelete = !local && ((!!user?.id && item.user_id === user.id) || isPostAuthor);
                 const avatarUri = resolveAvatarUri(item.user_id, uname, item.user?.avatar ?? '');
                 return (
                   <View
-                    style={[tw`flex-row items-start mb-4`, item.pending ? { opacity: 0.6 } : null]}
+                    style={[
+                      tw`flex-row items-start ${isReply ? 'ml-11 mb-3' : 'mb-4'}`,
+                      item.pending ? { opacity: 0.6 } : null,
+                    ]}
                     accessibilityState={{ busy: !!item.pending }}
                   >
                     <PressableScale
                       pressedScale={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${uname} profile`}
                       onPress={() => {
                         if (item.user_id !== user?.id) {
                           const rootNavigation = navigation.getParent() || navigation;
@@ -386,13 +425,16 @@ export default function CommentsScreen({
                     >
                       <Image
                         source={avatarSource(avatarUri)}
-                        style={tw`w-8 h-8 rounded-full mr-3 bg-stone-200`}
+                        style={tw`${isReply ? 'w-6 h-6 mr-2' : 'w-8 h-8 mr-3'} rounded-full bg-raised`}
                         contentFit="cover"
+                        accessibilityIgnoresInvertColors
                       />
                     </PressableScale>
                     <View style={tw`flex-1`}>
                       <View style={tw`bg-card border border-line/80 rounded-card rounded-tl-sm px-3 py-2 mb-1`}>
                         <PressableScale
+                          accessibilityRole="link"
+                          accessibilityLabel={uname}
                           onPress={() => {
                             if (item.user_id !== user?.id) {
                               const rootNavigation = navigation.getParent() || navigation;
@@ -422,6 +464,17 @@ export default function CommentsScreen({
                         <Text style={tw`text-xs text-ink-3`}>
                           {item.pending ? 'Sending…' : formatCommentTime(item.created_at)}
                         </Text>
+                        {!local && user?.id ? (
+                          <PressableScale
+                            onPress={() => startReply(row)}
+                            style={tw`ml-3`}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Reply to ${uname}`}
+                          >
+                            <Text style={tw`text-xs font-semibold text-ink-2`}>Reply</Text>
+                          </PressableScale>
+                        ) : null}
                         {canDelete ? (
                           <PressableScale
                             onPress={() => void deleteComment(item)}
@@ -445,12 +498,13 @@ export default function CommentsScreen({
                 );
               }}
               ListEmptyComponent={
-                <View style={tw`items-center justify-center py-12`}>
-                  <Ionicons name="chatbubbles-outline" size={64} color={theme.colors.iconMuted} />
-                  <Text style={tw`text-ink-3 mt-4 text-center`}>
-                    No comments yet. Be the first to comment!
-                  </Text>
-                </View>
+                loadError ? null : (
+                  <EmptyState
+                    icon="chatbubbles-outline"
+                    title="No comments yet"
+                    description="Say something kind — you could be the first."
+                  />
+                )
               }
             />
           )}
@@ -459,12 +513,28 @@ export default function CommentsScreen({
             {mention.visible ? (
               <MentionSuggestions items={mention.items} loading={mention.loading} onPick={mention.pick} />
             ) : null}
+            {replyTo ? (
+              <View style={tw`flex-row items-center mb-2 px-1`}>
+                <Ionicons name="return-down-forward" size={14} color={theme.colors.ink3} />
+                <Text style={tw`flex-1 ml-1.5 text-xs text-ink-2`} numberOfLines={1}>
+                  Replying to <Text style={tw`font-semibold text-ink`}>{replyTo.username}</Text>
+                </Text>
+                <PressableScale
+                  onPress={() => setReplyTo(null)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel reply"
+                >
+                  <Ionicons name="close-circle" size={18} color={theme.colors.iconMuted} />
+                </PressableScale>
+              </View>
+            ) : null}
             <View style={tw`flex-row items-end`}>
               <View style={tw`flex-1 bg-raised rounded-chip px-4 py-2 max-h-24 mr-2`}>
                 <TextInput
                   ref={inputRef}
                   {...formInputAccessoryProps({ multiline: true })}
-                  placeholder="Add a comment..."
+                  placeholder={replyTo ? `Reply to ${replyTo.username}…` : 'Add a comment…'}
                   value={commentText}
                   onChangeText={setCommentText}
                   onSelectionChange={mention.onSelectionChange}

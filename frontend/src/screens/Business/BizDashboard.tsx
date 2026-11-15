@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,13 +18,22 @@ import {
   markNotificationReadLocal,
 } from '../../store/slices/businessSlice';
 import {
+  getBusinessOnboarding,
   markBusinessNotificationRead,
   orderBusinessTotal,
   orderCurrency,
 } from '../../services/api/business';
+import {
+  kpiDelta,
+  notificationTarget,
+  type OnboardingAction,
+  type OnboardingStatus,
+} from '../../services/api/businessHelpers';
+import BusinessSetupCard from '../../components/business/BusinessSetupCard';
+import { getLocalItem, setLocalItem } from '../../services/storage/localStore';
 import MarketplaceCheckoutBanner from '../../components/business/MarketplaceCheckoutBanner';
 import { formatCurrency } from '../../utils/money';
-import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { useAppDispatch, useAppSelector, useAuth } from '../../store/hooks';
 import { verticalScrollProps, TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
 import BusinessScreen from '../../components/business/BusinessScreen';
 import KpiCard from '../../components/business/KpiCard';
@@ -58,11 +67,14 @@ function SectionHeading({
 }) {
   return (
     <View style={tw`flex-row items-center justify-between mb-2`}>
-      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+      <Text
+        style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}
+        accessibilityRole="header"
+      >
         {title}
       </Text>
       {action && onAction ? (
-        <PressableScale onPress={onAction}>
+        <PressableScale onPress={onAction} accessibilityRole="button" hitSlop={8}>
           <Text style={tw`text-sm font-semibold text-emerald-700`}>{action}</Text>
         </PressableScale>
       ) : null}
@@ -86,28 +98,71 @@ export default function BizDashboard() {
   const openMessages = () => stackNav.navigate('BusinessMessages');
   const openCreatePost = () => stackNav.navigate('BusinessCreatePost');
 
+  const { user } = useAuth();
+  const setupHiddenKey = `biz-setup-hidden:${user?.id || 'anon'}`;
+  const [setup, setSetup] = useState<OnboardingStatus | null>(null);
+  const [setupHidden, setSetupHidden] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    void getLocalItem(setupHiddenKey).then((v) => {
+      if (alive) setSetupHidden(v === '1');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [setupHiddenKey]);
+
+  const loadSetup = useCallback(async () => {
+    try {
+      setSetup(await getBusinessOnboarding());
+    } catch {
+      // Older server or offline: the checklist simply doesn't show.
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void dispatch(fetchNotifications());
-    }, [dispatch])
+      // Steps tick off as the seller works elsewhere (catalog, settings, posting).
+      void loadSetup();
+    }, [dispatch, loadSetup])
   );
+
+  const hideSetup = useCallback(() => {
+    setSetupHidden(true);
+    void setLocalItem(setupHiddenKey, '1');
+  }, [setupHiddenKey]);
+
+  const runSetupAction = (action: OnboardingAction) => {
+    if (action === 'settings') openSettings();
+    else if (action === 'add_product') navigation.navigate('Catalog', { openForm: true });
+    else if (action === 'catalog') {
+      dispatch(setCatalogFilter('all'));
+      navigation.navigate('Catalog');
+    } else if (action === 'post') openCreatePost();
+  };
 
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
   const pull = useRefresh(() =>
-    Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap()])
+    Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap(), loadSetup()])
   );
 
   const handleNotificationPress = useCallback(
-    (id: string, refType?: string | null, refId?: string | null) => {
+    (id: string, refType?: string | null, refId?: string | null, type?: string | null) => {
       dispatch(markNotificationReadLocal(id));
       void markBusinessNotificationRead(id).catch(() => {});
-      if (refType === 'order' && refId) {
-        stackNav.navigate('BusinessOrderDetail', { orderId: refId });
+      const target = notificationTarget(refType, refId, type);
+      if (target?.kind === 'order') {
+        stackNav.navigate('BusinessOrderDetail', { orderId: target.id });
+      } else if (target?.kind === 'catalog') {
+        dispatch(setCatalogFilter(target.filter));
+        navigation.navigate('Catalog');
       }
     },
-    [dispatch, stackNav]
+    [dispatch, stackNav, navigation]
   );
 
   const inboxItems: ActionInboxItem[] = useMemo(() => {
@@ -121,9 +176,9 @@ export default function BizDashboard() {
           id: `notif-${n.id}`,
           title: n.title,
           subtitle: n.body || undefined,
-          icon: 'notifications-outline',
-          tone: 'blue',
-          onPress: () => handleNotificationPress(n.id, n.ref_type, n.ref_id),
+          icon: n.ref_type === 'product' ? 'cube-outline' : 'notifications-outline',
+          tone: n.type === 'out_of_stock' || n.type === 'low_stock' ? 'red' : 'blue',
+          onPress: () => handleNotificationPress(n.id, n.ref_type, n.ref_id, n.type),
         });
       });
 
@@ -171,6 +226,19 @@ export default function BizDashboard() {
   const recent = (kpis?.recent_orders || []).slice(0, 5);
   const net = kpis?.net_revenue ?? kpis?.total_revenue ?? 0;
   const aov = kpis?.aov ?? 0;
+  const revenueDelta = kpiDelta(Number(net), kpis?.deltas?.previous_net_revenue, kpis?.deltas?.net_revenue_pct);
+  const ordersDelta = kpiDelta(
+    Number(kpis?.total_orders ?? 0),
+    kpis?.deltas?.previous_orders,
+    kpis?.deltas?.orders_pct
+  );
+  // A brand-new store: zeros everywhere teach nothing, so the metrics explain themselves.
+  const noSalesYet =
+    !!kpis &&
+    (kpis.total_orders ?? 0) === 0 &&
+    (kpis.deltas?.previous_orders ?? 0) === 0 &&
+    (kpis.pending_orders ?? 0) === 0;
+  const showSetup = !!setup && !setup.complete && !setupHidden;
 
   const notificationBadge =
     unreadCount > 0 ? (
@@ -207,7 +275,7 @@ export default function BizDashboard() {
     },
     {
       label: 'Partners',
-      icon: 'people-outline' as const,
+      icon: 'people-circle-outline' as const,
       onPress: () => navigation.navigate('Grow', { segment: 'partners' }),
     },
     {
@@ -254,6 +322,12 @@ export default function BizDashboard() {
           <PeriodToggle value={period} onChange={setPeriod} />
         </View>
 
+        {showSetup && setup ? (
+          <View style={tw`px-gutter-wide mb-6`}>
+            <BusinessSetupCard status={setup} onAction={runSetupAction} onHide={hideSetup} />
+          </View>
+        ) : null}
+
         <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Action inbox" />
           {error ? (
@@ -278,29 +352,30 @@ export default function BizDashboard() {
               <KpiCard
                 label="Net revenue"
                 value={formatCurrency(Number(net))}
-                change={`${kpis?.deltas?.net_revenue_pct ?? 0}%`}
-                trend={(kpis?.deltas?.net_revenue_pct ?? 0) >= 0 ? 'up' : 'down'}
+                change={revenueDelta.label}
+                changeA11y={revenueDelta.a11y}
+                trend={revenueDelta.trend}
                 icon="cash-outline"
                 onPress={openAnalytics}
               />
               <KpiCard
                 label="Orders"
                 value={String(kpis?.total_orders ?? 0)}
-                change={`${kpis?.deltas?.orders_pct ?? 0}%`}
-                trend={(kpis?.deltas?.orders_pct ?? 0) >= 0 ? 'up' : 'down'}
+                change={ordersDelta.label}
+                changeA11y={ordersDelta.a11y}
+                trend={ordersDelta.trend}
                 icon="receipt-outline"
                 onPress={() => navigation.navigate('Orders')}
               />
               <KpiCard
-                label="AOV"
-                value={formatCurrency(Number(aov))}
-                change="avg"
+                label="Avg. order value"
+                value={aov > 0 ? formatCurrency(Number(aov)) : '—'}
                 trend="neutral"
                 icon="cart-outline"
                 onPress={openAnalytics}
               />
               <KpiCard
-                label="To fulfill"
+                label="To fulfill (all open)"
                 value={String(kpis?.pending_orders ?? 0)}
                 change="live"
                 trend={(kpis?.pending_orders ?? 0) > 0 ? 'down' : 'neutral'}
@@ -312,6 +387,13 @@ export default function BizDashboard() {
               />
             </View>
           )}
+          {!loading && noSalesYet ? (
+            <Text style={tw`text-footnote text-ink-3 mt-3 leading-5`}>
+              {(kpis?.total_products ?? 0) === 0
+                ? 'These fill in once you have products and orders. Start by adding a product — customers can already browse your catalog.'
+                : 'No orders yet in this period. Revenue counts delivered and completed orders; growth compares with the period before.'}
+            </Text>
+          ) : null}
         </View>
 
         <View style={tw`px-gutter-wide mb-6`}>
@@ -325,7 +407,9 @@ export default function BizDashboard() {
         <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Order rhythm" action="Analytics" onAction={openAnalytics} />
           {timeseries.length === 0 ? (
-            <Text style={tw`text-sm text-ink-3`}>No order volume in this period yet.</Text>
+            <Text style={tw`text-sm text-ink-3`}>
+              No orders in this period yet — each day's orders show here as a bar.
+            </Text>
           ) : (
             <View style={tw`flex-row items-end justify-between h-28`}>
               {timeseries.map((p) => {
@@ -333,7 +417,11 @@ export default function BizDashboard() {
                 const label = (p.day || '').slice(5) || p.day;
                 return (
                   <View key={p.day} style={tw`flex-1 items-center mx-0.5`}>
-                    <View style={[tw`w-full rounded-t-md bg-emerald-600/80`, { height: h }]} />
+                    <View
+                      style={[tw`w-full rounded-t-md bg-emerald-600/80`, { height: h }]}
+                      accessible
+                      accessibilityLabel={`${p.day}: ${p.orders || 0} order${p.orders === 1 ? '' : 's'}`}
+                    />
                     <Text style={tw`text-caption text-ink-3 mt-1`} numberOfLines={1}>
                       {label}
                     </Text>
@@ -390,12 +478,14 @@ export default function BizDashboard() {
                 key={action.label}
                 onPress={action.onPress}
                 style={tw`w-1/3 px-1 mb-2`}
+                accessibilityRole="button"
+                accessibilityLabel={action.label}
               >
                 <View style={tw`items-center py-3`}>
                   <View style={tw`w-10 h-10 rounded-full bg-raised items-center justify-center mb-1.5`}>
                     <Ionicons name={action.icon} size={20} color={theme.colors.brand} />
                   </View>
-                  <Text style={tw`text-xs font-semibold text-stone-800 text-center`} numberOfLines={1}>
+                  <Text style={tw`text-xs font-semibold text-ink-2 text-center`} numberOfLines={1}>
                     {action.label}
                   </Text>
                 </View>

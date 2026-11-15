@@ -53,6 +53,14 @@ export function isEvening(now: Date = new Date()): boolean {
   return now.getHours() >= 18;
 }
 
+/** Journal prompt for closing the day after the evening follow-up. */
+export function eveningPrompt(intention: string): string {
+  const t = String(intention || '').trim();
+  if (!t) return 'Closing the day — what’s one thing worth keeping?';
+  const short = t.length > 60 ? `${t.slice(0, 59).trimEnd()}…` : t;
+  return `Closing the day — how did “${short}” go?`;
+}
+
 export function streakLabel(n: number): string {
   return `${n}-day streak`;
 }

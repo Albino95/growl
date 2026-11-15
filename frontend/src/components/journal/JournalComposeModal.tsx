@@ -66,6 +66,8 @@ type Props = {
   /** Prefill from the Today check-in ("Write more"). Applied each time the modal opens. */
   initialMood?: JournalMood | null;
   initialContent?: string | null;
+  /** Start as "Shared with your circle" (Sunday circle recap: "share one moment"). */
+  initialPublic?: boolean;
   /** Edit mode: prefill from this entry and save as an update (no draft autosave). */
   editingEntry?: JournalEntry | null;
   onClose: () => void;
@@ -79,6 +81,7 @@ export default function JournalComposeModal({
   preferredPath,
   initialMood,
   initialContent,
+  initialPublic = false,
   editingEntry,
   onClose,
   onSave,
@@ -136,7 +139,7 @@ export default function JournalComposeModal({
     setContent(initialContent ?? '');
     setMood(initialMood ?? null);
     setPath(preferredPath ?? null);
-    setIsPublic(false);
+    setIsPublic(initialPublic);
     setShowAllMoods(!!initialMood && !PRIMARY_MOODS.includes(initialMood));
 
     // A prefill from the Today check-in wins; otherwise pick up where they left off.
@@ -163,7 +166,7 @@ export default function JournalComposeModal({
     return () => {
       cancelled = true;
     };
-  }, [visible, preferredPath, initialMood, initialContent, editingEntry, userId, cancelAutosave]);
+  }, [visible, preferredPath, initialMood, initialContent, initialPublic, editingEntry, userId, cancelAutosave]);
 
   // --- draft autosave (new entries only) ------------------------------------
   const latestDraft = useRef<JournalDraft | null>(null);

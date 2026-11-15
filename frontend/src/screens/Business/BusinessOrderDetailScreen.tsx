@@ -13,8 +13,12 @@ import BrandLoadingScreen from '../../components/common/BrandLoadingScreen';
 import FormTextInput from '../../components/ui/FormTextInput';
 import { KeyboardDoneAccessory } from '../../components/ui/KeyboardDoneAccessory';
 import PrimaryButton from '../../components/ui/PrimaryButton';
+import ErrorState from '../../components/ui/ErrorState';
+import { haptic } from '../../theme/haptics';
+import { contactCopy, type ContactReason } from '../../services/api/businessHelpers';
 import {
   getBusinessOrderDetail,
+  getOrderContact,
   updateOrderFulfillment,
   requestOrderRefund,
   isOrderAwaitingPayment,
@@ -74,10 +78,13 @@ export default function BusinessOrderDetailScreen() {
   const [labelUrl, setLabelUrl] = useState('');
   const [refundReason, setRefundReason] = useState('');
   const [defaultShippingNote, setDefaultShippingNote] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [contactReason, setContactReason] = useState<ContactReason | null>(null);
 
   const load = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const res = await getBusinessOrderDetail(orderId);
       if (res.success && res.data) {
         setOrder(res.data);
@@ -87,10 +94,15 @@ export default function BusinessOrderDetailScreen() {
         setLabelUrl(meta.label_url || '');
       }
     } catch (e: unknown) {
-      alertMessage('Error', e instanceof Error ? e.message : 'Could not load order');
+      setLoadError(e instanceof Error ? e.message : 'Could not load order');
     } finally {
       setLoading(false);
     }
+    // Know up front whether the buyer can be messaged (blocks, their DM privacy setting),
+    // instead of failing after the tap. Older servers: fall back to trying.
+    getOrderContact(orderId)
+      .then((c) => setContactReason(c.reason))
+      .catch(() => setContactReason(null));
   };
 
   useEffect(() => {
@@ -115,7 +127,7 @@ export default function BusinessOrderDetailScreen() {
       });
       if (res.ok) {
         setOrder({ ...order, metadata: { ...safeParseJson(order.metadata, {}), ...res.metadata } });
-        toast.success('Fulfillment saved');
+        toast.success('Shipping details saved');
       }
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Could not save fulfillment');
@@ -132,7 +144,7 @@ export default function BusinessOrderDetailScreen() {
     if (next === 'shipped' && !trackingNumber.trim()) {
       const shipAnyway = await confirmAsync(
         'Ship without tracking?',
-        'No tracking number added yet. Mark as shipped anyway? You can add tracking later in Fulfillment.',
+        'No tracking number added yet. Mark as shipped anyway? You can add tracking later under Shipping details.',
         { confirmLabel: 'Ship anyway', cancelLabel: 'Add tracking first' }
       );
       if (!shipAnyway) return;
@@ -156,9 +168,39 @@ export default function BusinessOrderDetailScreen() {
         setOrder({ ...order, ...res.data, items: res.data.items ?? order.items });
         dispatch(patchLocalOrderStatus({ orderId: order.id, status: res.data.status }));
         void dispatch(fetchBusinessDashboard({ force: true, silent: true }));
+        haptic('success');
+        toast.success(`Marked ${next}`);
       }
     } catch (e: unknown) {
       alertMessage('Error', e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelOrder = async () => {
+    if (!order) return;
+    const paid = !isOrderAwaitingPayment(order);
+    const ok = await confirmAsync(
+      'Cancel this order?',
+      paid
+        ? 'The items go back into stock. Let the customer know why — you can message them from this screen.'
+        : 'This order was never paid, so nothing needs refunding.',
+      { confirmLabel: 'Cancel order', cancelLabel: 'Keep order', destructive: true }
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await updateOrderStatus(order.id, 'cancelled');
+      if (res.success && res.data) {
+        setOrder({ ...order, ...res.data, items: res.data.items ?? order.items });
+        dispatch(patchLocalOrderStatus({ orderId: order.id, status: res.data.status }));
+        void dispatch(fetchBusinessDashboard({ force: true, silent: true }));
+        haptic('destructive');
+        toast.success('Order cancelled');
+      }
+    } catch (e: unknown) {
+      alertMessage('Couldn’t cancel', e instanceof Error ? e.message : 'Try again in a moment.');
     } finally {
       setBusy(false);
     }
@@ -194,6 +236,11 @@ export default function BusinessOrderDetailScreen() {
 
   const messageCustomer = async () => {
     const buyerId = order?.user_id;
+    const blockedCopy = contactCopy(contactReason);
+    if (blockedCopy) {
+      alertMessage('Can’t message', blockedCopy);
+      return;
+    }
     if (!buyerId || buyerId === user?.id) {
       alertMessage('Unavailable', 'Customer messaging is not available for this order.');
       return;
@@ -210,7 +257,7 @@ export default function BusinessOrderDetailScreen() {
         'Could not open chat',
         e instanceof Error
           ? e.message
-          : 'You can only message customers who are friends on Grow!.'
+          : 'Messaging isn’t available for this customer.'
       );
     } finally {
       setBusy(false);
@@ -226,9 +273,20 @@ export default function BusinessOrderDetailScreen() {
   }
 
   if (!order) {
+    const notFound = !loadError || /not found/i.test(loadError);
     return (
       <SafeAreaView style={tw`flex-1 bg-page items-center justify-center px-gutter`}>
-        <Text style={tw`text-ink-2`}>Order not found.</Text>
+        <ErrorState
+          icon={notFound ? 'receipt-outline' : 'cloud-offline-outline'}
+          title={notFound ? 'Order not found' : 'Couldn’t load this order'}
+          message={
+            notFound
+              ? 'It may belong to another seller or have been removed.'
+              : 'Check your connection and try again.'
+          }
+          onRetry={notFound ? () => navigation.goBack() : () => void load()}
+          retryLabel={notFound ? 'Back to orders' : 'Try again'}
+        />
       </SafeAreaView>
     );
   }
@@ -240,6 +298,14 @@ export default function BusinessOrderDetailScreen() {
   const next = awaitingPayment ? null : NEXT[order.status || 'pending'];
   const currency = orderCurrency(order);
   const refundPending = Boolean(metadata.refund_requested_at);
+  const cancelled = order.status === 'cancelled';
+  const canCancel = order.status === 'pending' || order.status === 'processing';
+  const contactNote = contactCopy(contactReason);
+  const placed = new Date(order.created_at);
+  const placedLabel = Number.isNaN(placed.getTime())
+    ? null
+    : placed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const itemCount = (order.items || []).reduce((n, it) => n + Number(it.quantity || 0), 0);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['bottom']}>
@@ -252,7 +318,9 @@ export default function BusinessOrderDetailScreen() {
             <OrderStatusPill status={order.status || 'pending'} awaitingPayment={awaitingPayment} />
           </View>
           <Text style={tw`text-sm text-ink-3`}>
-            Payment: {metadata.payment_method || 'Card'}
+            {placedLabel ? `Placed ${placedLabel}` : 'Placed recently'} · {itemCount} item
+            {itemCount === 1 ? '' : 's'}
+            {metadata.payment_method ? ` · ${metadata.payment_method}` : ''}
           </Text>
           <Text style={tw`text-2xl font-bold text-emerald-700 mt-2`}>
             {formatCurrency(orderBusinessTotal(order), currency)}
@@ -268,15 +336,31 @@ export default function BusinessOrderDetailScreen() {
           ) : null}
         </View>
 
+        {cancelled ? (
+          <View style={tw`bg-card rounded-card p-4 border border-line mb-3 flex-row items-center`}>
+            <Ionicons name="close-circle" size={22} color={theme.colors.danger} />
+            <Text style={tw`text-body text-ink ml-2 flex-1`}>
+              This order was cancelled. No further steps.
+            </Text>
+          </View>
+        ) : (
         <View style={tw`bg-card rounded-card p-4 border border-line mb-3`}>
-          <Text style={tw`text-base font-semibold text-ink mb-3`}>Status timeline</Text>
+          <Text style={tw`text-base font-semibold text-ink mb-3`} accessibilityRole="header">
+            Fulfilment steps
+          </Text>
           {TIMELINE.map((step, i) => {
             const done = statusIdx >= i || order.status === 'completed';
+            const current = statusIdx === i && order.status !== 'completed';
             return (
-              <View key={step} style={tw`flex-row items-center mb-2`}>
+              <View
+                key={step}
+                style={tw`flex-row items-center mb-2`}
+                accessible
+                accessibilityLabel={`${step}${done ? ', done' : ''}${current ? ', current step' : ''}`}
+              >
                 <View
                   style={tw`w-7 h-7 rounded-full items-center justify-center mr-3 ${
-                    done ? 'bg-emerald-600' : 'bg-stone-200'
+                    done ? 'bg-emerald-600' : 'bg-raised border border-line'
                   }`}
                 >
                   <Ionicons name={done ? 'checkmark' : 'ellipse'} size={14} color={done ? '#FFFFFF' : theme.colors.iconMuted} />
@@ -284,10 +368,14 @@ export default function BusinessOrderDetailScreen() {
                 <Text style={tw`capitalize font-medium ${done ? 'text-ink' : 'text-ink-3'}`}>
                   {step}
                 </Text>
+                {current ? (
+                  <Text style={tw`text-footnote text-ink-3 ml-2`}>· now</Text>
+                ) : null}
               </View>
             );
           })}
         </View>
+        )}
 
         <View style={tw`bg-card rounded-card p-4 border border-line mb-3`}>
           <Text style={tw`text-base font-semibold text-ink mb-2`}>Shipping</Text>
@@ -302,8 +390,14 @@ export default function BusinessOrderDetailScreen() {
           ) : null}
         </View>
 
+        {!cancelled && !awaitingPayment ? (
         <View style={tw`bg-card rounded-card p-4 border border-line mb-3`}>
-          <Text style={tw`text-base font-semibold text-ink mb-3`}>Fulfillment</Text>
+          <Text style={tw`text-base font-semibold text-ink mb-1`} accessibilityRole="header">
+            Shipping details
+          </Text>
+          <Text style={tw`text-footnote text-ink-3 mb-3`}>
+            Optional. Add tracking before marking as shipped so the customer can follow it.
+          </Text>
           <Text style={tw`text-sm text-ink-2 mb-1`}>Tracking number</Text>
           <FormTextInput
             value={trackingNumber}
@@ -328,12 +422,13 @@ export default function BusinessOrderDetailScreen() {
             style={tw`mb-3 bg-card rounded-control`}
           />
           <PrimaryButton
-            label="Save fulfillment"
+            label="Save shipping details"
             onPress={() => void saveFulfillment()}
             loading={busy}
             disabled={busy}
           />
         </View>
+        ) : null}
 
         {defaultShippingNote ? (
           <View style={tw`bg-emerald-50 rounded-card p-4 border border-emerald-100 mb-3`}>
@@ -381,6 +476,18 @@ export default function BusinessOrderDetailScreen() {
           />
         ) : null}
 
+        {canCancel ? (
+          <PressableScale
+            onPress={() => void cancelOrder()}
+            disabled={busy}
+            style={tw`py-3 items-center mb-3 ${busy ? 'opacity-50' : ''}`}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel this order"
+          >
+            <Text style={tw`text-red-600 font-semibold`}>Cancel order</Text>
+          </PressableScale>
+        ) : null}
+
         {!refundPending && !awaitingPayment && order.status !== 'cancelled' ? (
           <View style={tw`bg-card rounded-card p-4 border border-line mb-3`}>
             <Text style={tw`text-base font-semibold text-ink mb-2`}>Refund request</Text>
@@ -404,15 +511,21 @@ export default function BusinessOrderDetailScreen() {
         ) : null}
 
         <PressableScale
-          style={tw`bg-card border border-line rounded-control py-4 items-center flex-row justify-center mb-6 ${
-            busy ? 'opacity-50' : ''
-          }`}
-          disabled={busy}
+          style={tw`bg-card border border-line rounded-control py-4 items-center flex-row justify-center ${
+            contactNote ? 'mb-2' : 'mb-6'
+          } ${busy || contactNote ? 'opacity-50' : ''}`}
+          disabled={busy || !!contactNote}
           onPress={() => void messageCustomer()}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy || !!contactNote }}
+          accessibilityHint={contactNote || undefined}
         >
           <Ionicons name="chatbubble-outline" size={18} color={theme.colors.brand} style={tw`mr-2`} />
           <Text style={tw`text-emerald-700 font-bold`}>Message customer</Text>
         </PressableScale>
+        {contactNote ? (
+          <Text style={tw`text-footnote text-ink-3 text-center mb-6 px-4`}>{contactNote}</Text>
+        ) : null}
       </ScrollView>
       <KeyboardDoneAccessory />
     </SafeAreaView>

@@ -124,6 +124,13 @@ const feedSlice = createSlice({
       state.suggested = next.suggested;
       syncItems(state);
     },
+    /** Author deleted a post: drop it from every feed section. */
+    removeFeedPost: (state, action: PayloadAction<string>) => {
+      const id = action.payload;
+      state.following = state.following.filter((p) => p.id !== id);
+      state.suggested = state.suggested.filter((p) => p.id !== id);
+      syncItems(state);
+    },
     /** Keep like/comment counts and has_liked in sync with optimistic UI (SectionList reads Redux). */
     patchFeedPostEngagement: (
       state,
@@ -225,5 +232,6 @@ const feedSlice = createSlice({
   },
 });
 
-export const { clearFeed, prependFeedPost, patchFeedPostEngagement } = feedSlice.actions;
+export const { clearFeed, prependFeedPost, patchFeedPostEngagement, removeFeedPost } =
+  feedSlice.actions;
 export default feedSlice.reducer;
