@@ -64,6 +64,7 @@ import { spring } from '../../theme/motion';
 import PressableScale from '../../components/ui/PressableScale';
 import BadgeRow from '../../components/badges/BadgeRow';
 import LevelPill from '../../components/badges/LevelPill';
+import BuddyInviteButton from '../../components/buddies/BuddyInviteButton';
 import { getUserBadges, type GrowthLevel } from '../../services/api/growth';
 
 type Post = {
@@ -1057,6 +1058,12 @@ export default function PublicProfileScreen() {
                     </PressableScale>
                   ) : null}
                 </View>
+
+                <BuddyInviteButton
+                  userId={userId}
+                  isFriend={friendConnected}
+                  name={profileUser.username}
+                />
 
                 {endorseStatus?.pendingIncoming && endorseStatus.pendingIncomingRequestId ? (
                   <View

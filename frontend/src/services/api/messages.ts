@@ -39,6 +39,17 @@ export interface ChatMessage {
   created_at: string;
   is_own: boolean;
   reactions?: MessageReactions;
+  /** Unsent by its sender: the server sends no body; render "Message unsent". */
+  deleted?: boolean;
+}
+
+/** Shown in place of an unsent message (thread + inbox preview). */
+export const UNSENT_LABEL = 'Message unsent';
+
+/** Server placeholders for unsent messages carry no body/reactions; give them safe defaults. */
+function normalizeMessage(m: ChatMessage): ChatMessage {
+  if (!m || !m.deleted) return m;
+  return { ...m, body: '', reactions: { counts: {}, mine: null }, deleted: true };
 }
 
 export async function getConversations(): Promise<{
@@ -101,8 +112,25 @@ export async function getMessages(
     query.append('before_id', params.cursor.before_id);
   }
   const qs = query.toString();
-  return request(
-    `/messages/conversations/${encodeURIComponent(conversationId)}/messages${qs ? `?${qs}` : ''}`
+  const res = await request<{
+    success: boolean;
+    data: {
+      messages: ChatMessage[];
+      peer_last_read_at?: string | null;
+      limit: number;
+      has_more?: boolean;
+      next_before?: MessagesPageCursor | null;
+    };
+  }>(`/messages/conversations/${encodeURIComponent(conversationId)}/messages${qs ? `?${qs}` : ''}`);
+  if (res?.data?.messages) res.data.messages = res.data.messages.map(normalizeMessage);
+  return res;
+}
+
+/** Unsend one of your own messages (soft delete; both sides then see "Message unsent"). */
+export async function unsendMessage(conversationId: string, messageId: string): Promise<void> {
+  await request(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: 'DELETE' }
   );
 }
 

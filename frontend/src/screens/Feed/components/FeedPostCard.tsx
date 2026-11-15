@@ -7,6 +7,7 @@ import FeedReelMedia from '../../../components/feed/FeedReelMedia';
 import FeedLikeButton, { type FeedReaction } from '../../../components/feed/FeedLikeButton';
 import PressableScale from '../../../components/ui/PressableScale';
 import GrowAvatar from '../../../components/ui/GrowAvatar';
+import RichText from '../../../components/text/RichText';
 import type { VideoEditSettings } from '../../../components/ui/VideoEditor';
 import type { ProfilePreview } from '../../../app/navigation/RootNavigator';
 
@@ -243,7 +244,7 @@ function FeedPostCard({
           >
             <Text style={tw`font-bold text-ink text-base`}>{item.username}</Text>
           </PressableScale>
-          <Text style={tw`text-ink text-base`}> {item.caption}</Text>
+          <RichText style={tw`text-ink text-base`} prefix=" " text={item.caption} />
         </View>
 
         {item.audioTitle ? (

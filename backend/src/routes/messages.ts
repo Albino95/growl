@@ -45,7 +45,11 @@ type MessageRow = {
   sender_id: string;
   body: string;
   created_at: string;
+  deleted_at?: string | null;
 };
+
+/** Preview text for an unsent last message in the inbox. */
+export const UNSENT_PREVIEW = 'Message unsent';
 
 function orderedPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
@@ -273,7 +277,9 @@ export async function getConversations(request: Request, env: Env): Promise<Resp
   try {
     const rows = await env.DB.prepare(
       `SELECT c.*,
-        (SELECT body FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
+        -- Unsend clears the body (sends are never empty), so '' marks an unsent message
+        -- without touching deleted_at — the inbox keeps working before migration 0040.
+        (SELECT CASE WHEN m.body = '' THEN '${UNSENT_PREVIEW}' ELSE m.body END FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
         (SELECT sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_sender_id
        FROM conversations c
        WHERE c.user_a = ? OR c.user_b = ?
@@ -497,15 +503,27 @@ export async function getMessages(
     const ids = ordered.map((m) => m.id);
     const reactionMap = await loadReactionsForMessages(env, ids, ctx.userId);
 
-    const messages = ordered.map((m) => ({
-      id: m.id,
-      conversation_id: m.conversation_id,
-      sender_id: m.sender_id,
-      body: m.body,
-      created_at: m.created_at,
-      is_own: m.sender_id === ctx.userId,
-      reactions: reactionMap[m.id] || { counts: {}, mine: null },
-    }));
+    // Unsent messages come back as a body-less placeholder the client renders as "Message unsent".
+    const messages = ordered.map((m) =>
+      m.deleted_at
+        ? {
+            id: m.id,
+            conversation_id: m.conversation_id,
+            sender_id: m.sender_id,
+            created_at: m.created_at,
+            is_own: m.sender_id === ctx.userId,
+            deleted: true as const,
+          }
+        : {
+            id: m.id,
+            conversation_id: m.conversation_id,
+            sender_id: m.sender_id,
+            body: m.body,
+            created_at: m.created_at,
+            is_own: m.sender_id === ctx.userId,
+            reactions: reactionMap[m.id] || { counts: {}, mine: null },
+          }
+    );
 
     const oldest = ordered[0];
     return json({
@@ -536,6 +554,10 @@ export async function sendMessage(
 
   const validation = await validateRequest(request, sendMessageSchema);
   if (!validation.success) return validation.response;
+  // Whitespace-only bodies would store '' (which marks an unsent message).
+  if (!validation.data.body.trim()) {
+    return error('VALIDATION_ERROR', 'Message cannot be empty', 400);
+  }
 
   const conversation = await getConversationForUser(env, conversationId, ctx.userId);
   if (!conversation) {
@@ -648,12 +670,11 @@ export async function reactToMessage(
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
 
-  const message = await env.DB.prepare(
-    'SELECT id FROM messages WHERE id = ? AND conversation_id = ?'
-  )
+  // SELECT * so a DB without migration 0040 (no deleted_at column) still works.
+  const message = await env.DB.prepare('SELECT * FROM messages WHERE id = ? AND conversation_id = ?')
     .bind(messageId, conversationId)
-    .first<{ id: string }>();
-  if (!message) {
+    .first<{ id: string; deleted_at?: string | null }>();
+  if (!message || message.deleted_at) {
     return error('NOT_FOUND', 'Message not found', 404);
   }
 
@@ -694,5 +715,57 @@ export async function reactToMessage(
   } catch (err) {
     console.error('[reactToMessage]', err);
     return error('DATABASE_ERROR', 'Failed to react', 500);
+  }
+}
+
+/**
+ * DELETE /api/v1/messages/conversations/:id/messages/:messageId  (unsend)
+ * Sender only. Soft delete: deleted_at set, body cleared, reactions dropped.
+ * Idempotent: unsending an already-unsent message returns the same placeholder.
+ */
+export async function unsendMessage(
+  request: Request,
+  env: Env,
+  conversationId: string,
+  messageId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const conversation = await getConversationForUser(env, conversationId, ctx.userId);
+  if (!conversation) {
+    return error('NOT_FOUND', 'Conversation not found', 404);
+  }
+
+  const message = await env.DB.prepare('SELECT * FROM messages WHERE id = ? AND conversation_id = ?')
+    .bind(messageId, conversationId)
+    .first<{ id: string; sender_id: string; deleted_at: string | null }>();
+  if (!message) {
+    return error('NOT_FOUND', 'Message not found', 404);
+  }
+  if (message.sender_id !== ctx.userId) {
+    return error('FORBIDDEN', 'You can only unsend your own messages', 403);
+  }
+
+  try {
+    if (!message.deleted_at) {
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `UPDATE messages SET body = '', deleted_at = ? WHERE id = ? AND sender_id = ?`
+      )
+        .bind(now, messageId, ctx.userId)
+        .run();
+      try {
+        await env.DB.prepare('DELETE FROM message_reactions WHERE message_id = ?').bind(messageId).run();
+      } catch {
+        /* reactions table missing on a stale DB */
+      }
+    }
+    return json({ id: messageId, deleted: true });
+  } catch (err) {
+    console.error('[unsendMessage]', err);
+    return error('DATABASE_ERROR', 'Could not unsend that message', 500);
   }
 }

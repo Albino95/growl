@@ -14,10 +14,14 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { useGrowthStore } from '../state/useGrowthStore';
 import { store } from '../store/store';
 import { getCategoryMeta } from '../utils/categoryLabels';
+import { ApiError, request } from './api/http';
 import {
   buildWidgetSnapshot,
+  circleToWidgetFriends,
+  widgetDayKey,
   widgetSnapshotSignature,
   WIDGET_SNAPSHOT_KEY,
+  type CircleTodayFriend,
   type WidgetFriend,
 } from './widgetSnapshot';
 import { isWidgetStorageAvailable, reloadWidgets, widgetStorageSet } from './widgetStorage';
@@ -35,14 +39,61 @@ let started = false;
 let lastSignature: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Friends who checked in today.
- * TODO(widget-friends): no store or endpoint exposes "friends who checked in
- * today" yet. When the API adds it, map to `{ initial, color }` (max 4, no
- * avatars — the widget never loads network images) and return it here.
- */
+/** Friends who checked in today (GET /me/circle/today), refreshed at most every 10 min. */
+const FRIENDS_TTL_MS = 10 * 60_000;
+let friends: WidgetFriend[] = [];
+let friendsFetchedAt = 0;
+let friendsInFlight = false;
+/** Backend without the endpoint (404): stop asking for this session. */
+let friendsUnsupported = false;
+/** Account the cached list belongs to (user id, so token refreshes don't refetch). */
+let friendsForUser: string | null = null;
+let friendsDay: string | null = null;
+
 function friendsCheckedInToday(): WidgetFriend[] {
-  return [];
+  // Yesterday's circle never leaks into a new day while waiting for the next fetch.
+  return friendsDay === widgetDayKey(new Date()) ? friends : [];
+}
+
+/**
+ * Fetch the circle for the widget. Throttled to once per FRIENDS_TTL_MS unless
+ * `force` (the user just checked in). Never throws; a failure keeps the last list.
+ */
+async function refreshFriends(force = false): Promise<void> {
+  if (friendsUnsupported || friendsInFlight) return;
+  const auth = store.getState().auth;
+  const owner = auth.token ? auth.user?.id ?? 'me' : null;
+  if (!owner) return;
+  const fresh =
+    friendsForUser === owner &&
+    friendsDay === widgetDayKey(new Date()) &&
+    Date.now() - friendsFetchedAt < FRIENDS_TTL_MS;
+  if (!force && fresh) return;
+  friendsInFlight = true;
+  try {
+    const res = await request<{ success: boolean; data: { friends: CircleTodayFriend[] } }>(
+      '/me/circle/today'
+    );
+    // Signed out / switched account while in flight: drop the result.
+    const now = store.getState().auth;
+    if (!now.token || (now.user?.id ?? 'me') !== owner) return;
+    friends = circleToWidgetFriends(res?.data?.friends);
+    friendsDay = widgetDayKey(new Date());
+    friendsFetchedAt = Date.now();
+    friendsForUser = owner;
+    scheduleSync();
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) friendsUnsupported = true;
+    const today = widgetDayKey(new Date());
+    if (friendsDay !== today) {
+      friends = [];
+      friendsDay = today;
+    }
+    friendsFetchedAt = Date.now(); // don't hammer on errors either
+    friendsForUser = owner;
+  } finally {
+    friendsInFlight = false;
+  }
 }
 
 function pathLabel(key: string): string {
@@ -98,11 +149,27 @@ export function initWidgetSync(): void {
   if (!isWidgetStorageAvailable()) return;
   started = true;
 
-  useGrowthStore.subscribe(scheduleSync);
+  const checkinKey = (c: { day: string; created_at: string } | null) => (c ? `${c.day}|${c.created_at}` : null);
+  let lastCheckinId = checkinKey(useGrowthStore.getState().checkin);
+  useGrowthStore.subscribe((g) => {
+    scheduleSync();
+    // The user just checked in: friends' dots are most interesting right now.
+    const id = checkinKey(g.checkin);
+    if (id && id !== lastCheckinId) void refreshFriends(true);
+    lastCheckinId = id;
+  });
   let last = store.getState().auth;
   store.subscribe(() => {
     const auth = store.getState().auth;
     if (auth.token === last.token && auth.hydrated === last.hydrated) return;
+    const owner = auth.token ? auth.user?.id ?? 'me' : null;
+    if (owner !== friendsForUser) {
+      // Sign in / out / account switch: never show another account's circle.
+      friends = [];
+      friendsFetchedAt = 0;
+      friendsForUser = null;
+      if (owner) void refreshFriends();
+    }
     last = auth;
     scheduleSync();
   });
@@ -115,8 +182,10 @@ export function initWidgetSync(): void {
     if (next !== 'active') return;
     syncWidgetNow(); // new day since last write → widget shows unchecked
     checkPending();
+    void refreshFriends(); // throttled to every 10 min
   });
 
   syncWidgetNow(); // skipped until auth has hydrated; the subscription above catches that
   checkPending();
+  void refreshFriends();
 }

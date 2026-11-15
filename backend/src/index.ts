@@ -1,5 +1,6 @@
 import { enforceWriteLimit } from './utils/writeLimits';
 import { withIdempotency } from './utils/idempotency';
+import { handleWave3 } from './routes/wave3';
 import * as meRoutes from './routes/me';
 import { runGroupMaintenance } from './routes/groups';
 import { Env } from './types';
@@ -1115,6 +1116,9 @@ async function handleRequest(
           paymentsEnabled: Boolean(env.STRIPE_SECRET_KEY?.trim()),
         });
       }
+
+      const wave3 = await handleWave3(request, env, path, apiPrefix);
+      if (wave3) return wave3;
 
       // 404 for unmatched routes
       return error('NOT_FOUND', `Route not found: ${path}`, 404);

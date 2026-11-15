@@ -20,13 +20,19 @@ import {
   sendMessage,
   createConversation,
   reactToMessage,
+  unsendMessage,
   MESSAGE_MAX_LENGTH,
+  UNSENT_LABEL,
   type ConversationSummary,
   type ChatMessage,
   type MessageReactionEmoji,
   type MessagesPageCursor,
 } from '../../services/api/messages';
 import { confirmSentMessage, mergeMessages } from '../../components/messages/mergeMessages';
+import MessageActions, { copyMessageText } from '../../components/messages/MessageActions';
+import { useFocusedPolling } from '../../components/messages/polling';
+import { reportContent } from '../../services/api/friends';
+import { toast } from '../../state/useToastStore';
 import HeartBurst from '../../components/feed/HeartBurst';
 import {
   ReactionPicker,
@@ -51,8 +57,7 @@ import SearchField from '../../components/ui/SearchField';
 import SkeletonCard, { SkeletonList } from '../../components/ui/SkeletonCard';
 import { feedback, triggerFeedback } from '../../utils/interactionFeedback';
 import { useRefresh } from '../../hooks/useRefresh';
-import { isAppActive } from '../../utils/appActive';
-import { alertMessage } from '../../utils/confirmDialog';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
 import { ApiError } from '../../services/api/http';
 import { uuidV4 } from '../../services/api/idempotency';
 import {
@@ -89,6 +94,7 @@ function sameMessageSnapshot(a: ChatMessage[], b: ChatMessage[]): boolean {
     const left = a[i];
     const right = b[i];
     if (left.id !== right.id || left.body !== right.body) return false;
+    if (!!left.deleted !== !!right.deleted) return false;
     if ((left.reactions?.mine ?? null) !== (right.reactions?.mine ?? null)) return false;
     const lc = left.reactions?.counts || {};
     const rc = right.reactions?.counts || {};
@@ -297,35 +303,51 @@ export default function MessagesScreen() {
     void hydrateWalls();
   }, [loadConversations, hydrateWalls]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!isAppActive()) return;
-      if (selectedIdRef.current) {
-        void getMessages(selectedIdRef.current)
-          .then((res) => {
-            const serverPage = res.data?.messages ?? [];
-            setSelectedConversation((prev) => {
-              if (!prev || prev.id !== selectedIdRef.current) return prev;
-              // Merge (never replace): keeps older pages plus temp-/failed sends on screen.
-              const msgs = mergeMessages(prev.messages, serverPage);
-              if (sameMessageSnapshot(prev.messages, msgs) && prev.peer_last_read_at === (res.data?.peer_last_read_at ?? prev.peer_last_read_at)) {
-                return prev;
-              }
-              return {
-                ...prev,
-                messages: msgs,
-                unread: false,
-                peer_last_read_at: res.data?.peer_last_read_at ?? prev.peer_last_read_at,
-              };
-            });
-          })
-          .catch(() => undefined);
-      } else {
-        void loadConversations({ silent: true });
-      }
-    }, 8000);
-    return () => clearInterval(id);
-  }, [loadConversations]);
+  const selectedRef = useRef<ActiveConversation | null>(null);
+  selectedRef.current = selectedConversation;
+  const conversationsRef = useRef<ConversationSummary[]>([]);
+  conversationsRef.current = conversations;
+
+  /**
+   * One poll of whatever is on screen: the open thread, else the inbox.
+   * Resolves true when something new arrived (keeps the fast cadence).
+   */
+  const pollOnce = useCallback(async (): Promise<boolean> => {
+    const convId = selectedIdRef.current;
+    if (convId) {
+      const res = await getMessages(convId);
+      const current = selectedRef.current;
+      if (!current || current.id !== convId || selectedIdRef.current !== convId) return false;
+      const serverPage = res.data?.messages ?? [];
+      const peerRead = res.data?.peer_last_read_at ?? current.peer_last_read_at;
+      // Merge (never replace): keeps older pages plus temp-/failed sends on screen.
+      const msgs = mergeMessages(current.messages, serverPage);
+      const changed = !sameMessageSnapshot(current.messages, msgs);
+      if (!changed && current.peer_last_read_at === peerRead) return false;
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== convId) return prev;
+        return {
+          ...prev,
+          messages: mergeMessages(prev.messages, serverPage),
+          unread: false,
+          peer_last_read_at: res.data?.peer_last_read_at ?? prev.peer_last_read_at,
+        };
+      });
+      return changed;
+    }
+    const sig = (list: ConversationSummary[]) =>
+      list.map((c) => `${c.id}:${c.last_message_at}:${c.unread ? 1 : 0}:${c.last_message ?? ''}`).join('|');
+    const before = sig(conversationsRef.current);
+    const res = await getConversations();
+    const next = res.data?.conversations ?? [];
+    setConversations(next);
+    setListError(null);
+    return sig(next) !== before;
+  }, []);
+
+  // Polls only while this screen is focused and the app is in the foreground;
+  // refreshes immediately on focus / foreground and backs off to 20 s when quiet.
+  const markActivity = useFocusedPolling(pollOnce, selectedConversation?.id ?? null);
 
   // Deep-link / draft from profile / journal
   useEffect(() => {
@@ -387,6 +409,7 @@ export default function MessagesScreen() {
       feedback.send();
     }
     setSending(true);
+    markActivity();
     const tempId = retryId ?? `temp-${uuidV4()}`;
     const existing = retryId
       ? selectedConversation.messages.find((m) => m.id === retryId)
@@ -461,6 +484,7 @@ export default function MessagesScreen() {
   const toggleReact = useCallback(async (messageId: string, emoji: MessageReactionEmoji) => {
     const convId = selectedIdRef.current;
     if (!convId || messageId.startsWith('temp-')) return;
+    markActivity();
     setSelectedConversation((prev) => {
       if (!prev || prev.id !== convId) return prev;
       return {
@@ -503,7 +527,89 @@ export default function MessagesScreen() {
         /* keep optimistic */
       }
     }
-  }, [selectedConversation?.messages]);
+  }, [selectedConversation?.messages, markActivity]);
+
+  const handleCopy = useCallback(async (msg: ChatMessage) => {
+    setPickerId(null);
+    const ok = await copyMessageText(msg.body);
+    if (ok) {
+      feedback.select();
+      toast.success('Copied');
+    } else {
+      void alertMessage('Copy', "Couldn't copy on this device. Press and hold the text to select it instead.");
+    }
+  }, []);
+
+  const handleUnsend = useCallback(async (msg: ChatMessage) => {
+    setPickerId(null);
+    const convId = selectedIdRef.current;
+    if (!convId || !msg.is_own || msg.id.startsWith('temp-')) return;
+    const ok = await confirmAsync('Unsend this message?', "It'll be removed for both of you.", {
+      confirmLabel: 'Unsend',
+      destructive: true,
+    });
+    if (!ok) return;
+    markActivity();
+    const snapshot = msg;
+    const wasLast = (list: ChatMessage[]) => list[list.length - 1]?.id === msg.id;
+    setSelectedConversation((prev) => {
+      if (!prev || prev.id !== convId) return prev;
+      return {
+        ...prev,
+        last_message: wasLast(prev.messages) ? UNSENT_LABEL : prev.last_message,
+        messages: prev.messages.map((m) =>
+          m.id === msg.id ? { ...m, body: '', deleted: true, reactions: { counts: {}, mine: null } } : m
+        ),
+      };
+    });
+    const isLatest = wasLast(selectedRef.current?.messages ?? []);
+    if (isLatest) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, last_message: UNSENT_LABEL } : c))
+      );
+    }
+    try {
+      await unsendMessage(convId, msg.id);
+      feedback.select();
+    } catch (e) {
+      // Put it back exactly as it was.
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== convId) return prev;
+        return { ...prev, messages: prev.messages.map((m) => (m.id === msg.id ? snapshot : m)) };
+      });
+      if (isLatest) {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convId ? { ...c, last_message: snapshot.body } : c))
+        );
+      }
+      void alertMessage(
+        "Couldn't unsend",
+        e instanceof ApiError && e.status === 404
+          ? 'Unsend isn’t available yet. Try again after the next update.'
+          : e instanceof Error
+            ? e.message
+            : 'Please try again.'
+      );
+    }
+  }, [markActivity]);
+
+  const handleReport = useCallback(async (msg: ChatMessage) => {
+    setPickerId(null);
+    if (msg.is_own || !msg.sender_id) return;
+    const ok = await confirmAsync(
+      'Report this message?',
+      'Our team will review it. They won’t be told who reported it.',
+      { confirmLabel: 'Report', destructive: true }
+    );
+    if (!ok) return;
+    try {
+      // No message target type on the report API yet: report the sender, citing the message.
+      await reportContent(msg.sender_id, 'user', `message:${msg.id}`);
+      toast.success('Thanks — we’ll take a look');
+    } catch (e) {
+      void alertMessage('Report', e instanceof Error ? e.message : 'Could not send the report.');
+    }
+  }, []);
 
   // Follow the newest message only; prepending older history must not jump to the bottom.
   const lastMessageId =
@@ -827,6 +933,7 @@ export default function MessagesScreen() {
                 const failed = failedIds.has(item.id);
                 const refused = refusedIds.has(item.id);
                 const pending = item.id.startsWith('temp-');
+                const unsent = !!item.deleted;
                 const prev = selectedConversation.messages[index - 1];
                 const showDay = !prev || dayKey(prev.created_at) !== dayKey(item.created_at);
                 const align = item.is_own ? 'items-end' : 'items-start';
@@ -851,15 +958,24 @@ export default function MessagesScreen() {
                         </View>
                       </View>
                     ) : null}
-                    {pickerId === item.id ? (
-                      <ReactionPicker
-                        mine={item.reactions?.mine ?? null}
-                        dark={darkWall}
-                        onPick={(emoji) => {
-                          setPickerId(null);
-                          void toggleReact(item.id, emoji);
-                        }}
-                      />
+                    {pickerId === item.id && !unsent ? (
+                      <>
+                        <ReactionPicker
+                          mine={item.reactions?.mine ?? null}
+                          dark={darkWall}
+                          onPick={(emoji) => {
+                            setPickerId(null);
+                            void toggleReact(item.id, emoji);
+                          }}
+                        />
+                        <MessageActions
+                          own={item.is_own}
+                          dark={darkWall}
+                          onCopy={() => void handleCopy(item)}
+                          onUnsend={() => void handleUnsend(item)}
+                          onReport={() => void handleReport(item)}
+                        />
+                      </>
                     ) : null}
                     <PressableScale
                       pressedScale={0.98}
@@ -868,7 +984,7 @@ export default function MessagesScreen() {
                           retryFailed(item.id);
                           return;
                         }
-                        if (pending) return;
+                        if (pending || unsent) return;
                         const now = Date.now();
                         const last = lastTapRef.current;
                         if (last && last.id === item.id && now - last.at < 320) {
@@ -880,17 +996,28 @@ export default function MessagesScreen() {
                         if (pickerId === item.id) setPickerId(null);
                       }}
                       onLongPress={() => {
-                        if (failed || pending) return;
+                        if (failed || pending || unsent) return;
                         feedback.select();
                         setPickerId((cur) => (cur === item.id ? null : item.id));
                       }}
                       delayLongPress={360}
                       style={tw`max-w-[78%]`}
+                      accessibilityLabel={unsent ? UNSENT_LABEL : undefined}
+                      accessibilityHint={
+                        unsent || pending || failed ? undefined : 'Double-tap to love. Hold for more options.'
+                      }
                     >
                       <View
                         style={[
                           tw`rounded-sheet px-3.5 py-2.5`,
-                          item.is_own
+                          unsent
+                            ? {
+                                backgroundColor: 'transparent',
+                                borderColor: darkWall ? 'rgba(255,255,255,0.14)' : 'rgba(28,25,23,0.14)',
+                                borderWidth: 1,
+                                ...(item.is_own ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }),
+                              }
+                            : item.is_own
                             ? {
                                 backgroundColor: failed ? '#EF4444' : wall.ownBubble,
                                 borderBottomRightRadius: 6,
@@ -906,19 +1033,25 @@ export default function MessagesScreen() {
                         {burstMsgId === item.id ? (
                           <HeartBurst triggerKey={burstKey} size={56} />
                         ) : null}
-                        <Text
-                          style={[
-                            tw`text-body`,
-                            { lineHeight: 21, color: item.is_own ? wall.ownText : wall.peerText },
-                          ]}
-                        >
-                          {item.body}
-                        </Text>
+                        {unsent ? (
+                          <Text style={[tw`text-body italic`, { lineHeight: 21, color: isLinen ? c.ink3 : wall.meta }]}>
+                            {UNSENT_LABEL}
+                          </Text>
+                        ) : (
+                          <Text
+                            style={[
+                              tw`text-body`,
+                              { lineHeight: 21, color: item.is_own ? wall.ownText : wall.peerText },
+                            ]}
+                          >
+                            {item.body}
+                          </Text>
+                        )}
                         <View style={tw`flex-row items-center justify-end mt-1`}>
                           <Text
                             style={[
                               tw`text-caption font-normal mr-1`,
-                              { color: item.is_own ? 'rgba(255,255,255,0.75)' : wall.meta },
+                              { color: item.is_own && !unsent ? 'rgba(255,255,255,0.75)' : wall.meta },
                             ]}
                           >
                             {refused
@@ -927,7 +1060,7 @@ export default function MessagesScreen() {
                                 ? 'Tap to retry'
                                 : formatMessageTime(item.created_at)}
                           </Text>
-                          {item.is_own && !failed ? (
+                          {item.is_own && !failed && !unsent ? (
                             <ReceiptTicks
                               status={messageReceipt(item, selectedConversation.peer_last_read_at)}
                             />
@@ -988,7 +1121,10 @@ export default function MessagesScreen() {
                   {...formInputAccessoryProps({ multiline: true })}
                   placeholder="Message…"
                   value={messageText}
-                  onChangeText={setMessageText}
+                  onChangeText={(t) => {
+                    setMessageText(t);
+                    markActivity();
+                  }}
                   maxLength={MESSAGE_MAX_LENGTH}
                   multiline
                   style={[
@@ -1187,7 +1323,9 @@ export default function MessagesScreen() {
                     </View>
                   ) : null}
                   <Text
-                    style={tw`flex-1 text-sm ${item.unread ? 'text-ink font-medium' : 'text-ink-3'}`}
+                    style={tw`flex-1 text-sm ${item.unread ? 'text-ink font-medium' : 'text-ink-3'} ${
+                      item.last_message === UNSENT_LABEL ? 'italic' : ''
+                    }`}
                     numberOfLines={1}
                   >
                     {item.last_message

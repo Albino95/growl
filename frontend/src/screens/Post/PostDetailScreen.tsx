@@ -8,6 +8,7 @@ import CommentsScreen from '../Comments/CommentsScreen';
 import DecayCountdownChip from '../../components/profile/DecayCountdownChip';
 import { resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import GrowAvatar from '../../components/ui/GrowAvatar';
+import RichText from '../../components/text/RichText';
 import { getFeedPost, toggleFeedPostLike } from '../../services/api/feed';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../../components/ui/PressableScale';
@@ -392,7 +393,7 @@ export default function PostDetailScreen() {
               <PressableScale onPress={navigateToProfile}>
                 <Text style={tw`font-bold text-ink text-base`}>{post.username}</Text>
               </PressableScale>
-              <Text style={tw`text-ink text-base`}> {post.caption}</Text>
+              <RichText style={tw`text-ink text-base`} prefix=" " text={post.caption} />
             </View>
 
             {post.daysUntilDecay !== undefined && (

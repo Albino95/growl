@@ -1,4 +1,4 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import tw from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
+import MentionSuggestions from '../mentions/MentionSuggestions';
+import { useMentionAutocomplete } from '../mentions/useMentionAutocomplete';
 
 const CAPTION_ACCESSORY_ID = 'composer-caption-done';
 
@@ -29,6 +31,9 @@ export default function ComposerCaption({
   editable = true,
 }: Props) {
   const nearLimit = caption.length >= Math.floor(maxLength * 0.9);
+  const localRef = useRef<TextInput | null>(null);
+  const ref = inputRef ?? localRef;
+  const mention = useMentionAutocomplete(caption, onChangeCaption, ref);
 
   return (
     <View style={tw`px-gutter pb-2`}>
@@ -46,13 +51,23 @@ export default function ComposerCaption({
           <Text style={tw`text-white text-xs font-bold`}>Done</Text>
         </PressableScale>
       </View>
+      {mention.visible ? (
+        <MentionSuggestions
+          items={mention.items}
+          loading={mention.loading}
+          onPick={mention.pick}
+          tone="dark"
+        />
+      ) : null}
       <TextInput
-        ref={inputRef}
+        ref={ref}
         placeholder="Write a caption…"
         placeholderTextColor="rgba(255,255,255,0.55)"
         multiline
         value={caption}
         onChangeText={onChangeCaption}
+        onSelectionChange={mention.onSelectionChange}
+        onKeyPress={mention.onKeyPress}
         editable={editable}
         style={tw`text-white text-base min-h-[44px] max-h-28`}
         maxLength={maxLength}

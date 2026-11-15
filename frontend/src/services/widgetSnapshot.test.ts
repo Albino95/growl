@@ -218,3 +218,19 @@ describe('buildWidgetSnapshot', () => {
     expect(round).toEqual(s);
   });
 });
+
+describe('circle friends → widget dots', () => {
+  it('keeps only checked-in friends with a stable brand colour per id', async () => {
+    const { circleToWidgetFriends, friendColor, WIDGET_FRIEND_COLORS } = await import('./widgetSnapshot');
+    const out = circleToWidgetFriends([
+      { id: 'u1', display_name: 'ana', initial: 'A', checked_in: true },
+      { id: 'u2', display_name: 'Ben', initial: 'B', checked_in: false },
+      { id: 'u3', display_name: 'cleo', checked_in: true },
+    ]);
+    expect(out.map((f) => f.initial)).toEqual(['A', 'C']);
+    expect(out[0].color).toBe(friendColor('u1'));
+    expect(friendColor('u1')).toBe(friendColor('u1'));
+    expect(WIDGET_FRIEND_COLORS).toContain(friendColor('anything'));
+    expect(circleToWidgetFriends(null)).toEqual([]);
+  });
+});

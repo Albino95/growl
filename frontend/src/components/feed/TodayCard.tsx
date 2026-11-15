@@ -21,6 +21,7 @@ import WeekDots from '../recap/WeekDots';
 import CountUpText from '../ui/CountUpText';
 import CheckinWeekDots from './CheckinWeekDots';
 import StreakBurst from './StreakBurst';
+import BuddyTodayLine from '../buddies/BuddyTodayLine';
 import { streakMilestoneCopy } from './streakMilestones';
 import {
   CHECKIN_MOODS,
@@ -543,6 +544,7 @@ function TodayCard() {
             style={tw`ml-2`}
           />
         </PressableScale>
+        <BuddyTodayLine />
 
         {showFollowup && !followupLine ? (
           <View style={tw`mt-2 px-4 py-3 rounded-card bg-card border border-line/70`}>

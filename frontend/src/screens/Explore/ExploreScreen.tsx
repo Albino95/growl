@@ -9,24 +9,24 @@ import {
   Text,
   FlatList,
   RefreshControl,
-  ActivityIndicator,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect, useScrollToTop } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useScrollToTop, useRoute } from '@react-navigation/native';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useAuth } from '../../store/hooks';
 import { getFeedPosts, type FeedPost } from '../../services/api/feed';
 import { getStories, type StoryItem } from '../../services/api/stories';
-import {
-  addFriend,
-  listFriends,
-  searchSocial,
-  type PeopleSearchHit,
-  type PostSearchHit,
-} from '../../services/api/friends';
+import { addFriend, listFriends } from '../../services/api/friends';
+import type { SearchPerson, SearchPost } from '../../services/api/search';
+import ExploreSearchInput from '../../components/search/ExploreSearchInput';
+import RecentSearches, { type SuggestedChip } from '../../components/search/RecentSearches';
+import SearchResults from '../../components/search/SearchResults';
+import { useExploreSearch } from '../../components/search/useExploreSearch';
+import { useRecentSearchStore } from '../../state/useRecentSearchStore';
 import {
   avatarSource,
   resolveAvatarUri,
@@ -43,7 +43,6 @@ import {
   horizontalScrollProps,
   TAB_SCREEN_BOTTOM_PADDING,
 } from '../../constants/scroll';
-import SearchField from '../../components/ui/SearchField';
 import EmptyState from '../../components/ui/EmptyState';
 import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
 import { CategoryCapsuleRow, type CapsuleItem } from '../../components/ui/CategoryCapsule';
@@ -114,15 +113,10 @@ export default function ExploreScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [shopPicks, setShopPicks] = useState<RankedProduct<ApiProduct>[]>([]);
   const [gridPosts, setGridPosts] = useState<FeedPost[]>([]);
-  const [searchHits, setSearchHits] = useState<PeopleSearchHit[]>([]);
-  const [searchPosts, setSearchPosts] = useState<PostSearchHit[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchTab, setSearchTab] = useState<'all' | 'accounts' | 'posts' | 'shop'>('all');
-  const [accountRole, setAccountRole] = useState<'all' | 'people' | 'instructor' | 'business'>(
-    'all'
-  );
-  const [searchCommitted, setSearchCommitted] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+  const route = useRoute();
+  const routeQuery = (route.params as { query?: string } | undefined)?.query;
 
   const userPaths = useMemo(() => user?.categories || [], [user?.categories]);
   const isSearching = query.trim().length > 0;
@@ -231,82 +225,44 @@ export default function ExploreScreen() {
     }, [load])
   );
 
-  // Monotonic id of the latest search request; responses from older requests are dropped.
-  const searchSeqRef = useRef(0);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearSearchDebounce = () => {
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = null;
-    }
-  };
-
-  const runSearch = useCallback(async (raw: string, role = accountRole) => {
-    const seq = ++searchSeqRef.current;
-    const q = raw.trim();
-    if (q.length < 1) {
-      setSearchHits([]);
-      setSearchPosts([]);
-      setSearchLoading(false);
-      setSearchError(null);
-      setSearchCommitted(false);
-      return;
-    }
-    setSearchLoading(true);
-    setSearchError(null);
-    try {
-      const res = await searchSocial(q, {
-        limit: 30,
-        type: 'all',
-        role: role === 'all' ? 'all' : role,
-      });
-      if (seq !== searchSeqRef.current) return;
-      setSearchHits(res.people);
-      setSearchPosts(res.posts);
-      setPendingRequestIds((prev) => {
-        const next = new Set(prev);
-        for (const p of res.people) {
-          if (p.requestSent) next.add(p.id);
-          if (p.isFriend) next.delete(p.id);
-        }
-        return next;
-      });
-      setSearchCommitted(true);
-    } catch (e: unknown) {
-      if (seq !== searchSeqRef.current) return;
-      const msg = e instanceof Error ? e.message : 'Search failed. Try again.';
-      setSearchError(msg);
-      setSearchHits([]);
-      setSearchPosts([]);
-    } finally {
-      if (seq === searchSeqRef.current) setSearchLoading(false);
-    }
-  }, [accountRole]);
+  const search = useExploreSearch(query);
+  const recentSearches = useRecentSearchStore((st) => st.items);
+  const loadRecentFor = useRecentSearchStore((st) => st.loadFor);
+  const addRecent = useRecentSearchStore((st) => st.add);
+  const removeRecent = useRecentSearchStore((st) => st.remove);
+  const clearRecent = useRecentSearchStore((st) => st.clear);
 
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 1) {
-      // Invalidate any in-flight request so it can't repopulate cleared results.
-      searchSeqRef.current += 1;
-      setSearchHits([]);
-      setSearchPosts([]);
-      setSearchLoading(false);
-      setSearchError(null);
-      setSearchCommitted(false);
-      return;
+    void loadRecentFor(user?.id ?? null);
+  }, [user?.id, loadRecentFor]);
+
+  // Explore opened with { query } (e.g. a #tag tap): search it, then clear the param so the
+  // same tag can be tapped again later.
+  useEffect(() => {
+    const q = typeof routeQuery === 'string' ? routeQuery.trim() : '';
+    if (!q) return;
+    setQuery(q);
+    addRecent(q);
+    (navigation as unknown as { setParams?: (p: object) => void }).setParams?.({ query: undefined });
+  }, [routeQuery, navigation, addRecent]);
+
+  const pickSearch = useCallback(
+    (q: string) => {
+      setQuery(q);
+      addRecent(q);
+      searchInputRef.current?.blur();
+    },
+    [addRecent]
+  );
+
+  const suggestedPaths = useMemo<SuggestedChip[]>(() => {
+    const keys = [...new Set(userPaths.map((c) => c.split(':')[0]))];
+    for (const c of CATEGORIES) {
+      if (keys.length >= 6) break;
+      if (!keys.includes(c.key)) keys.push(c.key);
     }
-    setSearchLoading(true);
-    const t = setTimeout(() => {
-      searchDebounceRef.current = null;
-      void runSearch(q);
-    }, 320);
-    searchDebounceRef.current = t;
-    return () => {
-      clearTimeout(t);
-      if (searchDebounceRef.current === t) searchDebounceRef.current = null;
-    };
-  }, [query, accountRole, runSearch]);
+    return keys.slice(0, 6).map((k) => ({ key: k, label: getCategoryLabel(k) }));
+  }, [userPaths]);
 
   const onSubmitSearch = () => {
     const q = query.trim();
@@ -316,10 +272,9 @@ export default function ExploreScreen() {
       feedback.celebrate();
       alertMessage('Still growing.', 'You found a quiet corner.');
     }
-    setSearchTab('all');
-    // Run now instead of waiting for the pending debounce (avoids a duplicate request).
-    clearSearchDebounce();
-    void runSearch(q);
+    addRecent(q);
+    // Run now instead of waiting for the pending debounce.
+    search.runNow();
   };
 
   const [challengesRefreshKey, setChallengesRefreshKey] = useState(0);
@@ -418,15 +373,6 @@ export default function ExploreScreen() {
     );
   }, [shopPicks, query, isSearching]);
 
-  const accountHits = useMemo(() => {
-    if (accountRole === 'all') return searchHits;
-    return searchHits.filter((h) => {
-      if (accountRole === 'business') return !!h.is_business;
-      if (accountRole === 'instructor') return !!h.is_instructor && !h.is_business;
-      return !h.is_instructor && !h.is_business;
-    });
-  }, [searchHits, accountRole]);
-
   const openProfile = (userId: string, preview?: ProfilePreview) => {
     const root = navigation.getParent?.() || navigation;
     (root as { navigate: (a: string, b: object) => void }).navigate('PublicProfile', { userId, preview });
@@ -466,19 +412,9 @@ export default function ExploreScreen() {
           next.delete(userId);
           return next;
         });
-        setSearchHits((prev) =>
-          prev.map((h) =>
-            h.id === userId ? { ...h, isFriend: true, requestSent: false } : h
-          )
-        );
       } else if (result.requestSent) {
         setJustRequestedId(userId);
         setPendingRequestIds((prev) => new Set([...prev, userId]));
-        setSearchHits((prev) =>
-          prev.map((h) =>
-            h.id === userId ? { ...h, isFriend: false, requestSent: true } : h
-          )
-        );
       }
       setPeople((prev) => prev.filter((p) => p.userId !== userId));
       toast.success(result.connected ? 'You are now friends' : 'Friend request sent');
@@ -546,277 +482,148 @@ export default function ExploreScreen() {
     });
   };
 
-  const openSearchPost = (p: PostSearchHit) => {
+  const openSearchPost = (p: SearchPost) => {
+    addRecent(query);
     const feedLike: FeedPost = {
       id: p.id,
-      user_id: p.user_id,
-      image_url: p.image_url,
-      caption: p.caption,
-      category: p.category,
-      subcategory: p.subcategory,
-      created_at: p.created_at,
-      metadata: { username: p.username, avatar: p.avatar ?? undefined },
+      user_id: p.author.id,
+      image_url: p.thumb_url,
+      // PostDetail re-fetches the full caption; the snippet is only a placeholder.
+      caption: p.caption_snippet,
+      category: p.category || '',
+      subcategory: null,
+      created_at: p.created_at || new Date().toISOString(),
+      metadata: { username: p.author.username, avatar: p.author.avatar_url ?? undefined },
     };
     openPostDetail(feedLike);
   };
 
-  const roleLabel = (hit: PeopleSearchHit) => {
-    if (hit.is_business || hit.account_type === 'business') return 'Business';
-    if (hit.is_instructor || hit.account_type === 'instructor') return 'Instructor';
-    return 'People';
+  const openSearchPerson = (p: SearchPerson) => {
+    addRecent(query);
+    openProfile(p.id, { username: p.username, avatarUrl: p.avatar_url });
   };
 
-  const renderAccountRow = (hit: PeopleSearchHit) => {
+  const renderPersonAction = (hit: SearchPerson) => {
+    if (user?.id && hit.id === user.id) return null;
     const busy = addingId === hit.id;
-    const isFriend = !!(hit.isFriend || friendIds.has(hit.id));
-    const isRequested = !isFriend && !!(hit.requestSent || pendingRequestIds.has(hit.id));
-    const pathPreview = (hit.categories || []).slice(0, 2).map(getCategoryLabel).join(' · ');
-    const statusHint = pathPreview
-      ? ` · ${pathPreview}`
-      : isFriend
-        ? ' · Connected'
-        : isRequested
-          ? ' · Requested'
-          : '';
-    return (
-      <View
-        key={hit.id}
-        style={tw`flex-row items-center bg-card border border-line/80 rounded-card px-3 py-3 mb-2`}
-      >
-        <PressableScale
-          onPress={() => openProfile(hit.id, { username: hit.username, avatarUrl: hit.avatar })}
-          style={tw`flex-row items-center flex-1`}
+    const isFriend = hit.is_friend || friendIds.has(hit.id);
+    const isRequested = !isFriend && pendingRequestIds.has(hit.id);
+    if (isFriend) {
+      return (
+        <Ionicons
+          name="checkmark-circle"
+          size={22}
+          color={theme.colors.brand}
+          accessibilityLabel="Friends"
+        />
+      );
+    }
+    if (isRequested) {
+      return (
+        <SpringIn
+          animate={justRequestedId === hit.id}
+          style={tw`bg-raised border border-line px-3 py-2 rounded-control`}
         >
-          <GrowAvatar userId={hit.id} username={hit.username} uri={hit.avatar} size={48} style={tw`mr-3`} />
-          <View style={tw`flex-1`}>
-            <Text style={tw`font-bold text-ink`} numberOfLines={1}>
-              {hit.username}
-            </Text>
-            <Text style={tw`text-xs text-ink-3 mt-0.5`} numberOfLines={1}>
-              {roleLabel(hit)}
-              {statusHint}
-            </Text>
-          </View>
-        </PressableScale>
-        {isFriend ? (
-          <Ionicons name="checkmark-circle" size={22} color={theme.colors.brand} />
-        ) : isRequested ? (
-          <SpringIn
-            animate={justRequestedId === hit.id}
-            style={tw`bg-raised border border-line px-3 py-2 rounded-control`}
-          >
-            <Text style={tw`text-ink-2 text-xs font-bold`}>Requested</Text>
-          </SpringIn>
-        ) : (
-          <PressableScale
-            onPress={() => void onAddFriend(hit.id)}
-            disabled={busy}
-            style={tw`bg-emerald-600 px-3 py-2 rounded-control ${busy ? 'opacity-60' : ''}`}
-          >
-            <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Request'}</Text>
-          </PressableScale>
-        )}
-      </View>
+          <Text style={tw`text-ink-2 text-xs font-bold`}>Requested</Text>
+        </SpringIn>
+      );
+    }
+    return (
+      <PressableScale
+        onPress={() => void onAddFriend(hit.id)}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={`Send ${hit.username} a friend request`}
+        style={tw`bg-emerald-600 px-3 py-2 rounded-control ${busy ? 'opacity-60' : ''}`}
+      >
+        <Text style={tw`text-white text-xs font-bold`}>{busy ? '…' : 'Request'}</Text>
+      </PressableScale>
     );
   };
 
-  const SearchResultsHeader = (
-    <>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={tw`mb-3`}
-        contentContainerStyle={tw`pr-2`}
-      >
-        {(
-          [
-            { key: 'all' as const, label: 'All', count: accountHits.length + searchPosts.length + filteredShopHits.length },
-            { key: 'accounts' as const, label: 'Accounts', count: accountHits.length },
-            { key: 'posts' as const, label: 'Posts', count: searchPosts.length },
-            { key: 'shop' as const, label: 'Shop', count: filteredShopHits.length },
-          ] as const
-        ).map((tab) => {
-          const selected = searchTab === tab.key;
-          return (
-            <PressableScale
-              key={tab.key}
-              onPress={() => setSearchTab(tab.key)}
-              style={tw`mr-2 px-3.5 py-2 rounded-card border ${
-                selected ? 'bg-emerald-600 border-emerald-600' : 'bg-card border-line'
-              }`}
-            >
-              <Text style={tw`text-sm font-semibold ${selected ? 'text-white' : 'text-ink'}`}>
-                {tab.label}
-                {tab.count > 0 ? ` · ${tab.count}` : ''}
-              </Text>
-            </PressableScale>
-          );
-        })}
-      </ScrollView>
-
-      {(searchTab === 'all' || searchTab === 'accounts') && (
+  const shopHitsSection =
+    filteredShopHits.length > 0 ? (
+      <>
+        <SectionTitle title="Shop" actionLabel="Open shop" onAction={openMarketplace} />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={tw`mb-3`}
-          contentContainerStyle={tw`pr-2`}
+          style={tw`mb-5`}
+          {...horizontalScrollProps}
         >
-          {(
-            [
-              { key: 'all' as const, label: 'All accounts' },
-              { key: 'people' as const, label: 'People' },
-              { key: 'instructor' as const, label: 'Instructors' },
-              { key: 'business' as const, label: 'Business' },
-            ] as const
-          ).map((f) => {
-            const selected = accountRole === f.key;
-            return (
-              <PressableScale
-                key={f.key}
-                onPress={() => setAccountRole(f.key)}
-                style={tw`mr-2 px-3 py-1.5 rounded-chip border ${
-                  selected ? 'bg-emerald-100 border-emerald-300' : 'bg-card border-line'
-                }`}
-              >
-                <Text
-                  style={tw`text-xs font-semibold ${selected ? 'text-emerald-800' : 'text-ink-2'}`}
-                >
-                  {f.label}
+          {filteredShopHits.map((product) => (
+            <PressableScale
+              key={product.id}
+              style={tw`w-36 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
+              accessibilityRole="button"
+              accessibilityLabel={product.name}
+              onPress={() => {
+                triggerPressFeedback();
+                const root = navigation.getParent?.() || navigation;
+                (root as { navigate: (a: string, b: object) => void }).navigate(
+                  'ProductDetail',
+                  { productId: product.id, preview: { title: product.name, imageUrl: product.image_url, price: product.price } }
+                );
+              }}
+            >
+              <GrowImage
+                source={{ uri: product.image_url || '' }}
+                style={tw`w-full h-44 bg-raised`}
+                contentFit="cover"
+              />
+              <View style={tw`p-2.5`}>
+                <Text style={tw`text-xs font-semibold text-ink`} numberOfLines={2}>
+                  {product.name}
                 </Text>
-              </PressableScale>
-            );
-          })}
+                <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
+                  ${product.price.toFixed(2)}
+                </Text>
+              </View>
+            </PressableScale>
+          ))}
         </ScrollView>
-      )}
+      </>
+    ) : null;
 
-      {searchLoading ? (
-        <View style={tw`py-8 items-center`}>
-          <ActivityIndicator color={theme.colors.brand} />
-          <Text style={tw`text-sm text-ink-3 mt-2`}>Searching…</Text>
-        </View>
-      ) : searchError ? (
-        <View style={tw`mb-4 px-3 py-3 rounded-control border border-red-200 bg-red-50`}>
-          <Text style={tw`text-sm text-red-700`}>{searchError}</Text>
-          <PressableScale onPress={onSubmitSearch} style={tw`mt-2`}>
-            <Text style={tw`text-sm font-semibold text-emerald-700`}>Retry</Text>
-          </PressableScale>
-        </View>
-      ) : (
-        <>
-          {(searchTab === 'all' || searchTab === 'accounts') && (
-            <>
-              <SectionTitle title="Accounts" />
-              {accountHits.length > 0 ? (
-                <View style={tw`mb-5`}>{accountHits.map(renderAccountRow)}</View>
-              ) : (
-                <Text style={tw`text-sm text-ink-3 mb-5`}>
-                  No accounts match “{query.trim()}”.
-                </Text>
-              )}
-            </>
-          )}
-
-          {(searchTab === 'all' || searchTab === 'posts') && (
-            <>
-              <SectionTitle title="Posts" />
-              {searchPosts.length > 0 ? (
-                <View style={tw`flex-row flex-wrap justify-between mb-5`}>
-                  {searchPosts.map((p) => {
-                    const image = resolvePostMediaUri(p.image_url, p.category, p.id);
-                    return (
-                      <PressableScale
-                        key={p.id}
-                        onPress={() => openSearchPost(p)}
-                        style={tw`w-[48%] mb-3 rounded-card overflow-hidden border border-line/80 bg-card`}
-                      >
-                        <GrowImage
-                          source={{ uri: image }}
-                          style={tw`w-full h-36`}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                        />
-                        <Text style={tw`p-2.5 text-xs font-semibold text-ink`} numberOfLines={2}>
-                          {p.caption || p.username}
-                        </Text>
-                      </PressableScale>
-                    );
-                  })}
-                </View>
-              ) : (
-                <Text style={tw`text-sm text-ink-3 mb-5`}>
-                  No posts match “{query.trim()}”.
-                </Text>
-              )}
-            </>
-          )}
-
-          {(searchTab === 'all' || searchTab === 'shop') && (
-            <>
-              <SectionTitle title="Shop" actionLabel="Open shop" onAction={openMarketplace} />
-              {filteredShopHits.length > 0 ? (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={tw`mb-5`}
-                  {...horizontalScrollProps}
-                >
-                  {filteredShopHits.map((product) => (
-                    <PressableScale
-                      key={product.id}
-                      style={tw`w-36 mr-3 bg-card border border-line/80 rounded-card overflow-hidden`}
-                      onPress={() => {
-                        triggerPressFeedback();
-                        const root = navigation.getParent?.() || navigation;
-                        (root as { navigate: (a: string, b: object) => void }).navigate(
-                          'ProductDetail',
-                          { productId: product.id, preview: { title: product.name, imageUrl: product.image_url, price: product.price } }
-                        );
-                      }}
-                    >
-                      <GrowImage
-                        source={{ uri: product.image_url || '' }}
-                        style={tw`w-full h-44 bg-stone-100`}
-                        contentFit="cover"
-                      />
-                      <View style={tw`p-2.5`}>
-                        <Text style={tw`text-xs font-semibold text-ink`} numberOfLines={2}>
-                          {product.name}
-                        </Text>
-                        <Text style={tw`text-sm font-bold text-emerald-700 mt-1`}>
-                          ${product.price.toFixed(2)}
-                        </Text>
-                      </View>
-                    </PressableScale>
-                  ))}
-                </ScrollView>
-              ) : (
-                <Text style={tw`text-sm text-ink-3 mb-5`}>No shop picks match this search.</Text>
-              )}
-            </>
-          )}
-
-          {!searchLoading &&
-          accountHits.length === 0 &&
-          searchPosts.length === 0 &&
-          filteredShopHits.length === 0 &&
-          searchCommitted ? (
-            <EmptyState
-              icon="search-outline"
-              title="No results"
-              description={
-                `Nothing found for “${query.trim()}”. Try another name or caption.`
-              }
-              actionLabel="Clear search"
-              onAction={() => setQuery('')}
-            />
-          ) : null}
-        </>
-      )}
-    </>
+  const SearchResultsHeader = (
+    <SearchResults
+      query={query}
+      result={search.result}
+      loading={search.loading}
+      error={search.error}
+      onRetry={search.runNow}
+      seeAll={search.seeAll}
+      onSeeAll={(type) => {
+        addRecent(query);
+        search.openSeeAll(type);
+      }}
+      onCloseSeeAll={search.closeSeeAll}
+      onLoadMore={search.loadMore}
+      onRetrySeeAll={search.retrySeeAll}
+      onOpenPerson={openSearchPerson}
+      onOpenPost={openSearchPost}
+      onOpenTag={(tag) => pickSearch(`#${tag}`)}
+      renderPersonAction={renderPersonAction}
+      suggestions={suggestedPaths}
+      onPickSuggestion={pickSearch}
+      onClear={() => setQuery('')}
+      footer={search.seeAll ? null : shopHitsSection}
+      footerHasResults={filteredShopHits.length > 0}
+    />
   );
+
+  const showRecents = searchFocused && !isSearching;
 
   const ListHeader = isSearching ? (
     SearchResultsHeader
+  ) : showRecents ? (
+    <RecentSearches
+      recents={recentSearches}
+      suggestions={suggestedPaths}
+      onPick={pickSearch}
+      onRemove={removeRecent}
+      onClearAll={clearRecent}
+    />
   ) : (
     <>
       <SectionTitle title="Recommended for you" />
@@ -1094,20 +901,16 @@ export default function ExploreScreen() {
             : 'Meet people through stories, clips, and shared growth paths.'}
         </Text>
 
-        <SearchField
+        <ExploreSearchInput
+          ref={searchInputRef}
           value={query}
-          onChangeText={(t) => {
-            setQuery(t);
-            if (!t.trim()) {
-              setSearchTab('all');
-              setAccountRole('all');
-            }
-          }}
+          onChangeText={setQuery}
           onSubmit={onSubmitSearch}
-          placeholder="Search people, instructors, posts…"
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
         />
 
-        {!isSearching ? (
+        {!isSearching && !showRecents ? (
           <View style={tw`mt-2 -mx-1`}>
             <CategoryCapsuleRow
               items={pathCapsules}
@@ -1116,11 +919,7 @@ export default function ExploreScreen() {
               allCount={totalCapsuleCount || undefined}
             />
           </View>
-        ) : (
-          <Text style={tw`text-xs text-ink-3 mb-1`}>
-            Tap search or press Search on the keyboard · filter by Accounts, Posts, Shop
-          </Text>
-        )}
+        ) : null}
       </View>
 
       {loadError ? (
@@ -1150,7 +949,7 @@ export default function ExploreScreen() {
       ) : (
         <FlatList
           ref={listRef}
-          data={isSearching ? [] : filteredReels}
+          data={isSearching || showRecents ? [] : filteredReels}
           keyExtractor={(p) => p.id}
           ListHeaderComponent={ListHeader}
           renderItem={({ item: p }) => {
@@ -1217,7 +1016,7 @@ export default function ExploreScreen() {
             <RefreshControl {...refresh} />
           }
           ListEmptyComponent={
-            isSearching ? null : filteredPeople.length === 0 ? (
+            isSearching || showRecents ? null : filteredPeople.length === 0 ? (
               <EmptyState
                 icon="compass-outline"
                 title="Nothing in this path yet"

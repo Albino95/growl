@@ -106,6 +106,25 @@ function metaForType(type: string): {
         chipText: 'text-emerald-800',
         rail: theme.colors.brand,
       };
+    case 'mention':
+      return {
+        icon: 'at',
+        label: 'Mention',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
+    case 'buddy_invite':
+    case 'buddy_accept':
+      return {
+        icon: 'people-outline',
+        label: 'Buddy',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
     case 'instructor_claim':
     case 'coaching_inquiry':
     case 'coaching_proposal':
@@ -228,6 +247,11 @@ export default function NotificationsScreen() {
 
     if (item.type === 'instructor_claim') {
       navigateFromRoot(navigation, 'Individual');
+      return;
+    }
+
+    if (item.type === 'buddy_invite' || item.type === 'buddy_accept') {
+      navigateFromRoot(navigation, 'Buddies');
       return;
     }
 

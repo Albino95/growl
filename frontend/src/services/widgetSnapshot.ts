@@ -33,6 +33,44 @@ export function widgetKeyToMood(key: string | null | undefined): Mood | null {
 
 export type WidgetFriend = { initial: string; color: string };
 
+/**
+ * Brand-palette dot colours for friend initials (all keep a white initial ≥ 4.5:1).
+ * Emerald first so a single friend reads as "Grow!".
+ */
+export const WIDGET_FRIEND_COLORS: readonly string[] = [
+  '#059669', // emerald (brand)
+  '#0F766E', // teal
+  '#B45309', // amber
+  '#BE123C', // rose
+  '#4F46E5', // indigo
+  '#0369A1', // sky
+  '#7C3AED', // violet
+  '#57534E', // stone
+];
+
+/** Deterministic colour for a user id (same friend → same dot on every write). */
+export function friendColor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return WIDGET_FRIEND_COLORS[h % WIDGET_FRIEND_COLORS.length];
+}
+
+/** Shape of GET /me/circle/today items. */
+export type CircleTodayFriend = { id: string; display_name?: string; initial?: string; checked_in?: boolean };
+
+/** /me/circle/today → widget dots: only friends who checked in, server order (newest first). */
+export function circleToWidgetFriends(list: CircleTodayFriend[] | null | undefined): WidgetFriend[] {
+  if (!Array.isArray(list)) return [];
+  const out: WidgetFriend[] = [];
+  for (const f of list) {
+    if (!f || !f.id || f.checked_in !== true) continue;
+    const initial = (f.initial || f.display_name || '').trim().charAt(0).toUpperCase();
+    if (!initial) continue;
+    out.push({ initial, color: friendColor(f.id) });
+  }
+  return out;
+}
+
 export type WidgetSnapshot = {
   v: number;
   signedIn: boolean;
@@ -49,7 +87,7 @@ export type WidgetSnapshot = {
   lifeMode: Exclude<LifeMode['mode'], 'none'> | null;
   lifeModeLabel: string | null;
   week: { day: string; status: StreakDayStatus }[];
-  /** Friends who checked in today, max 4. Empty until the API exposes it. */
+  /** Friends who checked in today (GET /me/circle/today), max 4, newest first. */
   friends: WidgetFriend[];
   /** Optimistic "Checking in…" while a widget-started check-in is in flight. */
   pending: { mood: WidgetMoodKey; at: number } | null;

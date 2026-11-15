@@ -21,6 +21,9 @@ export type NotificationType =
   | 'badge_earned'
   | 'challenge_completed'
   | 'invite_joined'
+  | 'mention'
+  | 'buddy_invite'
+  | 'buddy_accept'
   | 'system';
 
 function parseUsername(metadata: string | null | undefined): string {

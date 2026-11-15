@@ -244,7 +244,8 @@ describe('Stories Routes', () => {
             }),
           };
         }
-        if (query.includes('FROM posts p') && query.includes('friend_likes_count')) {
+        // Serves both the candidate (scoring) query and the page hydration query.
+        if (query.includes('FROM posts p') && query.includes('likes_count')) {
           return {
             bind: () => ({
               all: async () => ({

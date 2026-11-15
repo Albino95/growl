@@ -9,6 +9,7 @@ import { POINTS, awardPoints } from '../utils/points';
 import { createUserNotification, resolveUsername } from '../utils/notifications';
 import { recordActivity } from '../utils/activity';
 import { awardBadgeSafe } from '../utils/badges';
+import { recordPostMentions } from '../utils/mentions';
 
 type FeedLiker = {
   id: string;
@@ -17,15 +18,116 @@ type FeedLiker = {
   isFriend: boolean;
 };
 
+/** Page size when the client asks for paging (cursor and/or limit). */
+export const FEED_PAGE_DEFAULT = 20;
+export const FEED_PAGE_MAX = 50;
+/** Legacy single-shot sizes (no cursor, no limit) — what old app builds have always received. */
+const LEGACY_HOME_LIMIT = 50;
+const LEGACY_EXPLORE_LIMIT = 80;
 /**
- * GET /api/v1/feed/feed
- * Get personalized feed for user
+ * Candidate window ranked per request. The ranking is score-based (paths, friends,
+ * recency, engagement), so it is computed in JS over this window and then sliced
+ * with a keyset over (section, score, id).
+ */
+const HOME_CANDIDATE_CAP = 400;
+const EXPLORE_CANDIDATE_CAP = 500;
+
+type FeedModeKey = 'foryou' | 'explore' | 'home';
+
+/**
+ * Opaque cursor. `t` freezes the snapshot time so recency scores and the candidate
+ * window (no posts newer than `t`) are identical on every page; `r/s/i` is the
+ * keyset position of the last item sent (section rank asc, score desc, id asc).
+ */
+type FeedCursor = { v: 1; m: FeedModeKey; t: number; r: number; s: number; i: string };
+
+function toBase64Url(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(s: string): string {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export function encodeFeedCursor(c: FeedCursor): string {
+  return toBase64Url(JSON.stringify(c));
+}
+
+export function decodeFeedCursor(raw: string): FeedCursor | null {
+  if (!raw || raw.length > 512) return null;
+  try {
+    const c = JSON.parse(fromBase64Url(raw)) as Partial<FeedCursor>;
+    if (
+      c &&
+      c.v === 1 &&
+      (c.m === 'foryou' || c.m === 'explore' || c.m === 'home') &&
+      typeof c.t === 'number' &&
+      Number.isFinite(c.t) &&
+      typeof c.r === 'number' &&
+      typeof c.s === 'number' &&
+      Number.isFinite(c.s) &&
+      typeof c.i === 'string' &&
+      c.i.length > 0 &&
+      c.i.length <= 128
+    ) {
+      return c as FeedCursor;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/** SQLite datetime text for a JS epoch ms (UTC, second precision). */
+function sqliteDateTime(ms: number): string {
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+}
+
+type RankedCandidate = {
+  id: string;
+  user_id: string;
+  category: string;
+  subcategory: string | null;
+  relevanceScore: number;
+  isOwn: boolean;
+  isFriend: boolean;
+  /** 0 = following section (own + friends), 1 = suggested. Always 0 outside foryou. */
+  sectionRank: number;
+};
+
+/** Keyset order: section asc, score desc, id asc (fully deterministic). */
+function compareRanked(a: RankedCandidate, b: RankedCandidate): number {
+  if (a.sectionRank !== b.sectionRank) return a.sectionRank - b.sectionRank;
+  if (a.relevanceScore !== b.relevanceScore) return b.relevanceScore - a.relevanceScore;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+function isAfterCursor(p: RankedCandidate, c: FeedCursor): boolean {
+  if (p.sectionRank !== c.r) return p.sectionRank > c.r;
+  if (p.relevanceScore !== c.s) return p.relevanceScore < c.s;
+  return p.id > c.i;
+}
+
+/**
+ * GET /api/v1/feed/feed?mode=foryou|home|explore&cursor=&limit=
+ *
+ * Without `cursor` and `limit` it returns the legacy first page (50 home / 80
+ * explore). With either, pages are `limit` (default 20, max 50). The next page
+ * token is in `meta.next_cursor` for every mode and also `data.next_cursor` in
+ * foryou mode (object payload); null when there is nothing more.
  */
 export async function getFeed(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const feedMode = url.searchParams.get('mode') || 'home';
   const isExploreMode = feedMode === 'explore';
   const isForYouMode = feedMode === 'foryou' || feedMode === 'home';
+  const modeKey: FeedModeKey = isExploreMode ? 'explore' : isForYouMode ? 'foryou' : 'home';
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
@@ -36,6 +138,28 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   if (!user) {
     return error('USER_NOT_FOUND', 'User not found', 404);
   }
+
+  const cursorParam = url.searchParams.get('cursor');
+  const limitParam = url.searchParams.get('limit');
+  let cursor: FeedCursor | null = null;
+  if (cursorParam) {
+    cursor = decodeFeedCursor(cursorParam);
+    if (!cursor || cursor.m !== modeKey) {
+      return error('INVALID_CURSOR', 'This feed page has expired. Pull to refresh.', 400);
+    }
+  }
+  const paged = cursorParam !== null || limitParam !== null;
+  let pageSize: number;
+  if (paged) {
+    const n = limitParam === null ? FEED_PAGE_DEFAULT : Number.parseInt(limitParam, 10);
+    pageSize = Number.isFinite(n) ? Math.min(FEED_PAGE_MAX, Math.max(1, n)) : FEED_PAGE_DEFAULT;
+  } else {
+    pageSize = isExploreMode ? LEGACY_EXPLORE_LIMIT : LEGACY_HOME_LIMIT;
+  }
+  // Snapshot time: frozen by the cursor so scores and the window match page 1.
+  const nowMs = Date.now();
+  const asOfMs = cursor ? Math.min(cursor.t, nowMs) : nowMs;
+  const asOf = sqliteDateTime(asOfMs);
 
   let metadata: Record<string, any> = {};
   try {
@@ -56,93 +180,73 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
   // First 80 inline in SQL; any remainder is filtered after the fetch.
   const legacyExcluded = [...legacyExcludedAll].slice(0, 80);
 
-  // Pull a recent post window and hydrate engagement counters in one query.
-  // Explore needs a wider window so discovery isn't empty after a quiet week.
-  // Home uses 21 days so seeded / quieter accounts still see a populated feed.
+  // Phase 1: light candidate rows (enough to score). Explore needs a wider window
+  // so discovery isn't empty after a quiet week; home uses 21 days so seeded /
+  // quieter accounts still see a populated feed.
   const recencyWindow = isExploreMode ? '-45 days' : '-21 days';
-  const feedLimit = isExploreMode ? 80 : 50;
-  let query = `
-    SELECT 
-      p.*,
-      u.metadata as user_metadata,
+  const candidateCap = isExploreMode ? EXPLORE_CANDIDATE_CAP : HOME_CANDIDATE_CAP;
+  let candidateSql = `
+    SELECT
+      p.id, p.user_id, p.category, p.subcategory, p.created_at, p.image_url,
       u.is_instructor,
+      json_extract(u.metadata, '$.categories') as owner_categories,
       (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
-      (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
-      (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
-      (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
-        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
-        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count,
-      (SELECT GROUP_CONCAT(DISTINCT COALESCE(json_extract(ul.metadata, '$.username'), substr(ul.id, 1, 8)))
-        FROM post_engagement pef
-        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
-        INNER JOIN users ul ON ul.id = pef.user_id
-        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likers_csv
+      (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
-    WHERE p.created_at > datetime('now', '${recencyWindow}')
+    WHERE p.created_at > datetime(?, '${recencyWindow}')
+      AND datetime(p.created_at) <= datetime(?)
       AND COALESCE(p.is_hidden, 0) = 0
       AND p.image_url IS NOT NULL
       AND trim(p.image_url) != ''
       AND p.image_url LIKE 'https://%'
-  `;
-
-  const bindings: any[] = [];
-
-  query += `
       AND p.user_id NOT IN (
         SELECT target_user_id FROM user_relationships WHERE user_id = ? AND type IN ('mute', 'block')
       )`;
-  bindings.push(ctx.userId);
+  const candidateBindings: unknown[] = [asOf, asOf, ctx.userId];
   if (legacyExcluded.length > 0) {
-    query += ` AND p.user_id NOT IN (${legacyExcluded.map(() => '?').join(',')})`;
-    bindings.push(...legacyExcluded);
+    candidateSql += ` AND p.user_id NOT IN (${legacyExcluded.map(() => '?').join(',')})`;
+    candidateBindings.push(...legacyExcluded);
   }
+  candidateSql += `
+    ORDER BY p.engagement_score DESC, p.created_at DESC, p.id ASC
+    LIMIT ${candidateCap}`;
 
-  query += `
-    ORDER BY p.engagement_score DESC, p.created_at DESC
-    LIMIT ${feedLimit}
-  `;
-
-  const posts = await env.DB.prepare(query)
-    .bind(ctx.userId, ctx.userId, ctx.userId, ...bindings)
-    .all<
-      Post & {
-        user_metadata: string;
-        is_instructor: boolean;
+  const [candidateRes, friendIds] = await Promise.all([
+    env.DB.prepare(candidateSql)
+      .bind(...candidateBindings)
+      .all<{
+        id: string;
+        user_id: string;
+        category: string;
+        subcategory: string | null;
+        created_at: string;
+        image_url: string | null;
+        is_instructor: number | boolean | null;
+        owner_categories: string | null;
         likes_count: number;
         comments_count: number;
-        viewer_has_liked: number;
-        friend_likes_count: number;
-        friend_likers_csv?: string | null;
-      }
-    >();
+      }>(),
+    getFriendUserIds(env, ctx.userId),
+  ]);
 
-  const friendIds = await getFriendUserIds(env, ctx.userId);
-
-  const scoredPosts = (posts.results || [])
+  const scored: RankedCandidate[] = (candidateRes.results || [])
     .filter((post) => {
       if (legacyExcludedAll.has(post.user_id)) return false;
-      const url = typeof post.image_url === 'string' ? post.image_url.trim() : '';
-      return /^https:\/\//i.test(url);
+      const u = typeof post.image_url === 'string' ? post.image_url.trim() : '';
+      return /^https:\/\//i.test(u);
     })
     .map((post) => {
-      const userMeta = JSON.parse(post.user_metadata || '{}');
-      let postMeta: Record<string, unknown> = {};
+      let ownerPaths: string[] = [];
       try {
-        postMeta =
-          typeof post.metadata === 'string'
-            ? JSON.parse(post.metadata || '{}')
-            : (post.metadata as Record<string, unknown>) || {};
+        const parsed = post.owner_categories ? JSON.parse(post.owner_categories) : [];
+        ownerPaths = Array.isArray(parsed) ? parsed.map((x: unknown) => String(x)) : [];
       } catch {
-        postMeta = {};
+        ownerPaths = [];
       }
-      const ownerPaths = Array.isArray(userMeta.categories)
-        ? userMeta.categories.map((x: unknown) => String(x))
-        : [];
       const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
       const catScore = categoryRelevanceScore(categories, aligned.category, aligned.subcategory);
-      const daysSincePost =
-        (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      const daysSincePost = (asOfMs - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
       const isOwn = post.user_id === ctx.userId;
       const isFriend = friendIds.has(post.user_id);
       const likes = Number(post.likes_count) || 0;
@@ -155,98 +259,165 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
         : catScore + Math.max(0, 10 - daysSincePost) + engagementBoost * 0.45;
       if (isFriend) relevanceScore += isExploreMode ? 6 : 25;
       if (isOwn) relevanceScore += 100;
-
+      if (!Number.isFinite(relevanceScore)) relevanceScore = 0;
       return {
-        ...post,
+        id: post.id,
+        user_id: post.user_id,
         category: aligned.category,
         subcategory: aligned.subcategory,
-        metadata: {
-          ...postMeta,
-          likes: post.likes_count || 0,
-          comments: post.comments_count || 0,
-          has_liked: Number(post.viewer_has_liked) > 0,
-          friend_likes_count: Number(post.friend_likes_count) || 0,
-          friend_likers:
-            typeof post.friend_likers_csv === 'string' && post.friend_likers_csv.length > 0
-              ? post.friend_likers_csv.split(',').map((x) => x.trim()).filter(Boolean)
-              : [],
-          is_friend: isFriend,
-          isInstructor: post.is_instructor,
-          username: userMeta.username,
-          avatar: userMeta.avatar,
-        },
         relevanceScore,
         isOwn,
         isFriend,
+        sectionRank: isForYouMode && !isExploreMode && !(isOwn || isFriend) ? 1 : 0,
       };
     });
 
-  const scopedPosts = scoredPosts.filter((post) => {
-      // Home: own + friends (any path) + non-friends whose post matches the viewer's paths.
-      // Category chips on the client narrow further; see docs/FEATURES.md "Cross-path posts".
-      if (!isExploreMode) {
-        if (post.isOwn || post.isFriend) return true;
-        if (!categories.length) return false;
-        return categoryRelevanceScore(categories, post.category, post.subcategory) > 0;
-      }
-
-      // Explore: discovery of non-friends only (friends belong on Home).
-      if (post.isOwn) return false;
-      return !post.isFriend;
+  let ranked: RankedCandidate[];
+  if (isExploreMode) {
+    // Explore: discovery of non-friends only (friends belong on Home).
+    ranked = scored.filter((p) => !p.isOwn && !p.isFriend);
+  } else if (isForYouMode) {
+    // For You: following (own + friends) section first, then everyone else.
+    ranked = scored;
+  } else {
+    // Home (array): own + friends + non-friends whose post matches the viewer's paths.
+    // Category chips on the client narrow further; see docs/FEATURES.md "Cross-path posts".
+    ranked = scored.filter((post) => {
+      if (post.isOwn || post.isFriend) return true;
+      if (!categories.length) return false;
+      return categoryRelevanceScore(categories, post.category, post.subcategory) > 0;
     });
+    // Strict rules produced nothing: fall back to best available non-own posts so
+    // new users without connections don't get a successful-but-empty feed.
+    if (ranked.length === 0) ranked = scored.filter((p) => !p.isOwn);
+  }
+  ranked.sort(compareRanked);
 
-  // If strict home-feed rules produce no cards, fall back to best available non-muted posts.
-  // This prevents a successful-but-empty feed for new users without connections yet.
-  let personalizedPosts = scopedPosts;
-  if (!isExploreMode && personalizedPosts.length === 0) {
-    personalizedPosts = scoredPosts.filter((post) => !post.isOwn);
+  const remaining = cursor ? ranked.filter((p) => isAfterCursor(p, cursor!)) : ranked;
+  const page = remaining.slice(0, pageSize);
+  const last = page[page.length - 1];
+  const nextCursor =
+    remaining.length > pageSize && last
+      ? encodeFeedCursor({
+          v: 1,
+          m: modeKey,
+          t: asOfMs,
+          r: last.sectionRank,
+          s: last.relevanceScore,
+          i: last.id,
+        })
+      : null;
+
+  // Phase 2: hydrate only this page (≤ 80 ids + 3 viewer binds, under D1's 100).
+  type HydratedRow = Post & {
+    user_metadata: string;
+    is_instructor: boolean;
+    likes_count: number;
+    comments_count: number;
+    viewer_has_liked: number;
+    friend_likes_count: number;
+    friend_likers_csv?: string | null;
+  };
+  const hydrated = new Map<string, HydratedRow>();
+  for (let i = 0; i < page.length; i += 80) {
+    const ids = page.slice(i, i + 80).map((p) => p.id);
+    const rows = await env.DB.prepare(
+      `SELECT
+        p.*,
+        u.metadata as user_metadata,
+        u.is_instructor,
+        (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+        (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
+        (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
+        (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
+          INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+          WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count,
+        (SELECT GROUP_CONCAT(DISTINCT COALESCE(json_extract(ul.metadata, '$.username'), substr(ul.id, 1, 8)))
+          FROM post_engagement pef
+          INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+          INNER JOIN users ul ON ul.id = pef.user_id
+          WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likers_csv
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.id IN (${ids.map(() => '?').join(',')})`
+    )
+      .bind(ctx.userId, ctx.userId, ctx.userId, ...ids)
+      .all<HydratedRow>();
+    for (const row of rows.results || []) hydrated.set(row.id, row);
   }
 
-  personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
-  const formatPost = (post: (typeof scoredPosts)[number]) => {
-    const { relevanceScore, isOwn, isFriend, ...rest } = post;
+  const formatPost = (rankedPost: RankedCandidate) => {
+    const post = hydrated.get(rankedPost.id);
+    if (!post) return null;
+    let userMeta: Record<string, any> = {};
+    try {
+      userMeta = JSON.parse(post.user_metadata || '{}');
+    } catch {
+      userMeta = {};
+    }
+    let postMeta: Record<string, unknown> = {};
+    try {
+      postMeta =
+        typeof post.metadata === 'string'
+          ? JSON.parse(post.metadata || '{}')
+          : (post.metadata as Record<string, unknown>) || {};
+    } catch {
+      postMeta = {};
+    }
+    const { user_metadata, likes_count, comments_count, viewer_has_liked, friend_likes_count, friend_likers_csv, ...rest } =
+      post;
+    void user_metadata;
     return {
       ...rest,
-      relevance_score: relevanceScore ?? 0,
-      feed_section: isOwn || isFriend ? 'following' : 'suggested',
+      category: rankedPost.category,
+      subcategory: rankedPost.subcategory,
+      metadata: {
+        ...postMeta,
+        likes: likes_count || 0,
+        comments: comments_count || 0,
+        has_liked: Number(viewer_has_liked) > 0,
+        friend_likes_count: Number(friend_likes_count) || 0,
+        friend_likers:
+          typeof friend_likers_csv === 'string' && friend_likers_csv.length > 0
+            ? friend_likers_csv.split(',').map((x) => x.trim()).filter(Boolean)
+            : [],
+        is_friend: rankedPost.isFriend,
+        isInstructor: post.is_instructor,
+        username: userMeta.username,
+        avatar: userMeta.avatar,
+      },
+      // Legacy fields kept for old builds.
+      likes_count,
+      comments_count,
+      viewer_has_liked,
+      friend_likes_count,
+      friend_likers_csv,
+      relevance_score: rankedPost.relevanceScore ?? 0,
+      feed_section: rankedPost.isOwn || rankedPost.isFriend ? 'following' : 'suggested',
     };
   };
+  const formatted = page
+    .map((p) => ({ p, out: formatPost(p) }))
+    .filter((x): x is { p: RankedCandidate; out: NonNullable<ReturnType<typeof formatPost>> } => !!x.out);
+  const meta = { next_cursor: nextCursor };
 
   if (isForYouMode && !isExploreMode) {
-    let following = personalizedPosts.filter((p) => p.isOwn || p.isFriend);
-    let suggested = scoredPosts
-      .filter((p) => !p.isOwn && !p.isFriend)
-      .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
-    const MIN_SUGGESTED = 5;
-    if (categories.length > 0 && suggested.length < MIN_SUGGESTED) {
-      const seen = new Set(suggested.map((p) => p.id));
-      for (const post of scoredPosts.filter((p) => !p.isOwn && !p.isFriend)) {
-        if (seen.has(post.id)) continue;
-        suggested.push(post);
-        seen.add(post.id);
-        if (suggested.length >= MIN_SUGGESTED) break;
-      }
-    }
-
-    if (following.length === 0 && suggested.length === 0 && personalizedPosts.length > 0) {
-      suggested = personalizedPosts.filter((p) => !p.isOwn);
-    }
-
-    following = following.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    suggested = suggested.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
     return json(
       {
-        following: following.map(formatPost),
-        suggested: suggested.map(formatPost),
+        following: formatted.filter((x) => x.p.sectionRank === 0).map((x) => x.out),
+        suggested: formatted.filter((x) => x.p.sectionRank === 1).map((x) => x.out),
+        next_cursor: nextCursor,
       },
-      200
+      200,
+      meta
     );
   }
 
-  return json(personalizedPosts.map(formatPost), 200);
+  return json(
+    formatted.map((x) => x.out),
+    200,
+    meta
+  );
 }
 
 /**
@@ -329,6 +500,7 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       )
       .run();
 
+    await recordPostMentions(env, postId, ctx.userId, caption);
     const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CREATE_POST);
     // Growth streak + badges (never fails the post).
     const growth = await recordActivity(env, ctx.userId, 'post', { path: category });

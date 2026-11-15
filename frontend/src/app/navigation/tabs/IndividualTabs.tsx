@@ -31,7 +31,7 @@ import { useHomeTabStore } from '../../../state/useHomeTabStore';
 
 export type IndividualTabsParamList = {
   Feed: undefined;
-  Explore: undefined;
+  Explore: { query?: string } | undefined;
   Journal: { openCompose?: boolean } | undefined;
   Marketplace: undefined;
   Profile: undefined;

@@ -13,13 +13,20 @@ import {
   Alert,
   Pressable,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import GrowImage from '../../components/ui/GrowImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useAppDispatch, useAppSelector } from '../../store/hooks';
-import { fetchFeedPosts, patchFeedPostEngagement } from '../../store/slices/feedSlice';
+import {
+  fetchFeedPosts,
+  fetchMoreFeedPosts,
+  patchFeedPostEngagement,
+  FEED_STALE_MS,
+} from '../../store/slices/feedSlice';
+import { isStale } from '../../utils/feedPaging';
 import { useHomeTabStore } from '../../state/useHomeTabStore';
 import {
   horizontalScrollProps,
@@ -166,6 +173,9 @@ export default function FeedScreen({ navigation, route }: any) {
   const feedSuggested = useAppSelector((s) => s.feed.suggested);
   const feedStatus = useAppSelector((s) => s.feed.status);
   const feedError = useAppSelector((s) => s.feed.error);
+  const feedNextCursor = useAppSelector((s) => s.feed.nextCursor);
+  const feedLoadingMore = useAppSelector((s) => s.feed.loadingMore);
+  const feedLoadMoreError = useAppSelector((s) => s.feed.loadMoreError);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const feedListRef = React.useRef<SectionList<Post>>(null);
   const homePulse = useHomeTabStore((s) => s.pulse);
@@ -287,23 +297,72 @@ export default function FeedScreen({ navigation, route }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSharedAt]);
 
+  /**
+   * Stale-while-revalidate for the whole Home surface: refocusing within 60 s shows
+   * what's cached without any network. Pull-to-refresh / tab re-press always refetch.
+   */
+  const surfaceFetchedAtRef = useRef<number | null>(null);
+  const revalidateIfStale = useCallback(() => {
+    if (!isStale(surfaceFetchedAtRef.current, FEED_STALE_MS)) return;
+    surfaceFetchedAtRef.current = Date.now();
+    // Thunk also skips itself while feed data is fresh.
+    void dispatch(fetchFeedPosts({ silent: true }));
+    void loadStoriesOnly();
+    void useActivationStore.getState().hydrate();
+    // Throttled — also picks up activity from a post/story made since last check.
+    void useGrowthStore.getState().refresh({ userId: user?.id ?? null });
+    if (isRecapWindow()) void useGrowthStore.getState().refreshRecap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadStoriesOnly only sets state
+  }, [dispatch, user?.id]);
+
   useFocusEffect(
     useCallback(() => {
-      void dispatch(fetchFeedPosts({ silent: true }));
-      void loadStoriesOnly();
-      void useActivationStore.getState().hydrate();
-      // Cheap (throttled) — also picks up activity from a post/story made since last focus.
-      void useGrowthStore.getState().refresh({ userId: user?.id ?? null });
-      if (isRecapWindow()) void useGrowthStore.getState().refreshRecap();
+      revalidateIfStale();
 
-      const pollId = setInterval(() => {
-        if (!isAppActive()) return;
-        void dispatch(fetchFeedPosts({ silent: true }));
-      }, 90_000);
+      // Background poll only while Home is focused AND the app is in the foreground.
+      let pollId: ReturnType<typeof setInterval> | null = null;
+      const startPoll = () => {
+        if (pollId) return;
+        pollId = setInterval(() => {
+          if (!isAppActive()) return;
+          void dispatch(fetchFeedPosts({ silent: true, force: true }));
+        }, 90_000);
+      };
+      const stopPoll = () => {
+        if (pollId) clearInterval(pollId);
+        pollId = null;
+      };
+      if (isAppActive()) startPoll();
+      const sub = AppState.addEventListener('change', (next) => {
+        if (next === 'active') {
+          revalidateIfStale();
+          startPoll();
+        } else {
+          stopPoll();
+        }
+      });
 
-      return () => clearInterval(pollId);
-    }, [dispatch, user?.id])
+      return () => {
+        stopPoll();
+        sub.remove();
+      };
+    }, [dispatch, revalidateIfStale])
   );
+
+  /** In-flight "load more", aborted when the list is reset. */
+  const loadMoreRef = useRef<{ abort: () => void } | null>(null);
+  const loadMore = useStableCallback(() => {
+    if (!feedNextCursor || feedLoadingMore || feedStatus === 'loading') return;
+    const p = dispatch(fetchMoreFeedPosts());
+    loadMoreRef.current = p;
+    void p.finally(() => {
+      if (loadMoreRef.current === p) loadMoreRef.current = null;
+    });
+  });
+  const cancelLoadMore = () => {
+    loadMoreRef.current?.abort();
+    loadMoreRef.current = null;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -432,6 +491,8 @@ export default function FeedScreen({ navigation, route }: any) {
   }, [userCategories]);
 
   const refresh = useRefresh(async () => {
+    cancelLoadMore();
+    surfaceFetchedAtRef.current = Date.now();
     try {
       await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
@@ -476,6 +537,7 @@ export default function FeedScreen({ navigation, route }: any) {
   const retryFeed = useStableCallback(async () => {
     if (retryingFeed) return;
     setRetryingFeed(true);
+    cancelLoadMore();
     try {
       await dispatch(fetchFeedPosts({ force: true })).unwrap();
     } catch {
@@ -1231,6 +1293,18 @@ export default function FeedScreen({ navigation, route }: any) {
           {...feedListPerformanceProps}
           {...verticalScrollProps}
           renderItem={renderPostItem}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.6}
+          ListFooterComponent={
+            hasPosts ? (
+              <FeedListFooter
+                loading={feedLoadingMore}
+                error={feedLoadMoreError}
+                done={!feedNextCursor && feedStatus === 'succeeded'}
+                onRetry={loadMore}
+              />
+            ) : null
+          }
           ListEmptyComponent={
             feedStatus === 'loading' ? (
               <View style={tw`px-gutter-wide pt-4`}>
@@ -1506,3 +1580,58 @@ export default function FeedScreen({ navigation, route }: any) {
   );
 }
 
+/** Infinite-scroll footer: next-page skeleton, retry, or the calm end-of-feed sprout. */
+function FeedListFooter({
+  loading,
+  error,
+  done,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string | null;
+  done: boolean;
+  onRetry: () => void;
+}) {
+  if (loading) {
+    return (
+      <View
+        style={tw`px-gutter-wide pt-2`}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Loading more posts"
+      >
+        <SkeletonList variant="post" count={1} />
+      </View>
+    );
+  }
+  if (error) {
+    return (
+      <View style={tw`items-center px-gutter py-6`}>
+        <Text style={tw`text-footnote text-ink-3 text-center mb-3`}>
+          Couldn't load more just now.
+        </Text>
+        <PressableScale
+          onPress={onRetry}
+          style={tw`px-4 py-2 rounded-chip bg-raised border border-line`}
+          accessibilityRole="button"
+          accessibilityLabel="Try loading more posts again"
+        >
+          <Text style={tw`text-footnote font-semibold text-ink`}>Try again</Text>
+        </PressableScale>
+      </View>
+    );
+  }
+  if (done) {
+    return (
+      <View style={tw`items-center px-gutter pt-6 pb-4`} accessible accessibilityLabel="You're all caught up">
+        <View style={tw`w-11 h-11 rounded-full bg-raised items-center justify-center mb-2`}>
+          <Ionicons name="leaf-outline" size={20} color={theme.colors.brand} />
+        </View>
+        <Text style={tw`text-callout font-semibold text-ink`}>You're all caught up</Text>
+        <Text style={tw`text-footnote text-ink-3 mt-1 text-center`}>
+          Come back later for new growth from your circle.
+        </Text>
+      </View>
+    );
+  }
+  return null;
+}

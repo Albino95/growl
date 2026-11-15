@@ -13,6 +13,7 @@ import { progressSharePayload } from '../badges/shareAdapters';
 import ActivityHeatmap from './ActivityHeatmap';
 import PathBars from './PathBars';
 import MoodWeekBars from './MoodWeekBars';
+import InsightsSection from '../insights/InsightsSection';
 
 const RANGE_DAYS = 90;
 
@@ -27,7 +28,7 @@ type Props = {
   refreshKey?: number;
 };
 
-/** Owner-only Progress tab: summary stats, activity heatmap, per-path bars, mood by week. */
+/** Owner-only Progress tab: summary stats, gentle patterns, activity heatmap, per-path bars, mood by week. */
 export default function ProgressTab({ username, userId, avatar, currentStreak, onShare, refreshKey = 0 }: Props) {
   const [data, setData] = useState<Progress | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -90,6 +91,8 @@ export default function ProgressTab({ username, userId, avatar, currentStreak, o
         <Stat label="Longest streak" value={data.longest_streak} hint="days" />
         {currentStreak != null ? <Stat label="Current" value={currentStreak} hint="day streak" /> : null}
       </View>
+
+      <InsightsSection days={30} refreshKey={refreshKey} />
 
       <Section title="Your days">
         <ActivityHeatmap days={data.days} today={localDayKey()} />

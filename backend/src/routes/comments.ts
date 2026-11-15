@@ -6,6 +6,7 @@ import { generateId } from '../utils/id';
 import { z } from 'zod';
 import { isBlocked } from './friends';
 import { createUserNotification, resolveUsername } from '../utils/notifications';
+import { recordCommentMentions } from '../utils/mentions';
 
 /** Page size for GET comments; a full page means older comments may exist (`before` cursor). */
 export const COMMENT_PAGE_SIZE = 50;
@@ -156,6 +157,7 @@ export async function createComment(
 
     // Update engagement score
     await updateEngagementScore(env, postId);
+    await recordCommentMentions(env, commentId, postId, ctx.userId, content, post.user_id);
 
     // Get user metadata for response
     const user = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')

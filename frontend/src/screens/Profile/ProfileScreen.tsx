@@ -69,6 +69,7 @@ import {
   type InstructorEligibility,
 } from '../../services/api/instructor';
 import BadgeRow from '../../components/badges/BadgeRow';
+import BuddiesPreview from '../../components/buddies/BuddiesPreview';
 import LevelPill from '../../components/badges/LevelPill';
 import ProgressTab from '../../components/progress/ProgressTab';
 import { getMyBadges, getStreak, type MyBadges, type Streak } from '../../services/api/growth';
@@ -761,6 +762,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <BadgeRow earned={myBadges.earned} catalog={myBadges.catalog} next={myBadges.next} />
             </View>
           ) : null}
+
+          <BuddiesPreview />
 
           <PressableScale
             onPress={() => navigateFromRoot(navigation, 'Invite')}

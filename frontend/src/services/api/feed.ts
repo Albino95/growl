@@ -80,6 +80,52 @@ export async function getForYouFeed(): Promise<ForYouFeedResponse> {
   return request<ForYouFeedResponse>('/feed/feed?mode=foryou');
 }
 
+/** Home feed page size (server default 20, max 50). */
+export const FEED_PAGE_SIZE = 20;
+
+export type FeedPage = {
+  following: FeedPost[];
+  suggested: FeedPost[];
+  /** Explore / array modes: the page in server order. For You: following + suggested. */
+  items: FeedPost[];
+  /** Opaque token for the next page; null when there is nothing more. */
+  nextCursor: string | null;
+};
+
+/**
+ * One page of the feed. Pass the previous page's `nextCursor` to continue.
+ * Older servers ignore cursor/limit and omit next_cursor → a single page.
+ */
+export async function getFeedPage(options: {
+  mode: 'foryou' | 'explore';
+  cursor?: string | null;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<FeedPage> {
+  const params = new URLSearchParams();
+  params.set('mode', options.mode);
+  params.set('limit', String(options.limit ?? FEED_PAGE_SIZE));
+  if (options.cursor) params.set('cursor', options.cursor);
+  const res = await request<{
+    success: boolean;
+    data:
+      | FeedPost[]
+      | { following?: FeedPost[]; suggested?: FeedPost[]; next_cursor?: string | null };
+    meta?: { next_cursor?: string | null };
+  }>(`/feed/feed?${params.toString()}`, options.signal ? { signal: options.signal } : {});
+  if (!res || !res.success || !res.data) throw new Error('Unexpected feed response');
+  const data = res.data;
+  const fromData = !Array.isArray(data) ? data.next_cursor : undefined;
+  const raw = res.meta?.next_cursor ?? fromData ?? null;
+  const nextCursor = typeof raw === 'string' && raw.length > 0 ? raw : null;
+  if (Array.isArray(data)) {
+    return { following: [], suggested: [], items: data, nextCursor };
+  }
+  const following = Array.isArray(data.following) ? data.following : [];
+  const suggested = Array.isArray(data.suggested) ? data.suggested : [];
+  return { following, suggested, items: [...following, ...suggested], nextCursor };
+}
+
 export async function getFeedPost(postId: string): Promise<FeedPost | null> {
   try {
     const res = await request<{ success: boolean; data: FeedPost }>(

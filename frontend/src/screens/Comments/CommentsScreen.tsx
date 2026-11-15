@@ -32,6 +32,9 @@ import { SkeletonList } from '../../components/ui/SkeletonCard';
 import FadeInUp from '../../components/ui/FadeInUp';
 import { feedback } from '../../utils/interactionFeedback';
 import { haptic } from '../../theme/haptics';
+import RichText from '../../components/text/RichText';
+import MentionSuggestions from '../../components/mentions/MentionSuggestions';
+import { useMentionAutocomplete } from '../../components/mentions/useMentionAutocomplete';
 
 function formatCommentTime(iso: string): string {
   const date = new Date(iso);
@@ -92,6 +95,8 @@ export default function CommentsScreen({
   const { user } = useAuth();
   const navigation = useNavigation();
   const listRef = useRef<FlatList<CommentRow>>(null);
+  const inputRef = useRef<TextInput | null>(null);
+  const mention = useMentionAutocomplete(commentText, setCommentText, inputRef);
   /** Temp ids whose send is in flight — guards double retries. */
   const sendingIdsRef = useRef<Set<string>>(new Set());
   /** Auto-load of older comments only after the user has actually scrolled. */
@@ -300,7 +305,7 @@ export default function CommentsScreen({
               </View>
               <View style={tw`flex-1`}>
                 <Text style={tw`text-sm font-semibold text-ink mb-1`}>{postUsername}</Text>
-                <Text style={tw`text-sm text-ink-2`}>{postCaption}</Text>
+                <RichText style={tw`text-sm text-ink-2`} text={postCaption} onNavigate={onClose} />
               </View>
             </View>
           </View>
@@ -397,7 +402,7 @@ export default function CommentsScreen({
                         >
                           <Text style={tw`text-sm font-semibold text-ink mb-0.5`}>{uname}</Text>
                         </PressableScale>
-                        <Text style={tw`text-sm text-ink`}>{item.content}</Text>
+                        <RichText style={tw`text-sm text-ink`} text={item.content} onNavigate={onClose} />
                       </View>
                       {item.failed ? (
                         <PressableScale
@@ -451,13 +456,19 @@ export default function CommentsScreen({
           )}
 
           <View style={tw`border-t border-line/80 bg-card px-gutter py-3`}>
+            {mention.visible ? (
+              <MentionSuggestions items={mention.items} loading={mention.loading} onPick={mention.pick} />
+            ) : null}
             <View style={tw`flex-row items-end`}>
               <View style={tw`flex-1 bg-raised rounded-chip px-4 py-2 max-h-24 mr-2`}>
                 <TextInput
+                  ref={inputRef}
                   {...formInputAccessoryProps({ multiline: true })}
                   placeholder="Add a comment..."
                   value={commentText}
                   onChangeText={setCommentText}
+                  onSelectionChange={mention.onSelectionChange}
+                  onKeyPress={mention.onKeyPress}
                   maxLength={COMMENT_MAX_LENGTH}
                   multiline
                   // Comments are short: Return sends (and keeps the keyboard up), the

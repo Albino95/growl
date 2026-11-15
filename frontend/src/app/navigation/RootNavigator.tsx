@@ -128,6 +128,7 @@ export type RootStackParamList = {
   Invite: undefined;
   InviteRedeem: { code: string };
   Badges: undefined;
+  Buddies: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -297,6 +298,11 @@ export default function RootNavigator() {
             <Stack.Screen
               name="Badges"
               getComponent={() => require('../../screens/Badges/BadgesScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Buddies"
+              getComponent={() => require('../../screens/Buddies/BuddiesScreen').default}
               options={{ headerShown: false }}
             />
           </>
