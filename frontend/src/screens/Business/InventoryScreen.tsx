@@ -323,6 +323,7 @@ export default function InventoryScreen() {
           <View style={tw`flex-1`}>
             <PrimaryButton
               label="Edit"
+              variant="soft"
               accessibilityLabel={`Edit ${product.name}`}
               disabled={busy}
               onPress={() => {

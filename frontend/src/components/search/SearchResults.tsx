@@ -11,7 +11,7 @@ import ErrorState from '../ui/ErrorState';
 import HighlightText from './HighlightText';
 import { SuggestedChips, type SuggestedChip } from './RecentSearches';
 import { resolvePostMediaUri } from '../../utils/images';
-import { getCategoryLabel } from '../../utils/categoryLabels';
+import { getCategoryLabel, getCategoryMeta } from '../../utils/categoryLabels';
 import type { SearchPerson, SearchPost, SearchResult, SearchTag } from '../../services/api/search';
 import type { SeeAllState, SeeAllType } from './useExploreSearch';
 
@@ -71,7 +71,21 @@ function PersonRow({
   onOpen: () => void;
   action?: React.ReactNode;
 }) {
-  const paths = person.paths.slice(0, 2).map(getCategoryLabel).join(' · ');
+  // Group sub-paths under their parent so "Mindset" isn't repeated:
+  // ["mindset:stress", "mindset:positive"] → "Mindset · Stress Management, Positive Thinking".
+  const paths = (() => {
+    const groups = new Map<string, string[]>();
+    for (const p of person.paths.slice(0, 3)) {
+      const m = getCategoryMeta(p);
+      const subs = groups.get(m.parentLabel) ?? [];
+      if (m.subLabel && !subs.includes(m.subLabel)) subs.push(m.subLabel);
+      groups.set(m.parentLabel, subs);
+    }
+    return [...groups.entries()]
+      .slice(0, 2)
+      .map(([parent, subs]) => (subs.length ? `${parent} · ${subs.join(', ')}` : parent))
+      .join(' · ');
+  })();
   const showHandle = person.display_name && person.display_name !== person.username;
   return (
     <View style={tw`flex-row items-center bg-card border border-line/80 rounded-card px-3 py-2.5 mb-2`}>

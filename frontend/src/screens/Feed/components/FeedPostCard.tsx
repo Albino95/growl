@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { getCategoryLabel } from '../../../utils/categoryLabels';
 import { View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../../lib/tw';
@@ -108,9 +109,9 @@ function FeedPostCard({
               <Text style={tw`text-xs text-ink-3`}>{item.timestamp}</Text>
               <View style={tw`px-2 py-0.5 rounded-chip bg-brand-50`}>
                 <Text style={tw`text-caption font-semibold text-brand-800`}>
-                  {item.subcategory
-                    ? `${item.category} · ${item.subcategory}`
-                    : item.category}
+                  {getCategoryLabel(
+                    item.subcategory ? `${item.category}:${item.subcategory}` : item.category
+                  )}
                 </Text>
               </View>
               {item.isInstructor ? (

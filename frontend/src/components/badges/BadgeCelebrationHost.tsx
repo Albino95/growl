@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { shouldShowBusinessShell } from '../../constants/businessShell';
+import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useAuth } from '../../store/hooks';
 import { useGrowthStore } from '../../state/useGrowthStore';
@@ -100,7 +102,11 @@ export default function BadgeCelebrationHost() {
     };
   }, [signedIn, checkServer]);
 
-  const current = sharePayload ? null : queue[0] ?? null;
+  // Never stack a celebration on top of the welcome tour; queued badges wait until it closes.
+  // (Business accounts never get the tour, so it can't hold their queue.)
+  const tourPending = useDemoTutorialStore((s) => !s.hydrated || !s.seen || s.forceShow);
+  const tourOpen = tourPending && !shouldShowBusinessShell(user);
+  const current = sharePayload || tourOpen ? null : queue[0] ?? null;
 
   useEffect(() => {
     celebrationOpen = signedIn && (queue.length > 0 || !!sharePayload);
