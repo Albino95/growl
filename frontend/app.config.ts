@@ -151,6 +151,10 @@ const defineConfig = (): ExpoConfig => ({
         color: '#059669',
       },
     ],
+    // The widget's App Group storage pod (@bacons/apple-targets, ExtensionStorage)
+    // declares iOS 16.4; Expo autolinking silently skips pods newer than the app's
+    // deployment target, which left the widget "not connected". Keep ≥ 16.4.
+    ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }],
     // Home-screen widget extension lives in targets/widget.
     '@bacons/apple-targets',
     [
