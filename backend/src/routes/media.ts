@@ -352,8 +352,11 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
 
   const size = obj.size;
   const body = isHead ? null : obj.body;
-  // R2 ranged get → 206 Partial Content (required by iOS AVPlayer)
-  if (obj.range && typeof obj.range === 'object' && 'offset' in obj.range) {
+  // R2 ranged get → 206 Partial Content (required by iOS AVPlayer).
+  // Only when the client actually sent Range: R2 can report `range` on plain gets too,
+  // and a 206 for a full image request is not cacheable (Cloudflare / NSURLCache) and
+  // confuses image loaders.
+  if (rangeHeader && obj.range && typeof obj.range === 'object' && 'offset' in obj.range) {
     const offset = Number((obj.range as { offset: number }).offset) || 0;
     const rangeLen = (obj.range as { length?: number }).length;
     const length =

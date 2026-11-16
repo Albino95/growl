@@ -102,4 +102,38 @@ describe('media upload', () => {
     const res = await getMedia(new Request('https://api.test/api/v1/media/post/a.jpg'), env, 'post/a.jpg');
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
   });
+
+  // R2 reports `range` even on plain gets; production answered every avatar with 206.
+  it('answers a plain GET with 200 even when R2 reports a full range', async () => {
+    (env.R2 as any).get = async () => ({
+      size: 4,
+      range: { offset: 0, length: 4 },
+      body: new Uint8Array([1, 2, 3, 4]),
+      httpMetadata: { contentType: 'image/jpeg' },
+    });
+    const res = await getMedia(
+      new Request('https://api.test/api/v1/media/avatar%2Fu%2Fa.jpg'),
+      env,
+      'avatar%2Fu%2Fa.jpg'
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Range')).toBeNull();
+    expect(res.headers.get('Content-Length')).toBe('4');
+  });
+
+  it('answers a Range request with 206 + Content-Range', async () => {
+    (env.R2 as any).get = async () => ({
+      size: 10,
+      range: { offset: 2, length: 3 },
+      body: new Uint8Array([3, 4, 5]),
+      httpMetadata: { contentType: 'video/mp4' },
+    });
+    const res = await getMedia(
+      new Request('https://api.test/api/v1/media/reel/a.mp4', { headers: { Range: 'bytes=2-4' } }),
+      env,
+      'reel/a.mp4'
+    );
+    expect(res.status).toBe(206);
+    expect(res.headers.get('Content-Range')).toBe('bytes 2-4/10');
+  });
 });

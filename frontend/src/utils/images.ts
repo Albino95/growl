@@ -4,6 +4,10 @@
  * No Unsplash / Picsum / Pravatar catalogs live in the client.
  */
 
+import { isLoadableAvatarUri, normalizeAvatarUrl, resolveAvatarUrlFrom } from './avatarUrl';
+
+export { AVATAR_FIELDS, pickAvatarField } from './avatarUrl';
+
 /** Abstract Instagram-style glyph — only when the user has no uploaded avatar. */
 export const DEFAULT_AVATAR_ASSET = require('../../assets/default-avatar.jpg');
 
@@ -18,6 +22,8 @@ export function rewriteMediaUrlToApiHost(raw: string): string {
     const u = new URL(s);
     const path = u.pathname || '';
     if (!/\/api\/[^/]+\/media\//i.test(path)) return s;
+    // dev/qa/production Workers each serve their own R2 bucket — never move between them.
+    if (/^growl-backend(-[a-z0-9]+)?\./i.test(u.hostname)) return s;
     // Lazy require avoids circular imports at module init in some bundlers.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getApiBaseUrl } = require('../services/api/http') as { getApiBaseUrl: () => string };
@@ -95,23 +101,43 @@ export function resolveStoryDisplayUri(
   return normalizeRemoteUri(raw);
 }
 
+function currentApiBase(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getApiBaseUrl } = require('../services/api/http') as { getApiBaseUrl: () => string };
+    return getApiBaseUrl();
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Avatar from user metadata (backend). Returns '' when unset — use DEFAULT_AVATAR_ASSET or initials.
+ * Handles relative `/api/v1/media/…` paths, bare R2 keys, `http://` (blocked by iOS ATS)
+ * and media URLs saved with the marketing host.
  */
 export function resolveAvatarUri(
   _userId: string,
   _username?: string,
   raw?: string | null
 ): string {
-  return normalizeRemoteUri(raw);
+  return normalizeAvatarUrl(raw, currentApiBase());
 }
 
-/** Image source for avatars: remote URL or the local default profile photo. */
+/**
+ * One resolver for every API shape: pass the raw string or the user-like object
+ * (post, post.metadata, story, comment.user, friend, search hit…). It reads
+ * avatar / avatar_url / avatarUrl / profile_image / photo / picture (+ nested
+ * metadata / user / author) and returns an absolute loadable URL or ''.
+ */
+export function resolveAvatarUrl(source: unknown): string {
+  return resolveAvatarUrlFrom(source, currentApiBase());
+}
+
+/** Image source for avatars: remote/local URL or the local default profile photo. */
 export function avatarSource(uri: string | null | undefined): { uri: string } | number {
   const s = (uri || '').trim();
-  if (s && (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:'))) {
-    return { uri: s };
-  }
+  if (isLoadableAvatarUri(s)) return { uri: s };
   return DEFAULT_AVATAR_ASSET;
 }
 

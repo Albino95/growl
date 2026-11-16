@@ -1,97 +1,73 @@
 import { describe, expect, it, vi } from 'vitest';
-import { subscribeKeyboardInset, type KeyboardFrameEvent, type KeyboardLike } from './keyboardInsetCore';
+import { subscribeKeyboardInset, type KeyboardFrameEvent } from './keyboardInsetCore';
 
 function fakeKeyboard() {
   const listeners: Record<string, ((e: KeyboardFrameEvent) => void)[]> = {};
   const removed: string[] = [];
-  const keyboard: KeyboardLike = {
-    addListener: (event, cb) => {
+  return {
+    removed,
+    emit(event: 'keyboardWillChangeFrame' | 'keyboardWillHide', e: KeyboardFrameEvent) {
+      (listeners[event] || []).forEach((cb) => cb(e));
+    },
+    addListener(event: 'keyboardWillChangeFrame' | 'keyboardWillHide', cb: (e: KeyboardFrameEvent) => void) {
       (listeners[event] ||= []).push(cb);
       return {
         remove: () => {
           removed.push(event);
-          listeners[event] = (listeners[event] || []).filter((l) => l !== cb);
+          listeners[event] = (listeners[event] || []).filter((x) => x !== cb);
         },
       };
     },
   };
-  const emit = (event: string, e: KeyboardFrameEvent) => (listeners[event] || []).forEach((l) => l(e));
-  return { keyboard, emit, removed, listeners };
 }
 
-/** A node whose window frame is (y, h); measureInWindow answers synchronously. */
-const node = (y: number, h: number) => ({
-  measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, y, 390, h),
-});
+const SCREEN = 852; // iPhone 15/16 points
 
 describe('subscribeKeyboardInset', () => {
-  it('reports the overlap between the wrapper bottom and the keyboard top (screen coords)', () => {
-    const { keyboard, emit } = fakeKeyboard();
+  it('reports the keyboard height for a bottom-anchored wrapper', () => {
+    const kb = fakeKeyboard();
     const onInset = vi.fn();
-    // Full-screen wrapper on an 844pt screen; keyboard top at 508 → 336 overlap.
-    subscribeKeyboardInset({ keyboard, getNode: () => node(0, 844), onInset });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 }, duration: 250 });
-    expect(onInset).toHaveBeenCalledWith(336, 250);
+    subscribeKeyboardInset({ keyboard: kb, onInset, screenHeight: SCREEN });
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: SCREEN - 336, height: 336 }, duration: 250 });
+    expect(onInset).toHaveBeenLastCalledWith(336, 250);
   });
 
-  it('is correct inside a pageSheet (wrapper offset from the window top)', () => {
-    const { keyboard, emit } = fakeKeyboard();
+  it('does not depend on view coordinates (pageSheet / modal surfaces)', () => {
+    const kb = fakeKeyboard();
     const onInset = vi.fn();
-    // pageSheet starts ~59pt down and ends at the screen bottom.
-    subscribeKeyboardInset({ keyboard, getNode: () => node(59, 785), onInset });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    expect(onInset).toHaveBeenCalledWith(336, undefined);
+    // A node whose measureInWindow would report sheet-relative coords must not matter.
+    const getNode = () => ({ measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, 0, 390, 790) });
+    subscribeKeyboardInset({ keyboard: kb, onInset, screenHeight: SCREEN, getNode });
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: SCREEN - 380, height: 380 } });
+    expect(onInset).toHaveBeenLastCalledWith(380, undefined);
   });
 
-  it('clamps to 0 when the keyboard does not reach the wrapper and rounds fractions', () => {
-    const { keyboard, emit } = fakeKeyboard();
+  it('resets to 0 when the keyboard moves off-screen or hides, and dedupes', () => {
+    const kb = fakeKeyboard();
     const onInset = vi.fn();
-    let n = node(0, 400.4);
-    subscribeKeyboardInset({ keyboard, getNode: () => n, onInset });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    expect(onInset).not.toHaveBeenCalled(); // 0 → unchanged
-    n = node(0, 600.6);
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    expect(onInset).toHaveBeenLastCalledWith(93, undefined);
+    subscribeKeyboardInset({ keyboard: kb, onInset, screenHeight: SCREEN });
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: SCREEN - 300, height: 300 } });
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: SCREEN - 300, height: 300 } });
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: SCREEN, height: 300 } });
+    kb.emit('keyboardWillHide', { endCoordinates: { screenY: SCREEN, height: 0 } });
+    expect(onInset.mock.calls.map((c) => c[0])).toEqual([300, 0]);
   });
 
-  it('dedupes identical values and resets to 0 on hide', () => {
-    const { keyboard, emit } = fakeKeyboard();
+  it('handles Prefer Cross-Fade Transitions (screenY 0) and rounds', () => {
+    const kb = fakeKeyboard();
     const onInset = vi.fn();
-    subscribeKeyboardInset({ keyboard, getNode: () => node(0, 844), onInset });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    expect(onInset).toHaveBeenCalledTimes(1);
-    emit('keyboardWillHide', { endCoordinates: { screenY: 844 }, duration: 200 });
-    expect(onInset).toHaveBeenLastCalledWith(0, 200);
-    expect(onInset).toHaveBeenCalledTimes(2);
-  });
-
-  it('ignores events with no mounted node or non-finite measurements', () => {
-    const { keyboard, emit } = fakeKeyboard();
-    const onInset = vi.fn();
-    let n: ReturnType<typeof node> | null = null;
-    subscribeKeyboardInset({ keyboard, getNode: () => n, onInset });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    n = node(Number.NaN, 844);
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    expect(onInset).not.toHaveBeenCalled();
+    subscribeKeyboardInset({ keyboard: kb, onInset, screenHeight: SCREEN });
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 0, height: 335.6 } });
+    expect(onInset).toHaveBeenLastCalledWith(336, undefined);
   });
 
   it('removes both listeners and stops reporting after unsubscribe', () => {
-    const { keyboard, emit, removed } = fakeKeyboard();
+    const kb = fakeKeyboard();
     const onInset = vi.fn();
-    let deferred: (() => void) | null = null;
-    const lateNode = {
-      measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => {
-        deferred = () => cb(0, 0, 390, 844);
-      },
-    };
-    const unsubscribe = subscribeKeyboardInset({ keyboard, getNode: () => lateNode, onInset });
-    emit('keyboardWillChangeFrame', { endCoordinates: { screenY: 508 } });
-    unsubscribe();
-    deferred!(); // measurement resolving after unmount must not set state
+    const off = subscribeKeyboardInset({ keyboard: kb, onInset, screenHeight: SCREEN });
+    off();
+    kb.emit('keyboardWillChangeFrame', { endCoordinates: { screenY: SCREEN - 300, height: 300 } });
     expect(onInset).not.toHaveBeenCalled();
-    expect(removed.sort()).toEqual(['keyboardWillChangeFrame', 'keyboardWillHide']);
+    expect(kb.removed.sort()).toEqual(['keyboardWillChangeFrame', 'keyboardWillHide']);
   });
 });

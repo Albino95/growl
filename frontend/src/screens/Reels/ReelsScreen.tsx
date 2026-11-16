@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { getForYouFeed, getFeedPosts, getFeedPost, toggleFeedPostLike, type FeedPost } from '../../services/api/feed';
 import { isVideoMedia } from '../../services/api/media';
-import { resolvePostMediaUri } from '../../utils/images';
+import { resolveAvatarUrl, resolvePostMediaUri } from '../../utils/images';
 import { cacheRemoteClip } from '../../utils/cacheRemoteClip';
 import GrowAvatar from '../../components/ui/GrowAvatar';
 import { isReelPost } from '../../utils/reelNavigation';
@@ -633,7 +633,7 @@ export default function ReelsScreen() {
                     preview: {
                       username: item.metadata?.username,
                       displayName: typeof displayName === 'string' ? displayName : undefined,
-                      avatarUrl: item.metadata?.avatar ?? null,
+                      avatarUrl: resolveAvatarUrl(item) || null,
                     },
                   });
                 }}
@@ -641,9 +641,11 @@ export default function ReelsScreen() {
                 <GrowAvatar
                   userId={item.user_id}
                   username={username}
-                  uri={item.metadata?.avatar}
+                  user={item}
                   size={40}
-                  style={tw`border-2 border-white mr-3`}
+                  ringColor="#FFFFFF"
+                  ringWidth={2}
+                  style={tw`mr-3`}
                 />
                 <View style={tw`flex-1`}>
                   <Text style={tw`text-white font-semibold`}>{username}</Text>

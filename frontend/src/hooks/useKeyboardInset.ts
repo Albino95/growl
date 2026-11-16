@@ -1,16 +1,14 @@
 import { useEffect, useState, type RefObject } from 'react';
-import { Keyboard, LayoutAnimation, Platform, type View } from 'react-native';
+import { Dimensions, Keyboard, LayoutAnimation, Platform, type View } from 'react-native';
 import { subscribeKeyboardInset, type KeyboardLike } from './keyboardInsetCore';
 
 /**
  * Bottom padding that keeps a screen's composer above the iOS keyboard.
  *
- * Measures the real overlap in *screen* coordinates when the keyboard moves:
- * (bottom of `wrapperRef` on screen) − (top of the keyboard on screen).
- * Unlike KeyboardAvoidingView + keyboardVerticalOffset, this is correct inside
- * pageSheet / formSheet modals, transparent bottom-sheet modals, nested
- * navigators and animated wrappers, where the view's local frame and the
- * keyboard's screen frame don't line up.
+ * Returns the keyboard's on-screen height for wrappers that reach the bottom
+ * of their screen / sheet (all current callers). Correct inside pageSheet /
+ * formSheet modals and transparent bottom sheets, where view coordinates are
+ * relative to the modal surface and KeyboardAvoidingView mis-computes.
  *
  * Apply the returned value as `paddingBottom` on a view *inside* `wrapperRef`
  * (the wrapper itself must keep its full height). Android returns 0 — the
@@ -24,6 +22,7 @@ export function useKeyboardInset(wrapperRef: RefObject<View | null>): number {
     return subscribeKeyboardInset({
       keyboard: Keyboard as unknown as KeyboardLike,
       getNode: () => wrapperRef.current,
+      screenHeight: Dimensions.get('screen').height,
       onInset: (value, duration) => {
         if (duration && duration > 0) {
           LayoutAnimation.configureNext({
