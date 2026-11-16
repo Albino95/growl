@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, Switch, Pressable } from 'react-native';
+import { toast } from '../../state/useToastStore';
+import { getWidgetSyncStatus, syncWidgetNow } from '../../services/widgetSync';
+import { View, Text, ScrollView, Switch, Pressable, Platform } from 'react-native';
 import PressableScale from '../../components/ui/PressableScale';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,6 +52,32 @@ function Row({
       </View>
       <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
     </PressableScale>
+  );
+}
+
+/** Home-screen widget status: tapping re-sends today's data to the widget. */
+function WidgetStatusRow() {
+  const [, force] = useState(0);
+  const status = getWidgetSyncStatus();
+  const ago = status.lastWrittenAt ? Math.round((Date.now() - status.lastWrittenAt) / 60000) : null;
+  const subtitle = !status.available
+    ? 'Not connected on this install. Tap to retry.'
+    : ago === null
+      ? 'Waiting for today’s data. Tap to update now.'
+      : ago < 1
+        ? 'Updated just now'
+        : `Updated ${ago} min ago · tap to refresh`;
+  return (
+    <Row
+      icon="apps-outline"
+      label="Home-screen widget"
+      subtitle={subtitle}
+      onPress={() => {
+        syncWidgetNow(true);
+        force((n) => n + 1);
+        toast.info(getWidgetSyncStatus().available ? 'Widget updated' : 'Widget isn’t connected yet');
+      }}
+    />
   );
 }
 
@@ -247,6 +275,7 @@ export default function SettingsScreen() {
               onPress={() => setLifeSheetOpen(true)}
             />
           ) : null}
+          {Platform.OS === 'ios' ? <WidgetStatusRow /> : null}
           <Row
             icon="gift-outline"
             label="Invite friends"

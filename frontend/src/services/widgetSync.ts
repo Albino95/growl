@@ -10,7 +10,7 @@
  *
  * No-op on Android / web, in Expo Go and in tests (native module missing).
  */
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { useGrowthStore } from '../state/useGrowthStore';
 import { store } from '../store/store';
 import { getCategoryMeta } from '../utils/categoryLabels';
@@ -24,7 +24,8 @@ import {
   type CircleTodayFriend,
   type WidgetFriend,
 } from './widgetSnapshot';
-import { isWidgetStorageAvailable, reloadWidgets, widgetStorageSet } from './widgetStorage';
+import { isWidgetStorageAvailable, reloadWidgets, widgetStorageProblem, widgetStorageSet } from './widgetStorage';
+import { reportError } from './monitoring';
 import {
   consumePendingWidgetCheckin,
   getWidgetCheckinInFlight,
@@ -37,6 +38,7 @@ const PENDING_RECHECK_MS = [0, 700, 2000];
 
 let started = false;
 let lastSignature: string | null = null;
+let lastWrittenAt: number | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 /** Friends who checked in today (GET /me/circle/today), refreshed at most every 10 min. */
@@ -122,6 +124,7 @@ export function syncWidgetNow(force = false): void {
     if (!force && sig === lastSignature) return;
     if (!widgetStorageSet(WIDGET_SNAPSHOT_KEY, JSON.stringify(snapshot))) return;
     lastSignature = sig;
+    lastWrittenAt = Date.now();
     reloadWidgets();
   } catch {
     // Never let the widget break the app.
@@ -144,10 +147,39 @@ function checkPending(): void {
   }
 }
 
+/** For Settings: is the widget connected, and when did it last get fresh data? */
+export function getWidgetSyncStatus(): { available: boolean; lastWrittenAt: number | null; problem: string | null } {
+  const available = isWidgetStorageAvailable();
+  return { available, lastWrittenAt, problem: available ? null : widgetStorageProblem() };
+}
+
 export function initWidgetSync(): void {
   if (started) return;
-  if (!isWidgetStorageAvailable()) return;
+  if (Platform.OS !== 'ios') return;
   started = true;
+  // Storage may not be ready this early in launch — retry a few times, then
+  // report once so a broken build is visible in Sentry instead of silent.
+  if (!isWidgetStorageAvailable()) {
+    let tries = 0;
+    const retry = () => {
+      tries += 1;
+      if (isWidgetStorageAvailable()) {
+        syncWidgetNow(true);
+        return;
+      }
+      if (tries < 5) setTimeout(retry, 1500 * tries);
+      else reportError(new Error('Widget storage unavailable'), { problem: widgetStorageProblem() });
+    };
+    setTimeout(retry, 800);
+  }
+  // Signed in but today's data never fetched (app opened on another tab):
+  // fetch it so the widget isn't left empty.
+  setTimeout(() => {
+    const auth = store.getState().auth;
+    if (auth.hydrated && auth.token && !useGrowthStore.getState().loaded) {
+      void useGrowthStore.getState().refresh?.();
+    }
+  }, 4000);
 
   const checkinKey = (c: { day: string; created_at: string } | null) => (c ? `${c.day}|${c.created_at}` : null);
   let lastCheckinId = checkinKey(useGrowthStore.getState().checkin);
