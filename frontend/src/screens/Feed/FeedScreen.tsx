@@ -14,7 +14,9 @@ import {
   Pressable,
   ActivityIndicator,
   AppState,
+  type TextInput,
 } from 'react-native';
+import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import GrowImage from '../../components/ui/GrowImage';
@@ -87,6 +89,7 @@ import { localDateKey } from '../../components/journal/journalMeta';
 import FeedPostCard, { type FeedCardPost } from './components/FeedPostCard';
 import type { ProfilePreview } from '../../app/navigation/RootNavigator';
 import { useStableCallback } from '../../hooks/useStableCallback';
+import { serverDate } from '../../utils/serverDate';
 
 type Story = {
   id: string;
@@ -105,7 +108,7 @@ type ReactionType = FeedReaction;
 type Post = FeedCardPost;
 
 function formatTimeAgo(dateString: string): string {
-  const date = new Date(dateString);
+  const date = serverDate(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -373,7 +376,7 @@ export default function FeedScreen({ navigation, route }: any) {
         if (cancelled) return;
         const today = localDateKey();
         const hit = res.data?.entries?.find(
-          (e) => localDateKey(new Date(e.created_at)) === today
+          (e) => localDateKey(serverDate(e.created_at)) === today
         );
         if (hit) useActivationStore.getState().markJournaled(hit.created_at);
       })
@@ -458,7 +461,7 @@ export default function FeedScreen({ navigation, route }: any) {
     if (!user?.id) return true;
     const today = new Date().toDateString();
     return feedItems.some(
-      (p) => p.user_id === user.id && new Date(p.created_at).toDateString() === today
+      (p) => p.user_id === user.id && serverDate(p.created_at).toDateString() === today
     );
   }, [feedItems, user?.id]);
 
@@ -893,11 +896,18 @@ export default function FeedScreen({ navigation, route }: any) {
 
   const hasPosts = posts.length > 0;
   // Memoized so scroll-driven state (primaryVisiblePostId) doesn't rebuild the header.
+  /** TodayCard's intention field: scroll it above the keyboard (stable — header memo). */
+  const onTodayInputFocus = useCallback((input: TextInput | null) => {
+    const scroll = feedListRef.current?.getScrollResponder?.() as unknown as ScrollView | null;
+    if (!scroll || !input) return;
+    scrollInputIntoView({ current: scroll }, { current: input }, { topGap: 120 });
+  }, []);
+
   const feedListHeader = useMemo(() => (
     <View style={tw`pb-2`}>
       {/* Self-contained (read useGrowthStore) — no header memo deps. */}
       <CheckInSpotlight>
-        <TodayCard />
+        <TodayCard onInputFocus={onTodayInputFocus} />
       </CheckInSpotlight>
       <WeeklyRecapCard />
       <CircleWeekCard />
@@ -1247,6 +1257,7 @@ export default function FeedScreen({ navigation, route }: any) {
     feedError,
     retryingFeed,
     retryFeed,
+    onTodayInputFocus,
   ]);
 
   return (

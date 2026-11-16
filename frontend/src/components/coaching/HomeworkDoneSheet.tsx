@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,9 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,6 +21,7 @@ import { FAST_IMAGE_PICKER } from '../../utils/prepareImageUpload';
 import { showPermissionDenied } from '../../utils/permissionPrompt';
 import { feedback, hushNativeAudio } from '../../utils/interactionFeedback';
 import { alertMessage } from '../../utils/confirmDialog';
+import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
 
 type Props = {
   visible: boolean;
@@ -38,6 +38,8 @@ type Props = {
 export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone }: Props) {
   const [note, setNote] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const noteRef = useRef<TextInput>(null);
   const [busy, setBusy] = useState(false);
 
   // Fresh form for each homework item.
@@ -129,10 +131,7 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
         if (!busy) onClose();
       }}
     >
-      <KeyboardAvoidingView
-        style={tw`flex-1 justify-end bg-black/40`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
         <PressableScale
           onPress={() => {
             if (!busy) onClose();
@@ -143,7 +142,12 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
         />
         <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-3 pb-8 max-h-[88%]`}>
           <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Mark done
             </Text>
@@ -194,14 +198,17 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
             )}
 
             <TextInput
+              ref={noteRef}
               value={note}
               onChangeText={setNote}
+              onFocus={() => scrollInputIntoView(scrollRef, noteRef)}
               placeholder="Note for your coach (optional)"
               placeholderTextColor={theme.colors.placeholder}
               multiline
               maxLength={500}
               editable={!busy}
-              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-4`}
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] max-h-40 mb-4`}
+              textAlignVertical="top"
             />
 
             <PressableScale
@@ -231,7 +238,7 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
             </PressableScale>
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardInsetView>
     </Modal>
   );
 }

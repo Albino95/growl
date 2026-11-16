@@ -1021,6 +1021,9 @@ export default function ExploreScreen() {
           contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           {...feedListPerformanceProps}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          // Search results / recents live in the header: keep the last ones reachable above the keyboard.
+          automaticallyAdjustKeyboardInsets
           refreshControl={
             <RefreshControl {...refresh} />
           }

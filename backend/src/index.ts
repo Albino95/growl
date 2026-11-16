@@ -598,7 +598,8 @@ async function handleRequest(
         return storiesRoutes.getStories(request, env);
       }
       if (path === `${apiPrefix}/stories` && request.method === 'POST') {
-        return storiesRoutes.createStory(request, env);
+        // The publish queue retries a story with the same per-draft Idempotency-Key.
+        return withIdempotency(request, env, () => storiesRoutes.createStory(request, env));
       }
 
       // Media routes

@@ -2,19 +2,14 @@
  * Business API service
  */
 
-import Constants from 'expo-constants';
 import { getSecureItem } from '../storage/secureStore';
 import { getToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
-import { request } from './http';
+import { getApiBaseUrl, refreshSession, request } from './http';
 import type { Product, Order } from './marketplace';
 import { newIdempotencyKey } from './idempotency';
 import type { BulkEditItem, ContactReason, OnboardingStatus } from './businessHelpers';
 export type { Order };
-
-const BASE_URL: string =
-  (Constants?.expoConfig?.extra?.API_BASE_URL as string) ||
-  'https://growl-backend-qa.wispy-leaf-4e8b.workers.dev/api/v1';
 
 async function authHeaders(): Promise<Record<string, string>> {
   let token: string | null = getToken();
@@ -35,9 +30,16 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function fetchRawText(path: string): Promise<string> {
-  const url = `${BASE_URL}${path}`;
-  const headers = await authHeaders();
-  const res = await fetch(url, { headers });
+  // Same base URL resolution as request() (honours EXPO_PUBLIC_API_BASE_URL).
+  const url = `${getApiBaseUrl()}${path}`;
+  let res = await fetch(url, { headers: await authHeaders() });
+  if (res.status === 401) {
+    // Expired access token: refresh once (single-flight, shared with request()) and retry.
+    const outcome = await refreshSession();
+    if (outcome.kind === 'ok') {
+      res = await fetch(url, { headers: { Authorization: `Bearer ${outcome.token}` } });
+    }
+  }
   const text = await res.text();
   if (!res.ok) {
     try {

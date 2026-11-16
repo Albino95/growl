@@ -22,6 +22,7 @@ import { isRemoteMediaUrl } from '../../utils/mediaUri';
 import { alertMessage } from '../../utils/confirmDialog';
 import { toast } from '../../state/useToastStore';
 import FormTextInput from '../../components/ui/FormTextInput';
+import { KeyboardDoneAccessory } from '../../components/ui/KeyboardDoneAccessory';
 
 const FETCH_MS = 8000;
 
@@ -243,6 +244,9 @@ export default function EditProfileScreen() {
         style={tw`flex-1`}
         contentContainerStyle={tw`px-gutter-wide pt-2 pb-12`}
         keyboardShouldPersistTaps="handled"
+        // Bio / headline sit low in the form: keep the focused field above the keyboard.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
       >
         {/* Instagram-style avatar hero */}
         <View style={tw`items-center mb-7 mt-4`}>
@@ -317,7 +321,7 @@ export default function EditProfileScreen() {
             placeholder="A short intro about your growth journey"
             multiline
             maxLength={280}
-            style={tw`bg-page border-line rounded-control min-h-[96px]`}
+            style={tw`bg-page border-line rounded-control min-h-[96px] max-h-48`}
             textAlignVertical="top"
           />
 
@@ -412,6 +416,8 @@ export default function EditProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {/* Done bar for the FormTextInputs (Bio is multiline: Return adds a newline). */}
+      <KeyboardDoneAccessory />
     </SafeAreaView>
   );
 }

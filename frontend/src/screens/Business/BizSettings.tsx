@@ -195,12 +195,15 @@ export default function BizSettings() {
     setPreviewOpen(true);
   };
 
-  const stackNav = navigation.getParent?.() || navigation;
+  // BizSettings is itself a BusinessRootStack screen: its siblings (BusinessCustomers,
+  // BusinessMessages, ...) are reachable from `navigation` directly; getParent() is the
+  // root stack, which has none of them.
+  const stackNav = navigation;
   const logoPreview = logoLocalUri || logoUrl || null;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['bottom']}>
-      <ScrollView style={tw`flex-1`} {...verticalScrollProps}>
+      <ScrollView style={tw`flex-1`} {...verticalScrollProps} automaticallyAdjustKeyboardInsets>
         {loading ? (
           <View style={tw`items-center justify-center py-8`}>
             <ActivityIndicator size="large" color={EMERALD} />
@@ -221,6 +224,8 @@ export default function BizSettings() {
                         {...formInputAccessoryProps()}
             value={businessName}
             onChangeText={setBusinessName}
+            autoCapitalize="words"
+            textContentType="organizationName"
             style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 mb-3 text-ink`}
             placeholder="My Business"
             placeholderTextColor={theme.colors.ink3}
@@ -256,7 +261,7 @@ export default function BizSettings() {
                         {...formInputAccessoryProps()}
             value={lowStockThreshold}
             onChangeText={setLowStockThreshold}
-            keyboardType="numeric"
+            keyboardType="number-pad"
             style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 mb-3 text-ink`}
             placeholder="10"
             placeholderTextColor={theme.colors.ink3}
@@ -268,7 +273,7 @@ export default function BizSettings() {
             onChangeText={setDefaultShippingNote}
             multiline
             numberOfLines={3}
-            style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 text-ink min-h-[80px]`}
+            style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 text-ink min-h-[80px] max-h-40`}
             placeholder="Ships within 2 business days…"
             placeholderTextColor={theme.colors.ink3}
             textAlignVertical="top"

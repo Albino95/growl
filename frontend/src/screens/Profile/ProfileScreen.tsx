@@ -79,6 +79,7 @@ import LevelPill from '../../components/badges/LevelPill';
 import ProgressTab from '../../components/progress/ProgressTab';
 import { getMyBadges, getStreak, type MyBadges, type Streak } from '../../services/api/growth';
 import { useGrowthStore } from '../../state/useGrowthStore';
+import { serverDate } from '../../utils/serverDate';
 
 type Post = {
   id: string;
@@ -1212,7 +1213,7 @@ export default function ProfileScreen({ navigation: navProp }: any) {
                       </View>
                       <Text style={tw`text-xs text-ink-3`}>{story.views} views</Text>
                       <Text style={tw`text-xs text-ink-3 mt-1`}>
-                        {new Date(story.createdAt).toLocaleDateString()}
+                        {serverDate(story.createdAt).toLocaleDateString()}
                       </Text>
                     </PressableScale>
                   ))}

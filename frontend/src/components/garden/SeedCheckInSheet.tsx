@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,15 +6,16 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Image,
   Keyboard,
 } from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
+import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
 import { uploadMediaFile } from '../../services/api/media';
 import { waterSeed, type GrowthSeed } from '../../services/api/seeds';
 import { daysSincePlanted, goalSchemaFor, fallbackGoalSchema } from './seedGoalMeta';
@@ -31,6 +32,8 @@ type Props = {
 export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Props) {
   const [metricText, setMetricText] = useState('');
   const [note, setNote] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const noteRef = useRef<TextInput>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -124,10 +127,7 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={tw`flex-1 justify-end bg-black/40`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
         <PressableScale
           onPress={() => {
             if (!busy) onClose();
@@ -138,7 +138,12 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
         />
         <View style={tw`bg-card rounded-t-sheet px-gutter-wide pt-3 pb-10 max-h-[88%]`}>
           <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Check in
             </Text>
@@ -160,6 +165,8 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
                   value={metricText}
                   onChangeText={setMetricText}
                   keyboardType="decimal-pad"
+                  // decimal-pad has no return key: the shared Done bar dismisses it.
+                  {...formInputAccessoryProps()}
                   placeholder={
                     seed.metric_current != null
                       ? `Last: ${seed.metric_current}${schema?.unitLabel ? ` ${schema.unitLabel}` : ''}`
@@ -224,12 +231,15 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
               Note
             </Text>
             <TextInput
+              ref={noteRef}
               value={note}
               onChangeText={setNote}
+              onFocus={() => scrollInputIntoView(scrollRef, noteRef)}
               placeholder="How did it feel?"
               placeholderTextColor={theme.colors.placeholder}
               multiline
-              style={tw`bg-card border border-line rounded-card px-4 py-3 text-ink text-body min-h-[72px] mb-5`}
+              style={tw`bg-card border border-line rounded-card px-4 py-3 text-ink text-body min-h-[72px] max-h-40 mb-5`}
+              textAlignVertical="top"
             />
 
             <PressableScale
@@ -251,7 +261,8 @@ export default function SeedCheckInSheet({ visible, seed, onClose, onDone }: Pro
             </PressableScale>
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
+        <KeyboardDoneAccessory />
+      </KeyboardInsetView>
     </Modal>
   );
 }

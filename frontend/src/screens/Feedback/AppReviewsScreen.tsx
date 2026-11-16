@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Text,
@@ -28,9 +27,10 @@ import { alertMessage } from '../../utils/confirmDialog';
 import { toast } from '../../state/useToastStore';
 import { feedback } from '../../utils/interactionFeedback';
 import { openAppStoreReview } from '../../utils/appStoreReview';
+import { serverDate } from '../../utils/serverDate';
 
 function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime();
+  const t = serverDate(iso).getTime();
   if (!Number.isFinite(t)) return '';
   const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
   if (mins < 1) return 'just now';
@@ -96,7 +96,8 @@ function ReviewCard({
             placeholder="Thanks for the feedback — we’ll look at this…"
             placeholderTextColor={theme.colors.ink3}
             multiline
-            style={tw`min-h-[72px] bg-page rounded-control px-3 py-2.5 text-stone-800`}
+            style={tw`min-h-[72px] max-h-40 bg-page rounded-control px-3 py-2.5 text-stone-800`}
+            textAlignVertical="top"
           />
           <PressableScale
             feedback="success"
@@ -203,10 +204,10 @@ export default function AppReviewsScreen() {
         }
       />
 
-      <KeyboardAvoidingView
-        style={tw`flex-1`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* iOS: the ScrollView insets itself (automaticallyAdjustKeyboardInsets, screen coords).
+          KeyboardAvoidingView used its local frame and under-shot by the view's offset from
+          the window top. Android: window resizes (softwareKeyboardLayoutMode resize). */}
+      <View style={tw`flex-1`}>
         {loading ? (
           <View style={tw`flex-1 items-center justify-center`}>
             <ActivityIndicator color="#059669" />
@@ -214,6 +215,8 @@ export default function AppReviewsScreen() {
         ) : (
           <ScrollView
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="interactive"
             contentContainerStyle={[tw`px-gutter-wide pt-3`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           >
             <FadeInUp>
@@ -250,7 +253,8 @@ export default function AppReviewsScreen() {
                 placeholder="The journal felt calm, but I couldn’t find instructors…"
                 placeholderTextColor={theme.colors.ink3}
                 multiline
-                style={tw`min-h-[110px] bg-page rounded-control px-3 py-3 text-stone-800`}
+                style={tw`min-h-[110px] max-h-56 bg-page rounded-control px-3 py-3 text-stone-800`}
+                textAlignVertical="top"
               />
               <PrimaryButton
                 label={saving ? 'Saving…' : mine ? 'Update review' : 'Send review'}
@@ -333,7 +337,7 @@ export default function AppReviewsScreen() {
             </View>
           </ScrollView>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

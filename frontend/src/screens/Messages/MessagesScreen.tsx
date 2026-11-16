@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAuth } from '../../store/hooks';
@@ -189,6 +190,9 @@ function formatDayLabel(iso: string): string {
 export default function MessagesScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<MessagesRouteParams, 'Messages'>>();
+  // Also mounted as BusinessMessages, where the individual-only routes (Individual,
+  // Instructors, CoachingContract) don't exist.
+  const isBusinessInbox = (route.name as string) === 'BusinessMessages';
   const { user } = useAuth();
   const c = useThemeColors();
   const scheme = useColorSchemeName();
@@ -218,6 +222,14 @@ export default function MessagesScreen() {
   const setWall = useChatWallpaperStore((s) => s.setWall);
   const wallById = useChatWallpaperStore((s) => s.byId);
   const messageInputRef = useRef<TextInput>(null);
+  /**
+   * Thread composer: measured keyboard overlap (screen coords) instead of
+   * KeyboardAvoidingView's local-frame maths, so it is right in every stack
+   * (root card, Business stack) and on every device.
+   */
+  const threadWrapRef = useRef<View>(null);
+  const kbInset = useKeyboardInset(threadWrapRef);
+  const safeInsets = useSafeAreaInsets();
   const threadListRef = useRef<FlatList<ChatMessage>>(null);
   /** Set on first drag in the open thread; gates onStartReached auto-loading. */
   const threadUserScrolledRef = useRef(false);
@@ -622,6 +634,13 @@ export default function MessagesScreen() {
     return () => clearTimeout(t);
   }, [selectedConversation?.id, lastMessageId]);
 
+  // Keyboard opened (composer focused): keep the newest messages in view above it.
+  useEffect(() => {
+    if (kbInset <= 0) return;
+    const t = setTimeout(() => threadListRef.current?.scrollToEnd({ animated: true }), 80);
+    return () => clearTimeout(t);
+  }, [kbInset]);
+
   const loadOlderMessages = useCallback(async () => {
     const conv = selectedConversation;
     if (!conv || loadingOlder || !conv.has_older || !conv.older_cursor) return;
@@ -747,10 +766,15 @@ export default function MessagesScreen() {
     const chip = isLinen ? c.raised : darkWall ? 'rgba(255,255,255,0.08)' : '#EAE4D6';
     return (
       <SafeAreaView style={[tw`flex-1`, { backgroundColor: wall.page }]} edges={['top']}>
+        <View ref={threadWrapRef} style={tw`flex-1`} collapsable={false}>
         <KeyboardAvoidingView
-          style={tw`flex-1`}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+          style={[
+            tw`flex-1`,
+            Platform.OS === 'ios' ? { paddingBottom: kbInset > 0 ? kbInset : safeInsets.bottom } : null,
+          ]}
+          // iOS: padding comes from useKeyboardInset; Android keeps KAV height mode.
+          enabled={Platform.OS !== 'ios'}
+          behavior="height"
         >
           <View
             style={[
@@ -1184,6 +1208,7 @@ export default function MessagesScreen() {
             onPick={(id) => setWall(selectedConversation.id, id)}
           />
         </KeyboardAvoidingView>
+        </View>
       </SafeAreaView>
     );
   }
@@ -1278,6 +1303,10 @@ export default function MessagesScreen() {
         <FlatList
           data={filteredConversations}
           keyExtractor={(item) => item.id}
+          // Opening a conversation works on the first tap while the search keyboard is up.
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={[tw`px-gutter-wide pt-2`, { paddingBottom: TAB_SCREEN_BOTTOM_PADDING }]}
           refreshControl={
             <RefreshControl {...refresh} />
@@ -1342,7 +1371,7 @@ export default function MessagesScreen() {
                 icon="storefront-outline"
                 title="No shop threads yet"
                 description="When you message a seller, support chats land here."
-                actionLabel="Browse shop"
+                actionLabel={isBusinessInbox ? undefined : 'Browse shop'}
                 onAction={() => {
                   try {
                     (navigation as { navigate: (a: string, b: object) => void }).navigate(
@@ -1359,7 +1388,7 @@ export default function MessagesScreen() {
                 icon="school-outline"
                 title="No coach threads yet"
                 description="Reach out from an instructor’s page — coaching chats land here."
-                actionLabel="Find instructors"
+                actionLabel={isBusinessInbox ? undefined : 'Find instructors'}
                 onAction={() => navigateFromRoot(navigation, 'Instructors')}
               />
             ) : (

@@ -194,6 +194,25 @@ export const createProductSchema = z.object({
   metadata: boundedMetadataRecord.optional(),
 });
 
+/**
+ * Product edit: like create but every field optional, and an explicit '' / null
+ * image_url means "remove the image" (create treats '' as absent). Local picker
+ * URIs are still stripped to undefined (= leave unchanged).
+ */
+export const updateProductSchema = createProductSchema.partial().extend({
+  image_url: z.preprocess(
+    (val) => {
+      if (val === null) return null;
+      if (val === undefined) return undefined;
+      const s = String(val).trim();
+      if (!s) return null;
+      if (/^https?:\/\//i.test(s)) return s;
+      return undefined;
+    },
+    z.string().url().nullable().optional()
+  ),
+});
+
 export const createOrderSchema = z.object({
   items: z
     .array(

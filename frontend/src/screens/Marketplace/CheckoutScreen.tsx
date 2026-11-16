@@ -409,6 +409,11 @@ export default function CheckoutScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={tw`pb-4`}
+        // Shipping fields sit below the cart: keep the focused one above the keyboard.
+        // Off while the location picker is up: its search field (with the Done bar) is
+        // outside this list, and RN would shift this list's offset behind the sheet.
+        automaticallyAdjustKeyboardInsets={!picker}
+        keyboardDismissMode="interactive"
       >
         {!paymentsEnabled && (
           <View style={tw`mx-4 mt-4 mb-2 bg-amber-50 border border-amber-200 rounded-card px-4 py-3 flex-row items-center`}>
@@ -478,6 +483,9 @@ export default function CheckoutScreen() {
           <View style={tw`px-4 py-4`}>
             <FormTextInput
               placeholder="Full Name"
+              autoCapitalize="words"
+              textContentType="name"
+              autoComplete="name"
               value={shipping.name}
               onChangeText={(text) => {
                 setShipping({ ...shipping, name: text });
@@ -494,6 +502,9 @@ export default function CheckoutScreen() {
 
             <FormTextInput
               placeholder="Street Address"
+              autoCapitalize="words"
+              textContentType="fullStreetAddress"
+              autoComplete="street-address"
               value={shipping.street}
               onChangeText={(text) => {
                 setShipping({ ...shipping, street: text });
@@ -567,6 +578,9 @@ export default function CheckoutScreen() {
                 </Text>
                 <FormTextInput
                   placeholder="District / area (optional)"
+                  autoCapitalize="words"
+                  textContentType="addressState"
+                  autoComplete="postal-address-region"
                   value={shipping.state === 'N/A' ? '' : shipping.state}
                   onChangeText={(text) => setShipping({ ...shipping, state: text })}
                   style={tw`mb-3`}
@@ -613,6 +627,9 @@ export default function CheckoutScreen() {
               <>
                 <FormTextInput
                   placeholder="City / Town"
+                  autoCapitalize="words"
+                  textContentType="addressCity"
+                  autoComplete="postal-address-locality"
                   value={shipping.city}
                   onChangeText={(text) => {
                     setShipping({ ...shipping, city: text });
@@ -645,6 +662,9 @@ export default function CheckoutScreen() {
             </Text>
             <FormTextInput
               placeholder={zipLabel}
+              textContentType="postalCode"
+              autoComplete="postal-code"
+              autoCorrect={false}
               value={shipping.zip}
               onChangeText={(text) => {
                 setShipping({ ...shipping, zip: text });

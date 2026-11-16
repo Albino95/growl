@@ -87,6 +87,7 @@ import ShareCardSheet, { type ShareCardPayload } from '../../components/share/Sh
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { SHOW_CIRCLES } from '../../constants/featureFlags';
 import { SkeletonList } from '../../components/ui/SkeletonCard';
+import { serverDate } from '../../utils/serverDate';
 
 type ViewTab = 'today' | 'timeline';
 type VisibilityFilter = 'all' | 'private' | 'shared';
@@ -139,7 +140,7 @@ function EntryCard({
         <View style={tw`flex-row items-center flex-1`}>
           {meta ? <Text style={tw`text-base mr-2`}>{meta.glyph}</Text> : null}
           <Text style={tw`text-xs text-ink-3`}>
-            {new Date(entry.created_at).toLocaleTimeString('en-US', {
+            {serverDate(entry.created_at).toLocaleTimeString('en-US', {
               hour: 'numeric',
               minute: '2-digit',
             })}
@@ -1066,6 +1067,8 @@ export default function JournalScreen() {
             stickySectionHeadersEnabled
             {...feedListPerformanceProps}
             {...verticalScrollProps}
+            // Search lives in the header: keep the last matches reachable above the keyboard.
+            automaticallyAdjustKeyboardInsets
             refreshControl={
               <RefreshControl {...refresh} tintColor={theme.colors.ink} />
             }

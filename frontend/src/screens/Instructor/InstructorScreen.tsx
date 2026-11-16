@@ -8,6 +8,7 @@ import {
   Image,
   TextInput,
 } from 'react-native';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -191,6 +192,8 @@ function OfferField({
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
+        // decimal-pad has no return key: the shared Done bar dismisses it.
+        {...formInputAccessoryProps()}
         accessibilityLabel={label}
         style={tw`bg-page border border-line/80 rounded-control px-3 py-2 text-body text-ink`}
       />
@@ -878,6 +881,10 @@ export default function InstructorScreen({ navigation }: any) {
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING, paddingTop: 8 }}
+          // Offer editor fields live in this list: keep the focused one above the keyboard.
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.colors.brand} />
           }
@@ -1495,6 +1502,7 @@ export default function InstructorScreen({ navigation }: any) {
           ) : null}
         </ScrollView>
       )}
+      <KeyboardDoneAccessory />
     </SafeAreaView>
   );
 }

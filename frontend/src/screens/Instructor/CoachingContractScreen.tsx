@@ -7,9 +7,8 @@ import {
   RefreshControl,
   Modal,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import KeyboardInsetView from '../../components/ui/KeyboardInsetView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,6 +65,7 @@ export default function CoachingContractScreen() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [detail, setDetail] = useState('');
+  const detailRef = useRef<TextInput>(null);
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<ReviewEligibility | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -196,6 +196,10 @@ export default function CoachingContractScreen() {
       ) : contract ? (
         <ScrollView
           contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING, paddingHorizontal: 20 }}
+          // Session notes input lives in this list: keep it above the keyboard.
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -384,10 +388,7 @@ export default function CoachingContractScreen() {
       )}
 
       <Modal visible={assignOpen} transparent animationType="slide" onRequestClose={() => setAssignOpen(false)}>
-        <KeyboardAvoidingView
-          style={tw`flex-1 justify-end bg-black/40`}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
           <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
             <Text style={tw`text-lg font-bold text-ink mb-1`}>Assign homework</Text>
             <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
@@ -399,10 +400,14 @@ export default function CoachingContractScreen() {
               placeholder="This week’s practice"
               placeholderTextColor={theme.colors.placeholder}
               maxLength={120}
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => detailRef.current?.focus()}
               accessibilityLabel="Homework title"
               style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink mb-2`}
             />
             <TextInput
+              ref={detailRef}
               value={detail}
               onChangeText={setDetail}
               placeholder="What good looks like"
@@ -410,7 +415,8 @@ export default function CoachingContractScreen() {
               multiline
               maxLength={800}
               accessibilityLabel="What good looks like"
-              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-3`}
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] max-h-36 mb-3`}
+              textAlignVertical="top"
             />
             <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5`}>
               Due
@@ -451,7 +457,7 @@ export default function CoachingContractScreen() {
               <Text style={tw`text-ink-3 font-semibold`}>Cancel</Text>
             </PressableScale>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardInsetView>
       </Modal>
 
       <HomeworkFeedbackSheet

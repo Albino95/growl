@@ -32,6 +32,7 @@ import { duration as motionDuration, easing, timing } from '../../theme/motion';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { ReelVideoPlayer } from '../../components/ui/VideoEditor';
 import { cacheRemoteClip } from '../../utils/cacheRemoteClip';
+import { serverDate } from '../../utils/serverDate';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -452,7 +453,7 @@ export default function StoryViewerScreen() {
                 {currentStory.username}
               </Text>
               <Text style={tw`text-white/70 text-xs`}>
-                {new Date(currentStory.createdAt).toLocaleTimeString([], {
+                {serverDate(currentStory.createdAt).toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit',
                 })}

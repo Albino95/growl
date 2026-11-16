@@ -279,6 +279,10 @@ export default function MarketplaceScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={tw`px-gutter pt-3 pb-24`}
           {...feedListPerformanceProps}
+          // Product taps land on the first tap while the search keyboard is up.
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           refreshControl={
             <RefreshControl {...refresh} refreshing={refresh.refreshing || isLoading} />
           }

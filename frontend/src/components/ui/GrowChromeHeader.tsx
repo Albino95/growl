@@ -5,7 +5,7 @@ import tw from '../../lib/tw';
 import { feedback } from '../../utils/interactionFeedback';
 import { duration, spring, timing } from '../../theme/motion';
 import { getReducedMotion } from '../../hooks/useReducedMotion';
-import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { getRootNavigator, navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useHomeTabStore } from '../../state/useHomeTabStore';
 import SeedSmileBurst from './SeedSmileBurst';
 
@@ -38,7 +38,14 @@ export default function GrowChromeHeader({ right, leftAccessory, style }: Props)
   const goHome = () => {
     bounce();
     // Plain navigation: silent until the 7-tap egg fires (celebrate below).
-    navigateFromRoot(navigation, 'Individual', { screen: 'Feed' });
+    // Business accounts have no `Individual` tree (this header also renders in
+    // BusinessMessages) — send them to their own Home tab instead.
+    const rootNames: string[] | undefined = getRootNavigator(navigation)?.getState?.()?.routeNames;
+    if (rootNames && !rootNames.includes('Individual') && rootNames.includes('Business')) {
+      navigateFromRoot(navigation, 'Business', { screen: 'BusinessMain', params: { screen: 'Home' } });
+    } else {
+      navigateFromRoot(navigation, 'Individual', { screen: 'Feed' });
+    }
     requestHome();
   };
 

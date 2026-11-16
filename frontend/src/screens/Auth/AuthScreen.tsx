@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Animated,
@@ -18,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Screen from '../../components/ui/Screen';
 import PrimaryButton from '../../components/ui/PrimaryButton';
-import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import AuthModeSwitch from '../../components/auth/AuthModeSwitch';
 import CodeInput, { type CodeInputHandle } from '../../components/auth/CodeInput';
 import { AUTH_EASE_OUT, runShake } from '../../components/auth/authMotion';
@@ -1404,13 +1403,15 @@ export default function AuthScreen() {
     <Screen edges={['top', 'bottom']} background="page">
       <View style={tw`flex-1`}>
         <AuthAtmosphere />
-        <KeyboardAvoidingView
-          style={tw`flex-1`}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        {/* iOS: the ScrollView insets itself (automaticallyAdjustKeyboardInsets, screen coords).
+            KeyboardAvoidingView used its local frame and under-shot by the view's offset from
+            the window top. Android: window resizes (softwareKeyboardLayoutMode resize). */}
+        <View style={tw`flex-1`}>
           <ScrollView
             ref={scrollRef}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="interactive"
             contentContainerStyle={tw`flex-grow px-gutter-wide pt-2 pb-10`}
             showsVerticalScrollIndicator={false}
           >
@@ -1472,7 +1473,9 @@ export default function AuthScreen() {
               </Animated.View>
             </View>
           </ScrollView>
-        </KeyboardAvoidingView>
+        </View>
+        {/* Done bar for the fields wired to the shared accessory id (incl. the number-pad code). */}
+        <KeyboardDoneAccessory />
       </View>
     </Screen>
   );

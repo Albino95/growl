@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,8 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import KeyboardInsetView from '../../components/ui/KeyboardInsetView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -173,6 +172,7 @@ export default function CirclesScreen() {
   const [countryOpen, setCountryOpen] = useState(false);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
+  const descRef = useRef<TextInput>(null);
   const [pathKey, setPathKey] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -378,6 +378,9 @@ export default function CirclesScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={tw`px-gutter-wide pb-28`}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -472,6 +475,11 @@ export default function CirclesScreen() {
                     placeholder="Optional"
                     placeholderTextColor={theme.colors.placeholder}
                     style={tw`text-sm font-semibold text-ink py-0.5`}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    textContentType="addressCity"
+                    autoComplete="postal-address-locality"
+                    returnKeyType="done"
                   />
                 </View>
               </View>
@@ -607,10 +615,7 @@ export default function CirclesScreen() {
       />
 
       <Modal visible={createOpen} animationType="slide" transparent onRequestClose={() => setCreateOpen(false)}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={tw`flex-1 justify-end bg-black/40`}
-        >
+        <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
           <View style={tw`bg-page rounded-t-hero px-gutter-wide pt-4 pb-10`}>
             <View style={tw`w-10 h-1 rounded-full bg-stone-300 self-center mb-4`} />
             <Text style={tw`text-callout font-bold text-ink`}>Start a circle</Text>
@@ -622,17 +627,28 @@ export default function CirclesScreen() {
               onChangeText={setName}
               placeholder="Circle name"
               placeholderTextColor={theme.colors.placeholder}
+              autoCapitalize="words"
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => descRef.current?.focus()}
               style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink mb-3`}
             />
             <TextInput
+              ref={descRef}
               value={desc}
               onChangeText={setDesc}
               placeholder="What do you practice here?"
               placeholderTextColor={theme.colors.placeholder}
               multiline
-              style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink mb-3 min-h-[72px]`}
+              style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink mb-3 min-h-[72px] max-h-36`}
+              textAlignVertical="top"
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-4`}>
+            <ScrollView
+              horizontal
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              style={tw`mb-4`}
+            >
               {pathOptions.map((k) => (
                 <PressableScale
                   key={k}
@@ -670,7 +686,7 @@ export default function CirclesScreen() {
               </PressableScale>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardInsetView>
       </Modal>
     </SafeAreaView>
   );

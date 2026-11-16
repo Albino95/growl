@@ -4,7 +4,6 @@ import {
   View,
   Pressable,
   Animated,
-  KeyboardAvoidingView,
   Platform,
   Dimensions,
   PanResponder,
@@ -17,6 +16,7 @@ import { feedback } from '../../utils/interactionFeedback';
 import { haptic } from '../../theme/haptics';
 import { duration, easing, spring, timing } from '../../theme/motion';
 import { getReducedMotion } from '../../hooks/useReducedMotion';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 
 /** Drag distance (pt) past which releasing dismisses the sheet. */
 const DISMISS_DY = 72;
@@ -58,7 +58,20 @@ export default function AnimatedBottomSheet({
   const closeFeedbackRef = useRef(closeFeedback);
   onCloseRef.current = onClose;
   closeFeedbackRef.current = closeFeedback;
-  const maxH = Dimensions.get('window').height * maxHeightRatio;
+  /**
+   * keyboardAware: lift the sheet by the keyboard's real screen overlap
+   * (useKeyboardInset). KeyboardAvoidingView inside a transparent Modal
+   * under-/over-shoots on iOS; Android's window resizes on its own.
+   */
+  const rootRef = useRef<View>(null);
+  const kbInsetRaw = useKeyboardInset(rootRef);
+  const kbInset = keyboardAware && Platform.OS === 'ios' ? kbInsetRaw : 0;
+  const windowH = Dimensions.get('window').height;
+  // While lifted, cap the sheet so it never runs off the top of the screen.
+  const maxH =
+    kbInset > 0
+      ? Math.min(windowH * maxHeightRatio, windowH - kbInset - insets.top - 12)
+      : windowH * maxHeightRatio;
   /** True once the current drag has crossed the dismiss threshold (one haptic per drag). */
   const pastThreshold = useRef(false);
 
@@ -152,7 +165,8 @@ export default function AnimatedBottomSheet({
         tw`bg-card rounded-t-sheet border-t border-line w-full overflow-hidden`,
         {
           maxHeight: maxH,
-          paddingBottom: Math.max(insets.bottom, 12),
+          // The home-indicator inset is under the keyboard while it's up.
+          paddingBottom: kbInset > 0 ? 12 : Math.max(insets.bottom, 12),
           transform: [{ translateY }],
         },
         sheetStyle,
@@ -172,7 +186,7 @@ export default function AnimatedBottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
-      <View style={tw`flex-1 justify-end`}>
+      <View ref={rootRef} collapsable={false} style={tw`flex-1 justify-end`}>
         <Animated.View
           pointerEvents="none"
           style={[
@@ -186,17 +200,9 @@ export default function AnimatedBottomSheet({
           ]}
         />
         <Pressable style={tw`absolute inset-0`} onPress={close} accessibilityLabel="Dismiss" />
-        {keyboardAware ? (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={tw`justify-end`}
-            pointerEvents="box-none"
-          >
-            {sheet}
-          </KeyboardAvoidingView>
-        ) : (
-          sheet
-        )}
+        <View style={[tw`flex-1 justify-end`, { paddingBottom: kbInset }]} pointerEvents="box-none">
+          {sheet}
+        </View>
       </View>
     </Modal>
   );

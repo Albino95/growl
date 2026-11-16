@@ -8,7 +8,6 @@ import {
   Platform,
   InputAccessoryView,
   Keyboard,
-  KeyboardAvoidingView,
   Button,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -254,14 +253,17 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
         }
       }
 
+      // On edit, '' clears the field server-side (undefined = "leave unchanged"), so
+      // removing the image / description / subcategory actually sticks.
+      const cleared = isNew ? undefined : '';
       await onSubmit({
         name: name.trim(),
-        description: description.trim() || undefined,
+        description: description.trim() || cleared,
         category,
-        subcategory: subcategory || undefined,
+        subcategory: subcategory || cleared,
         price: Math.round(parsedPrice * 100) / 100,
         stock: parsedStock,
-        image_url: persistableImageUrl,
+        image_url: persistableImageUrl ?? (!imageUrl ? cleared : undefined),
       });
       if (isNew) void drafts.clear(PRODUCT_DRAFT_NS, userId);
       onClose();
@@ -308,12 +310,14 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
           </PressableScale>
         </View>
 
-        <KeyboardAvoidingView
-          style={tw`flex-1`}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        {/* iOS: the ScrollView insets itself (automaticallyAdjustKeyboardInsets, screen coords).
+            KeyboardAvoidingView used its local frame and under-shot by the view's offset from
+            the window top. Android: window resizes (softwareKeyboardLayoutMode resize). */}
+        <View style={tw`flex-1`}>
           <ScrollView
             style={tw`flex-1 px-gutter pt-4`}
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={tw`pb-6`}
           >
@@ -383,7 +387,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
                 onChangeText={setDescription}
                 placeholder="Optional description"
                 multiline
-                style={[inputStyle, tw`min-h-24`]}
+                style={[inputStyle, tw`min-h-24 max-h-48`]}
                 placeholderTextColor={theme.colors.ink3}
                 textAlignVertical="top"
                 returnKeyType="done"
@@ -505,7 +509,7 @@ export default function ProductForm({ visible, product, onClose, onSubmit }: Pro
               </Text>
             </PressableScale>
           </StickyFooter>
-        </KeyboardAvoidingView>
+        </View>
 
         {Platform.OS === 'ios' ? (
           <InputAccessoryView nativeID={KEYBOARD_ACCESSORY_ID}>

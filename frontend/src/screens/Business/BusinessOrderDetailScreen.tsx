@@ -40,6 +40,7 @@ import {
   patchLocalOrderStatus,
 } from '../../store/slices/businessSlice';
 import { parseShippingAddress, safeParseJson } from '../../utils/safeJson';
+import { serverDate } from '../../utils/serverDate';
 
 type BusinessOrderDetailParams = {
   BusinessOrderDetail: { orderId: string };
@@ -118,6 +119,11 @@ export default function BusinessOrderDetailScreen() {
 
   const saveFulfillment = async () => {
     if (!order) return;
+    // The server rejects a fulfillment update with no fields (generic 400).
+    if (!trackingNumber.trim() && !carrier.trim() && !labelUrl.trim()) {
+      alertMessage('Nothing to save', 'Add a tracking number, carrier or label link first.');
+      return;
+    }
     setBusy(true);
     try {
       const res = await updateOrderFulfillment(order.id, {
@@ -301,7 +307,7 @@ export default function BusinessOrderDetailScreen() {
   const cancelled = order.status === 'cancelled';
   const canCancel = order.status === 'pending' || order.status === 'processing';
   const contactNote = contactCopy(contactReason);
-  const placed = new Date(order.created_at);
+  const placed = serverDate(order.created_at);
   const placedLabel = Number.isNaN(placed.getTime())
     ? null
     : placed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -309,7 +315,14 @@ export default function BusinessOrderDetailScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['bottom']}>
-      <ScrollView style={tw`flex-1 px-gutter pt-4`} contentContainerStyle={tw`pb-10`}>
+      <ScrollView
+        style={tw`flex-1 px-gutter pt-4`}
+        contentContainerStyle={tw`pb-10`}
+        // Fulfillment + refund inputs sit low in this list: keep the focused one above the keyboard.
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         <View style={tw`bg-card rounded-card p-4 border border-line mb-3`}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
             <Text style={tw`text-lg font-bold text-ink`}>
@@ -404,6 +417,7 @@ export default function BusinessOrderDetailScreen() {
             onChangeText={setTrackingNumber}
             placeholder="1Z999..."
             autoCapitalize="characters"
+            autoCorrect={false}
             style={tw`mb-3 bg-card rounded-control`}
           />
           <Text style={tw`text-sm text-ink-2 mb-1`}>Carrier</Text>
@@ -411,6 +425,8 @@ export default function BusinessOrderDetailScreen() {
             value={carrier}
             onChangeText={setCarrier}
             placeholder="USPS, UPS, FedEx…"
+            autoCapitalize="words"
+            autoCorrect={false}
             style={tw`mb-3 bg-card rounded-control`}
           />
           <Text style={tw`text-sm text-ink-2 mb-1`}>Label URL</Text>
@@ -419,6 +435,9 @@ export default function BusinessOrderDetailScreen() {
             onChangeText={setLabelUrl}
             placeholder="https://..."
             autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            textContentType="URL"
             style={tw`mb-3 bg-card rounded-control`}
           />
           <PrimaryButton
@@ -497,7 +516,7 @@ export default function BusinessOrderDetailScreen() {
               placeholder="Reason for refund…"
               multiline
               numberOfLines={2}
-              style={tw`mb-3 bg-card rounded-control min-h-[64px]`}
+              style={tw`mb-3 bg-card rounded-control min-h-[64px] max-h-36`}
               textAlignVertical="top"
             />
             <PrimaryButton

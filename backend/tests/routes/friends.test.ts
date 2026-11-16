@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { cohortsOverlap, expandCohortKeys, addFriend, listFriends } from '../../src/routes/friends';
+import { cohortsOverlap, expandCohortKeys, addFriend, listFriends, reportContent } from '../../src/routes/friends';
 import { createMockEnv, createMockRequest, parseJsonResponse } from '../utils/test-helpers';
 import type { Env } from '../../src/types';
 
@@ -162,5 +162,48 @@ describe('friends routes', () => {
     expect(data.success).toBe(true);
     expect(data.data.friends).toHaveLength(1);
     expect(data.data.friends[0]).toMatchObject({ id: 'friend-1', username: 'Friend One' });
+  });
+
+  it('reportContent looks journal reports up in journal_entries, not posts', async () => {
+    const lookups: string[] = [];
+    const inserts: any[][] = [];
+    mockDb.prepare = (query: string) => ({
+      bind: (...args: any[]) => ({
+        first: async () => {
+          if (query.includes('SELECT * FROM users WHERE id = ?')) {
+            return args[0] === 'test-user' ? { id: 'test-user', metadata: '{}' } : null;
+          }
+          if (query.includes('FROM journal_entries')) {
+            lookups.push('journal_entries');
+            return { id: 'j-1', user_id: 'author-1' };
+          }
+          if (query.includes('FROM posts')) {
+            lookups.push('posts');
+            return null;
+          }
+          return null;
+        },
+        all: async () => ({ results: [] }),
+        run: async () => {
+          if (query.includes('INSERT INTO reports')) inserts.push(args);
+          return { success: true };
+        },
+      }),
+    });
+
+    const request = createMockRequest('https://example.com/api/v1/social/report', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token' },
+      body: { targetId: 'j-1', targetType: 'journal', reason: 'spam' },
+    });
+    const response = await reportContent(request, env);
+    const data = await parseJsonResponse(response);
+
+    expect(response.status).toBe(200);
+    expect(data.data.ok).toBe(true);
+    expect(lookups).toEqual(['journal_entries']);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toContain('journal');
+    expect(JSON.parse(inserts[0][inserts[0].length - 1]).userId).toBe('author-1');
   });
 });

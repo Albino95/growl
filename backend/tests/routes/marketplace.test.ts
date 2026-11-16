@@ -323,3 +323,14 @@ describe('Marketplace Routes', () => {
     });
   });
 });
+
+describe('updateProductSchema', () => {
+  it("treats '' / null image_url as 'remove image' and local URIs as unchanged", async () => {
+    const { updateProductSchema } = await import('../../src/utils/validation');
+    expect(updateProductSchema.parse({ image_url: '' }).image_url).toBeNull();
+    expect(updateProductSchema.parse({ image_url: null }).image_url).toBeNull();
+    expect(updateProductSchema.parse({ image_url: 'file:///tmp/a.jpg' }).image_url).toBeUndefined();
+    expect(updateProductSchema.parse({}).image_url).toBeUndefined();
+    expect(updateProductSchema.parse({ image_url: 'https://x.test/a.jpg' }).image_url).toBe('https://x.test/a.jpg');
+  });
+});

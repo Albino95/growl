@@ -315,7 +315,8 @@ export default function SettingsScreen() {
               navigation.goBack();
               setTimeout(() => {
                 try {
-                  (navigation as any).navigate('Marketplace');
+                  // Settings is on the root stack; Marketplace is a tab inside Individual.
+                  (navigation as any).navigate('Individual', { screen: 'Marketplace' });
                 } catch {
                   /* ignore */
                 }

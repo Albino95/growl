@@ -17,6 +17,7 @@ import { deleteAccount } from '../../services/api/privacy';
 import { useAccountExport } from './useAccountExport';
 import { resetNavigationToAuth } from '../../app/navigation/rootNavigation';
 import { alertMessage } from '../../utils/confirmDialog';
+import KeyboardInsetView from '../../components/ui/KeyboardInsetView';
 import FormTextInput from '../../components/ui/FormTextInput';
 import { KeyboardDoneAccessory } from '../../components/ui/KeyboardDoneAccessory';
 import PrimaryButton from '../../components/ui/PrimaryButton';
@@ -98,7 +99,13 @@ export default function DeleteAccountScreen() {
       </ScrollView>
 
       <Modal visible={confirmOpen} transparent animationType="fade" onRequestClose={() => setConfirmOpen(false)}>
-        <Pressable style={tw`flex-1 bg-black/40 justify-center px-6`} onPress={() => setConfirmOpen(false)}>
+        {/* Centre the dialog in the space above the keyboard (small iPhones hid the buttons). */}
+        <KeyboardInsetView style={tw`bg-black/40`} contentStyle={tw`justify-center px-6`}>
+          <Pressable
+            style={tw`absolute inset-0`}
+            onPress={() => setConfirmOpen(false)}
+            accessibilityLabel="Dismiss"
+          />
           <Pressable style={tw`bg-card rounded-card p-5`} onPress={(e) => e.stopPropagation()}>
             <Text style={tw`text-lg font-bold text-ink mb-2`}>Delete account?</Text>
             <Text style={tw`text-sm text-ink-2 mb-4`}>
@@ -112,6 +119,8 @@ export default function DeleteAccountScreen() {
               onChangeText={setConfirmText}
               autoCapitalize="characters"
               autoCorrect={false}
+              autoComplete="off"
+              spellCheck={false}
               placeholder="DELETE"
               style={tw`mb-4 bg-raised rounded-control`}
             />
@@ -132,7 +141,7 @@ export default function DeleteAccountScreen() {
             </View>
             <KeyboardDoneAccessory />
           </Pressable>
-        </Pressable>
+        </KeyboardInsetView>
       </Modal>
     </SafeAreaView>
   );

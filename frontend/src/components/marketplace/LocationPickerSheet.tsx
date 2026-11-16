@@ -6,9 +6,9 @@ import {
   FlatList,
   TextInput,
   Platform,
-  KeyboardAvoidingView,
   Keyboard,
 } from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
@@ -63,10 +63,7 @@ export default function LocationPickerSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={tw`flex-1 justify-end bg-black/40`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
         <PressableScale style={tw`flex-1`} onPress={onClose} />
         <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-5 pb-8 max-h-[88%]`}>
           <View style={tw`flex-row items-center justify-between mb-3`}>
@@ -109,6 +106,7 @@ export default function LocationPickerSheet({
             data={filtered}
             keyExtractor={(item) => item.key}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             initialNumToRender={24}
             maxToRenderPerBatch={40}
             windowSize={10}
@@ -144,7 +142,7 @@ export default function LocationPickerSheet({
           />
         </View>
         <KeyboardDoneAccessory />
-      </KeyboardAvoidingView>
+      </KeyboardInsetView>
     </Modal>
   );
 }

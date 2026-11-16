@@ -114,7 +114,16 @@ function useBootRevealGreeting(reduceMotion: boolean) {
  * pill. Reads/writes `useGrowthStore`; renders nothing until the server answers
  * (or at all if the growth API is unavailable).
  */
-function TodayCard() {
+type TodayCardProps = {
+  /**
+   * The card lives in the Feed list header: the host scrolls the intention
+   * field into view above the keyboard (see FeedScreen).
+   */
+  onInputFocus?: (input: TextInput | null) => void;
+};
+
+function TodayCard({ onInputFocus }: TodayCardProps = {}) {
+  const intentionRef = useRef<TextInput>(null);
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const reduceMotion = useReducedMotion();
@@ -748,6 +757,8 @@ function TodayCard() {
           </ScrollView>
 
           <TextInput
+            ref={intentionRef}
+            onFocus={() => onInputFocus?.(intentionRef.current)}
             value={intention}
             onChangeText={(t) => setIntention(t.replace(/\n/g, ' ').slice(0, INTENTION_MAX))}
             placeholder="One small step (optional)"

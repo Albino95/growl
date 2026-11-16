@@ -4,10 +4,9 @@ import {
   View,
   Text,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
@@ -47,10 +46,7 @@ export default function ReviewSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={tw`flex-1 justify-end bg-black/40`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
         <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
           <View style={tw`flex-row items-center justify-between mb-2`}>
             <Text style={tw`text-lg font-bold text-ink`}>
@@ -85,7 +81,8 @@ export default function ReviewSheet({
             placeholder={isCoach ? 'What they did well — or what to keep practicing' : 'What changed for you'}
             placeholderTextColor={theme.colors.placeholder}
             multiline
-            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[88px] mb-4`}
+            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[88px] max-h-40 mb-4`}
+            textAlignVertical="top"
           />
           <PressableScale
             onPress={() =>
@@ -107,7 +104,7 @@ export default function ReviewSheet({
             )}
           </PressableScale>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardInsetView>
     </Modal>
   );
 }

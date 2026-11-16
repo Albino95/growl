@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,8 @@ import {
   type CircleJournalEntry,
   type JournalReply,
 } from '../../services/api/journal';
-import { formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
+import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
 import { feedback } from '../../utils/interactionFeedback';
 import { alertMessage } from '../../utils/confirmDialog';
 import AnimatedBottomSheet from '../ui/AnimatedBottomSheet';
@@ -46,6 +47,8 @@ export default function JournalQuoteReplySheet({
 }: Props) {
   const [quote, setQuote] = useState<string | null>(null);
   const [body, setBody] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const bodyRef = useRef<TextInput>(null);
   const [replies, setReplies] = useState<JournalReply[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -143,9 +146,11 @@ export default function JournalQuoteReplySheet({
           </View>
 
           <ScrollView
+            ref={scrollRef}
             style={tw`px-gutter-wide`}
             contentContainerStyle={tw`pb-8`}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
           >
             <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1`}>
               Choose a sentence
@@ -196,13 +201,15 @@ export default function JournalQuoteReplySheet({
                   </Text>
                 </View>
                 <TextInput
+                  ref={bodyRef}
                   {...formInputAccessoryProps({ multiline: true })}
                   value={body}
                   onChangeText={setBody}
+                  onFocus={() => scrollInputIntoView(scrollRef, bodyRef)}
                   placeholder="Write something kind…"
                   placeholderTextColor={theme.colors.placeholder}
                   multiline
-                  style={tw`bg-card border border-line rounded-card px-4 py-3 min-h-[88px] text-ink text-body`}
+                  style={tw`bg-card border border-line rounded-card px-4 py-3 min-h-[88px] max-h-40 text-ink text-body`}
                   textAlignVertical="top"
                 />
                 <View style={tw`flex-row gap-2 mt-3`}>
@@ -277,6 +284,7 @@ export default function JournalQuoteReplySheet({
               })
             )}
           </ScrollView>
+          <KeyboardDoneAccessory />
         </>
       )}
     </AnimatedBottomSheet>

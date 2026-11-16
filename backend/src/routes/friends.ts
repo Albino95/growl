@@ -976,24 +976,26 @@ export async function reportContent(request: Request, env: Env): Promise<Respons
     if (!target) {
       return error('NOT_FOUND', 'User not found', 404);
     }
-  } else {
-    const post = await env.DB.prepare('SELECT id, user_id FROM posts WHERE id = ?').bind(targetId).first<{
+  }
+  // Owner of the reported post / journal entry (journal ids live in journal_entries, not posts).
+  let postOwner: { user_id: string } | null = null;
+  if (targetType !== 'user') {
+    const table = targetType === 'journal' ? 'journal_entries' : 'posts';
+    const label = targetType === 'journal' ? 'Journal entry' : 'Post';
+    const row = await env.DB.prepare(`SELECT id, user_id FROM ${table} WHERE id = ?`).bind(targetId).first<{
       id: string;
       user_id: string;
     }>();
-    if (!post) {
-      return error('NOT_FOUND', 'Post not found', 404);
+    if (!row) {
+      return error('NOT_FOUND', `${label} not found`, 404);
     }
-    if (post.user_id === ctx.userId) {
-      return error('VALIDATION_ERROR', 'Cannot report your own post', 400);
+    if (row.user_id === ctx.userId) {
+      return error('VALIDATION_ERROR', `Cannot report your own ${targetType === 'journal' ? 'entry' : 'post'}`, 400);
     }
+    postOwner = { user_id: row.user_id };
   }
 
   try {
-    const postOwner =
-      targetType === 'post'
-        ? await env.DB.prepare('SELECT user_id FROM posts WHERE id = ?').bind(targetId).first<{ user_id: string }>()
-        : null;
     const details = JSON.stringify({
       userId: postOwner?.user_id || (targetType === 'user' ? targetId : undefined),
       source: 'consumer_report',

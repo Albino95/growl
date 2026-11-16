@@ -9,6 +9,7 @@ import { getOrders, type Order } from '../../services/api/marketplace';
 import { CategoryCapsule } from '../../components/ui/CategoryCapsule';
 import { alertMessage } from '../../utils/confirmDialog';
 import { horizontalScrollProps } from '../../constants/scroll';
+import { serverDate } from '../../utils/serverDate';
 
 type OrderItem = {
   id: string;
@@ -172,7 +173,12 @@ export default function UserOrdersScreen() {
                 When you check out from Grow! Shop, your orders will show up here.
               </Text>
               <PressableScale
-                onPress={() => navigation.navigate('Marketplace' as never)}
+                // UserOrders is a root-stack screen; Marketplace is a tab inside Individual.
+                onPress={() =>
+                  (navigation as { navigate: (a: string, b: object) => void }).navigate('Individual', {
+                    screen: 'Marketplace',
+                  })
+                }
                 style={tw`mt-5 px-6 py-3.5 bg-emerald-600 rounded-card`}
               >
                 <Text style={tw`text-white font-semibold`}>Browse Shop</Text>
@@ -181,7 +187,7 @@ export default function UserOrdersScreen() {
           ) : (
             filteredOrders.map((order) => {
               const meta = STATUS_META[order.status] || STATUS_META.pending;
-              const orderDate = new Date(order.created_at).toLocaleDateString(undefined, {
+              const orderDate = serverDate(order.created_at).toLocaleDateString(undefined, {
                 month: 'short',
                 day: 'numeric',
                 year: 'numeric',

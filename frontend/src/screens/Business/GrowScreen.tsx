@@ -15,7 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../../components/ui/PressableScale';
-import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
+import KeyboardInsetView from '../../components/ui/KeyboardInsetView';
 import { verticalScrollProps } from '../../constants/scroll';
 import { useAppDispatch, useAppSelector, useAuth } from '../../store/hooks';
 import { fetchBusinessGrow, fetchPromoCodes } from '../../store/slices/businessSlice';
@@ -42,13 +43,14 @@ import { resolveAvatarUri, avatarSource } from '../../utils/images';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import BusinessScreen from '../../components/business/BusinessScreen';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
+import { serverDate } from '../../utils/serverDate';
 
 type MainSegment = 'partners' | 'community';
 type PartnerTab = 'partners' | 'discover';
 type CommunityTab = 'posts' | 'campaigns' | 'promos' | 'create';
 
 function formatTimeAgo(dateString: string) {
-  const date = new Date(dateString);
+  const date = serverDate(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -482,6 +484,8 @@ export default function GrowScreen() {
         style={tw`flex-1`}
         contentContainerStyle={tw`px-gutter-wide pt-3`}
         {...verticalScrollProps}
+        // Off while the request sheet is up (its inputs live outside this list).
+        automaticallyAdjustKeyboardInsets={!discoverTarget}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.brand} colors={[theme.colors.brand]} />
         }
@@ -661,6 +665,8 @@ export default function GrowScreen() {
       <ScrollView
         style={tw`flex-1 px-gutter pt-2`}
         {...verticalScrollProps}
+        // Off while the request sheet is up (its inputs live outside this list).
+        automaticallyAdjustKeyboardInsets={!discoverTarget}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.brand} colors={[theme.colors.brand]} />
         }
@@ -834,6 +840,7 @@ export default function GrowScreen() {
                 placeholder="SUMMER20"
                 placeholderTextColor={theme.colors.ink3}
                 autoCapitalize="characters"
+                autoCorrect={false}
                 style={tw`bg-card border border-line rounded-control px-3 py-2.5 mb-3 text-ink`}
               />
               <Text style={tw`text-sm font-semibold text-ink-2 mb-2`}>Type</Text>
@@ -1200,8 +1207,8 @@ export default function GrowScreen() {
 
       {/* Discover request modal */}
       <Modal visible={!!discoverTarget} animationType="slide" transparent onRequestClose={() => setDiscoverTarget(null)}>
-        <View style={tw`flex-1 bg-black/40 justify-end`}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardInsetView style={tw`bg-black/40`} contentStyle={tw`justify-end`}>
+          <View>
             <View style={tw`bg-card rounded-t-sheet px-gutter pt-4 pb-8`}>
               {discoverTarget ? (
                 <>
@@ -1238,7 +1245,7 @@ export default function GrowScreen() {
                     placeholderTextColor={theme.colors.ink3}
                     multiline
                     numberOfLines={3}
-                    style={tw`bg-card border border-line rounded-control px-3 py-2.5 mb-4 text-ink min-h-[80px]`}
+                    style={tw`bg-card border border-line rounded-control px-3 py-2.5 mb-4 text-ink min-h-[80px] max-h-36`}
                     textAlignVertical="top"
                   />
                   <PressableScale
@@ -1251,9 +1258,12 @@ export default function GrowScreen() {
                 </>
               ) : null}
             </View>
-          </KeyboardAvoidingView>
-        </View>
+          </View>
+          <KeyboardDoneAccessory />
+        </KeyboardInsetView>
       </Modal>
+      {/* Done bar for the number/decimal pads in the promo + campaign forms. */}
+      <KeyboardDoneAccessory />
     </BusinessScreen>
   );
 }

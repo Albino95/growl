@@ -13,6 +13,30 @@ export function navigateRoot<Name extends keyof RootStackParamList>(
   }
 }
 
+/**
+ * Like navigateRoot, but waits (bounded) until the container is ready and the
+ * target route is registered. Cold-start deep links (e.g. the Stripe return URL)
+ * arrive before the navigator mounts, and navigateRoot would silently drop them.
+ */
+export function navigateRootWhenReady<Name extends keyof RootStackParamList>(
+  name: Name,
+  params?: RootStackParamList[Name],
+  timeoutMs = 10_000
+): void {
+  const deadline = Date.now() + timeoutMs;
+  const attempt = () => {
+    if (navigationRef.isReady()) {
+      const names = navigationRef.getRootState()?.routeNames ?? [];
+      if (names.includes(name as string)) {
+        navigateRoot(name, params);
+        return;
+      }
+    }
+    if (Date.now() < deadline) setTimeout(attempt, 250);
+  };
+  attempt();
+}
+
 export function handleCheckoutDeepLink(url: string) {
   try {
     const parsed = new URL(url.replace(/^growl:\/\//, 'https://growl.app/'));
@@ -21,7 +45,7 @@ export function handleCheckoutDeepLink(url: string) {
     const sessionId = parsed.searchParams.get('session_id') || undefined;
     const cancelled = path.includes('checkout/cancel');
     if (path.includes('checkout/success') || cancelled) {
-      navigateRoot('OrderConfirmation', {
+      navigateRootWhenReady('OrderConfirmation', {
         orderId,
         sessionId,
         cancelled,

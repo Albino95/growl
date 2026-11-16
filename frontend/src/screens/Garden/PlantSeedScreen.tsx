@@ -6,8 +6,6 @@ import {
   TextInput,
   ActivityIndicator,
   Animated,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +19,7 @@ import CATEGORIES, { type Category } from '../../data/categories';
 import { createSeed } from '../../services/api/seeds';
 import { feedback } from '../../utils/interactionFeedback';
 import { alertMessage } from '../../utils/confirmDialog';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import SeedPlantVisual from '../../components/garden/SeedPlantVisual';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 import { useAppSelector } from '../../store/store';
@@ -79,6 +78,7 @@ export default function PlantSeedScreen() {
   const [subKey, setSubKey] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [detail, setDetail] = useState('');
+  const detailRef = useRef<TextInput>(null);
   const [startText, setStartText] = useState('');
   const [targetText, setTargetText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -256,11 +256,16 @@ export default function PlantSeedScreen() {
           </PressableScale>
         }
       />
-      <KeyboardAvoidingView
-        style={tw`flex-1`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={tw`px-gutter-wide pb-32`} keyboardShouldPersistTaps="handled">
+      {/* iOS: the ScrollView insets itself (automaticallyAdjustKeyboardInsets, screen coords).
+          KeyboardAvoidingView used its local frame and under-shot by the view's offset from
+          the window top. Android: window resizes (softwareKeyboardLayoutMode resize). */}
+      <View style={tw`flex-1`}>
+        <ScrollView
+          contentContainerStyle={tw`px-gutter-wide pb-32`}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode="interactive"
+        >
           <FadeInUp>
             <Text style={tw`text-caption font-semibold tracking-widest text-emerald-700 uppercase`}>
               Plant a seed
@@ -365,6 +370,7 @@ export default function PlantSeedScreen() {
                   value={startText}
                   onChangeText={setStartText}
                   keyboardType="decimal-pad"
+                  {...formInputAccessoryProps()}
                   placeholder="e.g. 82"
                   placeholderTextColor={theme.colors.placeholder}
                   style={tw`bg-raised border border-line rounded-card px-4 py-3 text-ink text-callout font-semibold mb-3`}
@@ -378,6 +384,7 @@ export default function PlantSeedScreen() {
                   value={targetText}
                   onChangeText={setTargetText}
                   keyboardType="decimal-pad"
+                  {...formInputAccessoryProps()}
                   placeholder="e.g. 74"
                   placeholderTextColor={theme.colors.placeholder}
                   style={tw`bg-raised border border-line rounded-card px-4 py-3 text-ink text-callout font-semibold mb-1`}
@@ -391,6 +398,9 @@ export default function PlantSeedScreen() {
                 value={title}
                 onChangeText={setTitle}
                 placeholder="e.g. Summer shape-up"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => detailRef.current?.focus()}
                 placeholderTextColor={theme.colors.placeholder}
                 style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink text-body mb-4`}
               />
@@ -402,12 +412,14 @@ export default function PlantSeedScreen() {
                 Why this matters, deadline, or how you’ll measure success beyond the numbers.
               </Text>
               <TextInput
+                ref={detailRef}
                 value={detail}
                 onChangeText={setDetail}
                 placeholder="e.g. Drop to 74kg by June for my sister’s wedding — weigh-ins every Monday"
                 placeholderTextColor={theme.colors.placeholder}
                 multiline
-                style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink text-body min-h-[96px] mb-6`}
+                style={tw`bg-card border border-line rounded-card px-4 py-3.5 text-ink text-body min-h-[96px] max-h-48 mb-6`}
+                textAlignVertical="top"
               />
               <View style={tw`items-center mb-4`}>
                 <SeedPlantVisual stage="seed" progress={0} size={100} />
@@ -437,7 +449,8 @@ export default function PlantSeedScreen() {
             </Text>
           </PressableScale>
         </View>
-      </KeyboardAvoidingView>
+      </View>
+      <KeyboardDoneAccessory />
     </SafeAreaView>
   );
 }

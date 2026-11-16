@@ -1,5 +1,6 @@
 import React, { PropsWithChildren } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text } from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../lib/tw';
@@ -52,13 +53,11 @@ export default function ComposerShell({
         </Text>
         <View style={tw`w-10 h-10 items-center justify-center`}>{headerRight}</View>
       </View>
-      <KeyboardAvoidingView
-        style={tw`flex-1`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* Measured keyboard overlap (screen coords) — right in cards, sheets and nested stacks. */}
+      <KeyboardInsetView>
         <View style={tw`flex-1`}>{children}</View>
         {footer}
-      </KeyboardAvoidingView>
+      </KeyboardInsetView>
       {overlay}
     </SafeAreaView>
   );

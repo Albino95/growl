@@ -8,7 +8,8 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, CommonActions } from '@react-navigation/native';
@@ -106,30 +107,13 @@ export default function CommentsScreen({
   /** Auto-load of older comments only after the user has actually scrolled. */
   const userScrolledRef = useRef(false);
   /**
-   * Comments is always shown inside a pageSheet Modal (Feed, Reels, PostDetail).
-   * KeyboardAvoidingView compares its *local* frame with the keyboard's *screen*
-   * Y, so the offset must be this view's distance from the top of the window
-   * (sheet inset + header). Measured, not hardcoded, so it's right on every device.
+   * Comments is shown inside a pageSheet Modal (Feed, Reels, PostDetail), where
+   * KeyboardAvoidingView's local-vs-screen maths hid the composer behind the
+   * keyboard. useKeyboardInset measures the real overlap in screen coordinates.
    */
   const kavWrapRef = useRef<View>(null);
-  const [kbOffset, setKbOffset] = useState(0);
-  const measureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const measureKbOffset = useCallback(() => {
-    const measure = () =>
-      kavWrapRef.current?.measureInWindow((_x, y) => {
-        if (Number.isFinite(y)) setKbOffset(Math.max(0, Math.round(y)));
-      });
-    measure();
-    // First layout can land mid sheet-slide; settle once the presentation finishes.
-    if (measureTimerRef.current) clearTimeout(measureTimerRef.current);
-    measureTimerRef.current = setTimeout(measure, 450);
-  }, []);
-  useEffect(
-    () => () => {
-      if (measureTimerRef.current) clearTimeout(measureTimerRef.current);
-    },
-    []
-  );
+  const kbInset = useKeyboardInset(kavWrapRef);
+  const safeInsets = useSafeAreaInsets();
 
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -302,12 +286,16 @@ export default function CommentsScreen({
 
   return (
     <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
-      <View ref={kavWrapRef} style={tw`flex-1`} onLayout={measureKbOffset} collapsable={false}>
+      <View ref={kavWrapRef} style={tw`flex-1`} collapsable={false}>
       <FadeInUp distance={10} style={tw`flex-1`}>
         <KeyboardAvoidingView
-          style={tw`flex-1`}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? kbOffset : 0}
+          style={[
+            tw`flex-1`,
+            Platform.OS === 'ios' ? { paddingBottom: kbInset > 0 ? kbInset : safeInsets.bottom } : null,
+          ]}
+          // iOS: padding comes from useKeyboardInset; Android keeps KAV height mode.
+          enabled={Platform.OS !== 'ios'}
+          behavior="height"
         >
           <View style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line/80 bg-card`}>
             <PressableScale
@@ -546,7 +534,8 @@ export default function CommentsScreen({
                   returnKeyType="send"
                   submitBehavior="submit"
                   onSubmitEditing={handleSendComment}
-                  style={tw`text-sm text-ink`}
+                  // Cap inside the max-h-24 pill so long text scrolls instead of overflowing.
+                  style={tw`text-sm text-ink max-h-20`}
                   placeholderTextColor={theme.colors.placeholder}
                 />
               </View>

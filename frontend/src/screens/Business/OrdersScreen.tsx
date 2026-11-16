@@ -33,6 +33,7 @@ import MarketplaceCheckoutBanner from '../../components/business/MarketplaceChec
 import { formatCurrency } from '../../utils/money';
 import { ORDER_FILTERS, orderFilterLabel } from '../../services/api/businessHelpers';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
+import { serverDate } from '../../utils/serverDate';
 
 const NEXT_STATUS: Record<string, string | null> = {
   pending: 'processing',
@@ -161,7 +162,7 @@ export default function OrdersScreen() {
               <Text style={tw`text-base font-bold text-ink mt-0.5`}>{customer}</Text>
               <Text style={tw`text-sm text-ink-3 mt-1`}>
                 {itemCount} item{itemCount === 1 ? '' : 's'} ·{' '}
-                {new Date(order.created_at).toLocaleDateString()}
+                {serverDate(order.created_at).toLocaleDateString()}
               </Text>
               {trackingLine ? (
                 <Text style={tw`text-xs text-emerald-700 mt-1 font-medium`} numberOfLines={1}>
@@ -257,6 +258,10 @@ export default function OrdersScreen() {
         data={filteredOrders}
         keyExtractor={(item) => item.id}
         renderItem={renderOrder}
+        // Tapping an order while the search keyboard is up opens it on the first tap.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={[
           tw`px-gutter-wide pt-1`,
           filteredOrders.length === 0 ? tw`flex-grow` : null,

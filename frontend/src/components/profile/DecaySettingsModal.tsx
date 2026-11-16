@@ -4,7 +4,7 @@ import PressableScale from '../ui/PressableScale';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../lib/tw';
-import { formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
 
 const PRESETS = [1, 3, 7, 14, 30, 90];
 
@@ -18,11 +18,21 @@ type Props = {
 /** Grow! sheet for choosing how long posts stay visible on timelines. */
 export default function DecaySettingsModal({ visible, initialDays, onClose, onSave }: Props) {
   const [days, setDays] = useState(initialDays);
+  /** Raw field text so the user can clear it and type a new number. */
+  const [draft, setDraft] = useState(String(initialDays));
   const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
-    if (visible) setDays(initialDays);
+    if (visible) {
+      setDays(initialDays);
+      setDraft(String(initialDays));
+    }
   }, [visible, initialDays]);
+
+  const pickDays = (n: number) => {
+    setDays(n);
+    setDraft(String(n));
+  };
 
   const handleSave = async () => {
     if (saving) return;
@@ -66,27 +76,37 @@ export default function DecaySettingsModal({ visible, initialDays, onClose, onSa
           </PressableScale>
         </View>
 
-        <ScrollView style={tw`flex-1 px-gutter-wide`} contentContainerStyle={tw`pb-8`}>
+        <ScrollView
+          style={tw`flex-1 px-gutter-wide`}
+          contentContainerStyle={tw`pb-8`}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
           <View style={tw`bg-raised border border-line/80 rounded-card p-4 mb-4`}>
             <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-2`}>
               Days until fade
             </Text>
             <TextInput
               {...formInputAccessoryProps()}
-              value={String(days)}
+              value={draft}
               onChangeText={(text) => {
-                const num = parseInt(text.replace(/\D/g, ''), 10);
-                if (!text) setDays(1);
-                else if (!Number.isNaN(num) && num >= 1 && num <= 365) setDays(num);
+                const digits = text.replace(/\D/g, '').slice(0, 3);
+                setDraft(digits);
+                const num = parseInt(digits, 10);
+                if (!Number.isNaN(num) && num >= 1 && num <= 365) setDays(num);
               }}
+              onBlur={() => setDraft(String(days))}
               keyboardType="number-pad"
+              maxLength={3}
+              accessibilityLabel="Days until posts fade"
               style={tw`bg-card border border-line rounded-control px-4 py-3 text-3xl font-bold text-ink`}
             />
             <View style={tw`flex-row flex-wrap mt-3`}>
               {PRESETS.map((preset) => (
                 <PressableScale
                   key={preset}
-                  onPress={() => setDays(preset)}
+                  onPress={() => pickDays(preset)}
                   style={tw`mr-2 mb-2 px-3.5 py-2 rounded-chip border ${
                     days === preset
                       ? 'bg-emerald-600 border-emerald-600'
@@ -130,6 +150,7 @@ export default function DecaySettingsModal({ visible, initialDays, onClose, onSa
             </Text>
           </PressableScale>
         </ScrollView>
+        <KeyboardDoneAccessory />
       </SafeAreaView>
     </Modal>
   );

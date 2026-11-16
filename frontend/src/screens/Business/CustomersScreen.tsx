@@ -47,8 +47,8 @@ export default function CustomersScreen() {
   const refresh = useRefresh(load);
 
   const openCustomerOrders = (customer: BusinessCustomer) => {
-    const tabNav = navigation.getParent()?.getParent?.() || navigation.getParent?.() || navigation;
-    tabNav.navigate('BusinessMain', {
+    // CustomersScreen lives in BusinessRootStack next to BusinessMain.
+    navigation.navigate('BusinessMain', {
       screen: 'Orders',
       // OrdersScreen search matches order id, shipping name and buyer user_id; the
       // user_id is the only one guaranteed to match this customer's orders.

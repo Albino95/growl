@@ -12,6 +12,7 @@ import { feelJournalEntry, muteJournalAuthor } from '../../services/api/journal'
 import { feedback } from '../../utils/interactionFeedback';
 import CATEGORIES from '../../data/categories';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { serverDate } from '../../utils/serverDate';
 
 type Props = {
   entry: CircleJournalEntry;
@@ -149,7 +150,7 @@ export default function CircleJournalCard({
               {entry.username}
             </Text>
             <Text style={tw`text-xs text-ink-3 mt-0.5`}>
-              {new Date(entry.created_at).toLocaleString('en-US', {
+              {serverDate(entry.created_at).toLocaleString('en-US', {
                 month: 'short',
                 day: 'numeric',
                 hour: 'numeric',

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, Text, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +20,7 @@ import { haptic } from '../../theme/haptics';
 import { useAppDispatch, useAuth } from '../../store/hooks';
 import { confirmAndDeletePost } from '../../services/deletePost';
 import { patchFeedPostEngagement } from '../../store/slices/feedSlice';
+import { serverDate } from '../../utils/serverDate';
 
 type ReactionType = 'like' | 'love' | 'laugh' | 'wow' | 'support' | null;
 
@@ -242,10 +243,9 @@ export default function PostDetailScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-card`} edges={['top']}>
-      <KeyboardAvoidingView
-        style={tw`flex-1`}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      {/* No inputs here (comments open in their own sheet): a KeyboardAvoidingView only
+          re-padded this screen behind the Comments sheet whenever its keyboard opened. */}
+      <View style={tw`flex-1`}>
         <View
           style={tw`flex-row items-center justify-between px-gutter py-3 border-b border-line bg-card`}
         >
@@ -314,7 +314,7 @@ export default function PostDetailScreen() {
                 <Text style={tw`font-bold text-ink text-base`}>{post.username}</Text>
                 <Text style={tw`text-xs text-ink-3`}>
                   {post.timestamp ||
-                    (post.createdAt ? new Date(post.createdAt).toLocaleDateString() : '')}
+                    (post.createdAt ? serverDate(post.createdAt).toLocaleDateString() : '')}
                 </Text>
               </View>
             </PressableScale>
@@ -431,7 +431,7 @@ export default function PostDetailScreen() {
             </PressableScale>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
 
       {showComments && (
         <Modal

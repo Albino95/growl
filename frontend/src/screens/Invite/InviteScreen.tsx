@@ -9,7 +9,6 @@ import {
   ScrollView,
   Share,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   RefreshControl,
 } from 'react-native';
@@ -133,9 +132,14 @@ export default function InviteScreen() {
         </PressableScale>
       </View>
 
-      <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* iOS: the ScrollView insets itself (automaticallyAdjustKeyboardInsets, screen coords).
+          KeyboardAvoidingView used its local frame and under-shot by the view's offset from
+          the window top. Android: window resizes (softwareKeyboardLayoutMode resize). */}
+      <View style={tw`flex-1`}>
         <ScrollView
           contentContainerStyle={tw`px-gutter-wide pb-16`}
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -262,7 +266,7 @@ export default function InviteScreen() {
             )}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

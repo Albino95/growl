@@ -407,7 +407,9 @@ export default function ProductDetailScreen() {
                     <PressableScale
                       key={item.id}
                       onPress={() =>
-                        (navigation as { navigate: (a: string, b: object) => void }).navigate(
+                        // push, not navigate: navigating to the current route name just
+                        // swaps params in place, so Back would skip the previous product.
+                        (navigation as { push: (a: string, b: object) => void }).push(
                           'ProductDetail',
                           { productId: item.id, preview: { title: item.name, imageUrl: thumb, price: item.price, sellerName: item.business?.username } }
                         )

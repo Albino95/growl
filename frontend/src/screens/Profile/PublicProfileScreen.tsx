@@ -66,6 +66,7 @@ import BadgeRow from '../../components/badges/BadgeRow';
 import LevelPill from '../../components/badges/LevelPill';
 import BuddyInviteButton from '../../components/buddies/BuddyInviteButton';
 import { getUserBadges, type GrowthLevel } from '../../services/api/growth';
+import { serverDate } from '../../utils/serverDate';
 
 type Post = {
   id: string;
@@ -707,10 +708,14 @@ export default function PublicProfileScreen() {
     try {
       const res = await createConversation(userId);
       const rootNavigation = navigation.getParent() || navigation;
-      (rootNavigation as any).navigate('Messages', {
-        conversationId: res.data.conversation.id,
-        targetUserId: userId,
-      });
+      const params = { conversationId: res.data.conversation.id, targetUserId: userId };
+      // Business accounts have no root `Messages`; their inbox is Business > BusinessMessages.
+      const rootNames: string[] | undefined = (rootNavigation as any).getState?.()?.routeNames;
+      if (rootNames && !rootNames.includes('Messages') && rootNames.includes('Business')) {
+        (rootNavigation as any).navigate('Business', { screen: 'BusinessMessages', params });
+      } else {
+        (rootNavigation as any).navigate('Messages', params);
+      }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Could not open conversation';
       notify('Error', msg);
@@ -1518,7 +1523,7 @@ export default function PublicProfileScreen() {
                         {story.views} views
                       </Text>
                       <Text style={tw`text-xs text-ink-3 mt-1`}>
-                        {new Date(story.createdAt).toLocaleDateString()}
+                        {serverDate(story.createdAt).toLocaleDateString()}
                       </Text>
                     </PressableScale>
                   ))}

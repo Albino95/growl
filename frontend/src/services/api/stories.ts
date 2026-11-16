@@ -60,7 +60,7 @@ export async function createStory(
 
 /** Records that current user has viewed a story. Endpoint is idempotent server-side. */
 export async function viewStory(storyId: string): Promise<{ success: boolean; data: { viewed: boolean } }> {
-  return request<{ success: boolean; data: { viewed: boolean } }>(`/stories/${storyId}/view`, {
+  return request<{ success: boolean; data: { viewed: boolean } }>(`/stories/${encodeURIComponent(storyId)}/view`, {
     method: 'POST',
   });
 }

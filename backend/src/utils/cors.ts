@@ -1,7 +1,8 @@
 import { Env } from '../types';
 
 const DEFAULT_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
-const DEFAULT_HEADERS = 'Content-Type, Authorization, X-Timezone';
+// Idempotency-Key must be listed or browsers (web build) fail the preflight for every create.
+const DEFAULT_HEADERS = 'Content-Type, Authorization, X-Timezone, Idempotency-Key';
 
 /**
  * Resolve Access-Control-Allow-Origin from CORS_ORIGINS (comma-separated).

@@ -258,7 +258,7 @@ export default function NotificationsScreen() {
     }
 
     if (item.type === 'instructor_claim') {
-      navigateFromRoot(navigation, 'Individual');
+      navigateFromRoot(navigation, 'Individual', { screen: 'Instructor' });
       return;
     }
 

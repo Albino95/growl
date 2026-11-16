@@ -1,7 +1,7 @@
 import { Env, Product, Order } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
+import { validateRequest, createProductSchema, updateProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
 import {
   createBusinessNotification,
@@ -480,7 +480,7 @@ export async function updateProduct(
   }
 
   // Validate request (all fields optional for update)
-  const updateSchema = createProductSchema.partial();
+  const updateSchema = updateProductSchema;
   const validation = await validateRequest(request, updateSchema);
   if (!validation.success) return validation.response;
 

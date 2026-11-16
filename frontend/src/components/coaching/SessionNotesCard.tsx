@@ -97,7 +97,8 @@ export default function SessionNotesCard({
         maxLength={NOTE_MAX}
         editable={!busy}
         accessibilityLabel="New private session note"
-        style={tw`mt-2 bg-page border border-line/80 rounded-control px-3 py-2.5 text-body text-ink min-h-[60px]`}
+        style={tw`mt-2 bg-page border border-line/80 rounded-control px-3 py-2.5 text-body text-ink min-h-[60px] max-h-36`}
+        textAlignVertical="top"
       />
       <PressableScale
         onPress={() => void save()}

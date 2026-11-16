@@ -5,6 +5,8 @@ import {
   TextInput,
   RefreshControl,
   FlatList,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -14,7 +16,7 @@ import PressableScale from '../../components/ui/PressableScale';
 import { iconSize } from '../../theme/icons';
 import ErrorState from '../../components/ui/ErrorState';
 import { useRefresh } from '../../hooks/useRefresh';
-import { formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../../components/ui/KeyboardDoneAccessory';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { feedListPerformanceProps } from '../../constants/scroll';
 import { createProduct, updateProduct, deleteProduct } from '../../services/api/marketplace';
@@ -403,9 +405,13 @@ export default function InventoryScreen() {
         <View style={tw`relative mb-3`}>
           <Ionicons name="search" size={iconSize.sm} color={theme.colors.iconMuted} style={tw`absolute left-3.5 top-3.5 z-10`} />
           <TextInput
-            {...formInputAccessoryProps()}
             placeholder="Search name, SKU or category…"
+            returnKeyType="search"
+            onSubmitEditing={() => Keyboard.dismiss()}
+            clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
             value={searchQuery}
+            autoCorrect={false}
+            autoCapitalize="none"
             onChangeText={setSearchQuery}
             style={tw`bg-card border border-line/80 rounded-card pl-10 pr-4 py-3 text-base text-ink`}
             placeholderTextColor={theme.colors.ink3}
@@ -462,6 +468,10 @@ export default function InventoryScreen() {
         renderItem={renderProduct}
         extraData={[bulkMode, bulkDraft, bulkErrors, busyId]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        // Quick-edit rows are inputs: keep the focused one above the keyboard. Only in
+        // quick-edit, so the search field / ProductForm sheet never shift the list.
+        automaticallyAdjustKeyboardInsets={bulkMode}
         contentContainerStyle={[
           tw`px-gutter-wide pt-1`,
           filteredProducts.length === 0 ? tw`flex-grow` : null,
@@ -531,6 +541,8 @@ export default function InventoryScreen() {
         shippingNote={String((settings?.analytics_prefs as Record<string, unknown> | undefined)?.default_shipping_note ?? '')}
         products={products}
       />
+      {/* Done bar for the search field and the quick-edit number pads. */}
+      <KeyboardDoneAccessory />
     </BusinessScreen>
   );
 }

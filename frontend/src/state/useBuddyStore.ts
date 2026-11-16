@@ -65,7 +65,13 @@ export const useBuddyStore = create<BuddyState>((set, get) => ({
     const { status, loadedAt } = get();
     if (status === 'unavailable') return;
     if (!opts.force && status === 'ready' && Date.now() - loadedAt < STALE_MS) return;
-    if (inflight) return inflight;
+    if (inflight) {
+      // A forced reload (after invite/accept/end) must not reuse a fetch that started
+      // before the mutation — wait for it, then fetch again.
+      if (!opts.force) return inflight;
+      await inflight.catch(() => {});
+      if (inflight) return inflight;
+    }
     if (!get().data) set({ status: 'loading' });
     inflight = (async () => {
       try {

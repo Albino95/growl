@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, createElement } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Platform, Animated } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../../lib/tw';
-import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../KeyboardDoneAccessory';
+import { useLiftForFocusedInput } from '../../../hooks/useLiftForFocusedInput';
 import type { TextAlign, TextOverlay, TextOverlayStyle } from './types';
 import { TEXT_COLORS, TEXT_QUICK_PHRASES } from './types';
 import { AdjustSlider } from './AdjustSlider';
@@ -161,7 +162,14 @@ export default function TextOverlayPanel({
   onRemove,
   onCinematicChange,
 }: Props) {
+  const contentInputRef = useRef<TextInput>(null);
+  /**
+   * The keyboard covers this whole panel on iOS (the photo stage takes the top
+   * half). Slide the panel up over the stage just enough to show the field.
+   */
+  const lift = useLiftForFocusedInput(contentInputRef);
   return (
+    <Animated.View style={[tw`flex-1 bg-stone-900`, { transform: [{ translateY: lift }], zIndex: 2 }]}>
     <ScrollView
       style={tw`flex-1 px-4 pt-3`}
       showsVerticalScrollIndicator={false}
@@ -190,6 +198,7 @@ export default function TextOverlayPanel({
       </Text>
       <ScrollView
         horizontal
+        keyboardShouldPersistTaps="handled"
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={tw`pb-3`}
       >
@@ -216,6 +225,7 @@ export default function TextOverlayPanel({
           </Text>
           <ScrollView
             horizontal
+            keyboardShouldPersistTaps="handled"
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={tw`mb-3`}
           >
@@ -253,6 +263,7 @@ export default function TextOverlayPanel({
             Content
           </Text>
           <TextInput
+            ref={contentInputRef}
             {...formInputAccessoryProps()}
             value={activeOverlay.text}
             onChangeText={(t) => onUpdate({ text: t.slice(0, 48) })}
@@ -267,6 +278,7 @@ export default function TextOverlayPanel({
           </Text>
           <ScrollView
             horizontal
+            keyboardShouldPersistTaps="handled"
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={tw`pb-3`}
           >
@@ -454,5 +466,7 @@ export default function TextOverlayPanel({
         <AdjustSlider label="Amount" value={cinematic} min={0} max={50} onChange={onCinematicChange} />
       </View>
     </ScrollView>
+    <KeyboardDoneAccessory />
+    </Animated.View>
   );
 }

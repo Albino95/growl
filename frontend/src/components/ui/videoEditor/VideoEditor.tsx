@@ -8,13 +8,15 @@ import {
   useWindowDimensions,
   StyleSheet,
   Platform,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NativeClipPlayer from './NativeClipPlayer';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import tw from '../../../lib/tw';
-import { formInputAccessoryProps } from '../KeyboardDoneAccessory';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../KeyboardDoneAccessory';
+import { useLiftForFocusedInput } from '../../../hooks/useLiftForFocusedInput';
 import { feedback, triggerFeedback } from '../../../utils/interactionFeedback';
 
 /** Media editors may hold a video/camera audio session: haptics only, no tap tones. */
@@ -145,6 +147,9 @@ export default function VideoEditor({
   const isStory = mode === 'story';
   const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
+  const overlayInputRef = useRef<TextInput>(null);
+  /** iOS keyboard covers the edit panel: slide it up over the stage while typing text. */
+  const textLift = useLiftForFocusedInput(overlayInputRef);
   const { width: winW, height: winH } = useWindowDimensions();
   const maxPreviewW = winW - 24;
   const maxPreviewH = Math.min(winH * 0.46, maxPreviewW * (16 / 9));
@@ -869,6 +874,7 @@ export default function VideoEditor({
       }
     >
         {tab === 'edit' ? (
+          <Animated.View style={[tw`flex-1 bg-stone-950`, { transform: [{ translateY: textLift }], zIndex: 2 }]}>
           <ScrollView
             style={tw`flex-1 px-4`}
             contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
@@ -906,7 +912,7 @@ export default function VideoEditor({
                   <Text style={tw`text-white text-xs font-bold`}>Add</Text>
                 </Pressable>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+              <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
                 {TEXT_QUICK_PHRASES.map((phrase) => (
                   <Pressable
                     key={phrase}
@@ -925,6 +931,7 @@ export default function VideoEditor({
               {activeOverlay ? (
                 <>
                   <TextInput
+                    ref={overlayInputRef}
                     {...formInputAccessoryProps()}
                     value={activeOverlay.text}
                     onChangeText={(t) => updateActive({ text: t.slice(0, 48) })}
@@ -933,7 +940,7 @@ export default function VideoEditor({
                     style={tw`bg-stone-900 text-white rounded-2xl px-4 py-3.5 mb-3 border border-stone-700`}
                     maxLength={48}
                   />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                  <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
                     {TEXT_STYLES.map((s) => {
                       const selected = activeOverlay.style === s.id;
                       return (
@@ -1071,6 +1078,8 @@ export default function VideoEditor({
               </Pressable>
             </View>
           </ScrollView>
+          <KeyboardDoneAccessory />
+          </Animated.View>
         ) : (
           <ScrollView
             style={tw`flex-1 px-4`}
@@ -1162,7 +1171,7 @@ export default function VideoEditor({
                 <Text style={tw`text-stone-400 text-[11px] mb-2`}>
                   Royalty-free tracks styled like popular moods — not licensed chart hits
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
+                <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} style={tw`mb-3`}>
                   {MUSIC_GENRE_FILTERS.map((g) => {
                     const selected = musicGenre === g;
                     return (

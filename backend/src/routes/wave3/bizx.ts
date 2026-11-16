@@ -8,6 +8,7 @@ import { dmPolicyAllows } from '../../utils/dmPolicy';
 import { areFriends, isBlocked } from '../friends';
 import { canMessagePeer } from '../messages';
 import { notArchivedSql } from '../business';
+import { withIdempotency } from '../../utils/idempotency';
 
 /**
  * Wave 4 business module (bizx). Paths (all business-only):
@@ -30,7 +31,9 @@ export async function handle(
   if (request.method === 'PATCH' && rest === '/products/bulk') return bulkUpdateProducts(request, env);
 
   const dup = rest.match(/^\/products\/([^/]+)\/duplicate$/);
-  if (dup && request.method === 'POST') return duplicateProduct(request, env, decodeURIComponent(dup[1]));
+  if (dup && request.method === 'POST') {
+    return withIdempotency(request, env, () => duplicateProduct(request, env, decodeURIComponent(dup[1])));
+  }
 
   const contact = rest.match(/^\/orders\/([^/]+)\/contact$/);
   if (contact && request.method === 'GET') return getOrderContact(request, env, decodeURIComponent(contact[1]));

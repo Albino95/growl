@@ -1,16 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
   Text,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
+import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
 import type { InstructorOffering } from '../../services/api/instructor';
 import { formatCurrency, parseLocaleNumber } from '../../utils/money';
 import { COACHING_BILLING_NOTE, COACHING_LIMITS } from '../../constants/coaching';
@@ -68,6 +70,8 @@ export default function ProposalComposeSheet({
   onClose,
   onSend,
 }: Props) {
+  const scrollRef = useRef<ScrollView>(null);
+  const noteRef = useRef<TextInput>(null);
   const [weeks, setWeeks] = useState(String(offering?.typical_weeks ?? 2));
   const [sessions, setSessions] = useState(String(offering?.sessions_per_week ?? 3));
   const [weekly, setWeekly] = useState(String(offering?.weekly_fee_eur ?? 10));
@@ -123,11 +127,15 @@ export default function ProposalComposeSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={tw`flex-1 justify-end bg-black/40`}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
+      <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
+        <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8 max-h-[94%]`}>
+          {/* Scrollable so the header stays reachable while the keyboard lifts the sheet. */}
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
           <View style={tw`flex-row items-center justify-between mb-3`}>
             <Text style={tw`text-lg font-bold text-ink`}>Send a proposal</Text>
             <PressableScale
@@ -191,14 +199,17 @@ export default function ProposalComposeSheet({
           ) : null}
 
           <TextInput
+            ref={noteRef}
             value={note}
             onChangeText={setNote}
+            onFocus={() => scrollInputIntoView(scrollRef, noteRef)}
             placeholder="Note for the client (optional)"
             placeholderTextColor={theme.colors.placeholder}
             multiline
             maxLength={800}
             accessibilityLabel="Note for the client"
-            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] mb-4`}
+            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] max-h-36 mb-4`}
+            textAlignVertical="top"
           />
 
           <PressableScale
@@ -225,8 +236,10 @@ export default function ProposalComposeSheet({
               <Text style={tw`text-white font-bold`}>Send proposal</Text>
             )}
           </PressableScale>
+          </ScrollView>
         </View>
-      </KeyboardAvoidingView>
+        <KeyboardDoneAccessory />
+      </KeyboardInsetView>
     </Modal>
   );
 }
@@ -249,6 +262,8 @@ function Field({
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
+        // decimal-pad has no return key: the shared Done bar dismisses it.
+        {...formInputAccessoryProps()}
         accessibilityLabel={label}
         style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 text-body text-ink`}
       />

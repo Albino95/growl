@@ -43,9 +43,10 @@ import OrderStatusPill from '../../components/business/OrderStatusPill';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { parseShippingAddress } from '../../utils/safeJson';
 import { featureFlags } from '../../constants/featureFlags';
+import { serverDate } from '../../utils/serverDate';
 
 function formatTimeAgo(dateString: string) {
-  const date = new Date(dateString);
+  const date = serverDate(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));

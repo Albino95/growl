@@ -6,6 +6,7 @@ import { horizontalScrollProps } from '../../constants/scroll';
 import GrowAvatar from '../ui/GrowAvatar';
 import { feedback } from '../../utils/interactionFeedback';
 import type { CircleJournalEntry } from '../../services/api/journal';
+import { serverTime } from '../../utils/serverDate';
 
 type VoicePerson = {
   userId: string;
@@ -22,7 +23,7 @@ type Props = {
 };
 
 function isFresh(iso: string): boolean {
-  const t = Date.parse(iso);
+  const t = serverTime(iso);
   if (!Number.isFinite(t)) return false;
   return Date.now() - t < 36 * 60 * 60 * 1000;
 }

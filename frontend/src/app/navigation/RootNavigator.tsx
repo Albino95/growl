@@ -55,7 +55,7 @@ export type RootStackParamList = {
         productId?: string;
       }
     | undefined;
-  Messages: { conversationId?: string; targetUserId?: string } | undefined;
+  Messages: { conversationId?: string; targetUserId?: string; draftText?: string } | undefined;
   Reels:
     | {
         startPostId?: string;

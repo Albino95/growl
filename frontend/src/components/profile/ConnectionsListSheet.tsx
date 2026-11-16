@@ -130,6 +130,7 @@ export default function ConnectionsListSheet({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             style={tw`mb-2`}
             contentContainerStyle={tw`pr-2`}
           >
@@ -201,6 +202,9 @@ export default function ConnectionsListSheet({
             keyExtractor={(item) => item.id}
             contentContainerStyle={tw`pb-6`}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            // Last rows stay reachable above the keyboard while searching.
+            automaticallyAdjustKeyboardInsets
             renderItem={({ item }) => (
               <PressableScale
                 onPress={() => onSelectUser(item.id, { username: item.username, avatarUrl: item.avatar })}
