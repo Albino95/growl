@@ -26,6 +26,7 @@ export type CurrentProfile = {
   avatar?: string;
   bio?: string | null;
   status?: string | null;
+  teaching_headline?: string | null;
   points: number;
   is_instructor: boolean;
   is_business: boolean;
@@ -59,6 +60,27 @@ export type PublicProfileApiData = {
   categories: string[];
   posts_count: number;
   stories_count: number;
+  endorsements_received?: number;
+  teaching_headline?: string | null;
+  pinned_post_ids?: string[];
+  offering?: {
+    weekly_fee_eur: number;
+    sessions_per_week: number;
+    typical_weeks: number;
+    trial_days: number;
+    currency: string;
+    accepting: boolean;
+  } | null;
+  completed_plans?: number;
+  rating?: { avg: number; count: number };
+  follow_through?: { avg: number; count: number } | null;
+  testimonials?: Array<{
+    id: string;
+    stars: number;
+    body: string | null;
+    created_at: string;
+    reviewer: { id: string; username: string; avatar: string | null };
+  }>;
 };
 
 export type PublicProfileSummary = {
@@ -72,6 +94,27 @@ export type PublicProfileSummary = {
   categories: string[];
   postsCount: number;
   storiesCount: number;
+  endorsementsReceived?: number;
+  teachingHeadline?: string;
+  pinnedPostIds?: string[];
+  offering?: {
+    weekly_fee_eur: number;
+    sessions_per_week: number;
+    typical_weeks: number;
+    trial_days: number;
+    currency: string;
+    accepting: boolean;
+  } | null;
+  completedPlans?: number;
+  rating?: { avg: number; count: number };
+  followThrough?: { avg: number; count: number } | null;
+  testimonials?: Array<{
+    id: string;
+    stars: number;
+    body: string | null;
+    created_at: string;
+    reviewer: { id: string; username: string; avatar: string | null };
+  }>;
 };
 
 /** GET /profile — source of truth for categories after login (not stored in AsyncStorage). */
@@ -114,6 +157,14 @@ export async function getPublicProfile(userId: string): Promise<PublicProfileSum
     categories: Array.isArray(d.categories) ? d.categories : [],
     postsCount: d.posts_count,
     storiesCount: d.stories_count,
+    endorsementsReceived: d.endorsements_received,
+    teachingHeadline: d.teaching_headline?.trim() || undefined,
+    pinnedPostIds: Array.isArray(d.pinned_post_ids) ? d.pinned_post_ids : [],
+    offering: d.offering || null,
+    completedPlans: Number(d.completed_plans) || 0,
+    rating: d.rating || { avg: 0, count: 0 },
+    followThrough: d.follow_through || null,
+    testimonials: d.testimonials || [],
   };
 }
 

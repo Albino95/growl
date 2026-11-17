@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
-import { View, Text, Pressable } from 'react-native';
-import tw from '../../lib/tw';
+import { View, Text } from 'react-native';
+import tw, { useColorSchemeName, useThemeColors } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 import type { JournalEntry, JournalMood } from '../../services/api/journal';
-import { MOOD_META, dateKeyFromIso, localDateKey } from './journalMeta';
+import { MOOD_META, dateKeyFromIso, localDateKey, moodWash } from './journalMeta';
 
 type DayCell = {
   key: string;
@@ -18,6 +19,8 @@ type Props = {
 };
 
 export default function MoodWeekStrip({ entries, onSelectDay }: Props) {
+  const c = useThemeColors();
+  const scheme = useColorSchemeName();
   const days = useMemo(() => {
     const byDay = new Map<string, JournalMood | null>();
     for (const e of entries) {
@@ -46,17 +49,18 @@ export default function MoodWeekStrip({ entries, onSelectDay }: Props) {
   return (
     <View style={tw`flex-row justify-between px-1`}>
       {days.map((day) => {
-        const color = day.mood ? MOOD_META[day.mood].color : day.hasEntry ? '#A8A29E' : '#E7E5E4';
-        const wash = day.mood ? MOOD_META[day.mood].wash : 'transparent';
+        const color = day.mood ? MOOD_META[day.mood].color : day.hasEntry ? c.iconMuted : c.line;
+        const wash = day.mood ? moodWash(day.mood, scheme) : 'transparent';
         return (
-          <Pressable
+          <PressableScale
             key={day.key}
+            pressedScale={0.9}
             onPress={() => onSelectDay?.(day.key)}
             style={tw`items-center flex-1`}
             accessibilityLabel={`${day.key}${day.mood ? `, ${day.mood}` : ''}`}
           >
             <Text
-              style={tw`text-[11px] mb-2 ${day.isToday ? 'text-stone-900 font-semibold' : 'text-stone-400'}`}
+              style={tw`text-caption mb-2 ${day.isToday ? 'text-ink font-semibold' : 'text-ink-3'}`}
             >
               {day.label}
             </Text>
@@ -64,9 +68,9 @@ export default function MoodWeekStrip({ entries, onSelectDay }: Props) {
               style={[
                 tw`w-9 h-9 rounded-full items-center justify-center`,
                 {
-                  backgroundColor: day.hasEntry ? wash : 'rgba(255,255,255,0.35)',
+                  backgroundColor: day.hasEntry ? wash : scheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)',
                   borderWidth: day.isToday ? 2 : 0,
-                  borderColor: day.isToday ? '#1C1917' : 'transparent',
+                  borderColor: day.isToday ? c.ink : 'transparent',
                 },
               ]}
             >
@@ -76,7 +80,7 @@ export default function MoodWeekStrip({ entries, onSelectDay }: Props) {
                 <View style={[tw`w-2.5 h-2.5 rounded-full`, { backgroundColor: color }]} />
               )}
             </View>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>

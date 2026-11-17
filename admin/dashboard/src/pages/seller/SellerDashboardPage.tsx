@@ -68,14 +68,14 @@ export function SellerDashboardPage() {
         title="Seller dashboard"
         subtitle="Commerce KPIs for your Grow! storefront"
         action={
-          <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+          <div className="flex rounded-xl border border-stone-200 bg-white p-1">
             {(['today', 'week', 'month'] as Period[]).map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => setPeriod(p)}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize ${
-                  period === p ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+                  period === p ? 'bg-emerald-600 text-white' : 'text-stone-600 hover:bg-stone-50'
                 }`}
               >
                 {p}
@@ -142,10 +142,10 @@ export function SellerDashboardPage() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Card padding="md">
-          <h2 className="text-sm font-semibold text-slate-900">Revenue by day</h2>
+          <h2 className="text-sm font-semibold text-stone-900">Revenue by day</h2>
           <div className="mt-4 flex h-40 items-end gap-1">
             {series.length === 0 ? (
-              <p className="text-sm text-slate-500">No sales in this period.</p>
+              <p className="text-sm text-stone-500">No sales in this period.</p>
             ) : (
               series.map((s) => (
                 <div key={s.day} className="flex flex-1 flex-col items-center gap-1">
@@ -154,7 +154,7 @@ export function SellerDashboardPage() {
                     style={{ height: `${Math.max(4, (Number(s.revenue) / maxRevenue) * 100)}%` }}
                     title={`$${Number(s.revenue).toFixed(0)} · ${s.orders} orders`}
                   />
-                  <span className="text-[9px] text-slate-400">{s.day.slice(5)}</span>
+                  <span className="text-[9px] text-stone-400">{s.day.slice(5)}</span>
                 </div>
               ))
             )}
@@ -163,19 +163,19 @@ export function SellerDashboardPage() {
 
         <Card padding="md">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Top products</h2>
+            <h2 className="text-sm font-semibold text-stone-900">Top products</h2>
             <Link to="/seller/products" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">
               Catalog
             </Link>
           </div>
           <ul className="mt-4 space-y-3">
             {top.length === 0 ? (
-              <li className="text-sm text-slate-500">No product sales yet.</li>
+              <li className="text-sm text-stone-500">No product sales yet.</li>
             ) : (
               top.slice(0, 5).map((p) => (
                 <li key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="truncate font-medium text-slate-800">{p.name}</span>
-                  <span className="shrink-0 text-slate-500">
+                  <span className="truncate font-medium text-stone-800">{p.name}</span>
+                  <span className="shrink-0 text-stone-500">
                     ${Number(p.revenue).toFixed(0)} · {p.units_sold} u
                   </span>
                 </li>
@@ -186,7 +186,7 @@ export function SellerDashboardPage() {
       </div>
 
       <Card padding="md" className="mt-6">
-        <h2 className="text-sm font-semibold text-slate-900">Action inbox</h2>
+        <h2 className="text-sm font-semibold text-stone-900">Action inbox</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           {(kpis?.pending_orders || 0) > 0 && (
             <Badge variant="pending">{kpis?.pending_orders} orders to fulfill</Badge>
@@ -198,19 +198,19 @@ export function SellerDashboardPage() {
             <Badge>{kpis?.pending_partner_requests} partnership requests</Badge>
           )}
           {!kpis?.action_items_count ? (
-            <p className="text-sm text-slate-500">You&apos;re caught up for this period.</p>
+            <p className="text-sm text-stone-500">You&apos;re caught up for this period.</p>
           ) : null}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link
             to="/seller/orders"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             <ShoppingBag className="h-4 w-4" /> Orders
           </Link>
           <Link
             to="/seller/products"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             <Package className="h-4 w-4" /> Products
           </Link>

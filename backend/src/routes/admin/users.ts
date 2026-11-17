@@ -2,6 +2,8 @@ import { Env } from '../../types';
 import { json, error } from '../../utils/response';
 import { requireAdmin, requireRoles, writeAdminAudit, requestIp, type AdminRole } from '../../utils/adminAuth';
 import { validateRequest, userEnforcementSchema, userRoleUpdateSchema } from '../../utils/validation';
+import { assertNotProtectedUser } from '../../utils/contentModeration';
+import { revokeAllUserRefreshTokens } from '../../utils/sessions';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   try {
@@ -110,6 +112,15 @@ export async function enforceUser(request: Request, env: Env, userId: string): P
   if (ctx instanceof Response) return ctx;
 
   try {
+    const guard = await assertNotProtectedUser(env, userId);
+    if (guard.blocked) {
+      return error(
+        'PROTECTED_ACCOUNT',
+        `Cannot enforce against protected review/demo account (${guard.email})`,
+        403
+      );
+    }
+
     const user = await env.DB.prepare(`SELECT id FROM users WHERE id = ?`).bind(userId).first();
     if (!user) return error('NOT_FOUND', 'User not found', 404);
 
@@ -153,6 +164,12 @@ export async function enforceUser(request: Request, env: Env, userId: string): P
         strikeDelta
       )
       .run();
+
+    // Sign the user out everywhere; their access token is rejected by
+    // getRequestContext on the next request.
+    if (status === 'suspended' || status === 'banned') {
+      await revokeAllUserRefreshTokens(env, userId);
+    }
 
     await writeAdminAudit(env, {
       adminId: ctx.adminId,

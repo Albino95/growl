@@ -4,81 +4,73 @@ import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
 import { validateRequest } from '../utils/validation';
 import { z } from 'zod';
-
-/** Development-only grouped stories fallback used in explore mode. */
-function buildMockExploreStories() {
-  const now = Date.now();
-  const groups: Array<{
-    userId: string;
-    username: string;
-    avatar: string;
-    stories: Array<{
-      id: string;
-      userId: string;
-      username: string;
-      avatar: string;
-      image: string;
-      caption: string;
-      views: number;
-      hasViewed: boolean;
-      createdAt: string;
-    }>;
-  }> = [];
-
-  for (let userIdx = 1; userIdx <= 60; userIdx += 1) {
-    const userId = `mock-user-${String(userIdx).padStart(2, '0')}`;
-    const username = `Creator ${String(userIdx).padStart(2, '0')}`;
-    const avatar = `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`;
-    const stories = Array.from({ length: 10 }).map((_, storyIdx) => {
-      const createdAt = new Date(now - (userIdx * 5 + storyIdx * 15) * 60000).toISOString();
-      return {
-        id: `mock-story-${userIdx}-${storyIdx + 1}`,
-        userId,
-        username,
-        avatar,
-        image: `https://picsum.photos/seed/mock-story-${userIdx}-${storyIdx + 1}/900/1400`,
-        caption: `Story ${storyIdx + 1} from ${username}`,
-        views: 120 + ((userIdx * 9 + storyIdx * 13) % 400),
-        hasViewed: false,
-        createdAt,
-      };
-    });
-    groups.push({ userId, username, avatar, stories });
-  }
-
-  return groups;
-}
+import { isBlocked } from './friends';
+import { recordActivity } from '../utils/activity';
 
 const createStorySchema = z.object({
-  image_url: z.string().url('Invalid image URL'),
+  image_url: z
+    .string()
+    .trim()
+    .min(1, 'Image is required')
+    .refine(
+      (v) => {
+        if (!/^https:\/\//i.test(v)) return false;
+        try {
+          return /\/api\/[^/]+\/media\//i.test(new URL(v).pathname || '');
+        } catch {
+          return false;
+        }
+      },
+      {
+        message:
+          'Your photo was not uploaded successfully. The story was not published — try again.',
+      }
+    ),
   caption: z.string().max(500, 'Caption too long').optional(),
 });
+
+/**
+ * Stories (and their views) are hard-deleted by the hourly cron after this many
+ * days. Matches the owner's own-story history window in getUserStories so the
+ * purge never removes something the app still shows. R2 media is kept.
+ */
+export const STORY_PURGE_AFTER_DAYS = 90;
 
 /**
  * GET /api/v1/stories
  * Get all active stories (stories from last 24 hours)
  */
 export async function getStories(request: Request, env: Env): Promise<Response> {
-  // Explore mode and mock toggles are opt-in to avoid accidental production fallback.
-  const url = new URL(request.url);
-  const isExploreMode = url.searchParams.get('mode') === 'explore';
-  const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
   const ctx = await getRequestContext(request, env);
   const viewerId = ctx.userId || '';
   
   try {
-    // Fetch only active stories and annotate each with viewer view state.
+    // Prefer correlated subqueries over JOIN+GROUP BY so D1 does not multiply
+    // story rows by every story_views row (blows free-tier row reads).
     const storiesQuery = `
-      SELECT 
-        s.*,
+      SELECT
+        s.id,
+        s.user_id,
+        s.image_url,
+        s.caption,
+        s.views,
+        s.expires_at,
+        s.created_at,
+        s.updated_at,
         u.metadata as user_metadata,
-        COUNT(DISTINCT sv.user_id) as view_count,
-        CASE WHEN sv_viewer.user_id IS NOT NULL THEN 1 ELSE 0 END as has_viewed
+        (SELECT COUNT(*) FROM story_views sv WHERE sv.story_id = s.id) as view_count,
+        CASE
+          WHEN ? != '' AND EXISTS (
+            SELECT 1 FROM story_views sv_viewer
+            WHERE sv_viewer.story_id = s.id AND sv_viewer.user_id = ?
+          ) THEN 1 ELSE 0
+        END as has_viewed
       FROM stories s
       JOIN users u ON s.user_id = u.id
-      LEFT JOIN story_views sv ON s.id = sv.story_id
-      LEFT JOIN story_views sv_viewer ON s.id = sv_viewer.story_id AND sv_viewer.user_id = ?
       WHERE s.created_at > datetime('now', '-24 hours')
+        AND s.image_url IS NOT NULL
+        AND trim(s.image_url) != ''
+        AND s.image_url LIKE 'https://%'
       ${
         viewerId
           ? `AND NOT EXISTS (
@@ -92,11 +84,11 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
             )`
           : ''
       }
-      GROUP BY s.id
       ORDER BY s.created_at DESC
+      LIMIT 200
     `;
     const stories = await env.DB.prepare(storiesQuery)
-      .bind(...(viewerId ? [viewerId, viewerId, viewerId] : [viewerId]))
+      .bind(...(viewerId ? [viewerId, viewerId, viewerId, viewerId] : ['', '']))
       .all<{
         id: string;
         user_id: string;
@@ -120,12 +112,17 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
         groupedStories[userId] = [];
       }
       
-      const userMeta = JSON.parse(story.user_metadata || '{}');
+      let userMeta: Record<string, unknown> = {};
+      try {
+        userMeta = JSON.parse(story.user_metadata || '{}') as Record<string, unknown>;
+      } catch {
+        userMeta = {};
+      }
       groupedStories[userId].push({
         id: story.id,
         userId: story.user_id,
-        username: userMeta.username || 'User',
-        avatar: userMeta.avatar || null,
+        username: (typeof userMeta.username === 'string' && userMeta.username) || 'User',
+        avatar: (typeof userMeta.avatar === 'string' && userMeta.avatar) || null,
         image: story.image_url,
         caption: story.caption,
         views: story.view_count,
@@ -140,14 +137,6 @@ export async function getStories(request: Request, env: Env): Promise<Response> 
       avatar: stories[0]?.avatar || null,
       stories,
     }));
-
-    if (isExploreMode && allowDevMock && grouped.length === 0) {
-      const mockGrouped = buildMockExploreStories();
-      return json({
-        stories: mockGrouped.flatMap((group) => group.stories),
-        grouped: mockGrouped,
-      });
-    }
 
     return json({
       stories: Object.values(groupedStories).flat(),
@@ -175,8 +164,13 @@ export async function getUserStories(
     const viewerId = ctx.userId || '';
     const viewingSelf = !!ctx.userId && ctx.userId === userId;
 
+    // Blocked either way: behave as if the user has no stories (same rule as the tray).
+    if (!viewingSelf && viewerId && (await isBlocked(env, viewerId, userId))) {
+      return json({ stories: [] });
+    }
+
     const timeClause = viewingSelf
-      ? `s.user_id = ? AND s.created_at > datetime('now', '-90 days')`
+      ? `s.user_id = ? AND s.created_at > datetime('now', '-${STORY_PURGE_AFTER_DAYS} days')`
       : `s.user_id = ? AND s.created_at > datetime('now', '-24 hours')`;
 
     const stories = await env.DB.prepare(
@@ -205,14 +199,19 @@ export async function getUserStories(
       .bind(userId)
       .first<{ metadata: string }>();
 
-    const userMeta = JSON.parse(user?.metadata || '{}');
+    let userMeta: Record<string, unknown> = {};
+    try {
+      userMeta = JSON.parse(user?.metadata || '{}') as Record<string, unknown>;
+    } catch {
+      userMeta = {};
+    }
 
     return json({
       stories: (stories.results || []).map((story) => ({
         id: story.id,
         userId: story.user_id,
-        username: userMeta.username || 'User',
-        avatar: userMeta.avatar || null,
+        username: (typeof userMeta.username === 'string' && userMeta.username) || 'User',
+        avatar: (typeof userMeta.avatar === 'string' && userMeta.avatar) || null,
         image: story.image_url,
         caption: story.caption,
         views: typeof story.view_count === 'number' ? story.view_count : story.views,
@@ -255,6 +254,8 @@ export async function createStory(request: Request, env: Env): Promise<Response>
       .bind(storyId, ctx.userId, image_url, caption || null, expiresAt.toISOString())
       .run();
 
+    const growth = await recordActivity(env, ctx.userId, 'story');
+
     return json(
       {
         id: storyId,
@@ -263,6 +264,7 @@ export async function createStory(request: Request, env: Env): Promise<Response>
         caption,
         views: 0,
         createdAt: new Date().toISOString(),
+        new_badges: growth.newBadges,
       },
       201
     );
@@ -288,10 +290,14 @@ export async function viewStory(
   }
 
   try {
-    // Check if story exists
-    const story = await env.DB.prepare('SELECT id, user_id FROM stories WHERE id = ?')
+    // Check if story exists (and is still inside its 24h window)
+    const story = await env.DB.prepare(
+      `SELECT id, user_id,
+        CASE WHEN created_at > datetime('now', '-24 hours') THEN 1 ELSE 0 END AS active
+       FROM stories WHERE id = ?`
+    )
       .bind(storyId)
-      .first();
+      .first<{ id: string; user_id: string; active: number }>();
 
     if (!story) {
       return error('STORY_NOT_FOUND', 'Story not found', 404);
@@ -300,6 +306,14 @@ export async function viewStory(
     // Don't count own views
     if (story.user_id === ctx.userId) {
       return json({ viewed: true });
+    }
+
+    // Hide existence from blocked pairs; expired stories no longer collect views.
+    if (await isBlocked(env, ctx.userId, story.user_id)) {
+      return error('STORY_NOT_FOUND', 'Story not found', 404);
+    }
+    if (!Number(story.active)) {
+      return error('STORY_EXPIRED', 'This story has expired', 410);
     }
 
     // Check if already viewed
@@ -373,4 +387,87 @@ export async function deleteStory(
     console.error('[deleteStory] Error:', err);
     return error('DATABASE_ERROR', 'Failed to delete story', 500);
   }
+}
+
+/**
+ * GET /api/v1/stories/:storyId/viewers
+ * Owner-only list of who viewed a story (newest first).
+ */
+export async function getStoryViewers(
+  request: Request,
+  env: Env,
+  storyId: string
+): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const story = await env.DB.prepare('SELECT id, user_id FROM stories WHERE id = ?')
+      .bind(storyId)
+      .first<{ id: string; user_id: string }>();
+    if (!story) {
+      return error('STORY_NOT_FOUND', 'Story not found', 404);
+    }
+    if (story.user_id !== ctx.userId) {
+      return error('FORBIDDEN', 'Only the story owner can see viewers', 403);
+    }
+
+    const rows = await env.DB.prepare(
+      `SELECT sv.user_id, sv.viewed_at, u.metadata, u.is_instructor
+       FROM story_views sv
+       JOIN users u ON u.id = sv.user_id
+       WHERE sv.story_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM user_relationships r
+           WHERE r.type = 'block'
+             AND ((r.user_id = ? AND r.target_user_id = sv.user_id)
+               OR (r.user_id = sv.user_id AND r.target_user_id = ?))
+         )
+       ORDER BY sv.viewed_at DESC
+       LIMIT 500`
+    )
+      .bind(storyId, ctx.userId, ctx.userId)
+      .all<{ user_id: string; viewed_at: string; metadata: string; is_instructor: number }>();
+
+    const viewers = (rows.results || []).map((row) => {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(row.metadata || '{}') as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+      return {
+        id: row.user_id,
+        username: (typeof meta.username === 'string' && meta.username) || 'User',
+        avatar: (typeof meta.avatar === 'string' && meta.avatar) || null,
+        is_instructor: !!row.is_instructor,
+        viewed_at: row.viewed_at,
+      };
+    });
+
+    return json({ viewers, count: viewers.length });
+  } catch (err) {
+    console.error('[getStoryViewers] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to fetch story viewers', 500);
+  }
+}
+
+/**
+ * Cron: hard-delete stories older than STORY_PURGE_AFTER_DAYS plus their view rows.
+ * Media objects in R2 are intentionally left alone. Returns stories removed.
+ */
+export async function purgeExpiredStories(env: Env): Promise<number> {
+  const cutoff = `-${STORY_PURGE_AFTER_DAYS} days`;
+  await env.DB.prepare(
+    `DELETE FROM story_views
+     WHERE story_id IN (SELECT id FROM stories WHERE created_at < datetime('now', ?))`
+  )
+    .bind(cutoff)
+    .run();
+  const res = await env.DB.prepare(`DELETE FROM stories WHERE created_at < datetime('now', ?)`)
+    .bind(cutoff)
+    .run();
+  return Number(res.meta?.changes) || 0;
 }

@@ -1,4 +1,5 @@
 import type { JournalMood } from '../../services/api/journal';
+import { SEMANTIC, type ColorSchemeName } from '../../theme/palette';
 
 export const MOOD_META: Record<
   JournalMood,
@@ -6,16 +7,36 @@ export const MOOD_META: Record<
 > = {
   happy: { label: 'Happy', glyph: '😊', color: '#CA8A04', wash: '#FEF9C3' },
   excited: { label: 'Excited', glyph: '⚡', color: '#EA580C', wash: '#FFEDD5' },
-  calm: { label: 'Calm', glyph: '🌿', color: '#059669', wash: '#D1FAE5' },
+  calm: { label: 'Calm', glyph: '😌', color: '#059669', wash: '#D1FAE5' },
   grateful: { label: 'Grateful', glyph: '💚', color: '#0D9488', wash: '#CCFBF1' },
   proud: { label: 'Proud', glyph: '🏆', color: '#B45309', wash: '#FEF3C7' },
   motivated: { label: 'Motivated', glyph: '🔥', color: '#DC2626', wash: '#FEE2E2' },
   peaceful: { label: 'Peaceful', glyph: '🌊', color: '#0284C7', wash: '#E0F2FE' },
   determined: { label: 'Determined', glyph: '💪', color: '#7C2D12', wash: '#FFEDD5' },
   tired: { label: 'Tired', glyph: '🌙', color: '#6366F1', wash: '#E0E7FF' },
-  sad: { label: 'Sad', glyph: '🌧', color: '#64748B', wash: '#F1F5F9' },
+  sad: { label: 'Sad', glyph: '\u{1F327}\u{FE0F}', color: '#64748B', wash: '#F1F5F9' },
   anxious: { label: 'Anxious', glyph: '💭', color: '#9333EA', wash: '#F3E8FF' },
 };
+
+function blendHex(fg: string, bg: string, alpha: number): string {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [a, b] = [p(fg), p(bg)];
+  return `#${a
+    .map((v, i) => Math.round(v * alpha + b[i] * (1 - alpha)).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`;
+}
+
+/**
+ * Mood wash for a surface behind ink text. Light: the pastel from MOOD_META
+ * (unchanged). Dark: the mood hue at ~22% over the night card, so `text-ink`
+ * (light in dark) stays readable while the hue still reads.
+ */
+export function moodWash(mood: JournalMood, scheme: ColorSchemeName): string {
+  const meta = MOOD_META[mood];
+  if (scheme !== 'dark') return meta.wash;
+  return blendHex(meta.color, SEMANTIC.dark.card, 0.22);
+}
 
 export const PRIMARY_MOODS: JournalMood[] = [
   'calm',
@@ -71,8 +92,42 @@ export function promptForDay(date: Date, growthPath?: string | null): string {
   return list[seed % list.length];
 }
 
+/**
+ * Device-local `YYYY-MM-DD` for a server timestamp. Server times are UTC, so a
+ * late-evening entry in Luxembourg must land on the local day, not the UTC one.
+ * Same algorithm as `localDayKey` in services/api/http.ts (kept here so this
+ * module stays free of native imports for tests). SQLite-style
+ * `YYYY-MM-DD HH:MM:SS` (no zone) is treated as UTC.
+ */
 export function dateKeyFromIso(iso: string): string {
-  return iso.slice(0, 10);
+  if (typeof iso !== 'string' || !iso) return '';
+  let normalized = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized)) {
+    normalized = `${normalized.replace(' ', 'T')}Z`;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return localDateKey(d);
+}
+
+/** Today check-in mood (1–5) → journal mood key for "Write more". */
+export function journalMoodFromCheckin(mood: number | null | undefined): JournalMood | null {
+  switch (mood) {
+    case 1:
+      return 'sad';
+    case 2:
+      return 'tired';
+    case 3:
+      return 'calm';
+    case 4:
+      return 'happy';
+    case 5:
+      return 'excited';
+    default:
+      return null;
+  }
 }
 
 export function localDateKey(d = new Date()): string {
@@ -103,23 +158,6 @@ export function formatSectionTitle(dateKey: string): string {
     month: 'long',
     day: 'numeric',
   });
-}
-
-/** Consecutive days with ≥1 entry, counting back from today (or yesterday if today empty). */
-export function computeStreak(dateKeys: Set<string>): number {
-  let cursor = new Date();
-  let key = localDateKey(cursor);
-  if (!dateKeys.has(key)) {
-    cursor.setDate(cursor.getDate() - 1);
-    key = localDateKey(cursor);
-    if (!dateKeys.has(key)) return 0;
-  }
-  let streak = 0;
-  while (dateKeys.has(localDateKey(cursor))) {
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
 }
 
 export function growthPathFromTags(tags: string[]): string | null {

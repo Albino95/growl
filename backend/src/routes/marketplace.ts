@@ -1,9 +1,13 @@
 import { Env, Product, Order } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
+import { validateRequest, createProductSchema, updateProductSchema, createOrderSchema, updateOrderStatusSchema, checkoutSessionSchema } from '../utils/validation';
 import { generateId } from '../utils/id';
-import { createBusinessNotification } from './business';
+import {
+  createBusinessNotification,
+  notifyLowStockCrossings,
+  SELLER_ARCHIVED_REASON,
+} from './business';
 import { stripeRequest, verifyStripeWebhookSignature } from '../utils/stripe';
 import { checkRateLimit, clientIp } from '../utils/rateLimit';
 
@@ -104,7 +108,7 @@ export async function createCheckoutSession(request: Request, env: Env): Promise
       .run();
   }
 
-  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://growl.app').replace(/\/$/, '');
+  const appBase = (env.APP_PUBLIC_URL?.trim() || 'https://letsgrow.lu').replace(/\/$/, '');
   // Stripe requires https success/cancel URLs. Native apps can listen for universal links
   // or open growl:// from a thin https landing page on growl.app.
   const success =
@@ -248,6 +252,7 @@ async function finalizePaidOrder(
       .bind(item.quantity, item.quantity, item.product_id)
       .run();
   }
+  await notifyLowStockCrossings(env, items.results || []);
 
   if (order.business_id) {
     await createBusinessNotification(
@@ -255,7 +260,7 @@ async function finalizePaidOrder(
       order.business_id,
       'new_order',
       'New order received',
-      `Order ${orderId} for $${Number(order.total || 0).toFixed(2)}`,
+      `Order ${orderId.slice(-8).toUpperCase()} for €${Number(order.total || 0).toFixed(2)}`,
       { ref_type: 'order', ref_id: orderId }
     );
   }
@@ -277,7 +282,7 @@ export async function getProducts(request: Request, env: Env): Promise<Response>
     SELECT p.*, u.metadata as user_metadata
     FROM products p
     JOIN users u ON p.user_id = u.id
-    WHERE 1=1
+    WHERE COALESCE(p.is_hidden, 0) = 0
   `;
   const bindings: any[] = [];
 
@@ -350,7 +355,7 @@ export async function getProduct(
       `SELECT p.*, u.metadata as user_metadata
        FROM products p
        JOIN users u ON p.user_id = u.id
-       WHERE p.id = ?`
+       WHERE p.id = ? AND COALESCE(p.is_hidden, 0) = 0`
     )
       .bind(productId)
       .first<Product & { user_metadata: string }>();
@@ -475,7 +480,7 @@ export async function updateProduct(
   }
 
   // Validate request (all fields optional for update)
-  const updateSchema = createProductSchema.partial();
+  const updateSchema = updateProductSchema;
   const validation = await validateRequest(request, updateSchema);
   if (!validation.success) return validation.response;
 
@@ -588,11 +593,29 @@ export async function deleteProduct(
   }
 
   try {
+    // order_items cascade on product delete, so hard-deleting a product that was ever
+    // ordered would erase those orders' line items (and the seller's sales history).
+    // Archive it instead: hidden from buyers and from the seller's catalog.
+    const ordered = await env.DB.prepare('SELECT 1 AS x FROM order_items WHERE product_id = ? LIMIT 1')
+      .bind(productId)
+      .first<{ x: number }>();
+    if (ordered) {
+      await env.DB.prepare(
+        `UPDATE products
+         SET is_hidden = 1, hidden_at = datetime('now'), hidden_reason = ?, stock = 0,
+             updated_at = datetime('now')
+         WHERE id = ?`
+      )
+        .bind(SELLER_ARCHIVED_REASON, productId)
+        .run();
+      return json({ message: 'Product removed', archived: true });
+    }
+
     await env.DB.prepare('DELETE FROM products WHERE id = ?')
       .bind(productId)
       .run();
 
-    return json({ message: 'Product deleted successfully' });
+    return json({ message: 'Product deleted successfully', archived: false });
   } catch (err) {
     console.error('[deleteProduct] Error:', err);
     return error('DATABASE_ERROR', 'Failed to delete product', 500);
@@ -800,10 +823,12 @@ export async function createOrder(request: Request, env: Env): Promise<Response>
         sellerId,
         'new_order',
         'New order received',
-        `Order ${orderId} for $${total.toFixed(2)}`,
+        `Order ${orderId.slice(-8).toUpperCase()} for €${total.toFixed(2)}`,
         { ref_type: 'order', ref_id: orderId }
       );
     }
+
+    await notifyLowStockCrossings(env, orderItems);
 
     return json(
       {
@@ -870,6 +895,85 @@ export async function getOrders(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * GET /api/v1/marketplace/orders/:orderId
+ * Buyer-owned order detail (used for payment confirmation polling).
+ */
+export async function getOrder(request: Request, env: Env, orderId: string): Promise<Response> {
+  const ctx = await getRequestContext(request, env);
+  if (!ctx.isAuthenticated || !ctx.userId) {
+    return error('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  try {
+    const order = await env.DB.prepare(
+      `SELECT o.*,
+       (SELECT json_group_array(json_object(
+         'id', oi.id,
+         'product_id', oi.product_id,
+         'quantity', oi.quantity,
+         'price', oi.price,
+         'product_name', p.name,
+         'product_image', p.image_url
+       ))
+       FROM order_items oi
+       JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = o.id) as items
+       FROM orders o
+       WHERE o.id = ? AND o.user_id = ?`
+    )
+      .bind(orderId, ctx.userId)
+      .first<Order & { items: string; payment_status?: string }>();
+
+    if (!order) {
+      return error('NOT_FOUND', 'Order not found', 404);
+    }
+
+    return json({
+      ...order,
+      shipping_address: JSON.parse(order.shipping_address || '{}'),
+      metadata: JSON.parse(order.metadata || '{}'),
+      items: JSON.parse(order.items || '[]'),
+    });
+  } catch (err) {
+    console.error('[getOrder] Error:', err);
+    return error('DATABASE_ERROR', 'Failed to fetch order', 500);
+  }
+}
+
+export type OrderStatus =
+  | 'pending'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'completed'
+  | 'cancelled';
+
+/** Server-side order lifecycle. Terminal states (completed, cancelled) have no exits. */
+export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  pending: ['processing', 'cancelled'],
+  processing: ['shipped', 'cancelled'],
+  shipped: ['delivered'],
+  delivered: ['completed'],
+  completed: [],
+  cancelled: [],
+};
+
+export function isAllowedTransition(from: string, to: string): boolean {
+  const allowed = ALLOWED_TRANSITIONS[from as OrderStatus];
+  return !!allowed && allowed.includes(to as OrderStatus);
+}
+
+/** Only paid orders took stock, so only those give it back when cancelled. */
+export function shouldRestockOnCancel(paymentStatus: string | null | undefined): boolean {
+  return paymentStatus === 'paid';
+}
+
+/** Moving an order forward (anything except cancelling) requires a paid order. */
+export function transitionRequiresPayment(to: string): boolean {
+  return to !== 'cancelled';
+}
+
+/**
  * PATCH /api/v1/marketplace/orders/:orderId/status
  * Update order status (business users only)
  */
@@ -904,7 +1008,7 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
     // Verify order exists and belongs to a customer of this business
     // (Business can only update orders for products they own)
     const order = await env.DB.prepare(
-      `SELECT o.id, o.user_id, o.status
+      `SELECT o.id, o.user_id, o.status, o.payment_status
        FROM orders o
        JOIN order_items oi ON o.id = oi.order_id
        JOIN products p ON oi.product_id = p.id
@@ -912,20 +1016,54 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
        LIMIT 1`
     )
       .bind(orderId, ctx.userId)
-      .first<{ id: string; user_id: string; status: string }>();
+      .first<{ id: string; user_id: string; status: string; payment_status: string | null }>();
 
     if (!order) {
       return error('NOT_FOUND', 'Order not found or you do not have permission to update it', 404);
     }
 
-    // Update order status
-    await env.DB.prepare(
-      `UPDATE orders 
-       SET status = ?, updated_at = datetime('now')
-       WHERE id = ?`
-    )
-      .bind(status, orderId)
-      .run();
+    if (order.status !== status) {
+      if (!isAllowedTransition(order.status, status)) {
+        return error(
+          'INVALID_TRANSITION',
+          `Order cannot move from ${order.status} to ${status}`,
+          409
+        );
+      }
+      if (transitionRequiresPayment(status) && order.payment_status !== 'paid') {
+        return error(
+          'PAYMENT_REQUIRED',
+          'This order has not been paid yet, so it cannot be fulfilled',
+          409
+        );
+      }
+
+      // Guard on the current status so concurrent updates cannot skip a step.
+      const res = await env.DB.prepare(
+        `UPDATE orders
+         SET status = ?, updated_at = datetime('now')
+         WHERE id = ? AND status = ?`
+      )
+        .bind(status, orderId, order.status)
+        .run();
+
+      // Stock is taken when an order is paid (direct orders are created paid; checkout
+      // orders on the Stripe webhook). Cancelling a paid order puts it back.
+      const changed = Number(res?.meta?.changes ?? 1) > 0;
+      if (changed && status === 'cancelled' && shouldRestockOnCancel(order.payment_status)) {
+        await env.DB.prepare(
+          `UPDATE products
+           SET stock = stock + COALESCE((
+             SELECT SUM(oi.quantity) FROM order_items oi
+             WHERE oi.order_id = ? AND oi.product_id = products.id
+           ), 0), updated_at = datetime('now')
+           WHERE id IN (SELECT product_id FROM order_items WHERE order_id = ?)
+             AND COALESCE(hidden_reason, '') != ?`
+        )
+          .bind(orderId, orderId, SELLER_ARCHIVED_REASON)
+          .run();
+      }
+    }
 
     // Fetch updated order with items
     const updatedOrder = await env.DB.prepare(
@@ -940,11 +1078,11 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
        ))
        FROM order_items oi
        JOIN products p ON oi.product_id = p.id
-       WHERE oi.order_id = o.id) as items
+       WHERE oi.order_id = o.id AND p.user_id = ?) as items
        FROM orders o
        WHERE o.id = ?`
     )
-      .bind(orderId)
+      .bind(ctx.userId, orderId)
       .first<Order & { items: string }>();
 
     if (!updatedOrder) {

@@ -1,145 +1,69 @@
-'use client';
-
-import dynamic from 'next/dynamic';
-import { motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import AppStoreBadge from './AppStoreBadge';
+import CheckInDemo from './CheckInDemo';
+import QrCard from './QrCard';
 import WaitlistForm from './WaitlistForm';
-import {
-  getAppStoreUrl,
-  getPlayStoreUrl,
-  hasLiveAppStoreUrl,
-  hasLivePlayStoreUrl,
-} from '@/lib/seo';
-
-const HeroScene = dynamic(() => import('./HeroScene'), {
-  ssr: false,
-  loading: () => <div className="h-full w-full hero-mesh" aria-hidden />,
-});
+import { GetAppButton } from './MobileCta';
+import { AppHeader, DEMO_ART, Dock, HomeFeed, StatusBar } from './AppHome';
 
 export default function Hero() {
-  const prefersReduced = useReducedMotion();
-  const [webglOk, setWebglOk] = useState(true);
-  const [showScene, setShowScene] = useState(false);
-  const [sceneFailed, setSceneFailed] = useState(false);
-
-  useEffect(() => {
-    try {
-      const canvas = document.createElement('canvas');
-      const ok = !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
-      setWebglOk(ok);
-    } catch {
-      setWebglOk(false);
-    }
-    const t = window.setTimeout(() => setShowScene(true), 60);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  const appLive = hasLiveAppStoreUrl();
-  const playLive = hasLivePlayStoreUrl();
-  const appStore = getAppStoreUrl();
-  const playStore = getPlayStoreUrl();
-
   return (
-    <header className="relative isolate min-h-[100svh] overflow-hidden text-white">
-      <div className="absolute inset-0 hero-mesh" aria-hidden />
-      {showScene && webglOk && !prefersReduced && !sceneFailed ? (
-        <div className="absolute inset-0 opacity-[0.92]" aria-hidden>
-          <HeroScene reducedMotion={false} onError={() => setSceneFailed(true)} />
-        </div>
-      ) : null}
-      <div className="pointer-events-none absolute inset-0 hero-grain" aria-hidden />
-      <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0c1f17]/95 via-[#0c1f17]/62 to-[#0c1f17]/15 sm:via-[#0c1f17]/50 sm:to-transparent"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0c1f17] to-transparent"
-        aria-hidden
-      />
-
-      <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-center px-6 pb-28 pt-28 sm:px-8 lg:px-10">
-        <motion.p
-          initial={prefersReduced ? false : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="font-display text-[clamp(3.75rem,15vw,9rem)] font-extrabold leading-[0.86] tracking-tight text-white"
-        >
-          Grow<span className="text-emerald-400">!</span>
-        </motion.p>
-
-        <motion.h1
-          initial={prefersReduced ? false : { opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-7 max-w-xl font-display text-2xl font-semibold tracking-tight text-emerald-50 sm:text-3xl lg:text-[2.35rem] lg:leading-tight"
-        >
-          Grow by scrolling with purpose.
-        </motion.h1>
-
-        <motion.p
-          initial={prefersReduced ? false : { opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-4 max-w-md text-base leading-relaxed text-emerald-100/85 sm:text-lg"
-        >
-          Interest-based feeds, peer instructors, and a curated marketplace — so every scroll
-          pushes you forward.
-        </motion.p>
-
-        <motion.div
-          id="early-access-hero"
-          initial={prefersReduced ? false : { opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-10 flex max-w-lg flex-col gap-5"
-        >
-          <div>
-            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-200/75">
-              Early access
-            </p>
-            <WaitlistForm variant="hero" />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-            {appLive ? (
-              <a
-                href={appStore}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-emerald-100/90 underline-offset-4 transition hover:text-white hover:underline"
-              >
-                App Store
-              </a>
-            ) : (
-              <span className="text-emerald-100/55">App Store · coming soon</span>
-            )}
-            <span className="text-emerald-500/40" aria-hidden>
-              ·
+    <section id="top" aria-labelledby="hero-title" className="px-5 pb-16 pt-10 sm:px-8 sm:pt-14 lg:px-10 lg:pb-24 lg:pt-20">
+      <div className="mx-auto grid max-w-6xl gap-x-16 gap-y-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:grid-rows-[auto_auto_1fr]">
+        <div className="lg:col-start-1 lg:row-start-1">
+          <h1 id="hero-title" className="display text-[clamp(2.75rem,6vw,5rem)] text-bark">
+            <span className="block">Let’s Grow.</span>
+            <span className="mt-3 block max-w-[22ch] text-[0.5em] font-bold leading-[1.12] tracking-[-0.015em] text-bark/85">
+              Making your life better, a little each day.
             </span>
-            {playLive ? (
-              <a
-                href={playStore}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-emerald-100/90 underline-offset-4 transition hover:text-white hover:underline"
-              >
-                Google Play
-              </a>
-            ) : (
-              <span className="text-emerald-100/55">Google Play · coming soon</span>
-            )}
-          </div>
-        </motion.div>
-      </div>
+          </h1>
+          <p className="measure mt-6 max-w-[34rem] text-[1.125rem] leading-[1.6] text-moss">
+            Pick up to 3 things you care about — fitness, a language, art, money. Check in for ten
+            seconds a day, rest when you need to, and share the progress with friends who cheer you on.
+            All without the endless scroll.
+          </p>
+        </div>
 
-      <a
-        href="#about"
-        className="hero-scroll-cue absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-2 text-emerald-100/70 transition hover:text-white"
-        aria-label="Scroll to about"
-      >
-        <span className="text-[10px] font-semibold uppercase tracking-[0.22em]">Explore</span>
-        <span className="block h-8 w-px bg-gradient-to-b from-emerald-200/80 to-transparent" aria-hidden />
-      </a>
-    </header>
+        <div className="lg:col-start-1 lg:row-start-2">
+          {/* Mobile */}
+          <div className="md:hidden">
+            <GetAppButton className="w-full" />
+          </div>
+          {/* Tablet / desktop */}
+          <div className="hidden flex-wrap items-center gap-4 md:flex">
+            <AppStoreBadge className="h-[56px]" />
+            <div className="hidden lg:block">
+              <QrCard />
+            </div>
+          </div>
+          <p className="mt-4 text-[0.9375rem] font-medium text-bark">Free. No ads. Your journal stays yours.</p>
+        </div>
+
+        <div className="lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:pt-2">
+          {/* Phone: the app's Home screen, designed at a 360pt-wide screen and zoomed to fit (.phone-zoom). */}
+          <div className="phone-zoom mx-auto w-[380px] rounded-[44px] bg-bark p-[10px] shadow-[0_40px_80px_-30px_rgba(28,25,23,0.45)]">
+            <div
+              className="app-ui relative h-[740px] overflow-hidden rounded-[34px] bg-[#F3EEE4]"
+              role="region"
+              aria-label="Grow! home screen. Try the Today check-in."
+            >
+              <StatusBar />
+              <AppHeader />
+              <div className="pt-1">
+                <CheckInDemo art={DEMO_ART} captionId="demo-caption" />
+                <HomeFeed />
+              </div>
+              <Dock />
+            </div>
+          </div>
+          <p id="demo-caption" className="mx-auto mt-4 max-w-[340px] text-center text-sm text-moss">
+            This is the home screen of the app. Go on, tap a mood. Nothing is saved.
+          </p>
+        </div>
+
+        <div id="android" className="scroll-mt-28 lg:col-start-1 lg:row-start-3 lg:self-start">
+          <WaitlistForm inputId="android-email" />
+        </div>
+      </div>
+    </section>
   );
 }

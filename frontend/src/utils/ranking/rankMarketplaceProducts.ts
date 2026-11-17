@@ -4,6 +4,7 @@ import {
   jitter,
   recencyScore,
 } from './scores';
+import { serverDate } from '../serverDate';
 
 export type RankableProduct = {
   id: string;
@@ -55,7 +56,7 @@ export function rankMarketplaceProducts<T extends RankableProduct>(
       }
       if (purchased.has(cat)) score += 12;
 
-      const hours = (nowMs - new Date(product.created_at).getTime()) / (1000 * 60 * 60);
+      const hours = (nowMs - serverDate(product.created_at).getTime()) / (1000 * 60 * 60);
       const isNew = !Number.isNaN(hours) && hours < 72;
 
       let matchLabel: string | null = null;

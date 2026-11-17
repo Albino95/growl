@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { duration, easing, spring, timing } from '../../theme/motion';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 type Props = {
   /** Remount / change to replay the burst */
@@ -19,6 +21,7 @@ const PARTICLES = [
 
 /** Instagram-style floating heart + particle burst on double-tap / like. */
 export default function HeartBurst({ triggerKey, size = 96 }: Props) {
+  const reduced = useReducedMotion();
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.2)).current;
   const particleAnims = useMemo(
@@ -43,57 +46,46 @@ export default function HeartBurst({ triggerKey, size = 96 }: Props) {
       p.scale.setValue(0.4);
     });
 
+    if (reduced) {
+      // Reduce Motion: a still heart that fades in and out — no travel, no particles.
+      scale.setValue(1);
+      Animated.sequence([
+        timing(opacity, 1, {}, true),
+        Animated.delay(360),
+        timing(opacity, 0, {}, true),
+      ]).start();
+      return;
+    }
+
     const particleSeq = particleAnims.map((p, i) => {
       const spec = PARTICLES[i];
       return Animated.sequence([
         Animated.delay(spec.delay),
         Animated.parallel([
-          Animated.timing(p.opacity, { toValue: 1, duration: 80, useNativeDriver: true }),
-          Animated.spring(p.scale, {
-            toValue: 1,
-            friction: 5,
-            tension: 180,
-            useNativeDriver: true,
-          }),
-          Animated.timing(p.x, { toValue: spec.dx, duration: 520, useNativeDriver: true }),
-          Animated.timing(p.y, { toValue: spec.dy, duration: 520, useNativeDriver: true }),
+          timing(p.opacity, 1, { duration: duration.instant }),
+          spring(p.scale, 1, 'bouncy'),
+          timing(p.x, spec.dx, { duration: duration.slow, easing: easing.out }),
+          timing(p.y, spec.dy, { duration: duration.slow, easing: easing.out }),
         ]),
-        Animated.timing(p.opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+        timing(p.opacity, 0, { duration: duration.base }),
       ]);
     });
 
     Animated.parallel([
       Animated.sequence([
         Animated.parallel([
-          Animated.spring(scale, {
-            toValue: 1,
-            friction: 4,
-            tension: 160,
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 90,
-            useNativeDriver: true,
-          }),
+          spring(scale, 1, 'bouncy'),
+          timing(opacity, 1, { duration: duration.instant }),
         ]),
         Animated.delay(280),
         Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 0,
-            duration: 320,
-            useNativeDriver: true,
-          }),
-          Animated.timing(scale, {
-            toValue: 1.35,
-            duration: 320,
-            useNativeDriver: true,
-          }),
+          timing(opacity, 0, { duration: duration.gentle, easing: easing.in }),
+          timing(scale, 1.35, { duration: duration.gentle, easing: easing.in }),
         ]),
       ]),
       ...particleSeq,
     ]).start();
-  }, [triggerKey, opacity, scale, particleAnims]);
+  }, [triggerKey, opacity, scale, particleAnims, reduced]);
 
   if (!triggerKey) return null;
 

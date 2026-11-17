@@ -119,14 +119,14 @@ export function UserDetailPage() {
       <PageHeader title={String(user.email)} subtitle={String(user.id)} />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
-      <div className="mb-6 flex gap-1 rounded-xl bg-slate-100 p-1">
+      <div className="mb-6 flex gap-1 rounded-xl bg-stone-100 p-1">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-              tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              tab === t.id ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'
             }`}
           >
             {t.label}
@@ -139,9 +139,9 @@ export function UserDetailPage() {
           <Card padding="lg">
             <h3 className="mb-4 font-semibold">Account info</h3>
             <dl className="space-y-3 text-sm">
-              <div><dt className="text-slate-500">Status</dt><dd><Badge variant={statusBadge(String(user.account_status || 'active'))}>{String(user.account_status || 'active')}</Badge></dd></div>
-              <div><dt className="text-slate-500">Strikes</dt><dd className="text-lg font-semibold">{String(user.strike_count ?? 0)}</dd></div>
-              <div><dt className="text-slate-500">Suspended until</dt><dd>{user.suspended_until ? String(user.suspended_until) : '—'}</dd></div>
+              <div><dt className="text-stone-500">Status</dt><dd><Badge variant={statusBadge(String(user.account_status || 'active'))}>{String(user.account_status || 'active')}</Badge></dd></div>
+              <div><dt className="text-stone-500">Strikes</dt><dd className="text-lg font-semibold">{String(user.strike_count ?? 0)}</dd></div>
+              <div><dt className="text-stone-500">Suspended until</dt><dd>{user.suspended_until ? String(user.suspended_until) : '—'}</dd></div>
             </dl>
             <Button variant="outline" className="mt-4" onClick={() => void handleExport()}><Download className="h-4 w-4" /> Export data</Button>
           </Card>
@@ -151,14 +151,14 @@ export function UserDetailPage() {
               <Switch checked={isInstructor} onChange={setIsInstructor} label="Instructor" />
             </div>
             {!!user.is_business && (
-              <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-                <p className="font-medium text-slate-800">Business account</p>
-                <p className="mt-1 text-slate-600">Managed via Business Accounts — not editable here.</p>
+              <div className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm">
+                <p className="font-medium text-stone-800">Business account</p>
+                <p className="mt-1 text-stone-600">Managed via Business Accounts — not editable here.</p>
                 {businessProfile && (
                   <dl className="mt-3 space-y-2">
-                    <div><dt className="text-slate-500">Display name</dt><dd>{String(businessProfile.display_name)}</dd></div>
-                    <div><dt className="text-slate-500">Verification</dt><dd><Badge variant={statusBadge(String(businessProfile.verification_status))}>{String(businessProfile.verification_status)}</Badge></dd></div>
-                    <div><dt className="text-slate-500">Field</dt><dd>{String(businessProfile.field_of_operation)}</dd></div>
+                    <div><dt className="text-stone-500">Display name</dt><dd>{String(businessProfile.display_name)}</dd></div>
+                    <div><dt className="text-stone-500">Verification</dt><dd><Badge variant={statusBadge(String(businessProfile.verification_status))}>{String(businessProfile.verification_status)}</Badge></dd></div>
+                    <div><dt className="text-stone-500">Field</dt><dd>{String(businessProfile.field_of_operation)}</dd></div>
                   </dl>
                 )}
                 <Link to="/business/accounts" className="mt-3 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
@@ -206,11 +206,11 @@ export function UserDetailPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Card padding="md">
             <h3 className="mb-3 font-semibold">Related reports ({data.reports.length})</h3>
-            <pre className="max-h-64 overflow-auto rounded-lg bg-slate-50 p-3 text-xs">{JSON.stringify(data.reports, null, 2)}</pre>
+            <pre className="max-h-64 overflow-auto rounded-lg bg-stone-50 p-3 text-xs">{JSON.stringify(data.reports, null, 2)}</pre>
           </Card>
           <Card padding="md">
             <h3 className="mb-3 font-semibold">Audit history ({data.audit_history.length})</h3>
-            <pre className="max-h-64 overflow-auto rounded-lg bg-slate-50 p-3 text-xs">{JSON.stringify(data.audit_history, null, 2)}</pre>
+            <pre className="max-h-64 overflow-auto rounded-lg bg-stone-50 p-3 text-xs">{JSON.stringify(data.audit_history, null, 2)}</pre>
           </Card>
         </div>
       )}

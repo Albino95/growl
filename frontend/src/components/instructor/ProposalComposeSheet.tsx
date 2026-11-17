@@ -1,0 +1,272 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  TextInput,
+  ActivityIndicator,
+  ScrollView,
+} from 'react-native';
+import KeyboardInsetView from '../ui/KeyboardInsetView';
+import { Ionicons } from '@expo/vector-icons';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
+import { KeyboardDoneAccessory, formInputAccessoryProps } from '../ui/KeyboardDoneAccessory';
+import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
+import type { InstructorOffering } from '../../services/api/instructor';
+import { formatCurrency, parseLocaleNumber } from '../../utils/money';
+import { COACHING_BILLING_NOTE, COACHING_LIMITS } from '../../constants/coaching';
+import { proposalTemplates } from './proposalTemplates';
+
+type Props = {
+  visible: boolean;
+  offering?: InstructorOffering | null;
+  busy?: boolean;
+  onClose: () => void;
+  onSend: (input: {
+    weeks: number;
+    sessions_per_week: number;
+    weekly_fee_eur: number;
+    note?: string;
+  }) => void;
+};
+
+type Parsed =
+  | { ok: true; weeks: number; sessions: number; weekly: number }
+  | { ok: false; error: string };
+
+function parseProposal(weeksRaw: string, sessionsRaw: string, weeklyRaw: string): Parsed {
+  const L = COACHING_LIMITS;
+  const weeks = parseLocaleNumber(weeksRaw);
+  if (weeks == null || !Number.isInteger(weeks) || weeks < L.weeks.min || weeks > L.weeks.max) {
+    return { ok: false, error: `Weeks must be a whole number from ${L.weeks.min} to ${L.weeks.max}.` };
+  }
+  const sessions = parseLocaleNumber(sessionsRaw);
+  if (
+    sessions == null ||
+    !Number.isInteger(sessions) ||
+    sessions < L.sessionsPerWeek.min ||
+    sessions > L.sessionsPerWeek.max
+  ) {
+    return {
+      ok: false,
+      error: `Times / week must be a whole number from ${L.sessionsPerWeek.min} to ${L.sessionsPerWeek.max}.`,
+    };
+  }
+  const weekly = parseLocaleNumber(weeklyRaw);
+  if (weekly == null || weekly < L.weeklyFee.min || weekly > L.weeklyFee.max) {
+    return {
+      ok: false,
+      error: `Weekly fee must be between €${L.weeklyFee.min} and €${L.weeklyFee.max}.`,
+    };
+  }
+  return { ok: true, weeks, sessions, weekly: Math.round(weekly * 100) / 100 };
+}
+
+export default function ProposalComposeSheet({
+  visible,
+  offering,
+  busy,
+  onClose,
+  onSend,
+}: Props) {
+  const scrollRef = useRef<ScrollView>(null);
+  const noteRef = useRef<TextInput>(null);
+  const [weeks, setWeeks] = useState(String(offering?.typical_weeks ?? 2));
+  const [sessions, setSessions] = useState(String(offering?.sessions_per_week ?? 3));
+  const [weekly, setWeekly] = useState(String(offering?.weekly_fee_eur ?? 10));
+  const [note, setNote] = useState('');
+  const [showError, setShowError] = useState(false);
+  const [templateKey, setTemplateKey] = useState<string | null>('offer');
+
+  // The sheet stays mounted while closed (and before the offering loads); re-seed on open.
+  const seedWeeks = offering?.typical_weeks ?? 2;
+  const seedSessions = offering?.sessions_per_week ?? 3;
+  const seedWeekly = offering?.weekly_fee_eur ?? 10;
+  useEffect(() => {
+    if (!visible) return;
+    setWeeks(String(seedWeeks));
+    setSessions(String(seedSessions));
+    setWeekly(String(seedWeekly));
+    setShowError(false);
+    setTemplateKey('offer');
+  }, [visible, seedWeeks, seedSessions, seedWeekly]);
+  useEffect(() => {
+    if (visible) setNote(proposalTemplates(null)[0].note);
+  }, [visible]);
+
+  const parsed = useMemo(() => parseProposal(weeks, sessions, weekly), [weeks, sessions, weekly]);
+  const currency = offering?.currency || 'EUR';
+  const total = parsed.ok ? Math.round(parsed.weeks * parsed.weekly * 100) / 100 : null;
+
+  const trial = offering?.trial_days ?? 0;
+  const templates = useMemo(
+    () =>
+      proposalTemplates({
+        weekly_fee_eur: seedWeekly,
+        sessions_per_week: seedSessions,
+        typical_weeks: seedWeeks,
+      }),
+    [seedWeekly, seedSessions, seedWeeks]
+  );
+  const applyTemplate = (key: string) => {
+    const t = templates.find((x) => x.key === key);
+    if (!t) return;
+    setTemplateKey(key);
+    setWeeks(String(t.weeks));
+    setSessions(String(t.sessions));
+    setWeekly(String(t.weekly));
+    // Only fill the note when the coach hasn't written their own.
+    setNote((cur) => (!cur.trim() || templates.some((x) => x.note === cur) ? t.note : cur));
+    setShowError(false);
+  };
+  const edit = (setter: (v: string) => void) => (v: string) => {
+    setTemplateKey(null);
+    setter(v);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
+        <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8 max-h-[94%]`}>
+          {/* Scrollable so the header stays reachable while the keyboard lifts the sheet. */}
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
+          <View style={tw`flex-row items-center justify-between mb-3`}>
+            <Text style={tw`text-lg font-bold text-ink`}>Send a proposal</Text>
+            <PressableScale
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
+              style={tw`w-9 h-9 rounded-full bg-raised items-center justify-center`}
+            >
+              <Ionicons name="close" size={18} color={theme.colors.ink} />
+            </PressableScale>
+          </View>
+          <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
+            {trial > 0 ? `Includes your ${trial}-day trial. ` : ''}
+            {COACHING_BILLING_NOTE}
+          </Text>
+
+          <View style={tw`flex-row flex-wrap mb-2`} accessibilityRole="radiogroup">
+            {templates.map((t) => {
+              const on = templateKey === t.key;
+              return (
+                <PressableScale
+                  key={t.key}
+                  onPress={() => applyTemplate(t.key)}
+                  feedback="chip"
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on, checked: on }}
+                  accessibilityLabel={`${t.label}: ${t.weeks} weeks, ${t.sessions} per week`}
+                  style={tw`mr-2 mb-2 px-3 py-1.5 rounded-chip border ${
+                    on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                  }`}
+                >
+                  <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                    {t.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
+
+          <View style={tw`flex-row gap-2 mb-3`}>
+            <Field label="Weeks" value={weeks} onChange={edit(setWeeks)} />
+            <Field label="Times / week" value={sessions} onChange={edit(setSessions)} />
+            <Field label="€ / week" value={weekly} onChange={edit(setWeekly)} />
+          </View>
+
+          <View style={tw`px-3.5 py-3 rounded-card bg-card border border-line/80 mb-3`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+              Total
+            </Text>
+            <Text style={tw`text-xl font-bold text-ink mt-0.5`}>
+              {total != null ? formatCurrency(total, currency) : '—'}
+            </Text>
+            <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+              Written total — agreed between you, not charged in the app
+            </Text>
+          </View>
+
+          {showError && !parsed.ok ? (
+            <Text style={tw`text-xs text-red-700 -mt-1 mb-3`}>{parsed.error}</Text>
+          ) : null}
+
+          <TextInput
+            ref={noteRef}
+            value={note}
+            onChangeText={setNote}
+            onFocus={() => scrollInputIntoView(scrollRef, noteRef)}
+            placeholder="Note for the client (optional)"
+            placeholderTextColor={theme.colors.placeholder}
+            multiline
+            maxLength={800}
+            accessibilityLabel="Note for the client"
+            style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] max-h-36 mb-4`}
+            textAlignVertical="top"
+          />
+
+          <PressableScale
+            onPress={() => {
+              if (!parsed.ok) {
+                setShowError(true);
+                return;
+              }
+              onSend({
+                weeks: parsed.weeks,
+                sessions_per_week: parsed.sessions,
+                weekly_fee_eur: parsed.weekly,
+                note: note.trim() || undefined,
+              });
+            }}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!busy }}
+            style={tw`py-3.5 rounded-card bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
+          >
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={tw`text-white font-bold`}>Send proposal</Text>
+            )}
+          </PressableScale>
+          </ScrollView>
+        </View>
+        <KeyboardDoneAccessory />
+      </KeyboardInsetView>
+    </Modal>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <View style={tw`flex-1`}>
+      <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1`}>
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        // decimal-pad has no return key: the shared Done bar dismisses it.
+        {...formInputAccessoryProps()}
+        accessibilityLabel={label}
+        style={tw`bg-card border border-line/80 rounded-card px-3 py-2.5 text-body text-ink`}
+      />
+    </View>
+  );
+}

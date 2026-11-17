@@ -37,7 +37,7 @@ VALUES
     350,
     1,
     0,
-    '{"username":"Demo Instructor","avatar":"https://randomuser.me/api/portraits/women/44.jpg","bio":"Peer-endorsed instructor. Form, consistency, and calm coaching.","status":"Hosting a form clinic this weekend.","categories":["fitness:building-muscle","mindset:meditation"]}',
+    '{"username":"Demo Instructor","avatar":"https://randomuser.me/api/portraits/women/44.jpg","bio":"Peer-endorsed instructor. Form, consistency, and calm coaching.","status":"Hosting a form clinic this weekend.","categories":["fitness:building-muscle","mindset:stress-management"],"teaching_headline":"Strength with calm form — 3× a week."}',
     1,
     NULL,
     NULL,

@@ -2,7 +2,7 @@
  * Journal API service
  */
 
-import { request } from './http';
+import { request, withIdempotency } from './http';
 
 export type JournalMood =
   | 'happy'
@@ -38,6 +38,8 @@ export interface JournalEntriesResponse {
     total: number;
     limit: number;
     offset: number;
+    /** Newer servers: a full page was returned, more may follow. */
+    has_more?: boolean;
   };
 }
 
@@ -69,10 +71,13 @@ export async function getJournalEntries(params?: {
   visibility?: 'public' | 'private';
   limit?: number;
   offset?: number;
+  /** Server-side text search over own entries (older servers ignore it). */
+  q?: string;
 }): Promise<JournalEntriesResponse> {
   const query = new URLSearchParams();
   if (params?.scope) query.append('scope', params.scope);
   if (params?.visibility) query.append('visibility', params.visibility);
+  if (params?.q && params.q.trim()) query.append('q', params.q.trim());
   if (params?.limit) query.append('limit', String(params.limit));
   if (params?.offset) query.append('offset', String(params.offset));
   const qs = query.toString();
@@ -93,11 +98,13 @@ export async function getUserPublicJournalEntries(
 }
 
 export async function createJournalEntry(
-  payload: CreateJournalEntryRequest
+  payload: CreateJournalEntryRequest,
+  opts?: { idempotencyKey?: string }
 ): Promise<JournalEntryResponse> {
   return request<JournalEntryResponse>('/journal/entries', {
     method: 'POST',
     body: JSON.stringify(payload),
+    ...withIdempotency(opts?.idempotencyKey),
   });
 }
 
@@ -118,4 +125,89 @@ export async function deleteJournalEntry(
     `/journal/entries/${encodeURIComponent(entryId)}`,
     { method: 'DELETE' }
   );
+}
+
+export type CircleJournalEntry = JournalEntry & {
+  username: string;
+  avatar?: string | null;
+  feltThis?: boolean;
+  allowMessages?: boolean;
+};
+
+export async function getCircleJournalEntries(params?: {
+  limit?: number;
+}): Promise<{ success: boolean; data: { entries: CircleJournalEntry[]; total: number } }> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.append('limit', String(params.limit));
+  const qs = query.toString();
+  return request(`/journal/circle${qs ? `?${qs}` : ''}`);
+}
+
+export async function feelJournalEntry(
+  entryId: string
+): Promise<{ success: boolean; data: { ok: boolean; feltThis: boolean } }> {
+  return request(`/journal/entries/${encodeURIComponent(entryId)}/feel`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function muteJournalAuthor(
+  userId: string,
+  muted = true
+): Promise<{ success: boolean; data: { ok: boolean; muted: boolean } }> {
+  return request('/journal/mute', {
+    method: 'POST',
+    body: JSON.stringify({ userId, muted }),
+  });
+}
+
+export type JournalReply = {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  quote_text: string;
+  body: string;
+  visibility: 'public' | 'private';
+  created_at: string;
+  username?: string;
+  avatar?: string | null;
+};
+
+export async function listJournalReplies(
+  entryId: string
+): Promise<{ success: boolean; data: { replies: JournalReply[]; total: number } }> {
+  return request(`/journal/entries/${encodeURIComponent(entryId)}/replies`);
+}
+
+export async function createJournalReply(
+  entryId: string,
+  payload: { quote_text: string; body: string; visibility?: 'public' | 'private' }
+): Promise<{ success: boolean; data: JournalReply }> {
+  return request(`/journal/entries/${encodeURIComponent(entryId)}/replies`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export type JournalReflection = {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  username?: string;
+  avatar?: string | null;
+  quote_text: string;
+  body: string;
+  created_at: string;
+  entry_excerpt: string;
+  entry_created_at: string;
+};
+
+export async function getJournalReflections(params?: {
+  limit?: number;
+}): Promise<{ success: boolean; data: { reflections: JournalReflection[]; total: number } }> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.append('limit', String(params.limit));
+  const qs = query.toString();
+  return request(`/journal/reflections${qs ? `?${qs}` : ''}`);
 }

@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, ViewStyle, StyleProp } from 'react-native';
+import { View, Text, ViewStyle, StyleProp } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw, { theme } from '../../lib/tw';
+import PressableScale from './PressableScale';
 
 type Props = {
   title?: string;
@@ -23,20 +24,21 @@ export default function ScreenHeader({
   style,
 }: Props) {
   const iconColor = light ? '#FFFFFF' : theme.colors.textMuted;
-  const titleColor = light ? 'text-white' : 'text-stone-900';
+  const titleColor = light ? 'text-white' : 'text-ink';
 
   return (
     <View
       pointerEvents="box-none"
       style={[
-        tw`flex-row items-center justify-between px-4 py-3 ${
-          transparent ? '' : 'border-b border-stone-200 bg-white'
+        tw`flex-row items-center justify-between px-gutter py-3 ${
+          transparent ? '' : 'border-b border-line bg-card'
         }`,
         style,
       ]}
     >
       {onBack ? (
-        <Pressable
+        <PressableScale
+          pressedScale={0.9}
           onPress={onBack}
           hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           style={tw`w-10 h-10 items-center justify-center -ml-2`}
@@ -44,12 +46,12 @@ export default function ScreenHeader({
           accessibilityLabel={backIcon === 'close' ? 'Close' : 'Go back'}
         >
           <Ionicons name={backIcon} size={26} color={iconColor} />
-        </Pressable>
+        </PressableScale>
       ) : (
         <View style={tw`w-10`} />
       )}
       {title ? (
-        <Text style={tw`text-lg font-bold ${titleColor} flex-1 text-center`} numberOfLines={1}>
+        <Text style={tw`text-callout font-bold ${titleColor} flex-1 text-center`} numberOfLines={1}>
           {title}
         </Text>
       ) : (

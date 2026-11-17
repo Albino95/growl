@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { horizontalScrollProps } from '../../constants/scroll';
 import CATEGORIES, { type Category } from '../../data/categories';
 import { CategoryCapsule } from '../ui/CategoryCapsule';
@@ -35,7 +35,7 @@ export default function MarketplaceCategoryBar({
         <ScrollView
           horizontal
           style={{ flexGrow: 0 }}
-          contentContainerStyle={tw`px-5 items-center`}
+          contentContainerStyle={tw`px-gutter-wide items-center`}
           {...horizontalScrollProps}
         >
           <CategoryCapsule
@@ -64,11 +64,11 @@ export default function MarketplaceCategoryBar({
       </View>
 
       {selectedMeta && selectedMeta.subcategories.length > 0 ? (
-        <View style={{ height: 48, justifyContent: 'center', backgroundColor: '#EAE4D6' }}>
+        <View style={{ height: 48, justifyContent: 'center', backgroundColor: theme.colors.raised }}>
           <ScrollView
             horizontal
             style={{ flexGrow: 0 }}
-            contentContainerStyle={tw`px-4 items-center`}
+            contentContainerStyle={tw`px-gutter items-center`}
             {...horizontalScrollProps}
           >
             <CategoryCapsule

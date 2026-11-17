@@ -1,121 +1,288 @@
 @import 'tailwindcss';
 
+/* ---------- Tokens (docs/LANDING_DESIGN.md) ---------- */
 :root {
+  --soil: #f3eee4;
+  --bark: #1c1917;
+  --moss: #57534e;
+  --leaf: #047857;
+  --leaf-hover: #065f46;
+  --deep-leaf: #064e3b;
+  --bloom: #f97066;
+  --card: #fffcf7;
+  --subtle: #eae4d6;
+  --line: rgba(28, 25, 23, 0.12);
+
+  /* Legacy aliases (pitch deck, invite page) */
   --brand: #059669;
-  --brand-deep: #047857;
-  --brand-dark: #064e3b;
+  --brand-deep: var(--leaf);
+  --brand-dark: var(--deep-leaf);
   --brand-glow: #34d399;
-  --stone-ink: #1c1917;
-  --stone-muted: #57534e;
+  --energy: var(--bloom);
+  --energy-soft: #fff1f0;
+  --stone-ink: var(--bark);
+  --stone-muted: var(--moss);
   --stone-soft: #a8a29e;
-  --surface: #f3eee4;
-  --surface-alt: #ebe6db;
-  --surface-deep: #0c1f17;
-  --nav-offset: 4.5rem;
+  --surface: var(--soil);
+  --surface-elevated: var(--card);
+  --surface-alt: var(--subtle);
+  --surface-deep: var(--bark);
+
+  --nav-h: 4rem;
 }
 
+@theme inline {
+  --color-soil: var(--soil);
+  --color-bark: var(--bark);
+  --color-moss: var(--moss);
+  --color-leaf: var(--leaf);
+  --color-leaf-hover: var(--leaf-hover);
+  --color-deep-leaf: var(--deep-leaf);
+  --color-bloom: var(--bloom);
+  --color-card: var(--card);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-phone: 44px;
+  --radius-card: 24px;
+  --radius-input: 14px;
+}
+
+/* ---------- Base ---------- */
 html {
   scroll-behavior: smooth;
+}
+
+body {
+  color: var(--bark);
+  background: var(--soil);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #a7f3d0;
+  color: var(--bark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.on-dark :focus-visible {
+  outline-color: var(--soil);
+}
+
+/* Display type: tight, large, optical size follows the font size. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+
+.measure {
+  max-width: 68ch;
+}
+
+/* Day sections land below the fixed nav (+ the mobile week row). */
+.day-section {
+  scroll-margin-top: calc(var(--nav-h) + 3rem);
+}
+@media (min-width: 1024px) {
+  .day-section {
+    scroll-margin-top: var(--nav-h);
+  }
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] .faq-plus {
+  transform: rotate(45deg);
+}
+
+/* ---------- Hero sprout (the one animated moment) ---------- */
+.sprout-leaf {
+  transform-box: fill-box;
+  transform-origin: 40% 100%;
+}
+.is-sprouted .sprout-leaf {
+  animation: sprout-pop 680ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.pill-in {
+  animation: pill-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.reveal {
+  animation: pill-in 180ms ease-out both;
+}
+.check-pop {
+  animation: check-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes check-pop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes mood-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes sprout-pop {
+  from {
+    transform: scale(0.12) rotate(-18deg);
+  }
+  to {
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Hero phone: the real app's home screen ---------- */
+/* The app uses the system font, so the phone does too. */
+.app-ui {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', system-ui, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+.app-ui :focus-visible {
+  outline-color: #047857;
+  outline-offset: 2px;
+}
+/* Today card (frontend/src/components/feed/TodayCard.tsx), kept in CSS so the demo island stays light. */
+.td-card {
+  @apply mx-4 mb-3 rounded-3xl border border-stone-200/70 bg-[#FFFcf7] px-4 pt-4 pb-3.5;
+}
+.td-reply {
+  @apply mx-4 mb-3 rounded-2xl border border-emerald-200/80 bg-[#FFFcf7] p-4 outline-none;
+}
+.td-pill {
+  @apply flex w-full items-center rounded-full border border-emerald-100 bg-emerald-50 px-3.5 py-2.5 text-left;
+}
+.td-pill-text {
+  @apply min-w-0 flex-1 truncate pr-2 text-[13px] font-semibold text-emerald-900;
+}
+.td-panel {
+  @apply mt-2 rounded-2xl border border-stone-200/70 bg-[#FFFcf7] px-4 py-3;
+}
+.td-edit {
+  @apply rounded-xl bg-[#EAE4D6] px-4 py-2.5 text-[13px] font-semibold text-stone-800;
+}
+.td-mood {
+  @apply flex min-w-[56px] flex-col items-center rounded-2xl border border-transparent p-2 text-[11px] leading-[14px] text-stone-500 transition-colors hover:bg-[#EAE4D6]/60;
+}
+.td-mood > span {
+  @apply mb-1 inline-block text-xl leading-7;
+}
+.td-mood[aria-pressed='true'] {
+  @apply border-emerald-300 bg-emerald-50 font-semibold text-emerald-800;
+}
+.td-mood[aria-pressed='true'] > span {
+  animation: mood-pop 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.td-chip {
+  @apply shrink-0 rounded-full bg-[#EAE4D6] px-3 py-1.5 text-[13px] font-semibold text-stone-700 transition-colors;
+}
+.td-chip[aria-pressed='true'] {
+  @apply bg-emerald-600 text-white;
+}
+.td-input {
+  @apply mt-3 w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-[15px] text-stone-900 placeholder:text-[#A8A29E];
+}
+.td-done {
+  @apply mt-3 w-full rounded-xl bg-emerald-600 py-3 text-[15px] font-bold text-white transition-colors hover:bg-emerald-700;
+}
+.td-link {
+  @apply text-xs font-semibold;
+}
+.td-restart {
+  @apply ml-1 inline-flex min-h-[44px] items-center font-semibold text-leaf underline decoration-leaf/30 underline-offset-4 hover:decoration-leaf;
+}
+
+/* Designed at a 360pt screen (380px with bezel); zoomed to fit the column and small phones. */
+.phone-zoom {
+  zoom: 0.9;
+}
+@media (max-width: 389px) {
+  .phone-zoom {
+    zoom: 0.84;
+  }
+}
+@media (max-width: 359px) {
+  .phone-zoom {
+    zoom: 0.73;
+  }
+}
+
+/* Week rail dot */
+.week-dot {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    transform 300ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
-
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  .path-marquee-track {
     animation: none !important;
-    transform: none !important;
+    transition: none !important;
   }
 }
 
-body {
-  color: var(--stone-ink);
-  background: var(--surface);
-  -webkit-font-smoothing: antialiased;
-}
-
-::selection {
-  background: color-mix(in srgb, var(--brand) 35%, white);
-  color: var(--stone-ink);
-}
-
-.font-display {
-  font-family: var(--font-display), system-ui, sans-serif;
-}
-
+/* ---------- Legacy helpers still used by /pitch ---------- */
 .font-body {
-  font-family: var(--font-body), system-ui, sans-serif;
+  font-family: var(--font-body);
 }
 
-/* Fixed-nav clearance for in-page anchors */
-#about,
-#how,
-#paths,
-#features,
-#faq,
-#early-access {
-  scroll-margin-top: var(--nav-offset);
-}
-
-.hero-mesh {
+.hero-atmosphere {
   background:
-    radial-gradient(ellipse 70% 55% at 78% 38%, rgba(52, 211, 153, 0.42), transparent 58%),
-    radial-gradient(ellipse 55% 45% at 18% 72%, rgba(5, 150, 105, 0.5), transparent 52%),
-    radial-gradient(ellipse 90% 70% at 50% 110%, rgba(6, 78, 59, 0.95), transparent 48%),
-    linear-gradient(165deg, #064e3b 0%, #0c1f17 42%, #022c22 100%);
+    radial-gradient(ellipse 55% 50% at 88% 18%, rgba(249, 112, 102, 0.16), transparent 55%),
+    radial-gradient(ellipse 45% 40% at 8% 78%, rgba(5, 150, 105, 0.14), transparent 50%),
+    linear-gradient(180deg, #f7f3ea 0%, #f3eee4 48%, #ebe4d4 100%);
 }
 
-.hero-grain {
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.07;
-  mix-blend-mode: overlay;
-}
-
-.path-marquee {
-  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-}
-
-.path-marquee-track {
-  display: flex;
-  width: max-content;
-  animation: path-scroll 48s linear infinite;
-}
-
-.path-marquee:hover .path-marquee-track {
-  animation-play-state: paused;
-}
-
-@keyframes path-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-@keyframes hero-cue {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: translateY(0);
-  }
-  50% {
-    opacity: 0.9;
-    transform: translateY(6px);
-  }
-}
-
-.hero-scroll-cue {
-  animation: hero-cue 2.4s ease-in-out infinite;
+.page-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.035;
+  mix-blend-mode: multiply;
 }

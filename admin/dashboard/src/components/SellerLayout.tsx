@@ -7,7 +7,6 @@ import {
   FileSpreadsheet,
   Settings,
   LogOut,
-  Store,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSellerAuth } from '../auth/SellerAuthProvider';
@@ -33,25 +32,27 @@ export function SellerLayout() {
   const localApi = isLocalApi();
 
   return (
-    <div className="flex min-h-screen bg-surface-muted">
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-gradient-to-b from-emerald-950 via-slate-900 to-slate-950 text-slate-200">
-        <div className="border-b border-white/10 px-5 py-6">
+    <div className="flex min-h-screen bg-surface-page">
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-surface-border bg-surface text-stone-800">
+        <div className="border-b border-surface-border px-5 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 font-bold text-white shadow-lg shadow-emerald-500/30">
-              <Store className="h-5 w-5" />
-            </div>
+            <img
+              src="/brand-mark.png"
+              alt="Grow!"
+              className="h-9 w-9 rounded-lg object-cover shadow-sm ring-1 ring-stone-200/80"
+            />
             <div>
-              <p className="font-semibold text-white">
-                Grow<span className="text-emerald-400">!</span> Seller
+              <p className="font-semibold tracking-tight text-stone-900">
+                Grow<span className="text-brand-600">!</span> Seller
               </p>
-              <p className="text-xs text-slate-400">Business portal</p>
+              <p className="text-xs text-stone-500">Business portal</p>
             </div>
           </div>
-          <p className="mt-3 truncate text-[10px] text-slate-500" title={apiHost}>
+          <p className="mt-3 truncate text-[10px] text-stone-400" title={apiHost}>
             API: {apiHost}
           </p>
           {localApi && (
-            <p className="mt-1 rounded-md bg-amber-500/15 px-2 py-1 text-[10px] leading-snug text-amber-200/90">
+            <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-800">
               Local API — demo/seed data only.
             </p>
           )}
@@ -65,7 +66,7 @@ export function SellerLayout() {
               end={item.end}
               className={({ isActive }) =>
                 `relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? 'text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                  isActive ? 'text-brand-700' : 'text-stone-500 hover:bg-surface-page hover:text-stone-800'
                 }`
               }
             >
@@ -74,7 +75,7 @@ export function SellerLayout() {
                   {isActive && (
                     <motion.span
                       layoutId="seller-nav-indicator"
-                      className="absolute inset-0 rounded-lg bg-white/10 ring-1 ring-white/10"
+                      className="absolute inset-0 rounded-lg bg-brand-50 ring-1 ring-brand-100"
                       transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                     />
                   )}
@@ -86,21 +87,21 @@ export function SellerLayout() {
           ))}
         </nav>
 
-        <div className="border-t border-white/10 p-4">
-          <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600/80 text-sm font-bold text-white">
+        <div className="border-t border-surface-border p-4">
+          <div className="flex items-center gap-3 rounded-xl bg-surface-page p-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
               {initial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">{seller?.email || 'Seller'}</p>
-              <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200">
+              <p className="truncate text-sm font-medium text-stone-900">{seller?.email || 'Seller'}</p>
+              <span className="mt-1 inline-block rounded-full bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-stone-500 ring-1 ring-surface-border">
                 Business
               </span>
             </div>
           </div>
           <Button
             variant="ghost"
-            className="mt-3 w-full justify-center bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+            className="mt-3 w-full justify-center text-stone-600 hover:bg-surface-page hover:text-stone-900"
             onClick={() => void logout()}
           >
             <LogOut className="h-4 w-4" /> Log out
@@ -109,7 +110,7 @@ export function SellerLayout() {
       </aside>
 
       <main className="ml-64 min-h-screen flex-1">
-        <div className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
+        <div className="mx-auto max-w-6xl px-6 py-8 lg:px-10">
           <AnimatePresence mode="wait">
             <motion.div key={location.pathname} variants={pageFade} initial="initial" animate="animate" exit="exit">
               <Outlet />

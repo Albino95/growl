@@ -2,36 +2,220 @@ import { Env } from '../types';
 import { error, json } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { checkRateLimit } from '../utils/rateLimit';
+import { AUDIO_LIBRARY } from '../constants/audioLibrary';
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // 40MB (prefer multipart)
+/** Multipart framing overhead allowed on top of the largest file. */
+const MULTIPART_SLACK_BYTES = 512 * 1024;
+/** JSON/base64 uploads are for images only: 5MB binary ≈ 6.7MB base64 + JSON. */
+const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
+/** Proof uploads are private and small: the app compresses before sending. */
+export const MAX_PROOF_IMAGE_BYTES = 1.5 * 1024 * 1024;
+export const MAX_PROOF_AUDIO_BYTES = 2 * 1024 * 1024;
+/** R2 prefix for private proof media. Never served by GET /media/:key. */
+export const PROOF_KEY_PREFIX = 'proof/';
+
+type ParsedMedia = {
+  mime: string;
+  bytes: Uint8Array;
+  ext: string;
+  kind: 'image' | 'video' | 'audio';
+};
+
+const IMAGE_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+const VIDEO_MIME: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+};
+
+function extForMime(mime: string): string | null {
+  const m = mime.toLowerCase();
+  return IMAGE_MIME[m] || VIDEO_MIME[m] || null;
+}
+
+function kindForMime(mime: string): 'image' | 'video' | null {
+  const m = mime.toLowerCase();
+  if (IMAGE_MIME[m]) return 'image';
+  if (VIDEO_MIME[m]) return 'video';
+  return null;
+}
 
 /**
- * Accept only explicit image data URLs we trust the frontend to send.
- * Keeping this strict prevents unexpected payload types from being stored.
+ * Identify the file from its first bytes instead of trusting the client's
+ * declared type or filename. Returns null for anything we don't accept.
  */
-function parseImageDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array; ext: string } | null {
-  const m = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/i);
+function detectMime(bytes: Uint8Array): string | null {
+  const at = (i: number) => bytes[i];
+  const ascii = (start: number, len: number) =>
+    String.fromCharCode(...Array.from(bytes.subarray(start, start + len)));
+  if (bytes.length < 12) return null;
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'image/jpeg';
+  if (at(0) === 0x89 && ascii(1, 3) === 'PNG') return 'image/png';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') return 'image/webp';
+  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3) return 'video/webm';
+  if (ascii(4, 4) === 'ftyp') {
+    return ascii(8, 4) === 'qt  ' ? 'video/quicktime' : 'video/mp4';
+  }
+  return null;
+}
+
+/** Re-type parsed media from its real bytes; null if the content isn't allowed. */
+function verifyMedia(media: ParsedMedia): ParsedMedia | null {
+  const mime = detectMime(media.bytes);
+  if (!mime) return null;
+  const kind = kindForMime(mime);
+  const ext = extForMime(mime);
+  if (!kind || !ext) return null;
+  return { ...media, mime, kind, ext };
+}
+
+const PROOF_IMAGE_EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+/**
+ * Private proof uploads: photos (jpeg/png/webp) and voice notes (m4a / AAC).
+ * Video is not a proof type. An ISO-BMFF (`ftyp`) file counts as audio only when
+ * its brand says M4A/M4B or the client declared audio / .m4a (Android writes
+ * plain `isom`/`mp42` brands for AAC-in-MPEG4 recordings).
+ */
+export function detectProofMime(
+  bytes: Uint8Array,
+  declared = ''
+): { mime: string; ext: string; kind: 'image' | 'audio' } | null {
+  if (bytes.length < 12) return null;
+  const ascii = (start: number, len: number) =>
+    String.fromCharCode(...Array.from(bytes.subarray(start, start + len)));
+  const base = detectMime(bytes);
+  if (base && PROOF_IMAGE_EXT[base]) return { mime: base, ext: PROOF_IMAGE_EXT[base], kind: 'image' };
+  if (ascii(4, 4) === 'ftyp') {
+    const brand = ascii(8, 4);
+    const d = declared.toLowerCase();
+    const saysAudio = d.startsWith('audio/') || /\.(m4a|aac)$/.test(d);
+    if (brand === 'M4A ' || brand === 'M4B ' || saysAudio) {
+      return { mime: 'audio/mp4', ext: 'm4a', kind: 'audio' };
+    }
+    return null;
+  }
+  // Raw AAC (ADTS): 12-bit sync word 0xFFF, layer bits 00.
+  if (bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0) {
+    return { mime: 'audio/aac', ext: 'aac', kind: 'audio' };
+  }
+  return null;
+}
+
+function guessMimeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.m4a')) return 'audio/mp4';
+  if (lower.endsWith('.aac')) return 'audio/aac';
+  return '';
+}
+
+function normalizePurpose(raw: unknown): string {
+  return raw === 'product' ||
+    raw === 'story' ||
+    raw === 'post' ||
+    raw === 'avatar' ||
+    raw === 'reel' ||
+    raw === 'proof'
+    ? raw
+    : 'post';
+}
+
+const AUDIO_DATA_URL_MIME = /^audio\/(?:mp4|m4a|x-m4a|aac|aacp)$/i;
+
+/** Accept image/video data URLs from the app (and audio for private proof uploads). */
+function parseMediaDataUrl(dataUrl: string, allowAudio = false): ParsedMedia | null {
+  const m = dataUrl.match(
+    /^data:((?:image\/(?:jpeg|jpg|png|webp)|video\/(?:mp4|webm|quicktime)|audio\/(?:mp4|m4a|x-m4a|aac|aacp)));base64,([A-Za-z0-9+/=]+)$/i
+  );
   if (!m) return null;
   const mime = m[1].toLowerCase();
+  const isAudio = AUDIO_DATA_URL_MIME.test(mime);
+  if (isAudio && !allowAudio) return null;
+  const kind = isAudio ? 'audio' : kindForMime(mime);
+  const ext = isAudio ? 'm4a' : extForMime(mime);
+  if (!kind || !ext) return null;
+
   const b64 = m[2];
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
-  return { mime, bytes, ext };
+  return { mime, bytes, ext, kind };
+}
+
+async function parseMultipart(
+  request: Request
+): Promise<{ media: ParsedMedia; purpose: string } | { tooLarge: true } | null> {
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return null;
+  }
+
+  const purpose = normalizePurpose(form.get('purpose'));
+  const file = form.get('file');
+  if (!file || typeof file === 'string') return null;
+
+  const blob = file as File;
+  if (blob.size > MAX_VIDEO_BYTES) {
+    return { tooLarge: true };
+  }
+  // Declared type/filename are only a hint; verifyMedia() decides from the bytes.
+  const declared = (blob.type || '').toLowerCase() || guessMimeFromName(blob.name || '');
+  const ext = extForMime(declared) || 'bin';
+  const kind = kindForMime(declared) || 'image';
+
+  const buffer = await blob.arrayBuffer();
+  return {
+    purpose,
+    media: { mime: declared, bytes: new Uint8Array(buffer), ext, kind },
+  };
+}
+
+export function sniffContentType(key: string, stored?: string): string {
+  const s = (stored || '').toLowerCase().trim();
+  if (s && s !== 'application/octet-stream' && s !== 'binary/octet-stream') {
+    return stored as string;
+  }
+  const k = key.toLowerCase();
+  if (k.endsWith('.mp4')) return 'video/mp4';
+  if (k.endsWith('.mov')) return 'video/quicktime';
+  if (k.endsWith('.webm')) return 'video/webm';
+  if (k.endsWith('.jpg') || k.endsWith('.jpeg')) return 'image/jpeg';
+  if (k.endsWith('.png')) return 'image/png';
+  if (k.endsWith('.webp')) return 'image/webp';
+  if (k.endsWith('.m4a')) return 'audio/mp4';
+  if (k.endsWith('.aac')) return 'audio/aac';
+  if (k.startsWith('reel/')) return 'video/mp4';
+  return stored || 'application/octet-stream';
 }
 
 function mediaUrlFromRequest(request: Request, env: Env, key: string): string {
-  const base = env.APP_PUBLIC_URL?.trim() || new URL(request.url).origin;
+  const base = new URL(request.url).origin;
   const apiPrefix = `/api/${env.API_VERSION || 'v1'}`;
   return `${base}${apiPrefix}/media/${encodeURIComponent(key)}`;
 }
 
 /**
  * POST /api/v1/media/upload
- * Body: { dataUrl: string, purpose?: "post" | "product" | "story" }
+ * JSON: { dataUrl, purpose? } — images (+ short videos)
+ * multipart/form-data: file + purpose — preferred for video
  */
 export async function uploadMedia(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
@@ -46,40 +230,122 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const { allowed } = await checkRateLimit(
-    env,
-    `upload:${ctx.userId}`,
-    30,
-    3600
-  );
+  const { allowed } = await checkRateLimit(env, `upload:${ctx.userId}`, 30, 3600);
   if (!allowed) {
     return error('RATE_LIMITED', 'Too many uploads. Try again later.', 429);
   }
 
-  let body: { dataUrl?: string; purpose?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return error('INVALID_JSON', 'Invalid JSON in request body', 400);
+  const contentType = (request.headers.get('content-type') || '').toLowerCase();
+  // Reject oversized bodies before the Worker buffers them (128MB memory).
+  const declaredLength = Number(request.headers.get('content-length') || '0');
+  const bodyCap = contentType.includes('application/json')
+    ? MAX_JSON_BODY_BYTES
+    : MAX_VIDEO_BYTES + MULTIPART_SLACK_BYTES;
+  if (declaredLength > bodyCap) {
+    return error(
+      'PAYLOAD_TOO_LARGE',
+      contentType.includes('application/json')
+        ? 'Upload too large. Send videos as a file upload (max 40MB).'
+        : 'Upload exceeds the 40MB limit. Trim the video or pick a shorter clip.',
+      413
+    );
   }
 
-  const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
-  const parsed = parseImageDataUrl(dataUrl);
-  if (!parsed) {
-    return error('VALIDATION_ERROR', 'Only base64 data URLs for jpeg/png/webp are supported', 400);
+  let parsed: ParsedMedia | null = null;
+  let purpose = 'post';
+
+  const tryJsonUpload = async (req: Request): Promise<Response | null> => {
+    let body: { dataUrl?: string; purpose?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return null;
+    }
+    purpose = normalizePurpose(body.purpose);
+    const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
+    parsed = parseMediaDataUrl(dataUrl, purpose === 'proof');
+    if (!parsed) {
+      return error(
+        'VALIDATION_ERROR',
+        'Only base64 data URLs for jpeg/png/webp or mp4/webm/mov are supported (or use multipart file upload)',
+        400
+      );
+    }
+    return null; // success — parsed set
+  };
+
+  if (contentType.includes('multipart/form-data')) {
+    const multi = await parseMultipart(request);
+    if (multi && 'tooLarge' in multi) {
+      return error('PAYLOAD_TOO_LARGE', 'Upload exceeds the 40MB limit. Trim the video or pick a shorter clip.', 413);
+    }
+    if (!multi) {
+      return error(
+        'VALIDATION_ERROR',
+        'Multipart upload requires a file of type jpeg/png/webp or mp4/webm/mov',
+        400
+      );
+    }
+    parsed = multi.media;
+    purpose = multi.purpose;
+  } else if (contentType.includes('application/json')) {
+    const errRes = await tryJsonUpload(request);
+    if (errRes) return errRes;
+    if (!parsed) {
+      return error('INVALID_JSON', 'Invalid JSON in request body', 400);
+    }
+  } else {
+    // React Native / some browsers omit or mangle Content-Type on FormData.
+    // Prefer multipart, then fall back to JSON.
+    const cloned = request.clone();
+    const multi = await parseMultipart(request);
+    if (multi && 'tooLarge' in multi) {
+      return error('PAYLOAD_TOO_LARGE', 'Upload exceeds the 40MB limit. Trim the video or pick a shorter clip.', 413);
+    }
+    if (multi) {
+      parsed = multi.media;
+      purpose = multi.purpose;
+    } else {
+      const errRes = await tryJsonUpload(cloned);
+      if (errRes) return errRes;
+      if (!parsed) {
+        return error(
+          'VALIDATION_ERROR',
+          'Upload requires multipart file or JSON dataUrl body',
+          400
+        );
+      }
+    }
   }
+
   if (parsed.bytes.byteLength === 0) {
-    return error('VALIDATION_ERROR', 'Uploaded image is empty', 400);
-  }
-  if (parsed.bytes.byteLength > MAX_UPLOAD_BYTES) {
-    return error('PAYLOAD_TOO_LARGE', 'Image exceeds 5MB upload limit', 413);
+    return error('VALIDATION_ERROR', 'Uploaded media is empty', 400);
   }
 
-  // Purpose keeps object keys organized so cleanup/reporting is easier later.
-  const purpose =
-    body.purpose === 'product' || body.purpose === 'story' || body.purpose === 'post'
-      ? body.purpose
-      : 'post';
+  if (purpose === 'proof') {
+    return storeProofMedia(request, env, ctx.userId, parsed);
+  }
+
+  const verified = verifyMedia(parsed);
+  if (!verified) {
+    return error('UNSUPPORTED_MEDIA', 'File is not a JPEG, PNG, WebP, MP4, MOV or WebM.', 415);
+  }
+  parsed = verified;
+
+  const maxBytes = parsed.kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (parsed.bytes.byteLength > maxBytes) {
+    const mb = Math.round(maxBytes / (1024 * 1024));
+    return error(
+      'PAYLOAD_TOO_LARGE',
+      `${parsed.kind === 'video' ? 'Video' : 'Image'} exceeds ${mb}MB upload limit`,
+      413
+    );
+  }
+
+  if (purpose === 'post' && parsed.kind === 'video') {
+    purpose = 'reel';
+  }
+
   const key = `${purpose}/${ctx.userId}/${Date.now()}-${crypto.randomUUID()}.${parsed.ext}`;
 
   await env.R2.put(key, parsed.bytes, {
@@ -94,35 +360,157 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     url: mediaUrlFromRequest(request, env, key),
     size: parsed.bytes.byteLength,
     contentType: parsed.mime,
+    mediaType: parsed.kind,
   });
 }
 
 /**
+ * Private proof media: type from the bytes, small caps, stored under
+ * proof/{userId}/… with no public cache. Returns only the key (no public URL):
+ * the file is readable solely through GET /proofs/:id/media.
+ */
+async function storeProofMedia(
+  _request: Request,
+  env: Env,
+  userId: string,
+  media: ParsedMedia
+): Promise<Response> {
+  const found = detectProofMime(media.bytes, media.mime);
+  if (!found) {
+    return error('UNSUPPORTED_MEDIA', 'Proof must be a JPEG, PNG or WebP photo, or an M4A/AAC voice note.', 415);
+  }
+  const max = found.kind === 'audio' ? MAX_PROOF_AUDIO_BYTES : MAX_PROOF_IMAGE_BYTES;
+  if (media.bytes.byteLength > max) {
+    return error(
+      'PAYLOAD_TOO_LARGE',
+      found.kind === 'audio' ? 'Voice note is too large (max 2 MB / 60 s).' : 'Photo is too large (max 1.5 MB).',
+      413
+    );
+  }
+  const key = `${PROOF_KEY_PREFIX}${userId}/${Date.now()}-${crypto.randomUUID()}.${found.ext}`;
+  await env.R2!.put(key, media.bytes, {
+    httpMetadata: { contentType: found.mime, cacheControl: 'private, no-store' },
+  });
+  return json({
+    key,
+    size: media.bytes.byteLength,
+    contentType: found.mime,
+    mediaType: found.kind,
+  });
+}
+
+/** True for R2 keys that must never be served publicly. */
+export function isPrivateMediaKey(key: string): boolean {
+  return key.replace(/^\/+/, '').toLowerCase().startsWith(PROOF_KEY_PREFIX);
+}
+
+/**
  * GET /api/v1/media/:key
+ * Supports HTTP Range so iOS AVPlayer can stream video without a black frame.
  */
 export async function getMedia(request: Request, env: Env, key: string): Promise<Response> {
   if (!env.R2) {
     return error('MEDIA_NOT_CONFIGURED', 'R2 media storage is not configured', 503);
   }
 
-  // Basic key hardening to avoid path traversal-like access attempts.
   const safeKey = decodeURIComponent(key).replace(/^\/+/, '');
   if (!safeKey || safeKey.includes('..')) {
     return error('VALIDATION_ERROR', 'Invalid media key', 400);
   }
+  // Proof media is private: only GET /proofs/:id/media (with permission checks) serves it.
+  if (isPrivateMediaKey(safeKey)) {
+    return error('NOT_FOUND', 'Media not found', 404);
+  }
 
-  const obj = await env.R2.get(safeKey);
+  const isHead = request.method === 'HEAD';
+  const rangeHeader = request.headers.get('Range') || request.headers.get('range');
+  const obj = rangeHeader
+    ? await env.R2.get(safeKey, { range: request.headers })
+    : await env.R2.get(safeKey);
+
   if (!obj) {
     return error('NOT_FOUND', 'Media not found', 404);
   }
 
   const headers = new Headers();
-  const contentType = obj.httpMetadata?.contentType || 'application/octet-stream';
+  const ct = sniffContentType(safeKey, obj.httpMetadata?.contentType);
   const cacheControl = obj.httpMetadata?.cacheControl || 'public, max-age=86400';
-  headers.set('Content-Type', contentType);
+  headers.set('Content-Type', ct);
   headers.set('Cache-Control', cacheControl);
   headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+  headers.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+  headers.set('Accept-Ranges', 'bytes');
+  // Never let a browser reinterpret stored media as HTML/script.
+  headers.set('X-Content-Type-Options', 'nosniff');
+
+  const size = obj.size;
+  const body = isHead ? null : obj.body;
+  // R2 ranged get → 206 Partial Content (required by iOS AVPlayer).
+  // Only when the client actually sent Range: R2 can report `range` on plain gets too,
+  // and a 206 for a full image request is not cacheable (Cloudflare / NSURLCache) and
+  // confuses image loaders.
+  if (rangeHeader && obj.range && typeof obj.range === 'object' && 'offset' in obj.range) {
+    const offset = Number((obj.range as { offset: number }).offset) || 0;
+    const rangeLen = (obj.range as { length?: number }).length;
+    const length =
+      typeof rangeLen === 'number' ? rangeLen : Math.max(0, size - offset);
+    const end = offset + length - 1;
+    headers.set('Content-Range', `bytes ${offset}-${end}/${size}`);
+    headers.set('Content-Length', String(length));
+    return new Response(body, { status: 206, headers });
+  }
+
+  if (typeof size === 'number' && size >= 0) {
+    headers.set('Content-Length', String(size));
+  }
+
+  return new Response(body, { status: 200, headers });
+}
+
+/**
+ * GET /api/v1/media/audio/:trackId
+ * Proxies allowlisted royalty-free tracks with CORS so web reels can play soundtracks.
+ */
+export async function getLibraryAudio(
+  _request: Request,
+  _env: Env,
+  trackId: string
+): Promise<Response> {
+  const id = decodeURIComponent(trackId || '').trim();
+  const track = AUDIO_LIBRARY[id];
+  if (!track?.url) {
+    return error('NOT_FOUND', 'Soundtrack not found', 404);
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(track.url, {
+      headers: {
+        'User-Agent': 'GrowlAudioProxy/1.0',
+        Accept: 'audio/mpeg,audio/*,*/*',
+      },
+    });
+  } catch {
+    return error('UPSTREAM_ERROR', 'Could not load soundtrack', 502);
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    return error('UPSTREAM_ERROR', 'Soundtrack unavailable', 502);
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', upstream.headers.get('Content-Type') || 'audio/mpeg');
+  headers.set('Cache-Control', 'public, max-age=86400');
+  headers.set('Access-Control-Allow-Origin', '*');
   headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  return new Response(obj.body, { status: 200, headers });
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+  headers.set('Accept-Ranges', 'bytes');
+  // Never let a browser reinterpret stored media as HTML/script.
+  headers.set('X-Content-Type-Options', 'nosniff');
+  const len = upstream.headers.get('Content-Length');
+  if (len) headers.set('Content-Length', len);
+
+  return new Response(upstream.body, { status: 200, headers });
 }

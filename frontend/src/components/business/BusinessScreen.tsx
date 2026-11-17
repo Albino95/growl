@@ -1,9 +1,10 @@
 import React, { PropsWithChildren, ReactNode } from 'react';
-import { View, Text, Pressable, ViewStyle, StyleProp } from 'react-native';
+import { View, Text, ViewStyle, StyleProp } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import GrowChromeHeader from '../ui/GrowChromeHeader';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
+import PressableScale from '../ui/PressableScale';
 
 type Props = PropsWithChildren<{
   title: string;
@@ -26,13 +27,16 @@ function ChromeButton({
   label: string;
 }) {
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
-      style={tw`w-9 h-9 rounded-full bg-[#EAE4D6] border border-stone-200/80 items-center justify-center`}
+      pressedScale={0.9}
+      hitSlop={8}
+      accessibilityRole="button"
+      style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={17} color="#059669" />
-    </Pressable>
+      <Ionicons name={icon} size={17} color={theme.colors.brand} />
+    </PressableScale>
   );
 }
 
@@ -49,7 +53,7 @@ export default function BusinessScreen({
   edges = ['top'],
 }: Props) {
   return (
-    <SafeAreaView style={[tw`flex-1 bg-surface-page`, style]} edges={edges}>
+    <SafeAreaView style={[tw`flex-1 bg-page`, style]} edges={edges}>
       <GrowChromeHeader
         right={
           <>
@@ -66,9 +70,9 @@ export default function BusinessScreen({
           </>
         }
       />
-      <View style={tw`px-5 pt-3 pb-2`}>
-        <Text style={tw`text-lg font-bold text-stone-900`}>{title}</Text>
-        {subtitle ? <Text style={tw`text-sm text-stone-500 mt-0.5 leading-5`}>{subtitle}</Text> : null}
+      <View style={tw`px-gutter-wide pt-3 pb-2`}>
+        <Text style={tw`text-lg font-bold text-ink`}>{title}</Text>
+        {subtitle ? <Text style={tw`text-sm text-ink-3 mt-0.5 leading-5`}>{subtitle}</Text> : null}
       </View>
       {children}
     </SafeAreaView>

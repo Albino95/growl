@@ -6,6 +6,7 @@ import {
   signInSchema,
   ssoSchema,
   verifyEmailSchema,
+  resendVerificationSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   refreshTokenSchema,
@@ -15,10 +16,12 @@ import {
   verifyPassword,
   hashClientSecret,
   generateVerificationToken,
+  MAX_CODE_ATTEMPTS,
   hashVerificationToken,
 } from '../utils/password';
-import { getRequestContext, userAuthPayload } from '../utils/auth';
+import { getAccountRestriction, getRequestContext, userAuthPayload } from '../utils/auth';
 import { generateId } from '../utils/id';
+import { normalizeInviteCode, redeemPendingSignupInvite } from '../utils/invites';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { verifyAppleIdToken } from '../utils/appleAuth';
 import { checkRateLimit, clientIp } from '../utils/rateLimit';
@@ -29,7 +32,15 @@ import {
   revokeAllUserRefreshTokens,
 } from '../utils/sessions';
 
+async function restrictionError(env: Env, userId: string): Promise<Response | null> {
+  const restriction = await getAccountRestriction(env, userId);
+  if (!restriction) return null;
+  return error(restriction.code, restriction.message, 403);
+}
+
 async function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env: Env) {
+  const blocked = await restrictionError(env, user.id);
+  if (blocked) return blocked;
   const base = userAuthPayload(user);
   const tokens = await issueSessionTokens(env, user.id);
   return json({
@@ -38,6 +49,27 @@ async function sessionResponse(user: Parameters<typeof userAuthPayload>[0], env:
     refreshToken: tokens.refreshToken,
     expiresIn: tokens.expiresIn,
   });
+}
+
+/**
+ * Atomically count one guess against a user's current code. Returns false once
+ * MAX_CODE_ATTEMPTS have been used (the UPDATE then matches no row).
+ */
+async function reserveCodeAttempt(
+  env: Env,
+  userId: string,
+  column: 'email_verification_attempts' | 'password_reset_attempts'
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `UPDATE users SET ${column} = ${column} + 1 WHERE id = ? AND ${column} < ?`
+  )
+    .bind(userId, MAX_CODE_ATTEMPTS)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+function tooManyCodeAttempts(nextStep: string): Response {
+  return error('TOO_MANY_ATTEMPTS', `Too many incorrect codes. ${nextStep}`, 429);
 }
 
 async function rateLimitOrError(
@@ -55,9 +87,61 @@ async function rateLimitOrError(
   return null;
 }
 
+const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isVerificationExpired(expiresAt?: string | null): boolean {
+  if (!expiresAt) return true;
+  const expires = new Date(expiresAt).getTime();
+  return Number.isNaN(expires) || expires < Date.now();
+}
+
+async function deleteUnverifiedUser(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM users WHERE id = ? AND COALESCE(email_verified, 0) = 0')
+    .bind(userId)
+    .run();
+}
+
+function pendingVerificationPayload(
+  env: Env,
+  email: string,
+  verifyToken: string,
+  expiresAt: string
+) {
+  return {
+    requiresEmailVerification: true as const,
+    email,
+    expiresAt,
+    message:
+      'Check your email for a verification code, then confirm before signing in. Your pending account is kept for 24 hours.',
+    ...(env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'qa'
+      ? { devVerificationCode: verifyToken }
+      : {}),
+  };
+}
+
+async function sendPendingVerification(
+  env: Env,
+  to: string,
+  verifyToken: string
+): Promise<Response | null> {
+  try {
+    await sendVerificationEmail(env, to, verifyToken);
+    return null;
+  } catch (mailErr) {
+    console.error('[auth] Email send failed:', mailErr);
+    // QA and production must never silently "succeed" without a real send.
+    if (env.ENVIRONMENT === 'production' || env.ENVIRONMENT === 'qa') {
+      return error('EMAIL_SEND_FAILED', 'Could not send verification email. Try again later.', 503);
+    }
+    return null;
+  }
+}
+
 /**
  * POST /api/v1/auth/sign-up
  * Register — does not return a session until email is verified.
+ * Pending (unverified) accounts are kept for 24 hours so the user can come back
+ * and enter the code. After expiry they are deleted and the email can sign up again.
  */
 export async function signUp(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
@@ -71,26 +155,64 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
     const validation = await validateRequest(request, signUpSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password, passwordHash, username } = validation.data;
+    const { email, password, passwordHash, username, invite_code } = validation.data;
+    const pendingInviteCode = normalizeInviteCode(invite_code);
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existingUser = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
+    const existingUser = await env.DB.prepare(
+      `SELECT id, email_verified, email_verification_expires_at FROM users WHERE email = ?`
+    )
       .bind(normalizedEmail)
-      .first();
-
-    if (existingUser) {
-      return error('USER_EXISTS', 'User with this email already exists', 409);
-    }
+      .first<{
+        id: string;
+        email_verified: number | null;
+        email_verification_expires_at: string | null;
+      }>();
 
     const credentialSecret = passwordHash || password;
     if (!credentialSecret) {
       return error('VALIDATION_ERROR', 'Password is required', 400);
     }
+
+    if (existingUser) {
+      if (existingUser.email_verified) {
+        return error('USER_EXISTS', 'User with this email already exists', 409);
+      }
+
+      if (isVerificationExpired(existingUser.email_verification_expires_at)) {
+        await deleteUnverifiedUser(env, existingUser.id);
+      } else {
+        const passwordHashToStore = await hashPassword(credentialSecret);
+        const verifyToken = generateVerificationToken();
+        const tokenHash = await hashVerificationToken(verifyToken);
+        const expiresAt = existingUser.email_verification_expires_at as string;
+        await env.DB.prepare(
+          `UPDATE users SET password_hash = ?, email_verification_token_hash = ?, email_verification_attempts = 0,
+           updated_at = datetime('now') WHERE id = ? AND COALESCE(email_verified, 0) = 0`
+        )
+          .bind(passwordHashToStore, tokenHash, existingUser.id)
+          .run();
+        if (pendingInviteCode) {
+          await env.DB.prepare(
+            `UPDATE users SET metadata = json_set(COALESCE(metadata, '{}'), '$.pending_invite_code', ?)
+             WHERE id = ? AND COALESCE(email_verified, 0) = 0`
+          )
+            .bind(pendingInviteCode, existingUser.id)
+            .run();
+        }
+
+        const mailError = await sendPendingVerification(env, normalizedEmail, verifyToken);
+        if (mailError) return mailError;
+
+        return json(pendingVerificationPayload(env, normalizedEmail, verifyToken, expiresAt), 201);
+      }
+    }
+
     const passwordHashToStore = await hashPassword(credentialSecret);
     const userId = generateId('user');
     const verifyToken = generateVerificationToken();
     const tokenHash = await hashVerificationToken(verifyToken);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + VERIFICATION_TTL_MS).toISOString();
 
     const metadata = {
       username: username || normalizedEmail.split('@')[0],
@@ -101,6 +223,8 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
       timePreferences: [],
       blockedUsers: [],
       mutedUsers: [],
+      // Redeemed once the email is verified (growth system invites).
+      ...(pendingInviteCode ? { pending_invite_code: pendingInviteCode } : {}),
     };
 
     await env.DB.prepare(
@@ -120,26 +244,10 @@ export async function signUp(request: Request, env: Env): Promise<Response> {
       )
       .run();
 
-    try {
-      await sendVerificationEmail(env, normalizedEmail, verifyToken);
-    } catch (mailErr) {
-      console.error('[signUp] Email send failed:', mailErr);
-      if (env.ENVIRONMENT === 'production') {
-        return error('EMAIL_SEND_FAILED', 'Could not send verification email. Try again later.', 503);
-      }
-    }
+    const mailError = await sendPendingVerification(env, normalizedEmail, verifyToken);
+    if (mailError) return mailError;
 
-    return json(
-      {
-        requiresEmailVerification: true,
-        email: normalizedEmail,
-        message: 'Check your email for a verification code, then confirm before signing in.',
-        ...(env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'qa'
-          ? { devVerificationCode: verifyToken }
-          : {}),
-      },
-      201
-    );
+    return json(pendingVerificationPayload(env, normalizedEmail, verifyToken, expiresAt), 201);
   } catch (err: unknown) {
     console.error('[signUp] Error:', err);
     if (
@@ -164,6 +272,9 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
     return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
   }
 
+  const limited = await rateLimitOrError(request, env, 'verify', 30, 900);
+  if (limited) return limited;
+
   const validation = await validateRequest(request, verifyEmailSchema);
   if (!validation.success) return validation.response;
 
@@ -172,16 +283,27 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
   const tokenHash = await hashVerificationToken(code.trim().replace(/\s/g, ''));
 
   const user = await env.DB.prepare(
-    `SELECT * FROM users WHERE email = ? AND email_verification_token_hash = ?`
+    `SELECT id, email_verified, email_verification_token_hash, email_verification_expires_at
+     FROM users WHERE email = ?`
   )
-    .bind(normalizedEmail, tokenHash)
+    .bind(normalizedEmail)
     .first<{
       id: string;
-      email_verification_expires_at: string;
       email_verified: number;
-    } & Record<string, unknown>>();
+      email_verification_token_hash: string | null;
+      email_verification_expires_at: string;
+    }>();
 
-  if (!user) {
+  if (!user || !user.email_verification_token_hash) {
+    return error('INVALID_CODE', 'Invalid verification code', 400);
+  }
+
+  // Spend one attempt atomically before comparing, so parallel guesses can't
+  // exceed the limit. A new code (resend) resets the counter.
+  if (!(await reserveCodeAttempt(env, user.id, 'email_verification_attempts'))) {
+    return tooManyCodeAttempts('Request a new verification code.');
+  }
+  if (user.email_verification_token_hash !== tokenHash) {
     return error('INVALID_CODE', 'Invalid verification code', 400);
   }
 
@@ -191,17 +313,83 @@ export async function verifyEmail(request: Request, env: Env): Promise<Response>
 
   const expires = new Date(user.email_verification_expires_at).getTime();
   if (Number.isNaN(expires) || expires < Date.now()) {
-    return error('CODE_EXPIRED', 'Verification code expired. Sign up again or request a new code.', 400);
+    await deleteUnverifiedUser(env, user.id);
+    return error(
+      'CODE_EXPIRED',
+      'This verification code expired after 24 hours. Sign up again to create your account.',
+      400
+    );
   }
 
   await env.DB.prepare(
     `UPDATE users SET email_verified = 1, email_verification_token_hash = NULL,
-     email_verification_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
+     email_verification_expires_at = NULL, email_verification_attempts = 0,
+     updated_at = datetime('now') WHERE id = ?`
   )
     .bind(user.id)
     .run();
 
+  await redeemPendingSignupInvite(env, user.id);
+
   return json({ verified: true, message: 'Email verified. You can sign in now.' });
+}
+
+/**
+ * POST /api/v1/auth/resend-verification
+ * Rotates the code on a pending account without extending the original 24h window.
+ */
+export async function resendVerification(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return error('METHOD_NOT_ALLOWED', 'Use POST', 405);
+  }
+
+  const limited = await rateLimitOrError(request, env, 'resend-verification', 8, 3600);
+  if (limited) return limited;
+
+  const validation = await validateRequest(request, resendVerificationSchema);
+  if (!validation.success) return validation.response;
+
+  const normalizedEmail = validation.data.email.trim().toLowerCase();
+  const user = await env.DB.prepare(
+    `SELECT id, email_verified, email_verification_expires_at FROM users WHERE email = ?`
+  )
+    .bind(normalizedEmail)
+    .first<{
+      id: string;
+      email_verified: number | null;
+      email_verification_expires_at: string | null;
+    }>();
+
+  if (!user || user.email_verified) {
+    return json({
+      sent: true,
+      message: 'If this email is waiting for verification, we sent a new code.',
+    });
+  }
+
+  if (isVerificationExpired(user.email_verification_expires_at)) {
+    await deleteUnverifiedUser(env, user.id);
+    return error(
+      'CODE_EXPIRED',
+      'This signup expired after 24 hours. Sign up again to create your account.',
+      400
+    );
+  }
+
+  const verifyToken = generateVerificationToken();
+  const tokenHash = await hashVerificationToken(verifyToken);
+  const expiresAt = user.email_verification_expires_at as string;
+  await env.DB.prepare(
+    `UPDATE users SET email_verification_token_hash = ?, email_verification_attempts = 0, updated_at = datetime('now')
+     WHERE id = ? AND COALESCE(email_verified, 0) = 0`
+  )
+    .bind(tokenHash, user.id)
+    .run();
+
+  const mailError = await sendPendingVerification(env, normalizedEmail, verifyToken);
+  if (mailError) return mailError;
+
+  return json(pendingVerificationPayload(env, normalizedEmail, verifyToken, expiresAt));
 }
 
 /**
@@ -233,6 +421,7 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
         is_business: number;
         metadata: string;
         email_verified?: number;
+        email_verification_expires_at?: string | null;
       }>();
 
     if (!user) {
@@ -258,7 +447,33 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
       return error('INVALID_CREDENTIALS', 'Invalid email or password', 401);
     }
 
+    // Old accounts (demo seeds, early sign-ups) still store an unsalted SHA-256.
+    // Re-store them as salted PBKDF2 of the client's SHA-256 form — the same
+    // secret new sign-ups store — so both sign-in paths keep working.
+    if (!user.password_hash.startsWith('pbkdf2$')) {
+      try {
+        const canonical = passwordHash || (password ? await hashClientSecret(password) : null);
+        if (canonical) {
+          await env.DB.prepare(
+            `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ? AND password_hash = ?`
+          )
+            .bind(await hashPassword(canonical), user.id, user.password_hash)
+            .run();
+        }
+      } catch (err) {
+        console.error('[signIn] password hash upgrade failed:', err);
+      }
+    }
+
     if (!user.email_verified) {
+      if (isVerificationExpired(user.email_verification_expires_at)) {
+        await deleteUnverifiedUser(env, user.id);
+        return error(
+          'SIGNUP_EXPIRED',
+          'This signup expired after 24 hours. Create your account again.',
+          410
+        );
+      }
       return error(
         'EMAIL_NOT_VERIFIED',
         'Confirm your email before signing in. Check your inbox for the verification code.',
@@ -293,43 +508,77 @@ export async function signOut(request: Request, env: Env): Promise<Response> {
   return json({ message: 'Signed out successfully' });
 }
 
+/** Comma-separated env value → trimmed, non-empty list. */
+function envList(value: string | undefined): string[] {
+  return (value || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Verify a Google ID token. Fails closed: GOOGLE_CLIENT_ID must be set
+ * (comma-separated web/iOS/Android client IDs), the token audience must match,
+ * and Google must report the email as verified.
+ */
 async function verifyGoogleIdToken(idToken: string, env: Env): Promise<{ email: string; name?: string }> {
+  const allowedAudiences = envList(env.GOOGLE_CLIENT_ID);
+  if (allowedAudiences.length === 0) throw new Error('Google sign-in is not enabled');
+
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   if (!res.ok) throw new Error('Invalid Google token');
-  const data = (await res.json()) as { email?: string; name?: string; aud?: string };
-  if (!data.email) throw new Error('Google account has no email');
-  if (env.GOOGLE_CLIENT_ID && data.aud && data.aud !== env.GOOGLE_CLIENT_ID) {
+  const data = (await res.json()) as {
+    email?: string;
+    name?: string;
+    aud?: string;
+    iss?: string;
+    email_verified?: string | boolean;
+  };
+  if (!data.aud || !allowedAudiences.includes(data.aud)) {
     throw new Error('Google token audience mismatch');
+  }
+  if (data.iss !== 'accounts.google.com' && data.iss !== 'https://accounts.google.com') {
+    throw new Error('Google token issuer mismatch');
+  }
+  if (!data.email) throw new Error('Google account has no email');
+  if (data.email_verified !== true && data.email_verified !== 'true') {
+    throw new Error('Google email is not verified');
   }
   return { email: data.email.toLowerCase(), name: data.name };
 }
 
+/**
+ * Verify a Facebook user access token. Fails closed: FACEBOOK_APP_ID and
+ * FACEBOOK_APP_SECRET must be set, and debug_token (called with the app token)
+ * must confirm the token is valid and was issued for this app.
+ */
 async function verifyFacebookAccessToken(
   accessToken: string,
   env: Env
 ): Promise<{ email: string; name?: string }> {
+  const appId = env.FACEBOOK_APP_ID?.trim();
+  const appSecret = env.FACEBOOK_APP_SECRET?.trim();
+  if (!appId || !appSecret) throw new Error('Facebook sign-in is not enabled');
+
+  const appToken = `${appId}|${appSecret}`;
+  const dbg = await fetch(
+    `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`
+  );
+  if (!dbg.ok) throw new Error('Invalid Facebook token');
+  const info = (await dbg.json()) as { data?: { app_id?: string; is_valid?: boolean; user_id?: string } };
+  if (!info.data?.is_valid) throw new Error('Facebook token invalid');
+  if (info.data.app_id !== appId) throw new Error('Facebook token audience mismatch');
+
   const res = await fetch(
-    `https://graph.facebook.com/me?fields=email,name&access_token=${encodeURIComponent(accessToken)}`
+    `https://graph.facebook.com/me?fields=id,email,name&access_token=${encodeURIComponent(accessToken)}`
   );
   if (!res.ok) throw new Error('Invalid Facebook token');
   const data = (await res.json()) as { email?: string; name?: string; error?: { message: string }; id?: string };
   if (data.error) throw new Error(data.error.message);
-  if (!data.email) throw new Error('Facebook account must share email to use Growl');
-
-  if (env.FACEBOOK_APP_ID) {
-    const dbg = await fetch(
-      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`
-    );
-    if (dbg.ok) {
-      const info = (await dbg.json()) as { data?: { app_id?: string; is_valid?: boolean } };
-      if (info.data?.app_id && info.data.app_id !== env.FACEBOOK_APP_ID) {
-        throw new Error('Facebook token audience mismatch');
-      }
-      if (info.data && info.data.is_valid === false) {
-        throw new Error('Facebook token invalid');
-      }
-    }
+  if (info.data.user_id && data.id && info.data.user_id !== data.id) {
+    throw new Error('Facebook token user mismatch');
   }
+  if (!data.email) throw new Error('Facebook account must share email to use Growl');
 
   return { email: data.email.toLowerCase(), name: data.name };
 }
@@ -407,10 +656,26 @@ export async function signInWithSSO(request: Request, env: Env): Promise<Respons
 
     return sessionResponse(user, env);
   } catch (err: unknown) {
+    // Log the detail; only our own user-facing messages reach the client (never
+    // provider/DB internals).
     console.error('[signInWithSSO] Error:', err);
-    const msg = err instanceof Error ? err.message : 'SSO sign in failed';
-    return error('SSO_ERROR', msg, 401);
+    return error('SSO_ERROR', publicSsoErrorMessage(err), 401);
   }
+}
+
+/** Messages thrown by our SSO verifiers that are safe and useful to show users. */
+const SSO_PUBLIC_MESSAGES = new Set([
+  'Google sign-in is not enabled',
+  'Facebook sign-in is not enabled',
+  'Apple sign-in is not enabled',
+  'Google account has no email',
+  'Google email is not verified',
+  'Facebook account must share email to use Growl',
+]);
+
+export function publicSsoErrorMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  return SSO_PUBLIC_MESSAGES.has(msg) ? msg : 'Sign-in failed. Please try again.';
 }
 
 type UserRow = Parameters<typeof userAuthPayload>[0] & { email_verified?: number };
@@ -437,6 +702,12 @@ export async function refresh(request: Request, env: Env): Promise<Response> {
 
   if (!user) {
     return error('INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired', 401);
+  }
+
+  const blocked = await restrictionError(env, user.id);
+  if (blocked) {
+    await revokeAllUserRefreshTokens(env, user.id);
+    return blocked;
   }
 
   const base = userAuthPayload(user);
@@ -482,7 +753,7 @@ export async function forgotPassword(request: Request, env: Env): Promise<Respon
 
   await env.DB.prepare(
     `UPDATE users SET password_reset_token_hash = ?, password_reset_expires_at = ?,
-     updated_at = datetime('now') WHERE id = ?`
+     password_reset_attempts = 0, updated_at = datetime('now') WHERE id = ?`
   )
     .bind(tokenHash, expiresAt, user.id)
     .run();
@@ -523,13 +794,19 @@ export async function resetPassword(request: Request, env: Env): Promise<Respons
   const tokenHash = await hashVerificationToken(code.trim().replace(/\s/g, ''));
 
   const user = await env.DB.prepare(
-    `SELECT id, password_reset_expires_at FROM users
-     WHERE email = ? AND password_reset_token_hash = ?`
+    `SELECT id, password_reset_token_hash, password_reset_expires_at FROM users WHERE email = ?`
   )
-    .bind(normalizedEmail, tokenHash)
-    .first<{ id: string; password_reset_expires_at: string }>();
+    .bind(normalizedEmail)
+    .first<{ id: string; password_reset_token_hash: string | null; password_reset_expires_at: string }>();
 
-  if (!user) {
+  if (!user || !user.password_reset_token_hash) {
+    return error('INVALID_CODE', 'Invalid or expired reset code', 400);
+  }
+
+  if (!(await reserveCodeAttempt(env, user.id, 'password_reset_attempts'))) {
+    return tooManyCodeAttempts('Request a new reset code.');
+  }
+  if (user.password_reset_token_hash !== tokenHash) {
     return error('INVALID_CODE', 'Invalid or expired reset code', 400);
   }
 
@@ -547,7 +824,8 @@ export async function resetPassword(request: Request, env: Env): Promise<Respons
 
   await env.DB.prepare(
     `UPDATE users SET password_hash = ?, password_reset_token_hash = NULL,
-     password_reset_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
+     password_reset_expires_at = NULL, password_reset_attempts = 0,
+     updated_at = datetime('now') WHERE id = ?`
   )
     .bind(passwordHashToStore, user.id)
     .run();

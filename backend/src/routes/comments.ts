@@ -4,49 +4,26 @@ import { getRequestContext } from '../utils/auth';
 import { validateRequest } from '../utils/validation';
 import { generateId } from '../utils/id';
 import { z } from 'zod';
+import { isBlocked } from './friends';
+import { createUserNotification, resolveUsername } from '../utils/notifications';
+import { recordCommentMentions } from '../utils/mentions';
+
+/** Page size for GET comments; a full page means older comments may exist (`before` cursor). */
+export const COMMENT_PAGE_SIZE = 50;
+
+/** Repeat comments from the same person on the same post within this window collapse into one notification. */
+const COMMENT_NOTIFY_COALESCE_MINUTES = 10;
 
 const createCommentSchema = z.object({
   content: z.string().min(1, 'Comment content is required').max(1000, 'Comment too long'),
+  /** Optional: reply to a top-level comment on the same post (one level only). */
+  parent_id: z.string().min(1).max(128).optional().nullable(),
 });
 
-function parseMockPostId(postId: string): { userIdx: number; postIdx: number } | null {
-  const modern = postId.match(/^mock-explore-post-(\d+)-(\d+)$/);
-  if (modern) return { userIdx: Number(modern[1]), postIdx: Number(modern[2]) };
-  const legacy = postId.match(/^mock-explore-post-(\d+)$/);
-  if (legacy) return { userIdx: Number(legacy[1]), postIdx: 1 };
-  return null;
-}
-
-function computeMockCommentCount(userIdx: number, postIdx: number): number {
-  return 8 + ((userIdx * 7 + postIdx * 5) % 40);
-}
-
-function buildMockComments(postId: string) {
-  const parsed = parseMockPostId(postId);
-  if (!parsed) return [];
-  const { userIdx, postIdx } = parsed;
-  const legacyCountMap: Record<string, number> = {
-    'mock-explore-post-1': 29,
-    'mock-explore-post-2': 18,
-    'mock-explore-post-3': 12,
-  };
-  const count = legacyCountMap[postId] ?? computeMockCommentCount(userIdx, postIdx);
-  return Array.from({ length: count }).map((_, i) => {
-    const person = (userIdx * 17 + postIdx * 11 + i) % 500;
-    return {
-      id: `mock-comment-${userIdx}-${postIdx}-${i + 1}`,
-      post_id: postId,
-      user_id: `mock-user-${String(person + 1).padStart(3, '0')}`,
-      content: `Comment ${i + 1}: solid progress update, keep it up.`,
-      created_at: new Date(Date.now() - (i + 1) * 300000).toISOString(),
-      user: {
-        id: `mock-user-${String(person + 1).padStart(3, '0')}`,
-        username: `User ${String(person + 1).padStart(3, '0')}`,
-        avatar: `https://i.pravatar.cc/200?img=${((person + 1) % 70) + 1}`,
-        is_instructor: person % 7 === 0,
-      },
-    };
-  });
+/** True when migration 0043 (post_engagement.parent_id) hasn't been applied yet. */
+function isMissingParentColumn(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /no such column:?\s*(pe\.)?parent_id|has no column named parent_id/i.test(msg);
 }
 
 /**
@@ -58,12 +35,34 @@ export async function getComments(
   env: Env,
   postId: string
 ): Promise<Response> {
-  const mockComments = buildMockComments(postId);
-  if (mockComments.length > 0) {
-    return json(mockComments);
-  }
+  // Optional auth: signed-in viewers get block filtering; guests see the public thread.
+  const ctx = await getRequestContext(request, env);
+  const viewerId = ctx.isAuthenticated && ctx.userId ? ctx.userId : '';
+
+  const params = new URL(request.url).searchParams;
+  const rawLimit = parseInt(params.get('limit') || String(COMMENT_PAGE_SIZE), 10);
+  const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : COMMENT_PAGE_SIZE, 100));
+  const before = (params.get('before') || '').trim() || null;
+  const beforeId = (params.get('before_id') || '').trim() || null;
 
   try {
+    const cursorSql = before
+      ? beforeId
+        ? 'AND (pe.created_at < ? OR (pe.created_at = ? AND pe.id < ?))'
+        : 'AND pe.created_at < ?'
+      : '';
+    const cursorArgs = before ? (beforeId ? [before, before, beforeId] : [before]) : [];
+    const blockSql = viewerId
+      ? `AND NOT EXISTS (
+           SELECT 1 FROM user_relationships r
+           WHERE r.type = 'block'
+             AND ((r.user_id = ? AND r.target_user_id = pe.user_id)
+               OR (r.user_id = pe.user_id AND r.target_user_id = ?))
+         )`
+      : '';
+    const blockArgs = viewerId ? [viewerId, viewerId] : [];
+
+    // Newest page (DESC) flipped to chronological order; `before` pages back in time.
     const comments = await env.DB.prepare(
       `SELECT 
         pe.*,
@@ -71,10 +70,15 @@ export async function getComments(
         u.is_instructor
       FROM post_engagement pe
       JOIN users u ON pe.user_id = u.id
+      JOIN posts p ON p.id = pe.post_id
       WHERE pe.post_id = ? AND pe.type = 'comment'
-      ORDER BY pe.created_at ASC`
+        AND COALESCE(p.is_hidden, 0) = 0
+        ${blockSql}
+        ${cursorSql}
+      ORDER BY pe.created_at DESC, pe.id DESC
+      LIMIT ?`
     )
-      .bind(postId)
+      .bind(postId, ...blockArgs, ...cursorArgs, limit)
       .all<{
         id: string;
         post_id: string;
@@ -84,16 +88,24 @@ export async function getComments(
         created_at: string;
         user_metadata: string;
         is_instructor: boolean;
+        parent_id?: string | null;
       }>();
+    const rows = (comments.results || []).slice().reverse();
 
-    const formattedComments = comments.results.map((comment) => {
-      const userMeta = JSON.parse(comment.user_metadata || '{}');
+    const formattedComments = rows.map((comment) => {
+      let userMeta: { username?: string; avatar?: string } = {};
+      try {
+        userMeta = JSON.parse(comment.user_metadata || '{}');
+      } catch {
+        userMeta = {};
+      }
       return {
         id: comment.id,
         post_id: comment.post_id,
         user_id: comment.user_id,
         content: comment.content,
         created_at: comment.created_at,
+        parent_id: comment.parent_id ?? null,
         user: {
           id: comment.user_id,
           username: userMeta.username,
@@ -124,61 +136,123 @@ export async function createComment(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Verify post exists
-  const post = await env.DB.prepare('SELECT id FROM posts WHERE id = ?')
+  // Verify post exists and is not soft-hidden
+  const post = await env.DB.prepare(
+    'SELECT id, user_id FROM posts WHERE id = ? AND COALESCE(is_hidden, 0) = 0'
+  )
     .bind(postId)
-    .first();
+    .first<{ id: string; user_id: string }>();
 
   if (!post) {
     return error('POST_NOT_FOUND', 'Post not found', 404);
+  }
+
+  if (post.user_id !== ctx.userId && (await isBlocked(env, ctx.userId, post.user_id))) {
+    return error('FORBIDDEN', 'You cannot comment on this post', 403);
   }
 
   const validation = await validateRequest(request, createCommentSchema);
   if (!validation.success) return validation.response;
 
   const { content } = validation.data;
+  const requestedParent = (validation.data.parent_id || '').trim() || null;
 
-  if (parseMockPostId(postId)) {
-    const user = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
-      .bind(ctx.userId)
-      .first<{ metadata: string; is_instructor: boolean }>();
-    const userMeta = JSON.parse(user?.metadata || '{}');
-    return json(
-      {
-        id: generateId('comment'),
-        post_id: postId,
-        user_id: ctx.userId,
-        content,
-        created_at: new Date().toISOString(),
-        user: {
-          id: ctx.userId,
-          username: userMeta.username,
-          avatar: userMeta.avatar,
-          is_instructor: user?.is_instructor || false,
-        },
-      },
-      201
-    );
+  // Replies are one level deep: replying to a reply attaches to its top-level comment.
+  let parent: { id: string; user_id: string } | null = null;
+  if (requestedParent) {
+    try {
+      const row = await env.DB.prepare(
+        `SELECT id, user_id, parent_id FROM post_engagement
+         WHERE id = ? AND post_id = ? AND type = 'comment'`
+      )
+        .bind(requestedParent, postId)
+        .first<{ id: string; user_id: string; parent_id: string | null }>();
+      if (!row) return error('COMMENT_NOT_FOUND', 'The comment you replied to was deleted', 404);
+      // Thread under the top-level comment; notify the person actually replied to.
+      parent = { id: row.parent_id || row.id, user_id: row.user_id };
+    } catch (err) {
+      // Server without migration 0043: post as a plain comment rather than failing.
+      if (!isMissingParentColumn(err)) throw err;
+      parent = null;
+    }
   }
 
   try {
     const commentId = generateId('comment');
-    await env.DB.prepare(
-      `INSERT INTO post_engagement (id, post_id, user_id, type, content, created_at)
-       VALUES (?, ?, ?, 'comment', ?, datetime('now'))`
-    )
-      .bind(commentId, postId, ctx.userId, content)
-      .run();
+    let storedParentId: string | null = null;
+    if (parent) {
+      try {
+        await env.DB.prepare(
+          `INSERT INTO post_engagement (id, post_id, user_id, type, content, created_at, parent_id)
+           VALUES (?, ?, ?, 'comment', ?, datetime('now'), ?)`
+        )
+          .bind(commentId, postId, ctx.userId, content, parent.id)
+          .run();
+        storedParentId = parent.id;
+      } catch (err) {
+        if (!isMissingParentColumn(err)) throw err;
+        parent = null;
+      }
+    }
+    if (!storedParentId) {
+      await env.DB.prepare(
+        `INSERT INTO post_engagement (id, post_id, user_id, type, content, created_at)
+         VALUES (?, ?, ?, 'comment', ?, datetime('now'))`
+      )
+        .bind(commentId, postId, ctx.userId, content)
+        .run();
+    }
 
     // Update engagement score
     await updateEngagementScore(env, postId);
+    await recordCommentMentions(env, commentId, postId, ctx.userId, content, post.user_id);
 
     // Get user metadata for response
     const user = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
       .bind(ctx.userId)
       .first<{ metadata: string; is_instructor: boolean }>();
 
-    const userMeta = JSON.parse(user?.metadata || '{}');
+    let userMeta: { username?: string; avatar?: string } = {};
+    try {
+      userMeta = JSON.parse(user?.metadata || '{}');
+    } catch {
+      userMeta = {};
+    }
+
+    const commenterName = userMeta.username?.trim() || (await resolveUsername(env, ctx.userId));
+    const snippet = content.length > 140 ? `${content.slice(0, 137)}...` : content;
+    if (
+      parent &&
+      parent.user_id !== ctx.userId &&
+      parent.user_id !== post.user_id &&
+      !(await isBlocked(env, ctx.userId, parent.user_id))
+    ) {
+      await createUserNotification(env, {
+        userId: parent.user_id,
+        actorId: ctx.userId,
+        type: 'comment_reply',
+        title: `${commenterName} replied to your comment`,
+        body: snippet,
+        refType: 'post',
+        refId: postId,
+        coalesceWithinMinutes: COMMENT_NOTIFY_COALESCE_MINUTES,
+      });
+    }
+    if (post.user_id !== ctx.userId) {
+      await createUserNotification(env, {
+        userId: post.user_id,
+        actorId: ctx.userId,
+        type: 'post_comment',
+        title:
+          parent && parent.user_id === post.user_id
+            ? `${commenterName} replied to your comment`
+            : `${commenterName} commented on your post`,
+        body: snippet,
+        refType: 'post',
+        refId: postId,
+        coalesceWithinMinutes: COMMENT_NOTIFY_COALESCE_MINUTES,
+      });
+    }
 
     return json(
       {
@@ -187,6 +261,7 @@ export async function createComment(
         user_id: ctx.userId,
         content,
         created_at: new Date().toISOString(),
+        parent_id: storedParentId,
         user: {
           id: ctx.userId,
           username: userMeta.username,
@@ -217,19 +292,22 @@ export async function deleteComment(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Check if comment exists and belongs to user
+  // Comment author or the author of the post it sits on may delete it.
   const comment = await env.DB.prepare(
-    'SELECT user_id FROM post_engagement WHERE id = ? AND post_id = ? AND type = ?'
+    `SELECT pe.user_id, p.user_id AS post_user_id
+     FROM post_engagement pe
+     LEFT JOIN posts p ON p.id = pe.post_id
+     WHERE pe.id = ? AND pe.post_id = ? AND pe.type = ?`
   )
     .bind(commentId, postId, 'comment')
-    .first<{ user_id: string }>();
+    .first<{ user_id: string; post_user_id: string | null }>();
 
   if (!comment) {
     return error('COMMENT_NOT_FOUND', 'Comment not found', 404);
   }
 
-  if (comment.user_id !== ctx.userId) {
-    return error('FORBIDDEN', 'You can only delete your own comments', 403);
+  if (comment.user_id !== ctx.userId && comment.post_user_id !== ctx.userId) {
+    return error('FORBIDDEN', 'You can only delete your own comments or comments on your post', 403);
   }
 
   try {
@@ -238,6 +316,16 @@ export async function deleteComment(
     )
       .bind(commentId, postId, 'comment')
       .run();
+    // Replies go with their thread (no orphaned "replying to" rows).
+    try {
+      await env.DB.prepare(
+        `DELETE FROM post_engagement WHERE parent_id = ? AND post_id = ? AND type = 'comment'`
+      )
+        .bind(commentId, postId)
+        .run();
+    } catch (err) {
+      if (!isMissingParentColumn(err)) throw err;
+    }
 
     // Update engagement score
     await updateEngagementScore(env, postId);

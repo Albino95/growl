@@ -47,9 +47,8 @@ const CATEGORIES: Category[] = [
   {
     key: 'mindset',
     label: 'Mindset',
-    icon: 'leaf-outline',
+    icon: 'bulb-outline',
     subcategories: [
-      { key: 'meditation', label: 'Meditation' },
       { key: 'positive-thinking', label: 'Positive Thinking' },
       { key: 'stress-management', label: 'Stress Management' },
       { key: 'self-confidence', label: 'Self Confidence' },

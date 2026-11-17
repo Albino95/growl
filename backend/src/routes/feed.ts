@@ -1,22 +1,15 @@
 import { Env, RequestContext, Post } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
-import { validateRequest, createPostSchema } from '../utils/validation';
+import { validateRequest, createPostSchema, isPublishableMediaUrl, sanitizeCoverUrl } from '../utils/validation';
 import { generateId } from '../utils/id';
-import { categoryRelevanceScore } from '../utils/categories';
+import { alignPostTaxonomy, categoryRelevanceScore } from '../utils/categories';
 import { getFriendUserIds } from './friends';
 import { POINTS, awardPoints } from '../utils/points';
-
-const MOCK_USER_COUNT = 60;
-const MOCK_POSTS_PER_USER = 10;
-const MOCK_CATEGORIES = [
-  ['fitness', 'building-muscle'],
-  ['fitness', 'cardio'],
-  ['nutrition', 'meal-planning'],
-  ['mindset', 'meditation'],
-  ['skills', 'learning-systems'],
-  ['productivity', 'deep-work'],
-] as const;
+import { createUserNotification, resolveUsername } from '../utils/notifications';
+import { recordActivity } from '../utils/activity';
+import { awardBadgeSafe } from '../utils/badges';
+import { recordPostMentions } from '../utils/mentions';
 
 type FeedLiker = {
   id: string;
@@ -25,298 +18,406 @@ type FeedLiker = {
   isFriend: boolean;
 };
 
-function parseMockPostId(postId: string): { userIdx: number; postIdx: number } | null {
-  const modern = postId.match(/^mock-explore-post-(\d+)-(\d+)$/);
-  if (modern) {
-    return { userIdx: Number(modern[1]), postIdx: Number(modern[2]) };
-  }
-  const legacy = postId.match(/^mock-explore-post-(\d+)$/);
-  if (legacy) {
-    return { userIdx: Number(legacy[1]), postIdx: 1 };
+/** Page size when the client asks for paging (cursor and/or limit). */
+export const FEED_PAGE_DEFAULT = 20;
+export const FEED_PAGE_MAX = 50;
+/** Legacy single-shot sizes (no cursor, no limit) — what old app builds have always received. */
+const LEGACY_HOME_LIMIT = 50;
+const LEGACY_EXPLORE_LIMIT = 80;
+/**
+ * Candidate window ranked per request. The ranking is score-based (paths, friends,
+ * recency, engagement), so it is computed in JS over this window and then sliced
+ * with a keyset over (section, score, id).
+ */
+const HOME_CANDIDATE_CAP = 400;
+const EXPLORE_CANDIDATE_CAP = 500;
+
+type FeedModeKey = 'foryou' | 'explore' | 'home';
+
+/**
+ * Opaque cursor. `t` freezes the snapshot time so recency scores and the candidate
+ * window (no posts newer than `t`) are identical on every page; `r/s/i` is the
+ * keyset position of the last item sent (section rank asc, score desc, id asc).
+ */
+type FeedCursor = { v: 1; m: FeedModeKey; t: number; r: number; s: number; i: string };
+
+function toBase64Url(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(s: string): string {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export function encodeFeedCursor(c: FeedCursor): string {
+  return toBase64Url(JSON.stringify(c));
+}
+
+export function decodeFeedCursor(raw: string): FeedCursor | null {
+  if (!raw || raw.length > 512) return null;
+  try {
+    const c = JSON.parse(fromBase64Url(raw)) as Partial<FeedCursor>;
+    if (
+      c &&
+      c.v === 1 &&
+      (c.m === 'foryou' || c.m === 'explore' || c.m === 'home') &&
+      typeof c.t === 'number' &&
+      Number.isFinite(c.t) &&
+      typeof c.r === 'number' &&
+      typeof c.s === 'number' &&
+      Number.isFinite(c.s) &&
+      typeof c.i === 'string' &&
+      c.i.length > 0 &&
+      c.i.length <= 128
+    ) {
+      return c as FeedCursor;
+    }
+  } catch {
+    // fall through
   }
   return null;
 }
 
-function makeMockUser(userIdx: number) {
-  return {
-    id: `mock-user-${String(userIdx).padStart(2, '0')}`,
-    username: `Creator ${String(userIdx).padStart(2, '0')}`,
-    avatar: `https://i.pravatar.cc/200?img=${(userIdx % 70) + 1}`,
-  };
+/** SQLite datetime text for a JS epoch ms (UTC, second precision). */
+function sqliteDateTime(ms: number): string {
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 }
 
-function computeMockEngagement(userIdx: number, postIdx: number) {
-  return {
-    likes: 70 + ((userIdx * 11 + postIdx * 17) % 180),
-    comments: 8 + ((userIdx * 7 + postIdx * 5) % 40),
-  };
+type RankedCandidate = {
+  id: string;
+  user_id: string;
+  category: string;
+  subcategory: string | null;
+  relevanceScore: number;
+  isOwn: boolean;
+  isFriend: boolean;
+  /** 0 = following section (own + friends), 1 = suggested. Always 0 outside foryou. */
+  sectionRank: number;
+};
+
+/** Keyset order: section asc, score desc, id asc (fully deterministic). */
+function compareRanked(a: RankedCandidate, b: RankedCandidate): number {
+  if (a.sectionRank !== b.sectionRank) return a.sectionRank - b.sectionRank;
+  if (a.relevanceScore !== b.relevanceScore) return b.relevanceScore - a.relevanceScore;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-function buildMockLikers(userIdx: number, postIdx: number, count: number): FeedLiker[] {
-  const likers: FeedLiker[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const base = (userIdx * 13 + postIdx * 19 + i) % 500;
-    const likerIdx = base + 1;
-    likers.push({
-      id: `mock-liker-${String(likerIdx).padStart(3, '0')}`,
-      username: `User ${String(likerIdx).padStart(3, '0')}`,
-      avatar: `https://i.pravatar.cc/200?img=${(likerIdx % 70) + 1}`,
-      isFriend: i % 4 === 0,
-    });
-  }
-  return likers;
-}
-
-/** Development-only fallback payload used for explore mode demos. */
-function buildMockExplorePosts() {
-  const now = Date.now();
-  const items: Array<Record<string, unknown>> = [];
-  for (let userIdx = 1; userIdx <= MOCK_USER_COUNT; userIdx += 1) {
-    const user = makeMockUser(userIdx);
-    for (let postIdx = 1; postIdx <= MOCK_POSTS_PER_USER; postIdx += 1) {
-      const [category, subcategory] = MOCK_CATEGORIES[(userIdx + postIdx) % MOCK_CATEGORIES.length];
-      const { likes, comments } = computeMockEngagement(userIdx, postIdx);
-      const likers = buildMockLikers(userIdx, postIdx, likes);
-      const friendLikers = likers.filter((x) => x.isFriend).slice(0, 8).map((x) => x.username);
-      const createdAt = new Date(now - (userIdx * 6 + postIdx * 37) * 60000).toISOString();
-      items.push({
-        id: `mock-explore-post-${userIdx}-${postIdx}`,
-        user_id: user.id,
-        image_url: `https://picsum.photos/seed/mock-post-${userIdx}-${postIdx}/1200/1200`,
-        caption: `${user.username}: progress update #${postIdx} in ${category}.`,
-        category,
-        subcategory,
-        engagement_score: 60 + ((userIdx * 5 + postIdx * 3) % 40),
-        created_at: createdAt,
-        updated_at: createdAt,
-        metadata: {
-          likes,
-          comments,
-          has_liked: false,
-          friend_likes_count: friendLikers.length,
-          friend_likers: friendLikers,
-          is_friend: false,
-          isInstructor: userIdx % 5 === 0,
-          username: user.username,
-          avatar: user.avatar,
-        },
-      });
-    }
-  }
-  return items;
+function isAfterCursor(p: RankedCandidate, c: FeedCursor): boolean {
+  if (p.sectionRank !== c.r) return p.sectionRank > c.r;
+  if (p.relevanceScore !== c.s) return p.relevanceScore < c.s;
+  return p.id > c.i;
 }
 
 /**
- * GET /api/v1/feed/feed
- * Get personalized feed for user
+ * GET /api/v1/feed/feed?mode=foryou|home|explore&cursor=&limit=
+ *
+ * Without `cursor` and `limit` it returns the legacy first page (50 home / 80
+ * explore). With either, pages are `limit` (default 20, max 50). The next page
+ * token is in `meta.next_cursor` for every mode and also `data.next_cursor` in
+ * foryou mode (object payload); null when there is nothing more.
  */
 export async function getFeed(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const feedMode = url.searchParams.get('mode') || 'home';
   const isExploreMode = feedMode === 'explore';
   const isForYouMode = feedMode === 'foryou' || feedMode === 'home';
-  const allowDevMock = env.ENVIRONMENT === 'development' && url.searchParams.get('mock') === '1';
+  const modeKey: FeedModeKey = isExploreMode ? 'explore' : isForYouMode ? 'foryou' : 'home';
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Get user metadata
-  const user = await env.DB.prepare(
-    'SELECT metadata FROM users WHERE id = ?'
-  )
-    .bind(ctx.userId)
-    .first<{ metadata: string }>();
-
+  // Viewer metadata comes from the users row getRequestContext already loaded.
+  const user = ctx.user;
   if (!user) {
     return error('USER_NOT_FOUND', 'User not found', 404);
   }
 
-  const metadata = JSON.parse(user.metadata || '{}');
-  const categories = metadata.categories || [];
-  const blockedUsersFromMeta = Array.isArray(metadata.blockedUsers) ? metadata.blockedUsers : [];
-  const mutedUsersFromMeta = Array.isArray(metadata.mutedUsers) ? metadata.mutedUsers : [];
-  const moderationRows = await env.DB.prepare(
-    `SELECT target_user_id, type
-     FROM user_relationships
-     WHERE user_id = ? AND type IN ('block', 'mute')`
-  )
-    .bind(ctx.userId)
-    .all<{ target_user_id: string; type: string }>();
-  const blockedUsers = new Set<string>(blockedUsersFromMeta);
-  const mutedUsers = new Set<string>(mutedUsersFromMeta);
-  for (const row of moderationRows.results || []) {
-    if (row.type === 'block') blockedUsers.add(row.target_user_id);
-    if (row.type === 'mute') mutedUsers.add(row.target_user_id);
+  const cursorParam = url.searchParams.get('cursor');
+  const limitParam = url.searchParams.get('limit');
+  let cursor: FeedCursor | null = null;
+  if (cursorParam) {
+    cursor = decodeFeedCursor(cursorParam);
+    if (!cursor || cursor.m !== modeKey) {
+      return error('INVALID_CURSOR', 'This feed page has expired. Pull to refresh.', 400);
+    }
   }
+  const paged = cursorParam !== null || limitParam !== null;
+  let pageSize: number;
+  if (paged) {
+    const n = limitParam === null ? FEED_PAGE_DEFAULT : Number.parseInt(limitParam, 10);
+    pageSize = Number.isFinite(n) ? Math.min(FEED_PAGE_MAX, Math.max(1, n)) : FEED_PAGE_DEFAULT;
+  } else {
+    pageSize = isExploreMode ? LEGACY_EXPLORE_LIMIT : LEGACY_HOME_LIMIT;
+  }
+  // Snapshot time: frozen by the cursor so scores and the window match page 1.
+  const nowMs = Date.now();
+  const asOfMs = cursor ? Math.min(cursor.t, nowMs) : nowMs;
+  const asOf = sqliteDateTime(asOfMs);
 
-  // Pull a recent post window and hydrate engagement counters in one query.
-  let query = `
-    SELECT 
-      p.*,
-      u.metadata as user_metadata,
+  let metadata: Record<string, any> = {};
+  try {
+    metadata = JSON.parse(user.metadata || '{}');
+  } catch {
+    metadata = {};
+  }
+  const categories = metadata.categories || [];
+  // Legacy moderation lists stored on the user row. Relationship-table blocks/mutes
+  // are excluded with a subquery (any count); the legacy list is inlined but capped
+  // so the query stays well under D1's 100 bound-parameter limit.
+  const legacyExcludedAll = new Set<string>(
+    [
+      ...(Array.isArray(metadata.blockedUsers) ? metadata.blockedUsers : []),
+      ...(Array.isArray(metadata.mutedUsers) ? metadata.mutedUsers : []),
+    ].filter((x: unknown): x is string => typeof x === 'string' && x.length > 0)
+  );
+  // First 80 inline in SQL; any remainder is filtered after the fetch.
+  const legacyExcluded = [...legacyExcludedAll].slice(0, 80);
+
+  // Phase 1: light candidate rows (enough to score). Explore needs a wider window
+  // so discovery isn't empty after a quiet week; home uses 21 days so seeded /
+  // quieter accounts still see a populated feed.
+  const recencyWindow = isExploreMode ? '-45 days' : '-21 days';
+  const candidateCap = isExploreMode ? EXPLORE_CANDIDATE_CAP : HOME_CANDIDATE_CAP;
+  let candidateSql = `
+    SELECT
+      p.id, p.user_id, p.category, p.subcategory, p.created_at, p.image_url,
       u.is_instructor,
-      COUNT(DISTINCT pe1.id) as likes_count,
-      COUNT(DISTINCT pe2.id) as comments_count,
-      (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
-      (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
-        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
-        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count,
-      (SELECT GROUP_CONCAT(DISTINCT COALESCE(json_extract(ul.metadata, '$.username'), substr(ul.id, 1, 8)))
-        FROM post_engagement pef
-        INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
-        INNER JOIN users ul ON ul.id = pef.user_id
-        WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likers_csv
+      json_extract(u.metadata, '$.categories') as owner_categories,
+      (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+      (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
-    LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
-    LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
-    WHERE p.created_at > datetime('now', '-7 days')
-  `;
-
-  const bindings: any[] = [];
-
-  // Exclusion list merges metadata-based moderation with relationship-table moderation.
-  if (blockedUsers.size > 0 || mutedUsers.size > 0) {
-    const excludedUsers = [...new Set([...blockedUsers, ...mutedUsers])];
-    query += ` AND p.user_id NOT IN (${excludedUsers.map(() => '?').join(',')})`;
-    bindings.push(...excludedUsers);
+    WHERE p.created_at > datetime(?, '${recencyWindow}')
+      AND datetime(p.created_at) <= datetime(?)
+      AND COALESCE(p.is_hidden, 0) = 0
+      AND p.image_url IS NOT NULL
+      AND trim(p.image_url) != ''
+      AND p.image_url LIKE 'https://%'
+      AND p.user_id NOT IN (
+        SELECT target_user_id FROM user_relationships WHERE user_id = ? AND type IN ('mute', 'block')
+      )`;
+  const candidateBindings: unknown[] = [asOf, asOf, ctx.userId];
+  if (legacyExcluded.length > 0) {
+    candidateSql += ` AND p.user_id NOT IN (${legacyExcluded.map(() => '?').join(',')})`;
+    candidateBindings.push(...legacyExcluded);
   }
+  candidateSql += `
+    ORDER BY p.engagement_score DESC, p.created_at DESC, p.id ASC
+    LIMIT ${candidateCap}`;
 
-  query += `
-    GROUP BY p.id
-    ORDER BY p.engagement_score DESC, p.created_at DESC
-    LIMIT 40
-  `;
-
-  const posts = await env.DB.prepare(query)
-    .bind(ctx.userId, ctx.userId, ctx.userId, ...bindings)
-    .all<
-      Post & {
-        user_metadata: string;
-        is_instructor: boolean;
+  const [candidateRes, friendIds] = await Promise.all([
+    env.DB.prepare(candidateSql)
+      .bind(...candidateBindings)
+      .all<{
+        id: string;
+        user_id: string;
+        category: string;
+        subcategory: string | null;
+        created_at: string;
+        image_url: string | null;
+        is_instructor: number | boolean | null;
+        owner_categories: string | null;
         likes_count: number;
         comments_count: number;
-        viewer_has_liked: number;
-        friend_likes_count: number;
-        friend_likers_csv?: string | null;
-      }
-    >();
+      }>(),
+    getFriendUserIds(env, ctx.userId),
+  ]);
 
-  const friendIds = await getFriendUserIds(env, ctx.userId);
-
-  const scoredPosts = (posts.results || []).map((post) => {
-      const userMeta = JSON.parse(post.user_metadata || '{}');
-      let postMeta: Record<string, unknown> = {};
+  const scored: RankedCandidate[] = (candidateRes.results || [])
+    .filter((post) => {
+      if (legacyExcludedAll.has(post.user_id)) return false;
+      const u = typeof post.image_url === 'string' ? post.image_url.trim() : '';
+      return /^https:\/\//i.test(u);
+    })
+    .map((post) => {
+      let ownerPaths: string[] = [];
       try {
-        postMeta =
-          typeof post.metadata === 'string'
-            ? JSON.parse(post.metadata || '{}')
-            : (post.metadata as Record<string, unknown>) || {};
+        const parsed = post.owner_categories ? JSON.parse(post.owner_categories) : [];
+        ownerPaths = Array.isArray(parsed) ? parsed.map((x: unknown) => String(x)) : [];
       } catch {
-        postMeta = {};
+        ownerPaths = [];
       }
-      const catScore = categoryRelevanceScore(categories, post.category, post.subcategory);
-      const daysSincePost =
-        (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
+      const catScore = categoryRelevanceScore(categories, aligned.category, aligned.subcategory);
+      const daysSincePost = (asOfMs - new Date(post.created_at).getTime()) / (1000 * 60 * 60 * 24);
       const isOwn = post.user_id === ctx.userId;
       const isFriend = friendIds.has(post.user_id);
-      let relevanceScore = catScore + Math.max(0, 10 - daysSincePost);
-      if (isFriend) relevanceScore += 25;
+      const likes = Number(post.likes_count) || 0;
+      const comments = Number(post.comments_count) || 0;
+      const engagementBoost = Math.min(28, likes * 1.4 + comments * 2.2);
+      const instructorBoost = post.is_instructor ? 8 : 0;
+      // Explore favors category match + engagement; home favors friends + recency.
+      let relevanceScore = isExploreMode
+        ? catScore * 1.35 + Math.max(0, 18 - daysSincePost * 0.55) + engagementBoost + instructorBoost
+        : catScore + Math.max(0, 10 - daysSincePost) + engagementBoost * 0.45;
+      if (isFriend) relevanceScore += isExploreMode ? 6 : 25;
       if (isOwn) relevanceScore += 100;
-
+      if (!Number.isFinite(relevanceScore)) relevanceScore = 0;
       return {
-        ...post,
-        metadata: {
-          ...postMeta,
-          likes: post.likes_count || 0,
-          comments: post.comments_count || 0,
-          has_liked: Number(post.viewer_has_liked) > 0,
-          friend_likes_count: Number(post.friend_likes_count) || 0,
-          friend_likers:
-            typeof post.friend_likers_csv === 'string' && post.friend_likers_csv.length > 0
-              ? post.friend_likers_csv.split(',').map((x) => x.trim()).filter(Boolean)
-              : [],
-          is_friend: isFriend,
-          isInstructor: post.is_instructor,
-          username: userMeta.username,
-          avatar: userMeta.avatar,
-        },
+        id: post.id,
+        user_id: post.user_id,
+        category: aligned.category,
+        subcategory: aligned.subcategory,
         relevanceScore,
         isOwn,
         isFriend,
+        sectionRank: isForYouMode && !isExploreMode && !(isOwn || isFriend) ? 1 : 0,
       };
     });
 
-  const scopedPosts = scoredPosts.filter((post) => {
-      // Feed mode stays narrow: own posts + friend posts only.
-      if (!isExploreMode) {
-        if (post.isOwn) return true;
-        if (!categories.length) return false;
-        return post.isFriend;
-      }
-
-      // Explore mode stays discovery-focused: non-friends only.
-      if (post.isOwn) return false;
-      return !post.isFriend;
+  let ranked: RankedCandidate[];
+  if (isExploreMode) {
+    // Explore: discovery of non-friends only (friends belong on Home).
+    ranked = scored.filter((p) => !p.isOwn && !p.isFriend);
+  } else if (isForYouMode) {
+    // For You: following (own + friends) section first, then everyone else.
+    ranked = scored;
+  } else {
+    // Home (array): own + friends + non-friends whose post matches the viewer's paths.
+    // Category chips on the client narrow further; see docs/FEATURES.md "Cross-path posts".
+    ranked = scored.filter((post) => {
+      if (post.isOwn || post.isFriend) return true;
+      if (!categories.length) return false;
+      return categoryRelevanceScore(categories, post.category, post.subcategory) > 0;
     });
+    // Strict rules produced nothing: fall back to best available non-own posts so
+    // new users without connections don't get a successful-but-empty feed.
+    if (ranked.length === 0) ranked = scored.filter((p) => !p.isOwn);
+  }
+  ranked.sort(compareRanked);
 
-  // If strict home-feed rules produce no cards, fall back to best available non-muted posts.
-  // This prevents a successful-but-empty feed for new users without connections yet.
-  let personalizedPosts = scopedPosts;
-  if (!isExploreMode && personalizedPosts.length === 0) {
-    personalizedPosts = scoredPosts.filter((post) => !post.isOwn);
+  const remaining = cursor ? ranked.filter((p) => isAfterCursor(p, cursor!)) : ranked;
+  const page = remaining.slice(0, pageSize);
+  const last = page[page.length - 1];
+  const nextCursor =
+    remaining.length > pageSize && last
+      ? encodeFeedCursor({
+          v: 1,
+          m: modeKey,
+          t: asOfMs,
+          r: last.sectionRank,
+          s: last.relevanceScore,
+          i: last.id,
+        })
+      : null;
+
+  // Phase 2: hydrate only this page (≤ 80 ids + 3 viewer binds, under D1's 100).
+  type HydratedRow = Post & {
+    user_metadata: string;
+    is_instructor: boolean;
+    likes_count: number;
+    comments_count: number;
+    viewer_has_liked: number;
+    friend_likes_count: number;
+    friend_likers_csv?: string | null;
+  };
+  const hydrated = new Map<string, HydratedRow>();
+  for (let i = 0; i < page.length; i += 80) {
+    const ids = page.slice(i, i + 80).map((p) => p.id);
+    const rows = await env.DB.prepare(
+      `SELECT
+        p.*,
+        u.metadata as user_metadata,
+        u.is_instructor,
+        (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+        (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
+        (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
+        (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
+          INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+          WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count,
+        (SELECT GROUP_CONCAT(DISTINCT COALESCE(json_extract(ul.metadata, '$.username'), substr(ul.id, 1, 8)))
+          FROM post_engagement pef
+          INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
+          INNER JOIN users ul ON ul.id = pef.user_id
+          WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likers_csv
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.id IN (${ids.map(() => '?').join(',')})`
+    )
+      .bind(ctx.userId, ctx.userId, ctx.userId, ...ids)
+      .all<HydratedRow>();
+    for (const row of rows.results || []) hydrated.set(row.id, row);
   }
 
-  personalizedPosts.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
-  const formatPost = (post: (typeof scoredPosts)[number]) => {
-    const { relevanceScore, isOwn, isFriend, ...rest } = post;
+  const formatPost = (rankedPost: RankedCandidate) => {
+    const post = hydrated.get(rankedPost.id);
+    if (!post) return null;
+    let userMeta: Record<string, any> = {};
+    try {
+      userMeta = JSON.parse(post.user_metadata || '{}');
+    } catch {
+      userMeta = {};
+    }
+    let postMeta: Record<string, unknown> = {};
+    try {
+      postMeta =
+        typeof post.metadata === 'string'
+          ? JSON.parse(post.metadata || '{}')
+          : (post.metadata as Record<string, unknown>) || {};
+    } catch {
+      postMeta = {};
+    }
+    const { user_metadata, likes_count, comments_count, viewer_has_liked, friend_likes_count, friend_likers_csv, ...rest } =
+      post;
+    void user_metadata;
     return {
       ...rest,
-      relevance_score: relevanceScore ?? 0,
-      feed_section: isOwn || isFriend ? 'following' : 'suggested',
+      category: rankedPost.category,
+      subcategory: rankedPost.subcategory,
+      metadata: {
+        ...postMeta,
+        likes: likes_count || 0,
+        comments: comments_count || 0,
+        has_liked: Number(viewer_has_liked) > 0,
+        friend_likes_count: Number(friend_likes_count) || 0,
+        friend_likers:
+          typeof friend_likers_csv === 'string' && friend_likers_csv.length > 0
+            ? friend_likers_csv.split(',').map((x) => x.trim()).filter(Boolean)
+            : [],
+        is_friend: rankedPost.isFriend,
+        isInstructor: post.is_instructor,
+        username: userMeta.username,
+        avatar: userMeta.avatar,
+      },
+      // Legacy fields kept for old builds.
+      likes_count,
+      comments_count,
+      viewer_has_liked,
+      friend_likes_count,
+      friend_likers_csv,
+      relevance_score: rankedPost.relevanceScore ?? 0,
+      feed_section: rankedPost.isOwn || rankedPost.isFriend ? 'following' : 'suggested',
     };
   };
+  const formatted = page
+    .map((p) => ({ p, out: formatPost(p) }))
+    .filter((x): x is { p: RankedCandidate; out: NonNullable<ReturnType<typeof formatPost>> } => !!x.out);
+  const meta = { next_cursor: nextCursor };
 
   if (isForYouMode && !isExploreMode) {
-    let following = personalizedPosts.filter((p) => p.isOwn || p.isFriend);
-    let suggested = scoredPosts
-      .filter((p) => !p.isOwn && !p.isFriend)
-      .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
-    const MIN_SUGGESTED = 5;
-    if (categories.length > 0 && suggested.length < MIN_SUGGESTED) {
-      const seen = new Set(suggested.map((p) => p.id));
-      for (const post of scoredPosts.filter((p) => !p.isOwn && !p.isFriend)) {
-        if (seen.has(post.id)) continue;
-        suggested.push(post);
-        seen.add(post.id);
-        if (suggested.length >= MIN_SUGGESTED) break;
-      }
-    }
-
-    if (following.length === 0 && suggested.length === 0 && personalizedPosts.length > 0) {
-      suggested = personalizedPosts.filter((p) => !p.isOwn);
-    }
-
-    following = following.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    suggested = suggested.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
     return json(
       {
-        following: following.map(formatPost),
-        suggested: suggested.map(formatPost),
+        following: formatted.filter((x) => x.p.sectionRank === 0).map((x) => x.out),
+        suggested: formatted.filter((x) => x.p.sectionRank === 1).map((x) => x.out),
+        next_cursor: nextCursor,
       },
-      200
+      200,
+      meta
     );
   }
 
-  if (isExploreMode && allowDevMock && personalizedPosts.length === 0) {
-    return json(buildMockExplorePosts(), 200);
-  }
-
-  return json(personalizedPosts.map(formatPost), 200);
+  return json(
+    formatted.map((x) => x.out),
+    200,
+    meta
+  );
 }
 
 /**
@@ -325,20 +426,11 @@ export async function getFeed(request: Request, env: Env): Promise<Response> {
  */
 /** Creates a feed post after schema validation and inserts base engagement fields. */
 export async function createPost(request: Request, env: Env): Promise<Response> {
-  console.log('[createPost] ===== POST CREATION STARTED =====');
   const ctx = await getRequestContext(request, env);
-  console.log('[createPost] Context:', {
-    isAuthenticated: ctx.isAuthenticated,
-    userId: ctx.userId,
-    hasUser: !!ctx.user,
-  });
-  
   if (!ctx.isAuthenticated || !ctx.userId) {
     console.error('[createPost] ❌ Unauthenticated request');
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
-
-  console.log('[createPost] Creating post for user:', ctx.userId);
 
   const validation = await validateRequest(request, createPostSchema);
   if (!validation.success) {
@@ -347,12 +439,52 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
   }
 
   const { image_url, caption, category, subcategory, metadata } = validation.data;
-  console.log('[createPost] Validated data:', { category, subcategory, hasImage: !!image_url, hasCaption: !!caption });
+
+  // Fail closed: never insert a wall post without hosted media (no stock substitution).
+  if (!isPublishableMediaUrl(image_url)) {
+    return error(
+      'MEDIA_REQUIRED',
+      'Your photo was not saved. The post was not published — your draft is still on your device. Upload again and retry.',
+      400
+    );
+  }
 
   const postId = generateId('post');
-  console.log('[createPost] Generated post ID:', postId);
+
+  const userRow = await env.DB.prepare('SELECT metadata, is_instructor FROM users WHERE id = ?')
+    .bind(ctx.userId)
+    .first<{ metadata: string; is_instructor: number }>();
+  let userMeta: Record<string, unknown> = {};
+  try {
+    userMeta = JSON.parse(userRow?.metadata || '{}');
+  } catch {
+    userMeta = {};
+  }
+  const username =
+    typeof userMeta.username === 'string' && userMeta.username.trim()
+      ? userMeta.username.trim()
+      : undefined;
+  const avatar =
+    typeof userMeta.avatar === 'string' && userMeta.avatar.trim()
+      ? userMeta.avatar.trim()
+      : undefined;
 
   try {
+    const clientMeta: Record<string, unknown> =
+      metadata && typeof metadata === 'object' ? { ...metadata } : {};
+    // Reel poster: keep only our hosted media URLs (profile grid / feed poster).
+    if ('cover_url' in clientMeta) {
+      const cover = sanitizeCoverUrl(clientMeta.cover_url);
+      if (cover) clientMeta.cover_url = cover;
+      else delete clientMeta.cover_url;
+    }
+    const postMetadata = {
+      ...clientMeta,
+      ...(username ? { username } : {}),
+      ...(avatar ? { avatar } : {}),
+      isInstructor: !!userRow?.is_instructor,
+    };
+
     await env.DB.prepare(
       `INSERT INTO posts (id, user_id, image_url, caption, category, subcategory, engagement_score, metadata, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))`
@@ -360,17 +492,18 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
       .bind(
         postId,
         ctx.userId,
-        image_url || null,
+        image_url.trim(),
         caption || null,
         category,
         subcategory || null,
-        JSON.stringify(metadata || {})
+        JSON.stringify(postMetadata)
       )
       .run();
 
+    await recordPostMentions(env, postId, ctx.userId, caption);
     const pointsTotal = await awardPoints(env, ctx.userId, POINTS.CREATE_POST);
-
-    console.log('[createPost] Post created successfully:', postId, 'for user:', ctx.userId);
+    // Growth streak + badges (never fails the post).
+    const growth = await recordActivity(env, ctx.userId, 'post', { path: category });
 
     return json(
       {
@@ -383,7 +516,17 @@ export async function createPost(request: Request, env: Env): Promise<Response> 
         engagement_score: 0,
         points_awarded: POINTS.CREATE_POST,
         points_total: pointsTotal ?? undefined,
+        new_badges: growth.newBadges,
         created_at: new Date().toISOString(),
+        metadata: {
+          ...postMetadata,
+          likes: 0,
+          comments: 0,
+          has_liked: false,
+          username,
+          avatar,
+          isInstructor: !!userRow?.is_instructor,
+        },
       },
       201
     );
@@ -434,18 +577,19 @@ export async function getPost(
       p.*,
       u.metadata as user_metadata,
       u.is_instructor,
-      COUNT(DISTINCT pe1.id) as likes_count,
-      COUNT(DISTINCT pe2.id) as comments_count,
+      (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+      (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
       (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
       (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
         INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
         WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
-    LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
-    LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
     WHERE p.id = ?
-    GROUP BY p.id`
+      AND COALESCE(p.is_hidden, 0) = 0
+      AND p.image_url IS NOT NULL
+      AND trim(p.image_url) != ''
+      AND p.image_url LIKE 'https://%'`
   )
     .bind(viewerId, viewerId, postId)
     .first<
@@ -464,10 +608,26 @@ export async function getPost(
   }
 
   const userMeta = JSON.parse(post.user_metadata || '{}');
+  let postMeta: Record<string, unknown> = {};
+  try {
+    postMeta =
+      typeof post.metadata === 'string'
+        ? JSON.parse(post.metadata || '{}')
+        : (post.metadata as Record<string, unknown>) || {};
+  } catch {
+    postMeta = {};
+  }
+  const ownerPaths = Array.isArray(userMeta.categories)
+    ? userMeta.categories.map((x: unknown) => String(x))
+    : [];
+  const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
 
   return json({
     ...post,
+    category: aligned.category,
+    subcategory: aligned.subcategory,
     metadata: {
+      ...postMeta,
       likes: post.likes_count || 0,
       comments: post.comments_count || 0,
       has_liked: ctx.isAuthenticated && ctx.userId ? Number(post.viewer_has_liked) > 0 : false,
@@ -494,14 +654,23 @@ export async function toggleLike(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  // Check if already liked
-  const existing = await env.DB.prepare(
-    'SELECT id FROM post_engagement WHERE post_id = ? AND user_id = ? AND type = ?'
+  // Race-safe toggle: insert the like only if absent. The unique partial index
+  // uq_post_engagement_like (post_id, user_id WHERE type='like') turns a concurrent
+  // duplicate insert into a no-op. Nothing inserted → the like already existed → unlike.
+  const engagementId = generateId('engagement');
+  const inserted = await env.DB.prepare(
+    `INSERT INTO post_engagement (id, post_id, user_id, type, created_at)
+     SELECT ?, ?, ?, 'like', datetime('now')
+     WHERE NOT EXISTS (
+       SELECT 1 FROM post_engagement WHERE post_id = ? AND user_id = ? AND type = 'like'
+     )
+     ON CONFLICT DO NOTHING`
   )
-    .bind(postId, ctx.userId, 'like')
-    .first();
+    .bind(engagementId, postId, ctx.userId, postId, ctx.userId)
+    .run();
+  const insertedRows = Number((inserted as { meta?: { changes?: number } } | null)?.meta?.changes ?? 0);
 
-  if (existing) {
+  if (insertedRows === 0) {
     // Unlike
     await env.DB.prepare(
       'DELETE FROM post_engagement WHERE post_id = ? AND user_id = ? AND type = ?'
@@ -514,16 +683,26 @@ export async function toggleLike(
 
     return json({ liked: false });
   } else {
-    // Like
-    const engagementId = generateId('engagement');
-    await env.DB.prepare(
-      'INSERT INTO post_engagement (id, post_id, user_id, type, created_at) VALUES (?, ?, ?, ?, datetime("now"))'
-    )
-      .bind(engagementId, postId, ctx.userId, 'like')
-      .run();
-
     // Update engagement score
     await updateEngagementScore(env, postId);
+
+    const post = await env.DB.prepare('SELECT user_id FROM posts WHERE id = ?')
+      .bind(postId)
+      .first<{ user_id: string }>();
+    if (post?.user_id && post.user_id !== ctx.userId) {
+      const likerName = await resolveUsername(env, ctx.userId);
+      await createUserNotification(env, {
+        userId: post.user_id,
+        actorId: ctx.userId,
+        type: 'post_like',
+        title: `${likerName} liked your post`,
+        body: null,
+        refType: 'post',
+        refId: postId,
+        oncePerActorAndRef: true,
+      });
+      await awardBadgeSafe(env, post.user_id, 'first_encourage_received');
+    }
 
     return json({ liked: true });
   }
@@ -541,26 +720,6 @@ export async function getPostLikes(
   const ctx = await getRequestContext(request, env);
   if (!ctx.isAuthenticated || !ctx.userId) {
     return error('UNAUTHORIZED', 'Authentication required', 401);
-  }
-
-  const mockParsed = parseMockPostId(postId);
-  if (mockParsed) {
-    const { userIdx, postIdx } = mockParsed;
-    const legacyLikeMap: Record<string, number> = {
-      'mock-explore-post-1': 187,
-      'mock-explore-post-2': 133,
-      'mock-explore-post-3': 101,
-    };
-    const { likes: computedLikes } = computeMockEngagement(userIdx, postIdx);
-    const likes = legacyLikeMap[postId] ?? computedLikes;
-    const likers = buildMockLikers(userIdx, postIdx, likes);
-    const friendLikers = likers.filter((x) => x.isFriend);
-    return json({
-      likes: likers.length,
-      likers,
-      friendLikesCount: friendLikers.length,
-      friendLikers,
-    });
   }
 
   const friendIds = await getFriendUserIds(env, ctx.userId);
@@ -607,26 +766,25 @@ export async function getUserPosts(
     return error('UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  console.log('[getUserPosts] Request for userId:', userId, 'authenticated:', ctx.isAuthenticated, 'requestingUserId:', ctx.userId);
-  
   try {
     const posts = await env.DB.prepare(
       `SELECT 
         p.*,
         u.metadata as user_metadata,
         u.is_instructor,
-        COUNT(DISTINCT pe1.id) as likes_count,
-        COUNT(DISTINCT pe2.id) as comments_count,
+        (SELECT COUNT(*) FROM post_engagement pl WHERE pl.post_id = p.id AND pl.type = 'like') as likes_count,
+        (SELECT COUNT(*) FROM post_engagement pc WHERE pc.post_id = p.id AND pc.type = 'comment') as comments_count,
         (SELECT COUNT(*) FROM post_engagement pev WHERE pev.post_id = p.id AND pev.user_id = ? AND pev.type = 'like') as viewer_has_liked,
         (SELECT COUNT(DISTINCT pef.user_id) FROM post_engagement pef
           INNER JOIN user_relationships rf ON rf.user_id = ? AND rf.target_user_id = pef.user_id AND rf.type = 'friend'
           WHERE pef.post_id = p.id AND pef.type = 'like') as friend_likes_count
       FROM posts p
       JOIN users u ON p.user_id = u.id
-      LEFT JOIN post_engagement pe1 ON p.id = pe1.post_id AND pe1.type = 'like'
-      LEFT JOIN post_engagement pe2 ON p.id = pe2.post_id AND pe2.type = 'comment'
       WHERE p.user_id = ?
-      GROUP BY p.id
+        AND COALESCE(p.is_hidden, 0) = 0
+        AND p.image_url IS NOT NULL
+        AND trim(p.image_url) != ''
+        AND p.image_url LIKE 'https://%'
       ORDER BY p.created_at DESC
       LIMIT 100`
     )
@@ -642,13 +800,42 @@ export async function getUserPosts(
         }
       >();
 
-    console.log('[getUserPosts] Found posts:', posts.results?.length || 0);
+    let pinnedIds: string[] = [];
+    try {
+      const ownerRow = await env.DB.prepare('SELECT metadata FROM users WHERE id = ?')
+        .bind(userId)
+        .first<{ metadata: string }>();
+      const om = JSON.parse(ownerRow?.metadata || '{}');
+      pinnedIds = Array.isArray(om.pinned_post_ids)
+        ? om.pinned_post_ids.filter((x: unknown) => typeof x === 'string').slice(0, 3)
+        : [];
+    } catch {
+      pinnedIds = [];
+    }
+    const pinRank = new Map(pinnedIds.map((id, i) => [id, i]));
 
     const userPosts = posts.results.map((post) => {
       const userMeta = JSON.parse(post.user_metadata || '{}');
+      let postMeta: Record<string, unknown> = {};
+      try {
+        postMeta =
+          typeof post.metadata === 'string'
+            ? JSON.parse(post.metadata || '{}')
+            : (post.metadata as Record<string, unknown>) || {};
+      } catch {
+        postMeta = {};
+      }
+      const ownerPaths = Array.isArray(userMeta.categories)
+        ? userMeta.categories.map((x: unknown) => String(x))
+        : [];
+      const aligned = alignPostTaxonomy(ownerPaths, post.category, post.subcategory);
+      const isPinned = pinRank.has(post.id);
       return {
         ...post,
+        category: aligned.category,
+        subcategory: aligned.subcategory,
         metadata: {
+          ...postMeta,
           likes: post.likes_count || 0,
           comments: post.comments_count || 0,
           has_liked: Number(post.viewer_has_liked) > 0,
@@ -656,11 +843,18 @@ export async function getUserPosts(
           isInstructor: post.is_instructor,
           username: userMeta.username,
           avatar: userMeta.avatar,
+          is_pinned: isPinned,
         },
       };
     });
 
-    console.log('[getUserPosts] Returning', userPosts.length, 'posts');
+    userPosts.sort((a, b) => {
+      const ap = pinRank.has(a.id) ? pinRank.get(a.id)! : 999;
+      const bp = pinRank.has(b.id) ? pinRank.get(b.id)! : 999;
+      if (ap !== bp) return ap - bp;
+      return String(b.created_at).localeCompare(String(a.created_at));
+    });
+
     return json(userPosts);
   } catch (err) {
     console.error('[getUserPosts] Error:', err);

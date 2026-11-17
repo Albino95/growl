@@ -20,7 +20,8 @@ export default function Screen({
   background = 'page',
 }: Props) {
   const bgClass =
-    background === 'dark' ? 'bg-stone-900' : background === 'card' ? 'bg-white' : 'bg-surface-page';
+    // 'dark' is a media screen: hard dark in both schemes (stone-900 inverts at night).
+    background === 'dark' ? 'bg-[#1C1917]' : background === 'card' ? 'bg-card' : 'bg-page';
 
   const content = scroll ? (
     <ScrollView

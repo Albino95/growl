@@ -1,220 +1,177 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import React, { useMemo, useState } from 'react';
+import { View, Text } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import PhotoEditor from '../../components/ui/PhotoEditor';
-import ScreenHeader from '../../components/ui/ScreenHeader';
+import { RouteProp, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../../app/navigation/RootNavigator';
-import { useCreatePost } from '../../hooks/useCreatePost';
-import { confirmAsync, alertMessage } from '../../utils/confirmDialog';
-import PostComposerLayout from './components/PostComposerLayout';
-import PostImageStage from './components/PostImageStage';
-import PostCaptionOverlay from './components/PostCaptionOverlay';
-import PostCategorySheet from './components/PostCategorySheet';
+import { useMediaComposer } from '../../hooks/useMediaComposer';
+import { useAuth } from '../../store/hooks';
+import ComposerShell from '../../components/composer/ComposerShell';
+import ComposerEditor from '../../components/composer/ComposerEditor';
+import ComposerMediaStage from '../../components/composer/ComposerMediaStage';
+import ComposerCaption from '../../components/composer/ComposerCaption';
+import ComposerStickyBar from '../../components/composer/ComposerStickyBar';
+import CategoryPicker from '../../components/composer/CategoryPicker';
+import MediaSourcePicker from '../../components/composer/MediaSourcePicker';
+import PublishingOverlay from '../../components/composer/PublishingOverlay';
+import ToolChipRow, { type ToolChip } from '../../components/composer/ToolChipRow';
 import PostMusicSheet from './components/PostMusicSheet';
-import PostStickyBar from './components/PostStickyBar';
+import { MUSIC_PLAYBACK_SUPPORTED } from '../../utils/mediaCapabilities';
 import tw from '../../lib/tw';
 
-type PostScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Post'>;
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Post'>;
+};
 
-interface PostScreenProps {
-  navigation: PostScreenNavigationProp;
-}
+export default function PostScreen({ navigation }: Props) {
+  const route = useRoute<RouteProp<RootStackParamList, 'Post'>>();
+  const params = route.params;
+  const { user } = useAuth();
+  const [musicOpen, setMusicOpen] = useState(false);
 
-export default function PostScreen({ navigation }: PostScreenProps) {
-  const [showEditor, setShowEditor] = useState(false);
-  const [showCategorySheet, setShowCategorySheet] = useState(false);
-  const [showMusicSheet, setShowMusicSheet] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const captionInputRef = useRef<import('react-native').TextInput>(null);
+  const postExtras = useMemo(
+    () => ({
+      productId: params?.productId,
+      promoteBusinessId: params?.promoteBusinessId,
+      promoteBusinessName: params?.promoteBusinessName,
+      referralInstructorId: user?.isInstructor ? user.id : undefined,
+    }),
+    [params?.productId, params?.promoteBusinessId, params?.promoteBusinessName, user?.isInstructor, user?.id]
+  );
 
-  const {
-    image,
-    caption,
-    selectedCategory,
-    audioTrack,
-    isPosting,
-    userCategories,
-    hasDraft,
-    setImage,
-    setCaption,
-    setCategory,
-    setAudioTrack,
-    clearDraft,
-    submitPost,
-  } = useCreatePost(() => {
-    setShowSuccess(true);
-    setTimeout(() => {
-      navigation.goBack();
-    }, 600);
+  const composer = useMediaComposer({
+    kind: 'post',
+    navigation,
+    initialCaption: params?.caption,
+    initialCategory: params?.category,
+    postExtras,
   });
+  const { state, config, publishing } = composer;
 
-  useEffect(() => {
-    if (image) {
-      const timer = setTimeout(() => captionInputRef.current?.focus(), 400);
-      return () => clearTimeout(timer);
-    }
-  }, [image]);
+  if (composer.editorVisible) return <ComposerEditor composer={composer} />;
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      alertMessage('Permission needed', 'We need camera roll permissions to post images.');
-      return;
-    }
+  const busy = publishing || state.status === 'editing';
+  const promoteName = params?.promoteBusinessName;
+  const openMusic = MUSIC_PLAYBACK_SUPPORTED ? () => setMusicOpen(true) : undefined;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.9,
-      allowsMultipleSelection: false,
+  const chips: ToolChip[] = [
+    {
+      key: 'edit',
+      icon: 'color-wand-outline',
+      label: 'Edit',
+      accessibilityLabel: 'Edit photo',
+      onPress: composer.openEditor,
+      disabled: busy,
+    },
+  ];
+  if (openMusic) {
+    chips.push({
+      key: 'music',
+      icon: 'musical-notes-outline',
+      label: 'Music',
+      onPress: openMusic,
+      active: Boolean(state.audio),
+      disabled: busy,
     });
-
-    if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      alertMessage('Permission needed', 'We need camera permissions to take photos.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      quality: 0.9,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
-    }
-  };
-
-  const handleRemovePhoto = async () => {
-    const confirmed = await confirmAsync(
-      'Remove photo?',
-      'This will clear the image and caption for this draft.',
-      { confirmLabel: 'Remove', destructive: true }
-    );
-    if (!confirmed) return;
-    setImage(null);
-    setCaption('');
-    setAudioTrack(null);
-  };
-
-  const handleClose = async () => {
-    if (!hasDraft) {
-      navigation.goBack();
-      return;
-    }
-    const confirmed = await confirmAsync(
-      'Discard post?',
-      'Your draft will be lost.',
-      { confirmLabel: 'Discard', destructive: true }
-    );
-    if (!confirmed) return;
-    clearDraft();
-    navigation.goBack();
-  };
-
-  if (showEditor && image) {
-    return (
-      <PhotoEditor
-        imageUri={image}
-        onSave={(editedUri) => {
-          setImage(editedUri);
-          setShowEditor(false);
-        }}
-        onCancel={() => setShowEditor(false)}
-      />
-    );
   }
-
-  const canPost = Boolean(image && selectedCategory && !isPosting);
+  chips.push(
+    {
+      key: 'replace',
+      icon: 'images-outline',
+      label: 'Replace',
+      onPress: () => void composer.pick('library'),
+      disabled: busy,
+    },
+    {
+      key: 'remove',
+      icon: 'trash-outline',
+      label: 'Remove',
+      danger: true,
+      onPress: () => void composer.removeMedia(),
+      disabled: busy,
+    }
+  );
 
   return (
-    <PostComposerLayout
+    <ComposerShell
+      title={promoteName ? 'Promote' : config.title}
+      onClose={composer.requestClose}
+      closeDisabled={publishing}
       footer={
-        image ? (
-          <PostStickyBar
-            selectedCategory={selectedCategory}
-            audioTrack={audioTrack}
-            hasImage
-            isPosting={isPosting}
-            canPost={canPost}
-            onOpenCategory={() => setShowCategorySheet(true)}
-            onOpenMusic={() => setShowMusicSheet(true)}
-            onSubmit={submitPost}
+        state.media ? (
+          <ComposerStickyBar
+            category={{
+              selected: state.category,
+              hasCategories: composer.userCategories.length > 0,
+              onOpen: () => composer.setCategorySheetOpen(true),
+            }}
+            music={openMusic ? { title: state.audio?.title ?? null, onOpen: openMusic } : undefined}
+            publishing={publishing}
+            canPublish={composer.canSubmit}
+            error={
+              state.status === 'error' && state.error
+                ? { message: state.error, onRetry: () => void composer.retry(), onEdit: composer.editAfterError }
+                : null
+            }
+            onSubmit={composer.submit}
+            onLongSubmit={composer.longSubmit}
           />
         ) : null
       }
+      overlay={state.status === 'success' ? <PublishingOverlay variant="success" /> : null}
     >
-      <ScreenHeader
-        title="Create Post"
-        onBack={handleClose}
-        backIcon="close"
-        transparent
-        light
-        style={tw`border-b-0 bg-transparent absolute top-0 left-0 right-0 z-20`}
-        rightAction={
-          image ? (
-            <Pressable
-              onPress={() => void handleRemovePhoto()}
-              hitSlop={8}
-              style={tw`w-10 h-10 items-center justify-center`}
-              accessibilityLabel="Remove photo"
-            >
-              <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
-            </Pressable>
-          ) : undefined
-        }
-      />
-
-      {showSuccess && (
-        <View style={tw`absolute inset-0 z-50 bg-brand-600/90 items-center justify-center`}>
-          <View style={tw`bg-white rounded-full p-4 mb-3`}>
-            <Text style={tw`text-3xl`}>✓</Text>
-          </View>
-          <Text style={tw`text-white text-xl font-bold`}>Posted!</Text>
+      {promoteName ? (
+        <View
+          style={tw`mx-gutter mb-2 px-3.5 py-2.5 rounded-card bg-emerald-600/95 border border-emerald-500/40`}
+          accessibilityRole="text"
+        >
+          <Text style={tw`text-caption font-semibold tracking-widest text-[#D1FAE5] uppercase`}>
+            Partnership
+          </Text>
+          <Text style={tw`text-sm font-bold text-white mt-0.5`} numberOfLines={1}>
+            Promoting {promoteName}
+          </Text>
         </View>
-      )}
+      ) : null}
 
-      <PostImageStage
-        image={image}
-        isPosting={isPosting}
-        hasMusic={Boolean(audioTrack)}
-        onTakePhoto={takePhoto}
-        onPickLibrary={pickImage}
-        onEditPhoto={() => setShowEditor(true)}
-        onRemovePhoto={() => void handleRemovePhoto()}
-        onOpenMusic={() => setShowMusicSheet(true)}
-      />
-
-      {image && (
-        <PostCaptionOverlay
-          caption={caption}
-          onChangeCaption={setCaption}
-          inputRef={captionInputRef}
+      {!state.media ? (
+        <MediaSourcePicker
+          icon={config.empty.icon}
+          title={config.empty.title}
+          subtitle={config.empty.subtitle}
+          busyLabel={state.status === 'importing' ? config.empty.importing : null}
+          onCamera={() => void composer.pick('camera')}
+          onLibrary={() => void composer.pick('library')}
         />
+      ) : (
+        <>
+          <ComposerMediaStage composer={composer} />
+          <ToolChipRow chips={chips} />
+          <ComposerCaption
+            caption={state.caption}
+            onChangeCaption={composer.setCaption}
+            maxLength={config.captionMax}
+            inputRef={composer.captionInputRef}
+            editable={!publishing}
+          />
+        </>
       )}
 
-      <PostCategorySheet
-        visible={showCategorySheet}
-        onClose={() => setShowCategorySheet(false)}
-        userCategories={userCategories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={setCategory}
+      <CategoryPicker
+        visible={composer.categorySheetOpen}
+        onClose={() => composer.setCategorySheetOpen(false)}
+        userCategories={composer.userCategories}
+        selectedCategory={state.category}
+        onSelectCategory={composer.setCategory}
       />
 
-      <PostMusicSheet
-        visible={showMusicSheet}
-        onClose={() => setShowMusicSheet(false)}
-        selectedTrack={audioTrack}
-        onSelectTrack={setAudioTrack}
-      />
-    </PostComposerLayout>
+      {openMusic ? (
+        <PostMusicSheet
+          visible={musicOpen}
+          onClose={() => setMusicOpen(false)}
+          selectedTrack={state.audio}
+          onSelectTrack={composer.setAudio}
+        />
+      ) : null}
+    </ComposerShell>
   );
 }

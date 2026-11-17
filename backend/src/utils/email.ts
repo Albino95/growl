@@ -1,4 +1,23 @@
 import { Env } from '../types';
+import { buildBrandedEmailHtml } from './emailTemplates';
+
+function requireResendKey(env: Env, subject: string, to: string, html: string): string | null {
+  const key = (env.RESEND_API_KEY || '').trim();
+  if (key) return key;
+
+  // Local/dev only: log the message instead of calling Resend.
+  if (env.ENVIRONMENT === 'production' || env.ENVIRONMENT === 'qa') {
+    console.error(
+      `[email] RESEND_API_KEY missing/empty on ${env.ENVIRONMENT}; cannot send "${subject}" to ${to}`
+    );
+    throw new Error('RESEND_API_KEY is not configured');
+  }
+
+  console.log(`[email] ${subject} (dev — no RESEND_API_KEY):`);
+  console.log(`  To: ${to}`);
+  console.log(`  HTML: ${html.replace(/<[^>]+>/g, ' ').slice(0, 200)}`);
+  return null;
+}
 
 async function sendResendEmail(
   env: Env,
@@ -6,21 +25,17 @@ async function sendResendEmail(
   subject: string,
   html: string
 ): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    console.log(`[email] ${subject} (dev — no RESEND_API_KEY):`);
-    console.log(`  To: ${to}`);
-    console.log(`  HTML: ${html.replace(/<[^>]+>/g, ' ').slice(0, 200)}`);
-    return;
-  }
+  const key = requireResendKey(env, subject, to, html);
+  if (!key) return;
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: env.EMAIL_FROM || 'Growl <onboarding@resend.dev>',
+      from: env.EMAIL_FROM || 'Grow! <noreply@letsgrow.lu>',
       to: [to],
       subject,
       html,
@@ -42,25 +57,25 @@ export async function sendVerificationEmail(
   verifyToken: string,
   baseUrl?: string
 ): Promise<void> {
-  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://growl.app';
+  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://letsgrow.lu';
   const link = `${appBase}/verify-email?email=${encodeURIComponent(to)}&token=${verifyToken}`;
 
-  const html = `
-    <p>Welcome to Growl!</p>
-    <p>Confirm your email with this code (valid 24 hours):</p>
-    <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${verifyToken}</p>
-    <p>Or open: <a href="${link}">${link}</a></p>
-  `;
+  const html = buildBrandedEmailHtml({
+    previewText: `Welcome to Grow! Your verification code is ${verifyToken}.`,
+    headline: 'Welcome to Grow!',
+    greeting: 'Hi there,',
+    bodyHtml: `
+      <p style="margin:0 0 12px;">Thanks for joining <strong>Grow!</strong> — a community built around real progress, shared growth paths, and meaningful connections.</p>
+      <p style="margin:0;">Enter the code below in the app to verify your email and finish creating your account.</p>
+    `,
+    code: verifyToken,
+    codeLabel: 'Verification code',
+    codeHint: 'This code expires in 24 hours for your security.',
+    cta: { label: 'Open Grow!', href: link },
+    footerNote: 'If the button does not work, copy and paste this link into your browser: ' + link,
+  });
 
-  if (!env.RESEND_API_KEY) {
-    console.log('[email] Verification (dev — no RESEND_API_KEY):');
-    console.log(`  To: ${to}`);
-    console.log(`  Code: ${verifyToken}`);
-    console.log(`  Link: ${link}`);
-    return;
-  }
-
-  await sendResendEmail(env, to, 'Confirm your Growl email', html);
+  await sendResendEmail(env, to, 'Welcome to Grow! — verify your email', html);
 }
 
 /**
@@ -72,26 +87,24 @@ export async function sendPasswordResetEmail(
   resetCode: string,
   baseUrl?: string
 ): Promise<void> {
-  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://growl.app';
+  const appBase = baseUrl || env.APP_PUBLIC_URL || 'https://letsgrow.lu';
   const link = `${appBase}/reset-password?email=${encodeURIComponent(to)}&code=${encodeURIComponent(resetCode)}`;
   const deepLink = `growl://reset-password?email=${encodeURIComponent(to)}&code=${encodeURIComponent(resetCode)}`;
 
-  const html = `
-    <p>Reset your Growl password</p>
-    <p>Use this code within 1 hour:</p>
-    <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${resetCode}</p>
-    <p>Or open the app: <a href="${deepLink}">${deepLink}</a></p>
-    <p>Web: <a href="${link}">${link}</a></p>
-    <p>If you did not request this, you can ignore this email.</p>
-  `;
+  const html = buildBrandedEmailHtml({
+    previewText: `Your Grow! password reset code is ${resetCode}.`,
+    headline: 'Reset your password',
+    greeting: 'Hi there,',
+    bodyHtml: `
+      <p style="margin:0 0 12px;">We received a request to reset the password for your Grow! account.</p>
+      <p style="margin:0;">Use the code below in the app. It is valid for 1 hour.</p>
+    `,
+    code: resetCode,
+    codeLabel: 'Reset code',
+    codeHint: 'If you did not request a password reset, you can ignore this email.',
+    cta: { label: 'Reset in Grow!', href: deepLink },
+    footerNote: `You can also reset your password on the web: ${link}`,
+  });
 
-  if (!env.RESEND_API_KEY) {
-    console.log('[email] Password reset (dev — no RESEND_API_KEY):');
-    console.log(`  To: ${to}`);
-    console.log(`  Code: ${resetCode}`);
-    console.log(`  Deep link: ${deepLink}`);
-    return;
-  }
-
-  await sendResendEmail(env, to, 'Reset your Growl password', html);
+  await sendResendEmail(env, to, 'Reset your Grow! password', html);
 }

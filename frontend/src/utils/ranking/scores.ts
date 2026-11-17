@@ -1,3 +1,5 @@
+import { serverTime } from '../serverDate';
+
 /** Shared scoring primitives for Feed, Explore, and Marketplace ranking. */
 
 export function expandUserCategoryKeys(paths: string[]): Set<string> {
@@ -27,14 +29,15 @@ export function categoryScore(userKeys: Set<string>, category: string, sub?: str
 
 /** Higher when created_at is recent; roughly fresh within ~48h wins most points */
 export function recencyScore(iso: string, nowMs: number = Date.now()): number {
-  const t = new Date(iso).getTime();
+  const t = serverTime(iso);
   if (Number.isNaN(t)) return 0;
   const hours = (nowMs - t) / (1000 * 60 * 60);
-  return Math.max(0, 48 - hours);
+  // Soft decay over ~10 days so older explore posts still surface when relevant.
+  return Math.max(0, 240 - hours) / 5;
 }
 
-export function engagementScore(likes: number, comments: number, cap = 42): number {
-  return Math.min(cap, (likes + comments) * 1.25);
+export function engagementScore(likes: number, comments: number, cap = 48): number {
+  return Math.min(cap, likes * 1.5 + comments * 2.4);
 }
 
 export function jitter(id: string): number {

@@ -5,7 +5,36 @@ export const POINTS = {
   RECEIVE_ENDORSEMENT: 25,
   GIVE_ENDORSEMENT: 5,
   CLAIM_INSTRUCTOR: 50,
+  /** First Today check-in of a local day (not edits, not rest days). */
+  DAILY_CHECKIN: 2,
+  /** Completing a path challenge (on top of the one-time Finisher badge). */
+  CHALLENGE_COMPLETE: 100,
+  /** Inviter reward when an invited friend records their first activity. */
+  INVITE_REWARD: 50,
 } as const;
+
+/** Growth levels by lifetime points. Points can't be spent and have no money value. */
+export const GROWTH_LEVELS = [
+  { n: 1, name: 'Seed', at: 0 },
+  { n: 2, name: 'Sprout', at: 50 },
+  { n: 3, name: 'Sapling', at: 150 },
+  { n: 4, name: 'Bloom', at: 400 },
+  { n: 5, name: 'Tree', at: 1000 },
+  { n: 6, name: 'Grove', at: 2500 },
+] as const;
+
+export type GrowthLevel = { n: number; name: string; points: number; next_at: number | null };
+
+export function growthLevel(points: number | null | undefined): GrowthLevel {
+  const p = Math.max(0, Math.floor(Number(points) || 0));
+  let idx = 0;
+  for (let i = 0; i < GROWTH_LEVELS.length; i++) {
+    if (p >= GROWTH_LEVELS[i].at) idx = i;
+  }
+  const lvl = GROWTH_LEVELS[idx];
+  const next = GROWTH_LEVELS[idx + 1];
+  return { n: lvl.n, name: lvl.name, points: p, next_at: next ? next.at : null };
+}
 
 /** Atomically award growth points; returns the new total (or null if user missing). */
 export async function awardPoints(
@@ -20,7 +49,7 @@ export async function awardPoints(
     return row ? Number(row.points) : null;
   }
 
-  await env.DB.prepare('UPDATE users SET points = points + ?, updated_at = datetime("now") WHERE id = ?')
+  await env.DB.prepare("UPDATE users SET points = points + ?, updated_at = datetime('now') WHERE id = ?")
     .bind(delta, userId)
     .run();
 
@@ -42,8 +71,8 @@ export async function countEndorsementsGiven(env: Env, userId: string): Promise<
 }
 
 /**
- * Consecutive calendar-day posting streak ending today or yesterday (UTC date strings).
- * Returns 0 if no post in the last 2 days.
+ * @deprecated Legacy post-only UTC streak. Profile now reports the unified growth
+ * streak (utils/activity.ts getStreakState). Kept for any remaining imports.
  */
 export async function computePostStreak(env: Env, userId: string): Promise<number> {
   const rows = await env.DB.prepare(

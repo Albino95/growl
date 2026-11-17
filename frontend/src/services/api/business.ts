@@ -2,17 +2,14 @@
  * Business API service
  */
 
-import Constants from 'expo-constants';
 import { getSecureItem } from '../storage/secureStore';
 import { getToken } from '../storage/tokenManager';
 import { messageFromApiError } from './apiErrors';
-import { request } from './http';
+import { getApiBaseUrl, refreshSession, request } from './http';
 import type { Product, Order } from './marketplace';
+import { newIdempotencyKey } from './idempotency';
+import type { BulkEditItem, ContactReason, OnboardingStatus } from './businessHelpers';
 export type { Order };
-
-const BASE_URL: string =
-  (Constants?.expoConfig?.extra?.API_BASE_URL as string) ||
-  'https://growl-backend.albino-ndreu.workers.dev/api/v1';
 
 async function authHeaders(): Promise<Record<string, string>> {
   let token: string | null = getToken();
@@ -33,9 +30,16 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function fetchRawText(path: string): Promise<string> {
-  const url = `${BASE_URL}${path}`;
-  const headers = await authHeaders();
-  const res = await fetch(url, { headers });
+  // Same base URL resolution as request() (honours EXPO_PUBLIC_API_BASE_URL).
+  const url = `${getApiBaseUrl()}${path}`;
+  let res = await fetch(url, { headers: await authHeaders() });
+  if (res.status === 401) {
+    // Expired access token: refresh once (single-flight, shared with request()) and retry.
+    const outcome = await refreshSession();
+    if (outcome.kind === 'ok') {
+      res = await fetch(url, { headers: { Authorization: `Bearer ${outcome.token}` } });
+    }
+  }
   const text = await res.text();
   if (!res.ok) {
     try {
@@ -50,6 +54,41 @@ async function fetchRawText(path: string): Promise<string> {
 }
 
 export type BusinessPeriod = 'today' | 'week' | 'month';
+
+/**
+ * Checkout orders exist before payment completes (payment_status 'unpaid'). They are shown to
+ * the seller as "Awaiting payment" and cannot be advanced.
+ */
+export function isOrderAwaitingPayment(order: {
+  payment_status?: string | null;
+  awaiting_payment?: boolean;
+}): boolean {
+  if (typeof order.awaiting_payment === 'boolean') return order.awaiting_payment;
+  if (!order.payment_status) return false;
+  return order.payment_status !== 'paid' && order.payment_status !== 'refunded';
+}
+
+/** Currency for an order; orders don't store one yet, so this defaults to EUR. */
+export function orderCurrency(order: unknown): string {
+  const c = (order as { currency?: unknown } | null)?.currency;
+  return typeof c === 'string' && c ? c : 'EUR';
+}
+
+/** This seller's share of an order (only their items), falling back to the order total. */
+export function orderBusinessTotal(order: {
+  total?: number;
+  items?: Array<{ quantity?: number; price?: number }>;
+  business_total?: number;
+}): number {
+  if (typeof order.business_total === 'number') return order.business_total;
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    return order.items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0),
+      0
+    );
+  }
+  return Number(order.total || 0);
+}
 
 export interface DashboardKPIs {
   period?: BusinessPeriod;
@@ -75,6 +114,9 @@ export interface DashboardKPIs {
   deltas?: {
     orders_pct: number;
     net_revenue_pct: number;
+    /** Wave 4: raw previous-period values (absent on older servers). */
+    previous_orders?: number;
+    previous_net_revenue?: number;
   };
   recent_orders?: Order[];
 }
@@ -160,7 +202,12 @@ export type MarketingCampaign = {
   updated_at: string;
 };
 
-export type BusinessProduct = Product & { units_sold?: number };
+export type BusinessProduct = Product & {
+  units_sold?: number;
+  /** Hidden from the shop (e.g. by moderation). */
+  is_hidden?: number | boolean;
+  hidden_reason?: string | null;
+};
 
 export async function getDashboard(period: BusinessPeriod = 'week'): Promise<DashboardResponse> {
   return request<DashboardResponse>(`/business/dashboard?period=${period}`);
@@ -174,8 +221,11 @@ export async function getBusinessProducts(
   );
 }
 
-export async function getBusinessOrders(): Promise<{ success: boolean; data: Order[] }> {
-  return request<{ success: boolean; data: Order[] }>('/business/orders');
+export async function getBusinessOrders(
+  offset = 0
+): Promise<{ success: boolean; data: Order[] }> {
+  const query = offset > 0 ? `?offset=${Math.floor(offset)}` : '';
+  return request<{ success: boolean; data: Order[] }>(`/business/orders${query}`);
 }
 
 export async function getBusinessOrderDetail(orderId: string): Promise<{ success: boolean; data: Order }> {
@@ -410,33 +460,38 @@ export type OrderFulfillmentPayload = {
 };
 
 export async function getBusinessCustomers(): Promise<{ customers: BusinessCustomer[] }> {
-  return request<{ customers: BusinessCustomer[] }>('/business/customers');
+  const res = await request<{ success: boolean; data: { customers: BusinessCustomer[] } }>(
+    '/business/customers'
+  );
+  return { customers: res.data?.customers || [] };
 }
 
 export async function updateOrderFulfillment(
   orderId: string,
   payload: OrderFulfillmentPayload
 ): Promise<{ ok: boolean; metadata: Record<string, unknown> }> {
-  return request<{ ok: boolean; metadata: Record<string, unknown> }>(
-    `/business/orders/${encodeURIComponent(orderId)}/fulfillment`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }
-  );
+  const res = await request<{
+    success: boolean;
+    data: { ok: boolean; metadata: Record<string, unknown> };
+  }>(`/business/orders/${encodeURIComponent(orderId)}/fulfillment`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return { ok: Boolean(res.data?.ok), metadata: res.data?.metadata || {} };
 }
 
 export async function requestOrderRefund(
   orderId: string,
   payload: { reason: string; amount?: number }
 ): Promise<{ ok: boolean; metadata: Record<string, unknown> }> {
-  return request<{ ok: boolean; metadata: Record<string, unknown> }>(
-    `/business/orders/${encodeURIComponent(orderId)}/refund-request`,
-    {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }
-  );
+  const res = await request<{
+    success: boolean;
+    data: { ok: boolean; metadata: Record<string, unknown> };
+  }>(`/business/orders/${encodeURIComponent(orderId)}/refund-request`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return { ok: Boolean(res.data?.ok), metadata: res.data?.metadata || {} };
 }
 
 export async function exportOrdersCsv(period: BusinessPeriod = 'month'): Promise<string> {
@@ -450,9 +505,11 @@ export async function exportProductsCsv(): Promise<string> {
 export async function getBusinessNotifications(
   limit = 50
 ): Promise<{ notifications: BusinessNotification[] }> {
-  return request<{ notifications: BusinessNotification[] }>(
-    `/business/notifications?limit=${limit}`
-  );
+  const res = await request<{
+    success: boolean;
+    data: { notifications: BusinessNotification[] };
+  }>(`/business/notifications?limit=${limit}`);
+  return { notifications: res.data?.notifications || [] };
 }
 
 export async function markBusinessNotificationRead(
@@ -465,7 +522,10 @@ export async function markBusinessNotificationRead(
 }
 
 export async function listPromoCodes(): Promise<{ promo_codes: PromoCode[] }> {
-  return request<{ promo_codes: PromoCode[] }>('/business/promo-codes');
+  const res = await request<{ success: boolean; data: { promo_codes: PromoCode[] } }>(
+    '/business/promo-codes'
+  );
+  return { promo_codes: res.data?.promo_codes || [] };
 }
 
 export async function createPromoCode(payload: {
@@ -474,10 +534,22 @@ export async function createPromoCode(payload: {
   value: number;
   max_uses?: number;
 }): Promise<PromoCode> {
-  return request<PromoCode>('/business/promo-codes', {
+  const body: Record<string, unknown> = {
+    code: payload.code,
+    type: payload.type,
+    value: payload.value,
+  };
+  if (typeof payload.max_uses === 'number' && Number.isFinite(payload.max_uses) && payload.max_uses > 0) {
+    body.max_uses = Math.floor(payload.max_uses);
+  }
+  const res = await request<{ success: boolean; data: PromoCode }>('/business/promo-codes', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
+  if (!res.success || !res.data) {
+    throw new Error('Could not create promo code');
+  }
+  return res.data;
 }
 
 export async function updatePromoCode(
@@ -490,8 +562,53 @@ export async function updatePromoCode(
     metadata: Record<string, unknown>;
   }>
 ): Promise<PromoCode> {
-  return request<PromoCode>(`/business/promo-codes/${encodeURIComponent(promoId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
+  const res = await request<{ success: boolean; data: PromoCode }>(
+    `/business/promo-codes/${encodeURIComponent(promoId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.success || !res.data) {
+    throw new Error('Could not update promo code');
+  }
+  return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Wave 4
+
+export async function getBusinessOnboarding(): Promise<OnboardingStatus> {
+  const res = await request<{ success: boolean; data: OnboardingStatus }>('/business/onboarding');
+  return res.data;
+}
+
+export async function duplicateBusinessProduct(productId: string): Promise<BusinessProduct> {
+  const res = await request<{ success: boolean; data: BusinessProduct }>(
+    `/business/products/${encodeURIComponent(productId)}/duplicate`,
+    { method: 'POST', idempotencyKey: newIdempotencyKey() }
+  );
+  return res.data;
+}
+
+export async function bulkUpdateBusinessProducts(
+  items: BulkEditItem[]
+): Promise<{ updated: number; products: Array<{ id: string; price: number; stock: number }> }> {
+  const res = await request<{
+    success: boolean;
+    data: { updated: number; products: Array<{ id: string; price: number; stock: number }> };
+  }>('/business/products/bulk', { method: 'PATCH', body: JSON.stringify({ items }) });
+  return res.data;
+}
+
+export async function getOrderContact(orderId: string): Promise<{
+  can_message: boolean;
+  reason: ContactReason;
+  customer: { id: string; username: string | null };
+}> {
+  const res = await request<{
+    success: boolean;
+    data: { can_message: boolean; reason: ContactReason; customer: { id: string; username: string | null } };
+  }>(`/business/orders/${encodeURIComponent(orderId)}/contact`);
+  return res.data;
 }

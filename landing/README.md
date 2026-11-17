@@ -1,6 +1,8 @@
 # Grow! landing
 
-Marketing site for **Grow!** — Next.js App Router, emerald brand, React Three Fiber hero, Vercel-ready SEO.
+Marketing site for **Grow!** ([letsgrow.lu](https://letsgrow.lu)) — Next.js App Router on Vercel (region `fra1`).
+The home page is "The Living Week" (see `docs/LANDING_DESIGN.md`): a server-rendered hero with an
+interactive Today check-in demo, an App Store CTA for iPhone, and an email waitlist for Android.
 
 ## Develop
 
@@ -25,14 +27,30 @@ Copy `.env.example` → `.env.local`:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `NEXT_PUBLIC_SITE_URL` | Yes (prod) | Canonical URL, e.g. `https://grow.app` |
-| `NEXT_PUBLIC_APP_STORE_URL` | No | App Store link (placeholder until live) |
-| `NEXT_PUBLIC_PLAY_STORE_URL` | No | Play Store link |
-| `RESEND_API_KEY` | No | Sends waitlist signup notification email |
-| `WAITLIST_TO` | No | Inbox for waitlist alerts (default `hello@grow.app`) |
+| `NEXT_PUBLIC_SITE_URL` | Yes (prod) | Canonical URL, e.g. `https://letsgrow.lu` |
+| `GROW_API_URL` | No | Grow! API base incl. version, server-side only. Default `https://growl-backend-production.wispy-leaf-4e8b.workers.dev/api/v1`. Used by the waitlist proxy and invite lookups (`/i/[code]`). |
+| `NEXT_PUBLIC_APP_STORE_URL` | No | Override the App Store link. Default is the live listing `https://apps.apple.com/app/id6809046287` (`APP_STORE_URL` in `src/lib/seo.ts`). |
+| `NEXT_PUBLIC_PLAY_STORE_URL` | No | Play Store link (only shown once it is a real listing) |
+| `RESEND_API_KEY` | No | Sends a notification email per waitlist signup |
+| `WAITLIST_TO` | No | Inbox for waitlist alerts (default `hello@letsgrow.lu`) |
 | `EMAIL_FROM` | No | Resend from address |
 
-Without `RESEND_API_KEY`, waitlist signups are logged server-side only (fine for local / early preview).
+## Waitlist flow
+
+1. The form posts `{ email, platform?, source?, company? }` to `POST /api/waitlist` (this app).
+   `platform` is `android` (default) | `ios` | `web`; `source` is a short tag (≤ 40 chars) like `hero`.
+   `company` is a hidden honeypot: if it is filled the route pretends success and stores nothing.
+2. The route validates the email, then forwards server-side to `POST ${GROW_API_URL}/waitlist`
+   with the visitor IP in `X-Grow-Client-IP` (rate limiting only, never stored).
+3. The API (`backend/src/routes/waitlist.ts`) stores the signup in D1 table `waitlist_signups`
+   (migration `0035_waitlist.sql`, unique per email + platform). It always answers `{ ok: true }` for
+   valid input, so it cannot be used to check whether an address is listed. Limits: 10/hour per
+   visitor, 300/hour per connecting IP.
+4. If `RESEND_API_KEY` is set, a notification email is sent (email HTML-escaped). A failed email does
+   not fail the signup.
+5. The route answers `{ ok: true, message }` (200) or `{ error }` with 400 / 429 / 502 / 503.
+
+To read the list: `wrangler d1 execute <db> --remote --command "SELECT email, platform, source, created_at FROM waitlist_signups ORDER BY created_at DESC"` (run from `backend/`).
 
 ## Vercel
 
@@ -40,11 +58,22 @@ Without `RESEND_API_KEY`, waitlist signups are logged server-side only (fine for
 2. **Root Directory:** `landing`
 3. Framework preset: **Next.js**
 4. Set env vars above for Production (and Preview if useful).
-5. Attach domain `grow.app` (+ redirect `www` → apex or vice versa).
+5. Attach domain `letsgrow.lu` (+ redirect `www.letsgrow.lu` → apex or vice versa).
 6. After deploy, verify:
-   - `https://grow.app/sitemap.xml`
-   - `https://grow.app/robots.txt`
+   - `https://letsgrow.lu/sitemap.xml`
+   - `https://letsgrow.lu/robots.txt`
    - Open Graph via a sharing debugger
+
+### DNS (EuroDNS → Vercel)
+
+In Vercel → Project → **Settings** → **Domains**, add `letsgrow.lu` and `www.letsgrow.lu`, then in EuroDNS create the records Vercel shows (typically):
+
+| Host | Type | Value |
+|------|------|--------|
+| `@` | A | `76.76.21.21` |
+| `www` | CNAME | `cname.vercel-dns.com` |
+
+Set Production env `NEXT_PUBLIC_SITE_URL=https://letsgrow.lu` and redeploy.
 
 ## SEO checklist
 
@@ -52,16 +81,17 @@ Without `RESEND_API_KEY`, waitlist signups are logged server-side only (fine for
 - [x] Open Graph image (`/opengraph-image`)
 - [x] `sitemap.ts` / `robots.ts`
 - [x] JSON-LD Organization + WebSite + SoftwareApplication + FAQPage
-- [x] Sticky nav, FAQ, scroll progress
+- [x] `/i/*` invites and `/pitch` disallowed in robots and `noindex`
 - [ ] Confirm `NEXT_PUBLIC_SITE_URL` matches live domain
-- [ ] Replace store URL placeholders when apps are live
+- [x] App Store URL points at the live listing (id6809046287)
+- [ ] Play Store URL when Android ships
 
 ## Structure
 
 ```
 landing/
-  src/app/           # routes, SEO, waitlist API
-  src/components/    # Nav, Hero (3D), sections, FAQ, waitlist, footer
-  src/lib/seo.ts
+  src/app/           # routes, SEO, OG image, waitlist API proxy, /i/[code] invites
+  src/components/    # nav, hero + check-in demo, week sections, FAQ, waitlist, footer
+  src/lib/seo.ts     # site constants, App Store URL, FAQ items, JSON-LD
   public/
 ```

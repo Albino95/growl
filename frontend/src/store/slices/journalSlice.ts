@@ -14,14 +14,25 @@ export type { JournalEntry, JournalMood };
 
 interface JournalState {
   entries: JournalEntry[];
+  /** Pre-edit snapshots for optimistic edits (rolled back on failure). */
+  editSnapshots: Record<string, JournalEntry>;
   isLoading: boolean;
+  /** More (older) entries exist on the server beyond what's loaded. */
+  hasMore: boolean;
+  isLoadingMore: boolean;
   isSaving: boolean;
   error: string | null;
 }
 
+/** Page size for the own-journal list (server max). */
+export const JOURNAL_PAGE_SIZE = 100;
+
 const initialState: JournalState = {
   entries: [],
+  editSnapshots: {},
   isLoading: false,
+  hasMore: false,
+  isLoadingMore: false,
   isSaving: false,
   error: null,
 };
@@ -30,7 +41,7 @@ export const fetchJournalEntries = createAsyncThunk(
   'journal/fetchEntries',
   async (_arg?: void) => {
     // Own practice log (private + shared). Public discovery lives on profiles.
-    const response = await getJournalEntries({ scope: 'mine', limit: 100 });
+    const response = await getJournalEntries({ scope: 'mine', limit: JOURNAL_PAGE_SIZE });
     if (response.success && response.data?.entries) {
       return response.data.entries;
     }
@@ -38,10 +49,36 @@ export const fetchJournalEntries = createAsyncThunk(
   }
 );
 
+/** Next (older) page, appended and de-duplicated. No-op while one is in flight. */
+export const fetchMoreJournalEntries = createAsyncThunk(
+  'journal/fetchMore',
+  async (_arg: void, { getState }) => {
+    const { journal } = getState() as { journal: JournalState };
+    const response = await getJournalEntries({
+      scope: 'mine',
+      limit: JOURNAL_PAGE_SIZE,
+      offset: journal.entries.length,
+    });
+    if (response.success && response.data?.entries) return response.data.entries;
+    throw new Error('Failed to load older entries');
+  },
+  {
+    condition: (_arg, { getState }) => {
+      const { journal } = getState() as { journal: JournalState };
+      return journal.hasMore && !journal.isLoadingMore && !journal.isLoading;
+    },
+  }
+);
+
+export type AddJournalEntryArg = CreateJournalEntryRequest & {
+  /** Stable per compose session so a retried save never creates a duplicate. */
+  idempotencyKey?: string;
+};
+
 export const addJournalEntry = createAsyncThunk(
   'journal/addEntry',
-  async (payload: CreateJournalEntryRequest) => {
-    const response = await createJournalEntry(payload);
+  async ({ idempotencyKey, ...payload }: AddJournalEntryArg) => {
+    const response = await createJournalEntry(payload, { idempotencyKey });
     if (response.success && response.data) {
       return response.data;
     }
@@ -71,6 +108,21 @@ export const removeJournalEntry = createAsyncThunk(
   }
 );
 
+/** Local view of an entry after an edit (mirrors the server's update semantics). */
+export function applyEntryPatch(entry: JournalEntry, patch: UpdateJournalEntryRequest): JournalEntry {
+  const next: JournalEntry = { ...entry, updated_at: new Date().toISOString() };
+  if (patch.content !== undefined) next.content = patch.content;
+  if (patch.title !== undefined) next.title = patch.title;
+  if (patch.mood !== undefined) next.mood = patch.mood;
+  if (patch.tags !== undefined) next.tags = patch.tags;
+  if (patch.metadata !== undefined) next.metadata = patch.metadata;
+  if (patch.is_public !== undefined) {
+    next.is_public = patch.is_public;
+    next.isPublic = patch.is_public;
+  }
+  return next;
+}
+
 const journalSlice = createSlice({
   name: 'journal',
   initialState,
@@ -80,7 +132,10 @@ const journalSlice = createSlice({
     },
     clearJournalEntries: (state) => {
       state.entries = [];
+      state.editSnapshots = {};
       state.isLoading = false;
+      state.hasMore = false;
+      state.isLoadingMore = false;
       state.error = null;
     },
   },
@@ -92,11 +147,27 @@ const journalSlice = createSlice({
       })
       .addCase(fetchJournalEntries.fulfilled, (state, action: PayloadAction<JournalEntry[]>) => {
         state.entries = action.payload;
+        state.hasMore = action.payload.length >= JOURNAL_PAGE_SIZE;
         state.isLoading = false;
       })
       .addCase(fetchJournalEntries.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.error.message || 'Failed to fetch journal entries';
+      });
+
+    builder
+      .addCase(fetchMoreJournalEntries.pending, (state) => {
+        state.isLoadingMore = true;
+      })
+      .addCase(fetchMoreJournalEntries.fulfilled, (state, action: PayloadAction<JournalEntry[]>) => {
+        const seen = new Set(state.entries.map((e) => e.id));
+        for (const e of action.payload) if (!seen.has(e.id)) state.entries.push(e);
+        state.hasMore = action.payload.length >= JOURNAL_PAGE_SIZE;
+        state.isLoadingMore = false;
+      })
+      .addCase(fetchMoreJournalEntries.rejected, (state) => {
+        // Quiet: the next scroll retries.
+        state.isLoadingMore = false;
       });
 
     builder
@@ -113,18 +184,30 @@ const journalSlice = createSlice({
         state.error = action.error.message || 'Failed to create journal entry';
       });
 
+    // Edits are optimistic: patch the row now, roll back if the server says no.
     builder
-      .addCase(editJournalEntry.pending, (state) => {
-        state.isSaving = true;
-        state.error = null;
+      .addCase(editJournalEntry.pending, (state, action) => {
+        const { entryId, payload } = action.meta.arg;
+        const idx = state.entries.findIndex((e) => e.id === entryId);
+        if (idx < 0) return;
+        const prev = state.entries[idx];
+        if (!state.editSnapshots[entryId]) state.editSnapshots[entryId] = { ...prev };
+        state.entries[idx] = applyEntryPatch(prev, payload);
       })
-      .addCase(editJournalEntry.fulfilled, (state, action: PayloadAction<JournalEntry>) => {
-        const idx = state.entries.findIndex((e) => e.id === action.payload.id);
-        if (idx >= 0) state.entries[idx] = action.payload;
-        state.isSaving = false;
+      .addCase(editJournalEntry.fulfilled, (state, action) => {
+        const entryId = action.meta.arg.entryId;
+        delete state.editSnapshots[entryId];
+        const idx = state.entries.findIndex((e) => e.id === entryId);
+        if (idx >= 0) state.entries[idx] = { ...state.entries[idx], ...action.payload };
       })
       .addCase(editJournalEntry.rejected, (state, action) => {
-        state.isSaving = false;
+        const entryId = action.meta.arg.entryId;
+        const snapshot = state.editSnapshots[entryId];
+        delete state.editSnapshots[entryId];
+        if (snapshot) {
+          const idx = state.entries.findIndex((e) => e.id === entryId);
+          if (idx >= 0) state.entries[idx] = snapshot;
+        }
         state.error = action.error.message || 'Failed to update journal entry';
       });
 

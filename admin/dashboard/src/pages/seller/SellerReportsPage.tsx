@@ -56,7 +56,7 @@ export function SellerReportsPage() {
       />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
       {lastExport && (
-        <p className="mb-4 text-xs text-slate-500">
+        <p className="mb-4 text-xs text-stone-500">
           Last export: {new Date(lastExport).toLocaleString()}
         </p>
       )}
@@ -65,7 +65,7 @@ export function SellerReportsPage() {
         <Card padding="lg">
           <div className="mb-4 flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-            <h2 className="font-semibold text-slate-900">Orders & products</h2>
+            <h2 className="font-semibold text-stone-900">Orders & products</h2>
           </div>
           <Field label="Orders period">
             <Select value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
@@ -100,9 +100,9 @@ export function SellerReportsPage() {
         <Card padding="lg">
           <div className="mb-4 flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-            <h2 className="font-semibold text-slate-900">Sales report</h2>
+            <h2 className="font-semibold text-stone-900">Sales report</h2>
           </div>
-          <p className="mb-4 text-sm text-slate-500">
+          <p className="mb-4 text-sm text-stone-500">
             Line items by date range (and optional category): order, product, qty, revenue, refunds.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">

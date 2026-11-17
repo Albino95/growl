@@ -8,6 +8,7 @@ import CustomersScreen from '../../screens/Business/CustomersScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
 import PostScreen from '../../screens/Post/PostScreen';
 import KYCScreen from '../../screens/KYC/KYCScreen';
+import { theme, useColorSchemeName } from '../../lib/tw';
 
 export type BusinessStackParamList = {
   BusinessMain: undefined;
@@ -23,6 +24,9 @@ export type BusinessStackParamList = {
 const Stack = createNativeStackNavigator<BusinessStackParamList>();
 
 export default function BusinessRootStack() {
+  // Subscribe so header tints re-resolve when the scheme flips.
+  useColorSchemeName();
+  const tint = theme.colors.brand;
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="BusinessMain" component={BusinessTabs} />
@@ -33,7 +37,7 @@ export default function BusinessRootStack() {
           headerShown: true,
           title: 'Analytics',
           headerBackTitle: 'Back',
-          headerTintColor: '#059669',
+          headerTintColor: tint,
         }}
       />
       <Stack.Screen
@@ -43,7 +47,7 @@ export default function BusinessRootStack() {
           headerShown: true,
           title: 'Order Details',
           headerBackTitle: 'Back',
-          headerTintColor: '#059669',
+          headerTintColor: tint,
         }}
       />
       <Stack.Screen
@@ -53,7 +57,7 @@ export default function BusinessRootStack() {
           headerShown: true,
           title: 'Settings',
           headerBackTitle: 'Back',
-          headerTintColor: '#059669',
+          headerTintColor: tint,
         }}
       />
       <Stack.Screen
@@ -63,7 +67,7 @@ export default function BusinessRootStack() {
           headerShown: true,
           title: 'Customers',
           headerBackTitle: 'Back',
-          headerTintColor: '#059669',
+          headerTintColor: tint,
         }}
       />
       <Stack.Screen
@@ -87,7 +91,7 @@ export default function BusinessRootStack() {
           headerShown: true,
           title: 'Identity verification',
           headerBackTitle: 'Back',
-          headerTintColor: '#059669',
+          headerTintColor: tint,
         }}
       />
     </Stack.Navigator>

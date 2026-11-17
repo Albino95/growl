@@ -286,6 +286,18 @@ describe('Marketplace Routes', () => {
 
   describe('createOrder payment gating', () => {
     it('should return 503 when payments are disabled', async () => {
+      // createOrder authenticates before the payments gate: getRequestContext loads the user row.
+      mockDb.prepare = (query: string) => ({
+        bind: (userId: string) => ({
+          first: async () =>
+            query.includes('SELECT * FROM users WHERE id = ?') && userId === 'test-user'
+              ? { id: 'test-user', email: 'test@example.com', metadata: '{}' }
+              : null,
+          all: async () => ({ results: [] }),
+          run: async () => ({ success: true }),
+        }),
+      });
+
       const request = createMockRequest('https://example.com/api/v1/marketplace/orders', {
         method: 'POST',
         headers: { Authorization: 'Bearer test-token' },
@@ -309,5 +321,16 @@ describe('Marketplace Routes', () => {
       expect(data.success).toBe(false);
       expect(data.error.code).toBe('PAYMENTS_DISABLED');
     });
+  });
+});
+
+describe('updateProductSchema', () => {
+  it("treats '' / null image_url as 'remove image' and local URIs as unchanged", async () => {
+    const { updateProductSchema } = await import('../../src/utils/validation');
+    expect(updateProductSchema.parse({ image_url: '' }).image_url).toBeNull();
+    expect(updateProductSchema.parse({ image_url: null }).image_url).toBeNull();
+    expect(updateProductSchema.parse({ image_url: 'file:///tmp/a.jpg' }).image_url).toBeUndefined();
+    expect(updateProductSchema.parse({}).image_url).toBeUndefined();
+    expect(updateProductSchema.parse({ image_url: 'https://x.test/a.jpg' }).image_url).toBe('https://x.test/a.jpg');
   });
 });

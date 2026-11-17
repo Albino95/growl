@@ -1,0 +1,532 @@
+import React, { useCallback, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
+  TextInput,
+} from 'react-native';
+import KeyboardInsetView from '../../components/ui/KeyboardInsetView';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import tw, { theme } from '../../lib/tw';
+import { iconSize } from '../../theme/icons';
+import ErrorState from '../../components/ui/ErrorState';
+import GrowChromeHeader from '../../components/ui/GrowChromeHeader';
+import PressableScale from '../../components/ui/PressableScale';
+import {
+  assignCoachingHomework,
+  completeCoachingContract,
+  getCoachingContract,
+  submitCoachingReview,
+  type CoachingAssignment,
+  type CoachingContract,
+  type ReviewEligibility,
+} from '../../services/api/instructor';
+import ReviewSheet from '../../components/instructor/ReviewSheet';
+import { StarRow } from '../../components/instructor/StarRating';
+import { useAuth } from '../../store/hooks';
+import { feedback } from '../../utils/interactionFeedback';
+import { alertMessage, confirmAsync } from '../../utils/confirmDialog';
+import { formatCurrency } from '../../utils/money';
+import { COACHING_ACTIVE_STATUS, COACHING_BILLING_NOTE } from '../../constants/coaching';
+import { navigateFromRoot } from '../../app/navigation/rootNavigation';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import { resolvePostMediaUri } from '../../utils/images';
+import { TAB_SCREEN_BOTTOM_PADDING } from '../../constants/scroll';
+import { SHOW_SEEDS } from '../../constants/featureFlags';
+import HomeworkCard from '../../components/coaching/HomeworkCard';
+import HomeworkDoneSheet from '../../components/coaching/HomeworkDoneSheet';
+import HomeworkFeedbackSheet from '../../components/coaching/HomeworkFeedbackSheet';
+import CheckinSharingCard from '../../components/coaching/CheckinSharingCard';
+import SessionNotesCard from '../../components/coaching/SessionNotesCard';
+import {
+  DUE_OPTIONS,
+  dueDateFor,
+  planProgress,
+  planStatusLabel,
+} from '../../components/coaching/planProgress';
+import { formatHomeworkDate } from '../../components/coaching/homeworkDates';
+import { HOMEWORK_PROOF_OPTIONS, type HomeworkProofKind } from '../../services/api/coachq';
+
+type Route = RouteProp<{ CoachingContract: { contractId: string } }, 'CoachingContract'>;
+
+export default function CoachingContractScreen() {
+  const navigation = useNavigation();
+  const { contractId } = useRoute<Route>().params;
+  const { user } = useAuth();
+  const [contract, setContract] = useState<CoachingContract | null>(null);
+  const [assignments, setAssignments] = useState<CoachingAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [detail, setDetail] = useState('');
+  const detailRef = useRef<TextInput>(null);
+  const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<ReviewEligibility | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [doneItem, setDoneItem] = useState<CoachingAssignment | null>(null);
+  const [feedbackItem, setFeedbackItem] = useState<CoachingAssignment | null>(null);
+  const [dueKey, setDueKey] = useState<string>('week');
+  const [proofKind, setProofKind] = useState<HomeworkProofKind | 'none'>('none');
+  // Bumped on pull-to-refresh so child cards (notes, check-ins) reload too.
+  const [reloadKey, setReloadKey] = useState(0);
+  const hasContractRef = useRef(false);
+
+  const isCoach = contract?.instructor_id === user?.id;
+
+  const load = useCallback(async () => {
+    try {
+      const res = await getCoachingContract(contractId);
+      setContract(res.contract);
+      hasContractRef.current = true;
+      setAssignments(res.assignments);
+      setReview(res.review || null);
+      setLoadError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not load this plan';
+      setLoadError(msg);
+      // Keep showing the plan we already have; only alert on a refresh failure.
+      if (hasContractRef.current) void alertMessage('Plan', msg);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [contractId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      void load();
+    }, [load])
+  );
+
+  const onAssign = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      // The server files homework on the CLIENT's own paths; don't send the coach's.
+      const due = DUE_OPTIONS.find((o) => o.key === dueKey) ?? DUE_OPTIONS[0];
+      // proof_kind is additive: older servers ignore it.
+      const input: Parameters<typeof assignCoachingHomework>[1] & { proof_kind?: HomeworkProofKind | null } = {
+        title: title.trim() || undefined,
+        goal_detail: detail.trim() || undefined,
+        due_at: dueDateFor(due.days),
+        proof_kind: proofKind === 'none' ? null : proofKind,
+      };
+      await assignCoachingHomework(contractId, input);
+      feedback.send();
+      setAssignOpen(false);
+      setTitle('');
+      setDetail('');
+      setDueKey('week');
+      setProofKind('none');
+      await load();
+    } catch (e) {
+      alertMessage('Homework', e instanceof Error ? e.message : 'Could not assign');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSubmitReview = async (input: {
+    stars: number;
+    follow_through?: number;
+    body?: string;
+  }) => {
+    if (!contract || busy) return;
+    setBusy(true);
+    try {
+      await submitCoachingReview({
+        peer_id: isCoach ? contract.client_id : contract.instructor_id,
+        contract_id: contract.id,
+        ...input,
+      });
+      feedback.success();
+      setReviewOpen(false);
+      await load();
+    } catch (e) {
+      alertMessage('Review', e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onComplete = async () => {
+    if (busy || !contract) return;
+    const ok = await confirmAsync(
+      'Mark plan complete?',
+      'This ends the plan for both of you. You can’t undo it.',
+      { confirmLabel: 'Mark complete', cancelLabel: 'Not yet' }
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const next = await completeCoachingContract(contract.id);
+      setContract(next);
+      feedback.open();
+      await load();
+    } catch (e) {
+      alertMessage('Plan', e instanceof Error ? e.message : 'Could not complete');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={tw`flex-1 bg-page`} edges={['top']}>
+      <GrowChromeHeader
+        leftAccessory={
+          <PressableScale
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+          >
+            <Ionicons name="arrow-back" size={iconSize.sm} color={theme.colors.ink} />
+          </PressableScale>
+        }
+      />
+
+      {loading && !contract ? (
+        <View style={tw`flex-1 items-center justify-center`}>
+          <ActivityIndicator color={theme.colors.brand} />
+        </View>
+      ) : contract ? (
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: TAB_SCREEN_BOTTOM_PADDING, paddingHorizontal: 20 }}
+          // Session notes input lives in this list: keep it above the keyboard.
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                setReloadKey((k) => k + 1);
+                void load();
+              }}
+              tintColor={theme.colors.brand}
+            />
+          }
+        >
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-3`}>
+            Coaching plan
+          </Text>
+          <Text style={tw`text-2xl font-bold text-ink mt-0.5`}>
+            {isCoach ? contract.client?.username : contract.instructor?.username}
+          </Text>
+          <Text style={tw`text-sm text-ink-3 mt-1`}>
+            {contract.status === 'active'
+              ? (() => {
+                  const p = planProgress(contract.started_at, contract.ends_at, contract.weeks);
+                  return `${COACHING_ACTIVE_STATUS} · Week ${p.week} of ${p.total}${
+                    p.daysLeft != null ? ` · ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left` : ''
+                  }`;
+                })()
+              : `${planStatusLabel(contract.status)}${
+                  contract.completed_at ? ` · ${formatHomeworkDate(contract.completed_at) ?? ''}` : ''
+                }`}
+          </Text>
+          {contract.status === 'active' ? (
+            <Text style={tw`text-xs text-ink-3 mt-1 leading-4`}>{COACHING_BILLING_NOTE}</Text>
+          ) : null}
+
+          <View style={tw`mt-4 px-4 py-3.5 rounded-card bg-card border border-line/80`}>
+            <Text style={tw`text-callout font-bold text-ink`}>
+              {contract.weeks} week{contract.weeks === 1 ? '' : 's'} · {contract.sessions_per_week}× /
+              week · {formatCurrency(contract.weekly_fee_eur, contract.currency)}/week
+            </Text>
+            <Text style={tw`text-sm text-ink-2 mt-1`}>
+              {formatCurrency(contract.total_eur, contract.currency)} total
+              {contract.trial_days ? ` · ${contract.trial_days}-day trial` : ''}
+            </Text>
+          </View>
+
+          <View style={tw`flex-row gap-2 mt-3`}>
+            {isCoach && contract.status === 'active' ? (
+              <PressableScale
+                onPress={() => setAssignOpen(true)}
+                style={tw`flex-1 py-3 rounded-card bg-emerald-600 items-center`}
+              >
+                <Text style={tw`text-white font-bold`}>Assign homework</Text>
+              </PressableScale>
+            ) : null}
+            {contract.status === 'active' ? (
+              <PressableScale
+                onPress={() => void onComplete()}
+                disabled={busy}
+                accessibilityState={{ disabled: busy }}
+                style={tw`flex-1 py-3 rounded-card bg-raised border border-line items-center ${busy ? 'opacity-60' : ''}`}
+              >
+                <Text style={tw`text-ink font-bold`}>Mark complete</Text>
+              </PressableScale>
+            ) : null}
+          </View>
+
+          <CheckinSharingCard
+            contractId={contract.id}
+            isCoach={isCoach}
+            shared={!!contract.share_checkins}
+            active={contract.status === 'active'}
+            reloadKey={reloadKey}
+            onSharedChange={(v) => setContract((c) => (c ? { ...c, share_checkins: v } : c))}
+          />
+
+          {isCoach ? <SessionNotesCard contractId={contract.id} reloadKey={reloadKey} /> : null}
+
+          <View style={tw`mt-3 px-4 py-3.5 rounded-card bg-card border border-line/80`}>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase`}>
+              {isCoach ? 'Rate this client' : 'Review this coach'}
+            </Text>
+            {review?.eligible ? (
+              <>
+                {review.mine ? (
+                  <View style={tw`flex-row items-center mt-2`}>
+                    <StarRow value={review.mine.stars} />
+                    <Text style={tw`text-xs text-ink-3 ml-2`}>Your review</Text>
+                  </View>
+                ) : (
+                  <Text style={tw`text-sm text-ink-2 mt-1.5`}>
+                    {review.weeks_completed} weeks completed. You can write a review.
+                  </Text>
+                )}
+                <PressableScale
+                  onPress={() => setReviewOpen(true)}
+                  style={tw`mt-2.5 py-2.5 rounded-control bg-emerald-600 items-center`}
+                >
+                  <Text style={tw`text-white font-bold text-sm`}>
+                    {review.mine ? 'Update review' : isCoach ? 'Rate follow-through' : 'Write a review'}
+                  </Text>
+                </PressableScale>
+              </>
+            ) : (
+              <Text style={tw`text-sm text-ink-3 mt-1.5 leading-5`}>
+                Reviews open after {review?.weeks_needed || 4} completed weeks together.
+                {review ? ` You have ${review.weeks_completed}.` : ''}
+              </Text>
+            )}
+          </View>
+
+          <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mt-6 mb-2`}>
+            Homework trace
+          </Text>
+          {assignments.length === 0 ? (
+            <Text style={tw`text-sm text-ink-3 leading-5`}>
+              {isCoach
+                ? 'Assign homework for this client. They mark it done with a photo or a note.'
+                : 'Your coach will add homework here. Mark it done with a photo or a note when you finish.'}
+            </Text>
+          ) : !SHOW_SEEDS ? (
+            // Seeds/Garden is hidden: homework lives entirely on this screen.
+            assignments.map((item) => (
+              <HomeworkCard
+                key={item.id}
+                item={item}
+                isCoach={isCoach}
+                canMarkDone={!isCoach && contract.status === 'active'}
+                onMarkDone={setDoneItem}
+                onFeedback={isCoach ? setFeedbackItem : undefined}
+              />
+            ))
+          ) : (
+            assignments.map((item) => (
+              <PressableScale
+                key={item.id}
+                onPress={() => navigateFromRoot(navigation, 'SeedDetail', { seedId: item.seed_id })}
+                style={tw`mb-2.5 px-3.5 py-3 rounded-card bg-card border border-line/80`}
+              >
+                <View style={tw`flex-row items-center justify-between`}>
+                  <Text style={tw`font-bold text-ink flex-1`} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <View
+                    style={tw`ml-2 px-2 py-0.5 rounded-full ${
+                      item.status === 'done' ? 'bg-emerald-50' : 'bg-raised'
+                    }`}
+                  >
+                    <Text
+                      style={tw`text-caption font-semibold ${
+                        item.status === 'done' ? 'text-emerald-800' : 'text-ink-2'
+                      }`}
+                    >
+                      {item.status === 'done' ? 'Done' : 'Assigned'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={tw`text-xs text-ink-3 mt-1`}>
+                  {item.seed.stage || 'seed'}
+                  {item.seed.category_key
+                    ? ` · ${getCategoryLabel(item.seed.category_key)}`
+                    : ''}
+                  {item.last_action ? ` · ${item.last_action.replace('_', ' ')}` : ''}
+                </Text>
+                {item.last_photo ? (
+                  <Image
+                    source={{ uri: resolvePostMediaUri(item.last_photo, item.seed.category_key ?? undefined, item.seed_id) }}
+                    style={tw`w-full h-28 rounded-control mt-2 bg-raised`}
+                    contentFit="cover"
+                  />
+                ) : null}
+              </PressableScale>
+            ))
+          )}
+        </ScrollView>
+      ) : (
+        <View style={tw`flex-1 items-center justify-center px-8`}>
+          <ErrorState
+            title="Couldn’t load this plan"
+            message={loadError || ''}
+            onRetry={() => {
+              setLoading(true);
+              void load();
+            }}
+          />
+        </View>
+      )}
+
+      <Modal visible={assignOpen} transparent animationType="slide" onRequestClose={() => setAssignOpen(false)}>
+        <KeyboardInsetView style={tw`flex-1 justify-end bg-black/40`} contentStyle={tw`justify-end`}>
+          <View style={tw`bg-page rounded-t-sheet px-gutter-wide pt-4 pb-8`}>
+            <Text style={tw`text-lg font-bold text-ink mb-1`}>Assign homework</Text>
+            <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
+              Add a task your client can check off with a photo or note.
+            </Text>
+            <TextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder="This week’s practice"
+              placeholderTextColor={theme.colors.placeholder}
+              maxLength={120}
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => detailRef.current?.focus()}
+              accessibilityLabel="Homework title"
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink mb-2`}
+            />
+            <TextInput
+              ref={detailRef}
+              value={detail}
+              onChangeText={setDetail}
+              placeholder="What good looks like"
+              placeholderTextColor={theme.colors.placeholder}
+              multiline
+              maxLength={800}
+              accessibilityLabel="What good looks like"
+              style={tw`bg-card border border-line/80 rounded-card px-3.5 py-3 text-body text-ink min-h-[72px] max-h-36 mb-3`}
+              textAlignVertical="top"
+            />
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5`}>
+              Due
+            </Text>
+            <View style={tw`flex-row flex-wrap mb-3`} accessibilityRole="radiogroup">
+              {DUE_OPTIONS.map((o) => {
+                const on = o.key === dueKey;
+                return (
+                  <PressableScale
+                    key={o.key}
+                    onPress={() => setDueKey(o.key)}
+                    feedback="chip"
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on, checked: on }}
+                    style={tw`mr-2 mb-2 px-3 py-1.5 rounded-chip border ${
+                      on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                    }`}
+                  >
+                    <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                      {o.label}
+                    </Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5`}>
+              Ask for proof
+            </Text>
+            <View style={tw`flex-row flex-wrap mb-1`} accessibilityRole="radiogroup">
+              {HOMEWORK_PROOF_OPTIONS.map((o) => {
+                const on = o.key === proofKind;
+                return (
+                  <PressableScale
+                    key={o.key}
+                    onPress={() => setProofKind(o.key)}
+                    feedback="chip"
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Ask for proof: ${o.label}`}
+                    accessibilityState={{ selected: on, checked: on }}
+                    style={tw`mr-2 mb-2 px-3 py-1.5 rounded-chip border flex-row items-center ${
+                      on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                    }`}
+                  >
+                    <Ionicons
+                      name={o.icon as keyof typeof Ionicons.glyphMap}
+                      size={13}
+                      color={on ? '#fff' : theme.colors.ink2}
+                      style={tw`mr-1`}
+                    />
+                    <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                      {o.label}
+                    </Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+            <Text style={tw`text-footnote text-ink-3 mb-3 leading-4`}>
+              {proofKind === 'none'
+                ? 'Your client marks it done with a note or photo.'
+                : 'They can still finish without it — you’ll see it in Today.'}
+            </Text>
+            <PressableScale
+              onPress={() => void onAssign()}
+              disabled={busy}
+              style={tw`py-3.5 rounded-card bg-emerald-600 items-center ${busy ? 'opacity-60' : ''}`}
+            >
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={tw`text-white font-bold`}>Assign homework</Text>
+              )}
+            </PressableScale>
+            <PressableScale onPress={() => setAssignOpen(false)} style={tw`py-3 items-center mt-1`}>
+              <Text style={tw`text-ink-3 font-semibold`}>Cancel</Text>
+            </PressableScale>
+          </View>
+        </KeyboardInsetView>
+      </Modal>
+
+      <HomeworkFeedbackSheet
+        assignment={feedbackItem}
+        onClose={() => setFeedbackItem(null)}
+        onSaved={() => void load()}
+      />
+
+      <HomeworkDoneSheet
+        visible={!!doneItem}
+        assignment={doneItem}
+        onClose={() => setDoneItem(null)}
+        onDone={() => void load()}
+      />
+
+      <ReviewSheet
+        visible={reviewOpen}
+        eligibility={review}
+        peerName={
+          isCoach
+            ? contract?.client?.username || 'Client'
+            : contract?.instructor?.username || 'Coach'
+        }
+        busy={busy}
+        onClose={() => setReviewOpen(false)}
+        onSubmit={(input) => void onSubmitReview(input)}
+      />
+    </SafeAreaView>
+  );
+}

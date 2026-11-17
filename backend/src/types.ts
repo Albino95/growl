@@ -14,11 +14,19 @@ export interface Env {
   APP_PUBLIC_URL?: string;
   GOOGLE_CLIENT_ID?: string;
   FACEBOOK_APP_ID?: string;
+  /** Needed to verify Facebook tokens (app access token = id|secret). */
+  FACEBOOK_APP_SECRET?: string;
   APPLE_CLIENT_ID?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   /** Vitest only — never set on remote Workers */
   ALLOW_TEST_AUTH_BYPASS?: string;
+  /** When "true", staff must have MFA enabled to log in (keep false on prod during App Review) */
+  ADMIN_MFA_REQUIRED?: string;
+  /** Optional AES key material for encrypting admin MFA secrets; falls back to JWT_SECRET */
+  ADMIN_MFA_KEY?: string;
+  /** Extra emails that can reply to in-app beta reviews (comma-separated) */
+  APP_REVIEW_REPLY_EMAILS?: string;
 }
 
 // User types
@@ -33,6 +41,9 @@ export interface User {
   email_verified?: number;
   email_verification_token_hash?: string | null;
   email_verification_expires_at?: string | null;
+  /** IANA timezone for the growth system's local day (default 'UTC'). */
+  timezone?: string;
+  invite_code?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -58,6 +69,9 @@ export interface Post {
   subcategory?: string;
   engagement_score: number;
   metadata: string; // JSON string
+  is_hidden?: number;
+  hidden_at?: string | null;
+  hidden_reason?: string | null;
   created_at: string;
   updated_at: string;
 }

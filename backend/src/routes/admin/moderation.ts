@@ -3,6 +3,14 @@ import { json, error } from '../../utils/response';
 import { requireAdmin, writeAdminAudit, requestIp } from '../../utils/adminAuth';
 import { validateRequest, reportDecisionSchema, appealDecisionSchema, assignReportSchema } from '../../utils/validation';
 import { generateId } from '../../utils/id';
+import {
+  softHideContent,
+  softUnhideContent,
+  resolveTargetOwnerEmail,
+  assertNotProtectedUser,
+  isContentRemoveAction,
+} from '../../utils/contentModeration';
+import { isProtectedReviewEmail } from '../../utils/reviewGuardrails';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   try {
@@ -96,6 +104,22 @@ export async function assignReport(request: Request, env: Env, reportId: string)
   }
   values.push(reportId);
   await env.DB.prepare(`UPDATE reports SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+
+  await writeAdminAudit(env, {
+    adminId: ctx.adminId,
+    action: 'moderation.assign',
+    targetType: 'report',
+    targetId: reportId,
+    reasonText: [
+      workflow_status ? `status=${workflow_status}` : null,
+      priority ? `priority=${priority}` : null,
+      assigned_admin_id !== undefined ? `assignee=${assigned_admin_id ?? 'none'}` : null,
+    ]
+      .filter(Boolean)
+      .join(', '),
+    ipAddress: requestIp(request),
+  });
+
   return json({ ok: true });
 }
 
@@ -108,8 +132,52 @@ export async function decideReport(request: Request, env: Env, reportId: string)
   const report = await env.DB.prepare(`SELECT * FROM reports WHERE id = ?`).bind(reportId).first<any>();
   if (!report) return error('NOT_FOUND', 'Report not found', 404);
 
+  const details = parseJson<{ userId?: string }>(report.details, {});
+  const owner = await resolveTargetOwnerEmail(env, report.target_type, report.target_id, details.userId);
   const targetUserId =
-    report.target_type === 'user' ? report.target_id : parseJson<{ userId?: string }>(report.details, {}).userId;
+    report.target_type === 'user' ? report.target_id : owner.userId || details.userId || null;
+
+  if (owner.email && isProtectedReviewEmail(owner.email)) {
+    return error(
+      'PROTECTED_ACCOUNT',
+      `Cannot enforce against protected review/demo account (${owner.email})`,
+      403
+    );
+  }
+  if (targetUserId) {
+    const guard = await assertNotProtectedUser(env, targetUserId);
+    if (guard.blocked) {
+      return error(
+        'PROTECTED_ACCOUNT',
+        `Cannot enforce against protected review/demo account (${guard.email})`,
+        403
+      );
+    }
+  }
+
+  let contentResult: { ok: boolean; skipped?: string } | null = null;
+  if (isContentRemoveAction(decision.enforcement?.contentAction)) {
+    if (report.target_type === 'post' || report.target_type === 'product') {
+      contentResult = await softHideContent(
+        env,
+        report.target_type,
+        report.target_id,
+        decision.reasonText,
+        ctx.adminId
+      );
+    } else if (report.target_type === 'user' && targetUserId) {
+      // Hide all visible posts by this user (soft) — limited batch for safety
+      const posts = await env.DB.prepare(
+        `SELECT id FROM posts WHERE user_id = ? AND COALESCE(is_hidden, 0) = 0 LIMIT 200`
+      )
+        .bind(targetUserId)
+        .all<{ id: string }>();
+      for (const p of posts.results || []) {
+        await softHideContent(env, 'post', p.id, decision.reasonText, ctx.adminId);
+      }
+      contentResult = { ok: true };
+    }
+  }
 
   if (decision.enforcement?.userAction && decision.enforcement.userAction !== 'none' && targetUserId) {
     const action = decision.enforcement.userAction;
@@ -123,7 +191,9 @@ export async function decideReport(request: Request, env: Env, reportId: string)
       ).toISOString();
     }
     if (action === 'ban') status = 'banned';
-    const strikeDelta = decision.enforcement.strikeDelta ?? (action === 'warn' || action === 'suspend' || action === 'ban' ? 1 : 0);
+    const strikeDelta =
+      decision.enforcement.strikeDelta ??
+      (action === 'warn' || action === 'suspend' || action === 'ban' ? 1 : 0);
     await env.DB.prepare(
       `INSERT INTO user_account_states (user_id, status, strike_count, suspended_until, ban_reason, updated_by_admin_id, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
@@ -148,6 +218,12 @@ export async function decideReport(request: Request, env: Env, reportId: string)
   }
 
   const actionId = generateId('modact');
+  const decisionMeta = {
+    ...decision,
+    content_result: contentResult,
+    target_type: report.target_type,
+    target_id: report.target_id,
+  };
   await env.DB.prepare(
     `INSERT INTO moderation_actions (id, report_id, user_id, admin_id, action, reason_code, reason_text, metadata, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
@@ -160,7 +236,7 @@ export async function decideReport(request: Request, env: Env, reportId: string)
       decision.action || 'manual_review',
       decision.reasonCode,
       decision.reasonText,
-      JSON.stringify(decision)
+      JSON.stringify(decisionMeta)
     )
     .run();
 
@@ -182,7 +258,7 @@ export async function decideReport(request: Request, env: Env, reportId: string)
     ipAddress: requestIp(request),
   });
 
-  return json({ ok: true, actionId });
+  return json({ ok: true, actionId, content_result: contentResult });
 }
 
 export async function batchDecideReports(request: Request, env: Env): Promise<Response> {
@@ -220,6 +296,11 @@ export async function decideAppeal(request: Request, env: Env, appealId: string)
     .run();
 
   if (status === 'overturned') {
+    const guard = await assertNotProtectedUser(env, appeal.user_id);
+    if (guard.blocked) {
+      // Still allow restoring protected users to active; do not hide their content permanently
+    }
+
     await env.DB.prepare(
       `INSERT INTO user_account_states (user_id, status, strike_count, updated_by_admin_id, updated_at)
        VALUES (?, 'active', 0, ?, datetime('now'))
@@ -227,6 +308,31 @@ export async function decideAppeal(request: Request, env: Env, appealId: string)
     )
       .bind(appeal.user_id, ctx.adminId)
       .run();
+
+    const modAction = await env.DB.prepare(`SELECT metadata FROM moderation_actions WHERE id = ?`)
+      .bind(appeal.moderation_action_id)
+      .first<{ metadata: string }>();
+    const meta = parseJson<{
+      target_type?: string;
+      target_id?: string;
+      enforcement?: { contentAction?: string };
+    }>(modAction?.metadata, {});
+
+    if (
+      isContentRemoveAction(meta.enforcement?.contentAction) &&
+      meta.target_type &&
+      meta.target_id &&
+      (meta.target_type === 'post' || meta.target_type === 'product')
+    ) {
+      await softUnhideContent(env, meta.target_type, meta.target_id);
+    } else if (meta.target_type === 'user' && appeal.user_id) {
+      await env.DB.prepare(
+        `UPDATE posts SET is_hidden = 0, hidden_at = NULL, hidden_reason = NULL, updated_at = datetime('now')
+         WHERE user_id = ? AND COALESCE(is_hidden, 0) = 1 AND hidden_reason IS NOT NULL`
+      )
+        .bind(appeal.user_id)
+        .run();
+    }
   }
 
   await writeAdminAudit(env, {

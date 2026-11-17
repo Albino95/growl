@@ -47,7 +47,11 @@ In the Cloudflare dashboard: R2 → enable → create:
 - `growl-media-qa`
 - `growl-media-prod`
 
-Uncomment the `[[env.*.r2_buckets]]` (and local `[[r2_buckets]]`) blocks in `wrangler.toml`.
+Uncomment / keep the `[[env.*.r2_buckets]]` blocks in `wrangler.toml` (already wired for company account).
+
+**Do not** commit R2 S3 Access Key ID / Secret Access Key into the repo. Workers bind to R2 by bucket name; S3 credentials are only needed for external tools (rclone, aws cli), store them in a password manager or local env — never in git or chat.
+
+You need **three** KV namespaces (`KV_DEV`, `KV_QA`, `KV_PROD`). If production still points at the qa KV id in `wrangler.toml`, create `KV_PROD` and paste its id.
 
 ## 5) Secrets per environment
 
@@ -96,7 +100,13 @@ npm run deploy:production
 
 Worker names: `growl-backend-dev`, `growl-backend-qa`, `growl-backend-production`.
 
-Optional custom domains: `api-dev.growl.app`, `api-qa.growl.app`, `api.growl.app`.
+Company-account workers.dev subdomain (current):
+
+- https://growl-backend-dev.wispy-leaf-4e8b.workers.dev
+- https://growl-backend-qa.wispy-leaf-4e8b.workers.dev
+- https://growl-backend-production.wispy-leaf-4e8b.workers.dev
+
+Optional custom domains: `api-dev.letsgrow.lu`, `api-qa.letsgrow.lu`, `api.letsgrow.lu`.
 
 ## 9) Validate
 

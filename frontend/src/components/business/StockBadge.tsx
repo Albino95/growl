@@ -25,7 +25,7 @@ export default function StockBadge({ stock, threshold = 10 }: Props) {
         : { bg: 'bg-emerald-100', text: 'text-emerald-800', label: `${stock} in stock` };
 
   return (
-    <View style={tw`px-2 py-0.5 rounded-full ${styles.bg}`}>
+    <View style={tw`px-2 py-0.5 rounded-chip ${styles.bg}`}>
       <Text style={tw`text-xs font-semibold ${styles.text}`}>{styles.label}</Text>
     </View>
   );

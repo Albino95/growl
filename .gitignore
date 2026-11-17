@@ -8,6 +8,9 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+# CI installs these two apps with `npm ci`, so their lockfiles are tracked.
+!frontend/package-lock.json
+!backend/package-lock.json
 
 # Expo
 .expo/
@@ -185,7 +188,8 @@ out/
 
 # Gatsby
 .cache/
-public
+# (Gatsby's `public` output rule removed: landing/public and
+#  admin/dashboard/public hold real site assets that must be deployed.)
 
 # Storybook
 .out
@@ -237,6 +241,9 @@ public
 # Sentry
 .sentryclirc
 
+# Play Console submit key — never commit
+**/google-play-service-account.json
+
 # Misc
 *.pem
 *.key
@@ -269,3 +276,4 @@ site/
 
 
 
+.env*

@@ -10,13 +10,13 @@ type Props = HTMLAttributes<HTMLDivElement> & {
 const paddingMap = { sm: 'p-4', md: 'p-5', lg: 'p-6' };
 
 export function Card({ children, hover, padding = 'md', className = '', ...props }: Props) {
-  const baseClass = `rounded-xl border border-slate-200/80 bg-white shadow-card ${paddingMap[padding]} ${className}`;
+  const baseClass = `rounded-xl border border-surface-border bg-surface shadow-card ${paddingMap[padding]} ${className}`;
 
   if (hover) {
     return (
       <motion.div
         className={baseClass}
-        whileHover={{ y: -2, boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.08)' }}
+        whileHover={{ y: -2, boxShadow: '0 8px 20px -8px rgb(28 25 23 / 0.12)' }}
         transition={{ duration: 0.2 }}
       >
         {children}

@@ -7,21 +7,35 @@ export default {
         brand: {
           50: '#ecfdf5',
           100: '#d1fae5',
-          500: '#059669',
-          600: '#047857',
-          700: '#065f46',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+        },
+        energy: {
+          DEFAULT: '#F97066',
+          soft: '#FFF1F0',
         },
         surface: {
-          DEFAULT: '#ffffff',
-          muted: '#f8fafc',
+          DEFAULT: '#FFFcf7',
+          page: '#F3EEE4',
+          muted: '#EAE4D6',
+          border: '#E7E5E4',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: [
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'Segoe UI',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
       },
       boxShadow: {
-        card: '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
-        'card-hover': '0 10px 25px -5px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05)',
+        card: '0 1px 2px 0 rgb(28 25 23 / 0.04)',
+        'card-hover': '0 8px 20px -8px rgb(28 25 23 / 0.12)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',

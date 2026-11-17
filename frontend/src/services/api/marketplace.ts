@@ -74,6 +74,7 @@ export interface CheckoutSessionResponse {
   data: {
     session_id: string;
     url: string;
+    order_id: string;
     amount_total: number;
     currency: string;
   };
@@ -84,6 +85,7 @@ export interface Order {
   user_id: string;
   status: string;
   total: number;
+  payment_status?: string;
   shipping_address: ShippingAddress;
   metadata?: Record<string, any>;
   items: Array<{
@@ -163,6 +165,13 @@ export async function createOrder(orderData: CreateOrderRequest): Promise<OrderR
  */
 export async function getOrders(): Promise<{ success: boolean; data: Order[] }> {
   return request<{ success: boolean; data: Order[] }>('/marketplace/orders');
+}
+
+/**
+ * Get a single buyer order (payment confirmation polling)
+ */
+export async function getOrder(orderId: string): Promise<OrderResponse> {
+  return request<OrderResponse>(`/marketplace/orders/${orderId}`);
 }
 
 /**

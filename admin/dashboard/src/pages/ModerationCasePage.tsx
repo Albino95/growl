@@ -7,7 +7,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Field, Select, Textarea, Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { AlertBanner } from '../components/ui/AlertBanner';
+import { AlertBanner, SuccessBanner } from '../components/ui/AlertBanner';
 import { Badge, priorityBadge, statusBadge } from '../components/ui/Badge';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { PageLoader } from '../components/ui/Skeleton';
@@ -23,11 +23,11 @@ function JsonPanel({ title, data, defaultOpen = false }: { title: string; data: 
   return (
     <Card padding="md">
       <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => setOpen(!open)}>
-        <h3 className="font-semibold text-slate-800">{title}</h3>
-        {open ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        <h3 className="font-semibold text-stone-800">{title}</h3>
+        {open ? <ChevronUp className="h-4 w-4 text-stone-400" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
       </button>
       {open && (
-        <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{JSON.stringify(data, null, 2)}</pre>
+        <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{JSON.stringify(data, null, 2)}</pre>
       )}
     </Card>
   );
@@ -45,6 +45,7 @@ export function ModerationCasePage() {
   const [suspendDays, setSuspendDays] = useState(7);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
     if (!reportId) return;
@@ -90,7 +91,10 @@ export function ModerationCasePage() {
           },
         }),
       });
-      navigate('/moderation');
+      const hideNote =
+        contentAction === 'remove' ? ' Content was soft-hidden from consumer feeds.' : '';
+      setSuccessMsg(`Decision applied.${hideNote}`);
+      setTimeout(() => navigate('/moderation'), 700);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Decision failed');
     } finally {
@@ -118,13 +122,14 @@ export function ModerationCasePage() {
       </Link>
       <PageHeader title={`Case ${String(report.id).slice(0, 16)}…`} subtitle="Review evidence and apply enforcement" />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
+      {successMsg && <SuccessBanner message={successMsg} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card padding="lg">
-          <h3 className="mb-4 font-semibold text-slate-800">Report details</h3>
+          <h3 className="mb-4 font-semibold text-stone-800">Report details</h3>
           <dl className="space-y-3 text-sm">
-            <div><dt className="text-slate-500">Target</dt><dd className="font-mono text-slate-800">{String(report.target_type)} / {String(report.target_id)}</dd></div>
-            <div><dt className="text-slate-500">Reason</dt><dd>{String(report.reason)}</dd></div>
+            <div><dt className="text-stone-500">Target</dt><dd className="font-mono text-stone-800">{String(report.target_type)} / {String(report.target_id)}</dd></div>
+            <div><dt className="text-stone-500">Reason</dt><dd>{String(report.reason)}</dd></div>
             <div className="flex gap-2">
               <Badge variant={statusBadge(String(report.workflow_status))}>{String(report.workflow_status)}</Badge>
               <Badge variant={priorityBadge(String(report.priority))}>{String(report.priority)}</Badge>
@@ -135,7 +140,7 @@ export function ModerationCasePage() {
         </Card>
 
         <Card padding="lg" className="lg:sticky lg:top-8 lg:self-start">
-          <h3 className="mb-4 font-semibold text-slate-800">Decision panel</h3>
+          <h3 className="mb-4 font-semibold text-stone-800">Decision panel</h3>
           <form onSubmit={onSubmit}>
             <Field label="Reason code">
               <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} required>
@@ -148,9 +153,12 @@ export function ModerationCasePage() {
               <Textarea value={reasonText} onChange={(e) => setReasonText(e.target.value)} rows={3} required />
             </Field>
             <Field label="Content action">
-              <Select value={contentAction} onChange={(e) => setContentAction(e.target.value as 'none' | 'remove')}>
+              <Select
+                value={contentAction}
+                onChange={(e) => setContentAction(e.target.value as 'none' | 'remove')}
+              >
                 <option value="none">No content change</option>
-                <option value="remove">Remove content</option>
+                <option value="remove">Hide content (soft-remove from feeds)</option>
               </Select>
             </Field>
             <Field label="User action">
@@ -179,7 +187,11 @@ export function ModerationCasePage() {
       <ConfirmDialog
         open={confirmOpen}
         title="Apply moderation decision?"
-        message="This will enforce the selected actions and close the report."
+        message={
+          contentAction === 'remove'
+            ? 'This will soft-hide content (not hard-delete), apply user actions if selected, and close the report. Protected review accounts cannot be enforced.'
+            : 'This will apply the selected user actions and close the report. Protected review accounts cannot be enforced.'
+        }
         confirmLabel="Apply"
         variant="danger"
         loading={submitting}

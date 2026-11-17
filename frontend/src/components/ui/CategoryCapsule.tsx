@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import tw from '../../lib/tw';
+import tw, { theme } from '../../lib/tw';
 import { horizontalScrollProps } from '../../constants/scroll';
+import PressableScale from './PressableScale';
 
 export type CapsuleItem = {
   key: string;
@@ -30,41 +31,44 @@ export function CategoryCapsule({
   compact,
 }: CapsuleProps) {
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={onPress}
+      // Picking a new capsule = chip tone; re-pressing the active one = tick only.
+      feedback={selected ? 'selection' : 'chip'}
+      pressedScale={0.96}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      style={tw`mr-2 ${compact ? 'min-h-[36px] px-3.5' : 'min-h-[44px] px-3.5'} rounded-2xl flex-row items-center border ${
-        selected ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-stone-200'
+      style={tw`mr-2 ${compact ? 'min-h-[36px] px-3.5' : 'min-h-[44px] px-3.5'} rounded-card flex-row items-center border ${
+        selected ? 'bg-emerald-600 border-emerald-600' : 'bg-card border-line'
       }`}
     >
       {icon ? (
         <Ionicons
           name={icon}
           size={compact ? 16 : 18}
-          color={selected ? '#FFFFFF' : '#059669'}
+          color={selected ? '#FFFFFF' : theme.colors.brand}
           style={tw`mr-1.5`}
         />
       ) : null}
       <Text
-        style={tw`font-semibold ${compact ? 'text-sm' : 'text-[15px]'} ${
-          selected ? 'text-white' : 'text-stone-800'
+        style={tw`font-semibold ${compact ? 'text-sm' : 'text-body'} ${
+          selected ? 'text-white' : 'text-ink'
         }`}
       >
         {label}
       </Text>
       {typeof count === 'number' ? (
         <View
-          style={tw`ml-2 min-w-[22px] h-[22px] px-1.5 rounded-full items-center justify-center ${
-            selected ? 'bg-white/20' : 'bg-stone-100'
+          style={tw`ml-2 min-w-[22px] h-[22px] px-1.5 rounded-chip items-center justify-center ${
+            selected ? 'bg-white/20' : 'bg-raised'
           }`}
         >
-          <Text style={tw`text-[11px] font-bold ${selected ? 'text-white' : 'text-stone-600'}`}>
+          <Text style={tw`text-caption font-bold ${selected ? 'text-white' : 'text-ink-2'}`}>
             {count}
           </Text>
         </View>
       ) : null}
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 

@@ -76,42 +76,43 @@ export function DashboardPage() {
               icon={Flag}
               href="/moderation"
               hrefLabel="View queue"
+              accent="bg-energy-soft text-energy"
             />
             <KpiCard
               label="Open appeals"
               value={data?.kpis.open_appeals ?? '—'}
               icon={Scale}
               href="/appeals"
-              accent="bg-violet-50 text-violet-600"
+              accent="bg-brand-50 text-brand-600"
             />
             <KpiCard
               label="Privacy pending"
               value={data?.kpis.privacy_pending ?? '—'}
               icon={Lock}
               href="/privacy"
-              accent="bg-blue-50 text-blue-600"
+              accent="bg-brand-50 text-brand-700"
             />
             <KpiCard
               label="Total users"
               value={data?.kpis.total_users ?? '—'}
               icon={Users}
-              accent="bg-slate-100 text-slate-600"
+              accent="bg-surface-muted text-stone-600"
             />
             <KpiCard
               label="Orders (7d)"
               value={data?.kpis.orders_7d ?? '—'}
               icon={ShoppingBag}
-              accent="bg-orange-50 text-orange-600"
+              accent="bg-brand-50 text-brand-600"
             />
             <KpiCard
               label="Revenue (7d)"
               value={`$${Number(data?.kpis.revenue_7d ?? 0).toFixed(0)}`}
               icon={DollarSign}
-              accent="bg-emerald-50 text-emerald-600"
+              accent="bg-brand-50 text-brand-600"
             />
           </motion.div>
 
-          <h2 className="mb-3 mt-10 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <h2 className="mb-3 mt-10 text-sm font-semibold uppercase tracking-wide text-stone-500">
             Commerce
           </h2>
           <motion.div
@@ -124,7 +125,7 @@ export function DashboardPage() {
               label="GMV (30d)"
               value={`$${Number(data?.kpis.gmv_30d ?? 0).toFixed(0)}`}
               icon={TrendingUp}
-              accent="bg-emerald-50 text-emerald-600"
+              accent="bg-brand-50 text-brand-600"
               href="/business"
               hrefLabel="Orders"
             />
@@ -139,7 +140,7 @@ export function DashboardPage() {
               label="Low-stock SKUs"
               value={data?.kpis.low_stock_platform ?? '—'}
               icon={AlertTriangle}
-              accent="bg-amber-50 text-amber-600"
+              accent="bg-energy-soft text-energy"
             />
           </motion.div>
         </>
@@ -147,7 +148,7 @@ export function DashboardPage() {
 
       {data && data.trends.reports_7d.length > 0 && (
         <Card className="mt-8" padding="lg">
-          <h3 className="mb-4 text-sm font-semibold text-slate-700">Reports (last 7 days)</h3>
+          <h3 className="mb-4 text-sm font-semibold text-stone-700">Reports (last 7 days)</h3>
           <div className="flex h-32 items-end gap-2">
             {data.trends.reports_7d.map((t, i) => (
               <motion.div
@@ -161,7 +162,7 @@ export function DashboardPage() {
                   className="w-full min-h-[4px] rounded-t-md bg-gradient-to-t from-brand-600 to-brand-500 transition-opacity group-hover:opacity-80"
                   style={{ height: '100%' }}
                 />
-                <span className="mt-2 text-[10px] text-slate-400">{t.day.slice(5)}</span>
+                <span className="mt-2 text-[10px] text-stone-400">{t.day.slice(5)}</span>
               </motion.div>
             ))}
           </div>
