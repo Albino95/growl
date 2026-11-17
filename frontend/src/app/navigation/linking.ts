@@ -4,6 +4,7 @@
  *   growl://invite/<code>            → InviteRedeem
  *   https://letsgrow.lu/i/<code>     → InviteRedeem (universal link, once associated domains are set up)
  *   growl://challenge/<id>           → ChallengeDetail
+ *   growl://cohort/<code>            → Cohorts (opens the join sheet for that code)
  *
  * Everything else (growl://checkout/…, growl://reset-password…, other web
  * paths) is filtered out so App.tsx's manual checkout handler keeps owning it
@@ -24,9 +25,9 @@ import { handleWidgetUrl } from '../../services/widgetLinks';
 
 export const LINK_PREFIXES = ['growl://', 'https://letsgrow.lu', 'https://www.letsgrow.lu'];
 
-const HANDLED = /^(?:growl:\/\/|https:\/\/(?:www\.)?letsgrow\.lu\/)(?:invite|i|challenge)\/[^/?#]+/i;
+const HANDLED = /^(?:growl:\/\/|https:\/\/(?:www\.)?letsgrow\.lu\/)(?:invite|i|challenge|cohort)\/[^/?#]+/i;
 
-/** True for URLs this config routes (invite / challenge). */
+/** True for URLs this config routes (invite / challenge / cohort). */
 export function isGrowthDeepLink(url: string | null | undefined): url is string {
   return !!url && HANDLED.test(url);
 }
@@ -65,6 +66,10 @@ export const linking: LinkingOptions<RootStackParamList> = {
       ChallengeDetail: {
         path: 'challenge/:challengeId',
         parse: { challengeId: (id: string) => decodeURIComponent(id) },
+      },
+      Cohorts: {
+        path: 'cohort/:code',
+        parse: { code: (c: string) => decodeURIComponent(c).trim().toUpperCase() },
       },
     },
   },

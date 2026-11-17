@@ -2,6 +2,7 @@ import { Env } from '../types';
 import { json, error } from '../utils/response';
 import { getRequestContext } from '../utils/auth';
 import { generateId } from '../utils/id';
+import { deleteUserProofMedia } from './wave3/proofx';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   try {
@@ -171,6 +172,17 @@ export async function deleteAccount(request: Request, env: Env): Promise<Respons
     await env.DB.prepare(`DELETE FROM daily_checkins WHERE user_id = ?`).bind(ctx.userId).run();
   } catch (err) {
     console.error('[deleteAccount] growth cleanup failed', err);
+  }
+
+  // Proof of progress: private files go now, then the rows (free text) with them.
+  try {
+    await deleteUserProofMedia(env, ctx.userId);
+    await env.DB.prepare(`DELETE FROM proof_cheers WHERE proof_id IN (SELECT id FROM proofs WHERE user_id = ?)`)
+      .bind(ctx.userId)
+      .run();
+    await env.DB.prepare(`DELETE FROM proofs WHERE user_id = ?`).bind(ctx.userId).run();
+  } catch (err) {
+    console.error('[deleteAccount] proof cleanup failed', err);
   }
 
   return json({

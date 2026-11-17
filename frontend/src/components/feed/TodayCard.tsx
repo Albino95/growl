@@ -50,6 +50,10 @@ import { isBootRevealStarted, onBootRevealStart } from '../auth/bootSplashSignal
 import { getCategoryMeta } from '../../utils/categoryLabels';
 import CATEGORIES from '../../data/categories';
 import type { Mood } from '../../services/api/growth';
+import type { ProofKind } from '../../services/api/proofs';
+import ProofSheet from '../proof/ProofSheet';
+import ProofChip from '../proof/ProofChip';
+import { KIND_META, orderedKinds, proofSkipActive } from '../proof/proofDefaults';
 
 if (Platform.OS === 'android' && typeof UIManager.setLayoutAnimationEnabledExperimental === 'function') {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -135,6 +139,9 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
   const loaded = useGrowthStore((s) => s.loaded);
   const saving = useGrowthStore((s) => s.saving);
   const lifeMode = useGrowthStore((s) => s.lifeMode);
+  const proofs = useGrowthStore((s) => s.proofs);
+  const proofsAvailable = useGrowthStore((s) => s.proofsAvailable);
+  const proofSkippedDay = useGrowthStore((s) => s.proofSkippedDay);
 
   const lastJournalDateKey = useActivationStore((s) => s.lastJournalDateKey);
   const journaledToday = lastJournalDateKey === localDateKey();
@@ -156,6 +163,9 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
   const [milestone, setMilestone] = useState<number | null>(null);
   /** Bumped per save → replays the done sequence once the reply view is mounted. */
   const [replyRun, setReplyRun] = useState(0);
+  /** Optional proof sheet (after an evening Yes / Partly). */
+  const [proofOpen, setProofOpen] = useState(false);
+  const [proofKind, setProofKind] = useState<ProofKind | undefined>(undefined);
 
   const moodScales = useRef(CHECKIN_MOODS.map(() => new Animated.Value(1))).current;
   const reveal = useRef(new Animated.Value(0)).current;
@@ -394,6 +404,18 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
     navigation.navigate('Journal', { openCompose: true });
   };
 
+  const openProof = (kind: ProofKind) => {
+    haptic('tapLight');
+    setProofKind(kind);
+    setProofOpen(true);
+  };
+
+  const onSkipProof = () => {
+    haptic('selection');
+    animateLayout();
+    useGrowthStore.getState().skipProofToday();
+  };
+
   const onTogglePill = () => {
     haptic('selection');
     animateLayout();
@@ -536,6 +558,17 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
     const doneFollowup = followupLine || followupReply(checkin.followup);
     // Evening and the loop is closed → the journal nudge becomes "close the day".
     const closingTime = isEvening() && !!(followupLine || checkin.followup);
+    // Optional proof: only after Yes / Partly, never blocks anything, Skip hides it for the day.
+    const dayProofs = proofs.filter((p) => p.context_type === 'checkin' && p.context_id === checkin.day);
+    const latestProof = dayProofs.length ? dayProofs[dayProofs.length - 1] : null;
+    const followedThrough = checkin.followup === 'yes' || checkin.followup === 'partly';
+    const showProofRow =
+      proofsAvailable &&
+      followedThrough &&
+      !latestProof &&
+      !checkin.rest &&
+      !proofSkipActive(proofSkippedDay, checkin.day);
+    const proofKinds = orderedKinds(checkin.path);
     return (
       <View style={tw`mx-gutter mb-3`}>
         <PressableScale
@@ -543,7 +576,9 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
           onPress={onTogglePill}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
-          accessibilityLabel={`Checked in. ${streakLabel(current)}${label ? `. ${label}` : ''}`}
+          accessibilityLabel={`Checked in. ${streakLabel(current)}${label ? `. ${label}` : ''}${
+            latestProof ? '. With proof' : ''
+          }`}
           style={tw`flex-row items-center px-3.5 py-2.5 rounded-chip bg-emerald-50 border border-emerald-100`}
         >
           <View style={tw`w-5 h-5 rounded-full bg-emerald-600 items-center justify-center mr-2`}>
@@ -561,6 +596,9 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
             style={tw`ml-2`}
           />
         </PressableScale>
+        {latestProof ? (
+          <ProofChip proof={latestProof} count={dayProofs.length} showSummary style={tw`mt-1.5 ml-1`} />
+        ) : null}
         <BuddyTodayLine />
 
         {showFollowup && !followupLine ? (
@@ -601,6 +639,47 @@ function TodayCard({ onInputFocus }: TodayCardProps = {}) {
         {followupLine && !expanded ? (
           <Text style={tw`text-xs text-emerald-800 mt-2 px-2`}>{followupLine}</Text>
         ) : null}
+
+        {showProofRow ? (
+          <View
+            style={tw`mt-2 flex-row items-center px-3 py-1.5 rounded-card bg-card border border-line/70`}
+            accessibilityLabel="Add proof, optional"
+          >
+            <Text style={tw`text-footnote font-semibold text-ink-2 mr-1`}>Add proof?</Text>
+            <View style={tw`flex-1 flex-row items-center`}>
+              {proofKinds.map((k) => (
+                <PressableScale
+                  key={k}
+                  feedback={false}
+                  onPress={() => openProof(k)}
+                  hitSlop={4}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add a ${KIND_META[k].label.toLowerCase()} proof`}
+                  style={tw`w-9 h-9 items-center justify-center rounded-full`}
+                >
+                  <Text style={tw`text-base`}>{KIND_META[k].emoji}</Text>
+                </PressableScale>
+              ))}
+            </View>
+            <PressableScale
+              feedback={false}
+              onPress={onSkipProof}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Skip proof for today"
+            >
+              <Text style={tw`text-xs font-semibold text-ink-3`}>· Skip</Text>
+            </PressableScale>
+          </View>
+        ) : null}
+        <ProofSheet
+          visible={proofOpen}
+          onClose={() => setProofOpen(false)}
+          path={checkin.path}
+          requestedKind={proofKind}
+          context={{ type: 'checkin', id: checkin.day }}
+          onSaved={() => animateLayout()}
+        />
 
         {expanded ? (
           <View style={tw`mt-2 px-4 py-3 rounded-card bg-card border border-line/70`}>

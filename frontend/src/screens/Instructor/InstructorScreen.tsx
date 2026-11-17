@@ -52,6 +52,7 @@ import ErrorState from '../../components/ui/ErrorState';
 import { planProgress } from '../../components/coaching/planProgress';
 import { formatHomeworkDate } from '../../components/coaching/homeworkDates';
 import { onboardingSteps, pipelineGroups } from './instructorPipeline';
+import CoachTodayEntry from '../../components/coachq/CoachTodayEntry';
 
 type HubTab = 'overview' | 'students' | 'community' | 'partnerships';
 
@@ -851,6 +852,8 @@ export default function InstructorScreen({ navigation }: any) {
         </Text>
       </View>
 
+      <CoachTodayEntry />
+
       <View style={tw`flex-row px-gutter-wide mt-3 border-b border-line/80`}>
         {tabs.map((tab) => (
           <PressableScale
@@ -1130,6 +1133,23 @@ export default function InstructorScreen({ navigation }: any) {
               <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>
                 Talk first, send a written proposal, then assign homework on the plan.
               </Text>
+              {/* Group plans (helper D, wave 5) */}
+              <PressableScale
+                feedback="open"
+                onPress={() => navigateFromRoot(navigation, 'Cohorts')}
+                accessibilityRole="button"
+                accessibilityLabel="Group plans: coach many people at once"
+                style={tw`mb-4 flex-row items-center px-4 py-3.5 bg-card border border-line/80 rounded-card`}
+              >
+                <View style={tw`w-9 h-9 rounded-full bg-emerald-600 items-center justify-center mr-3`}>
+                  <Ionicons name="people" size={18} color="#fff" />
+                </View>
+                <View style={tw`flex-1`}>
+                  <Text style={tw`font-semibold text-ink`}>Group plans</Text>
+                  <Text style={tw`text-xs text-ink-3 mt-0.5`}>One plan for 2–150 people · updates · group homework</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
+              </PressableScale>
 
               {pipeline.openCount === 0 && pipeline.completed.length === 0 ? (
                 <EmptyState

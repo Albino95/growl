@@ -70,6 +70,7 @@ import {
 } from '../../services/api/instructor';
 import BadgeRow from '../../components/badges/BadgeRow';
 import BuddiesPreview from '../../components/buddies/BuddiesPreview';
+import YourGroupsSection from '../../components/cohorts/YourGroupsSection';
 import { usePublishQueue } from '../../state/usePublishQueue';
 import { usePostEventsStore } from '../../state/usePostEventsStore';
 
@@ -952,6 +953,8 @@ export default function ProfileScreen({ navigation: navProp }: any) {
               <Ionicons name="chevron-forward" size={18} color={theme.colors.iconMuted} />
             </PressableScale>
           ) : null}
+
+          <YourGroupsSection />
 
           {isInstructor ? (
             <PressableScale

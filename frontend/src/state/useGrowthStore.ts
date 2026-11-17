@@ -16,6 +16,7 @@ import { localDayKey } from '../services/api/http';
 import { newIdempotencyKey } from '../services/api/idempotency';
 import { toLifeMode, type LifeMode } from '../services/api/privacy';
 import type { JournalMood } from '../services/api/journal';
+import type { Proof } from '../services/api/proofs';
 
 /**
  * Growth system client state (streak + Today check-in + weekly recap).
@@ -36,6 +37,10 @@ import type { JournalMood } from '../services/api/journal';
  *                                      from post/story/journal/check-in responses.
  *     `takeBadges()`                   returns and clears the queue — the global
  *                                      BadgeCelebrationHost consumes this.
+ *   - `proofs: Proof[]`                today's optional proofs (GET /me/today `proofs`;
+ *                                      [] on servers without proofs).
+ *     `addProof(p)` / `removeProof(id)` keep it in sync after ProofSheet / ProofViewer.
+ *   - `proofSkippedDay`                persisted: local day the "Add proof?" row was skipped.
  */
 
 const STORAGE_KEY = 'grow.growth.v1';
@@ -70,6 +75,12 @@ type GrowthState = {
   dismissedRecapWeek: string | null;
 
   pendingBadges: BadgeEarned[];
+  /** Today's proofs (owner view). */
+  proofs: Proof[];
+  /** The server sends `proofs` on /me/today (false on older deploys → hide proof UI). */
+  proofsAvailable: boolean;
+  /** Persisted: local day the user skipped "Add proof?" (hidden for the rest of that day). */
+  proofSkippedDay: string | null;
   /** One-shot prefill for the Journal composer ("Write more" from the Today card). */
   composeDraft: ComposeDraft | null;
 
@@ -81,6 +92,9 @@ type GrowthState = {
   pushBadges: (badges: BadgeEarned[] | null | undefined) => void;
   takeBadges: () => BadgeEarned[];
   dismissRecap: (week: string) => void;
+  addProof: (proof: Proof) => void;
+  removeProof: (id: string) => void;
+  skipProofToday: () => void;
   setComposeDraft: (draft: ComposeDraft | null) => void;
   takeComposeDraft: () => ComposeDraft | null;
   reset: () => void;
@@ -129,6 +143,9 @@ export const useGrowthStore = create<GrowthState>()(
       recapFetchedDay: null,
       dismissedRecapWeek: null,
       pendingBadges: [],
+      proofs: [],
+      proofsAvailable: false,
+      proofSkippedDay: null,
       composeDraft: null,
       owner: null,
 
@@ -159,7 +176,10 @@ export const useGrowthStore = create<GrowthState>()(
           try {
             const res = await getToday();
             if (myEpoch !== epoch) return;
+            const proofs = (res as { proofs?: unknown } | null)?.proofs;
             set({
+              proofs: Array.isArray(proofs) ? (proofs as Proof[]) : [],
+              proofsAvailable: Array.isArray(proofs),
               streak: res?.streak ?? null,
               checkin: res?.checkin ?? null,
               lifeMode: res && 'life_mode' in res ? toLifeMode(res.life_mode) : null,
@@ -248,6 +268,13 @@ export const useGrowthStore = create<GrowthState>()(
 
       dismissRecap: (week) => set({ dismissedRecapWeek: week }),
 
+      addProof: (proof) =>
+        set((s) => ({ proofs: [...s.proofs.filter((p) => p.id !== proof.id), proof] })),
+
+      removeProof: (id) => set((s) => ({ proofs: s.proofs.filter((p) => p.id !== id) })),
+
+      skipProofToday: () => set({ proofSkippedDay: localDayKey() }),
+
       setComposeDraft: (draft) => set({ composeDraft: draft }),
 
       takeComposeDraft: () => {
@@ -268,6 +295,7 @@ export const useGrowthStore = create<GrowthState>()(
           recap: null,
           recapFetchedDay: null,
           pendingBadges: [],
+          proofs: [],
           composeDraft: null,
         }),
     }),
@@ -275,7 +303,7 @@ export const useGrowthStore = create<GrowthState>()(
       name: STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => secureStateStorage),
-      partialize: (s) => ({ dismissedRecapWeek: s.dismissedRecapWeek }),
+      partialize: (s) => ({ dismissedRecapWeek: s.dismissedRecapWeek, proofSkippedDay: s.proofSkippedDay }),
     }
   )
 );

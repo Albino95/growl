@@ -51,6 +51,7 @@ import {
   planStatusLabel,
 } from '../../components/coaching/planProgress';
 import { formatHomeworkDate } from '../../components/coaching/homeworkDates';
+import { HOMEWORK_PROOF_OPTIONS, type HomeworkProofKind } from '../../services/api/coachq';
 
 type Route = RouteProp<{ CoachingContract: { contractId: string } }, 'CoachingContract'>;
 
@@ -73,6 +74,7 @@ export default function CoachingContractScreen() {
   const [doneItem, setDoneItem] = useState<CoachingAssignment | null>(null);
   const [feedbackItem, setFeedbackItem] = useState<CoachingAssignment | null>(null);
   const [dueKey, setDueKey] = useState<string>('week');
+  const [proofKind, setProofKind] = useState<HomeworkProofKind | 'none'>('none');
   // Bumped on pull-to-refresh so child cards (notes, check-ins) reload too.
   const [reloadKey, setReloadKey] = useState(0);
   const hasContractRef = useRef(false);
@@ -111,16 +113,20 @@ export default function CoachingContractScreen() {
     try {
       // The server files homework on the CLIENT's own paths; don't send the coach's.
       const due = DUE_OPTIONS.find((o) => o.key === dueKey) ?? DUE_OPTIONS[0];
-      await assignCoachingHomework(contractId, {
+      // proof_kind is additive: older servers ignore it.
+      const input: Parameters<typeof assignCoachingHomework>[1] & { proof_kind?: HomeworkProofKind | null } = {
         title: title.trim() || undefined,
         goal_detail: detail.trim() || undefined,
         due_at: dueDateFor(due.days),
-      });
+        proof_kind: proofKind === 'none' ? null : proofKind,
+      };
+      await assignCoachingHomework(contractId, input);
       feedback.send();
       setAssignOpen(false);
       setTitle('');
       setDetail('');
       setDueKey('week');
+      setProofKind('none');
       await load();
     } catch (e) {
       alertMessage('Homework', e instanceof Error ? e.message : 'Could not assign');
@@ -442,6 +448,42 @@ export default function CoachingContractScreen() {
                 );
               })}
             </View>
+            <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-1.5`}>
+              Ask for proof
+            </Text>
+            <View style={tw`flex-row flex-wrap mb-1`} accessibilityRole="radiogroup">
+              {HOMEWORK_PROOF_OPTIONS.map((o) => {
+                const on = o.key === proofKind;
+                return (
+                  <PressableScale
+                    key={o.key}
+                    onPress={() => setProofKind(o.key)}
+                    feedback="chip"
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Ask for proof: ${o.label}`}
+                    accessibilityState={{ selected: on, checked: on }}
+                    style={tw`mr-2 mb-2 px-3 py-1.5 rounded-chip border flex-row items-center ${
+                      on ? 'bg-emerald-600 border-emerald-600' : 'bg-raised border-line'
+                    }`}
+                  >
+                    <Ionicons
+                      name={o.icon as keyof typeof Ionicons.glyphMap}
+                      size={13}
+                      color={on ? '#fff' : theme.colors.ink2}
+                      style={tw`mr-1`}
+                    />
+                    <Text style={tw`text-footnote font-semibold ${on ? 'text-white' : 'text-ink-2'}`}>
+                      {o.label}
+                    </Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+            <Text style={tw`text-footnote text-ink-3 mb-3 leading-4`}>
+              {proofKind === 'none'
+                ? 'Your client marks it done with a note or photo.'
+                : 'They can still finish without it — you’ll see it in Today.'}
+            </Text>
             <PressableScale
               onPress={() => void onAssign()}
               disabled={busy}

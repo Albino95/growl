@@ -92,6 +92,7 @@ export type RootStackParamList = {
   Circles: undefined;
   CircleDetail: { groupId: string };
   CoachingContract: { contractId: string };
+  CoachToday: undefined;
   Instructors: undefined;
   AppReviews: undefined;
   Legal: undefined;
@@ -129,6 +130,9 @@ export type RootStackParamList = {
   InviteRedeem: { code: string };
   Badges: undefined;
   Buddies: undefined;
+  Cohorts: { code?: string } | undefined;
+  CohortDetail: { cohortId: string; invite?: boolean };
+  WeeklyCheckin: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -261,6 +265,11 @@ export default function RootNavigator() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
+              name="CoachToday"
+              getComponent={() => require('../../screens/Instructor/CoachTodayScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
               name="Instructors"
               getComponent={() => require('../../screens/Instructor/InstructorsScreen').default}
               options={{ headerShown: false }}
@@ -305,6 +314,17 @@ export default function RootNavigator() {
               getComponent={() => require('../../screens/Buddies/BuddiesScreen').default}
               options={{ headerShown: false }}
             />
+            <Stack.Screen
+              name="Cohorts"
+              getComponent={() => require('../../screens/Instructor/CohortsScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="CohortDetail"
+              getComponent={() => require('../../screens/Instructor/CohortDetailScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen name="WeeklyCheckin" getComponent={() => require('../../screens/Weekly/WeeklyCheckinScreen').default} options={{ headerShown: false }} />
           </>
         )}
         <Stack.Screen

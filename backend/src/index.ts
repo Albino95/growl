@@ -1,6 +1,6 @@
 import { enforceWriteLimit } from './utils/writeLimits';
 import { withIdempotency } from './utils/idempotency';
-import { handleWave3 } from './routes/wave3';
+import { handleWave3, runWave3Cron } from './routes/wave3';
 import * as meRoutes from './routes/me';
 import { runGroupMaintenance } from './routes/groups';
 import { Env } from './types';
@@ -64,6 +64,8 @@ export default {
         })
         .catch((err) => console.error('[cron] purgeExpiredStories', err))
     );
+    // Proof expiry, coach summaries, weekly check-in forms, cohorts (each module self-schedules).
+    ctx.waitUntil(runWave3Cron(env).catch((err) => console.error('[cron] runWave3Cron', err)));
   },
 };
 

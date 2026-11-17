@@ -8,6 +8,9 @@ import type { CoachingAssignment } from '../../services/api/instructor';
 import { getSeed } from '../../services/api/seeds';
 import { resolvePostMediaUri } from '../../utils/images';
 import { formatHomeworkDate, isOverdue } from './homeworkDates';
+import ProofMedia from '../proof/ProofMedia';
+import { KIND_META, proofSummary } from '../proof/proofDefaults';
+import type { AssignmentWithProof } from '../../services/api/coachq';
 
 type Props = {
   item: CoachingAssignment;
@@ -28,6 +31,9 @@ type Extra = { detail: string | null; lastNote: string | null };
 export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, onFeedback }: Props) {
   const [extra, setExtra] = useState<Extra | null>(null);
   const done = item.status === 'done';
+  const asked = (item as AssignmentWithProof).proof_kind ?? null;
+  const proofs = (item as AssignmentWithProof).proofs ?? [];
+  const mediaProof = proofs.find((p) => !!p.media_url);
 
   useEffect(() => {
     let alive = true;
@@ -78,6 +84,23 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, o
         <Text style={tw`text-sm text-ink-2 mt-1 leading-5`}>{extra.detail}</Text>
       ) : null}
 
+      {asked ? (
+        <View
+          style={tw`self-start mt-1.5 px-2 py-0.5 rounded-chip bg-raised border border-line flex-row items-center`}
+          accessibilityLabel={`${isCoach ? 'You asked for' : 'Your coach asks for'} a ${KIND_META[asked].label.toLowerCase()} as proof`}
+        >
+          <Ionicons
+            name={KIND_META[asked].icon as keyof typeof Ionicons.glyphMap}
+            size={11}
+            color={tw.color('emerald-700')}
+            style={tw`mr-1`}
+          />
+          <Text style={tw`text-caption font-semibold text-ink-2`}>
+            {isCoach ? 'Proof asked' : 'Coach asks for'}: {KIND_META[asked].label}
+          </Text>
+        </View>
+      ) : null}
+
       <Text style={tw`text-xs mt-1 ${overdue ? 'text-rose-600' : 'text-ink-3'}`}>
         {[
           due ? `${overdue ? 'Overdue · was due' : 'Due'} ${due}` : null,
@@ -88,7 +111,28 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, o
           .join(' · ') || (done ? 'Done' : 'No due date')}
       </Text>
 
-      {item.last_photo ? (
+      {mediaProof ? (
+        <ProofMedia
+          proof={mediaProof}
+          style={tw`w-full h-36 rounded-control mt-2 overflow-hidden`}
+          accessibilityLabel={isCoach ? 'Proof from your client' : 'Your proof'}
+        />
+      ) : null}
+      {proofs.length ? (
+        <View style={tw`mt-1.5`}>
+          {proofs.map((p) => (
+            <View key={p.id} style={tw`flex-row items-center mt-0.5`}>
+              <Ionicons name="checkmark-circle" size={13} color={tw.color('emerald-600')} />
+              <Text style={tw`text-xs text-ink-2 ml-1 flex-1`} numberOfLines={2}>
+                With proof · {proofSummary(p)}
+                {isCoach && p.seen_by_coach_at ? ' · Seen ✓' : ''}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {item.last_photo && !mediaProof ? (
         <Image
           source={{ uri: resolvePostMediaUri(item.last_photo) }}
           style={tw`w-full h-36 rounded-control mt-2 bg-raised`}
@@ -114,7 +158,9 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, o
           style={tw`mt-2.5 py-2.5 rounded-control bg-emerald-600 flex-row items-center justify-center gap-1.5`}
         >
           <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
-          <Text style={tw`text-white font-bold text-sm`}>Mark done</Text>
+          <Text style={tw`text-white font-bold text-sm`}>
+            {asked ? `Mark done · add ${KIND_META[asked].label.toLowerCase()}` : 'Mark done'}
+          </Text>
         </PressableScale>
       ) : null}
 

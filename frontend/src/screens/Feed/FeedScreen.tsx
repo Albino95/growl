@@ -80,6 +80,7 @@ import { useDemoTutorialStore } from '../../state/useDemoTutorialStore';
 import { getReducedMotion } from '../../hooks/useReducedMotion';
 import WeeklyRecapCard from '../../components/recap/WeeklyRecapCard';
 import CircleWeekCard from '../../components/recap/CircleWeekCard';
+import WeeklyHomeCard from '../../components/weekly/WeeklyHomeCard';
 import { confirmAndDeletePost } from '../../services/deletePost';
 import { isRecapWindow } from '../../components/recap/growthMeta';
 import { useGrowthStore } from '../../state/useGrowthStore';
@@ -911,6 +912,7 @@ export default function FeedScreen({ navigation, route }: any) {
       </CheckInSpotlight>
       <WeeklyRecapCard />
       <CircleWeekCard />
+      <WeeklyHomeCard />
 
       <View style={tw`mx-4 mb-3 px-4 py-3 rounded-card bg-raised/80 border border-line/70`}>
         <Text style={tw`text-caption tracking-[2px] uppercase text-ink-3 font-semibold`}>

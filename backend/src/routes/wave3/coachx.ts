@@ -285,6 +285,17 @@ async function homeworkFeedback(request: Request, env: Env, assignmentId: string
   )
     .bind(text, now, assignmentId)
     .run();
+  // Feedback is a response to the homework's proofs too: mark them seen (proofs table may not exist yet).
+  try {
+    await env.DB.prepare(
+      `UPDATE proofs SET seen_by_coach_at = ?
+       WHERE context_type = 'assignment' AND context_id = ? AND seen_by_coach_at IS NULL`
+    )
+      .bind(now, assignmentId)
+      .run();
+  } catch {
+    /* proofs (migration 0044) not applied yet */
+  }
   const coachName = await resolveUsername(env, ctx.userId!);
   await createUserNotification(env, {
     userId: row.client_id,

@@ -61,6 +61,7 @@ import {
 } from '../utils/invites';
 import { isBlocked } from './friends';
 import { checkRateLimit, clientIp } from '../utils/rateLimit';
+import { listProofsForDay } from './wave3/proofx';
 
 type Authed = { userId: string; tz: string; points: number; createdAt: string | null };
 
@@ -141,10 +142,19 @@ export async function getToday(request: Request, env: Env): Promise<Response> {
   const asked = new URL(request.url).searchParams.get('day');
   const day = asked && isAcceptableClientDay(asked) ? asked : streak.today;
   const row = await loadCheckin(env, me.userId, day);
+  // Wave 5: today's optional proofs (private; owner view). Never fails the check-in read.
+  let proofs: Awaited<ReturnType<typeof listProofsForDay>> = [];
+  try {
+    const mediaBase = `${new URL(request.url).origin}/api/${env.API_VERSION || 'v1'}`;
+    proofs = await listProofsForDay(env, me.userId, day, mediaBase);
+  } catch (err) {
+    console.error('[getToday] proofs', err);
+  }
   return json({
-    checkin: row ? formatCheckin(row) : null,
+    checkin: row ? { ...formatCheckin(row), proof_count: proofs.length } : null,
     streak,
     life_mode: lifeModePayload(got.lifeMode, got.today),
+    proofs,
   });
 }
 

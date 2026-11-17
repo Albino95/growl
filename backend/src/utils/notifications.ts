@@ -17,6 +17,8 @@ export type NotificationType =
   | 'coaching_proposal'
   | 'coaching_accepted'
   | 'coaching_homework'
+  | 'coach_weekly_summary'
+  | 'coaching_weekly_recap'
   | 'app_review'
   | 'app_review_reply'
   | 'badge_earned'
@@ -25,6 +27,14 @@ export type NotificationType =
   | 'mention'
   | 'buddy_invite'
   | 'buddy_accept'
+  | 'proof_cheer'
+  | 'proof_seen'
+  | 'cohort_invite'
+  | 'cohort_join'
+  | 'cohort_update'
+  | 'cohort_reply'
+  | 'cohort_homework'
+  | 'cohort_homework_done'
   | 'system';
 
 function parseUsername(metadata: string | null | undefined): string {

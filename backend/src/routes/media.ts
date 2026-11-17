@@ -10,12 +10,17 @@ const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // 40MB (prefer multipart)
 const MULTIPART_SLACK_BYTES = 512 * 1024;
 /** JSON/base64 uploads are for images only: 5MB binary ≈ 6.7MB base64 + JSON. */
 const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
+/** Proof uploads are private and small: the app compresses before sending. */
+export const MAX_PROOF_IMAGE_BYTES = 1.5 * 1024 * 1024;
+export const MAX_PROOF_AUDIO_BYTES = 2 * 1024 * 1024;
+/** R2 prefix for private proof media. Never served by GET /media/:key. */
+export const PROOF_KEY_PREFIX = 'proof/';
 
 type ParsedMedia = {
   mime: string;
   bytes: Uint8Array;
   ext: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
 };
 
 const IMAGE_MIME: Record<string, string> = {
@@ -72,6 +77,39 @@ function verifyMedia(media: ParsedMedia): ParsedMedia | null {
   return { ...media, mime, kind, ext };
 }
 
+const PROOF_IMAGE_EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+/**
+ * Private proof uploads: photos (jpeg/png/webp) and voice notes (m4a / AAC).
+ * Video is not a proof type. An ISO-BMFF (`ftyp`) file counts as audio only when
+ * its brand says M4A/M4B or the client declared audio / .m4a (Android writes
+ * plain `isom`/`mp42` brands for AAC-in-MPEG4 recordings).
+ */
+export function detectProofMime(
+  bytes: Uint8Array,
+  declared = ''
+): { mime: string; ext: string; kind: 'image' | 'audio' } | null {
+  if (bytes.length < 12) return null;
+  const ascii = (start: number, len: number) =>
+    String.fromCharCode(...Array.from(bytes.subarray(start, start + len)));
+  const base = detectMime(bytes);
+  if (base && PROOF_IMAGE_EXT[base]) return { mime: base, ext: PROOF_IMAGE_EXT[base], kind: 'image' };
+  if (ascii(4, 4) === 'ftyp') {
+    const brand = ascii(8, 4);
+    const d = declared.toLowerCase();
+    const saysAudio = d.startsWith('audio/') || /\.(m4a|aac)$/.test(d);
+    if (brand === 'M4A ' || brand === 'M4B ' || saysAudio) {
+      return { mime: 'audio/mp4', ext: 'm4a', kind: 'audio' };
+    }
+    return null;
+  }
+  // Raw AAC (ADTS): 12-bit sync word 0xFFF, layer bits 00.
+  if (bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0) {
+    return { mime: 'audio/aac', ext: 'aac', kind: 'audio' };
+  }
+  return null;
+}
+
 function guessMimeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
@@ -80,6 +118,8 @@ function guessMimeFromName(name: string): string {
   if (lower.endsWith('.mp4')) return 'video/mp4';
   if (lower.endsWith('.webm')) return 'video/webm';
   if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.m4a')) return 'audio/mp4';
+  if (lower.endsWith('.aac')) return 'audio/aac';
   return '';
 }
 
@@ -88,20 +128,25 @@ function normalizePurpose(raw: unknown): string {
     raw === 'story' ||
     raw === 'post' ||
     raw === 'avatar' ||
-    raw === 'reel'
+    raw === 'reel' ||
+    raw === 'proof'
     ? raw
     : 'post';
 }
 
-/** Accept image/video data URLs from the app. */
-function parseMediaDataUrl(dataUrl: string): ParsedMedia | null {
+const AUDIO_DATA_URL_MIME = /^audio\/(?:mp4|m4a|x-m4a|aac|aacp)$/i;
+
+/** Accept image/video data URLs from the app (and audio for private proof uploads). */
+function parseMediaDataUrl(dataUrl: string, allowAudio = false): ParsedMedia | null {
   const m = dataUrl.match(
-    /^data:((?:image\/(?:jpeg|jpg|png|webp)|video\/(?:mp4|webm|quicktime)));base64,([A-Za-z0-9+/=]+)$/i
+    /^data:((?:image\/(?:jpeg|jpg|png|webp)|video\/(?:mp4|webm|quicktime)|audio\/(?:mp4|m4a|x-m4a|aac|aacp)));base64,([A-Za-z0-9+/=]+)$/i
   );
   if (!m) return null;
   const mime = m[1].toLowerCase();
-  const kind = kindForMime(mime);
-  const ext = extForMime(mime);
+  const isAudio = AUDIO_DATA_URL_MIME.test(mime);
+  if (isAudio && !allowAudio) return null;
+  const kind = isAudio ? 'audio' : kindForMime(mime);
+  const ext = isAudio ? 'm4a' : extForMime(mime);
   if (!kind || !ext) return null;
 
   const b64 = m[2];
@@ -143,7 +188,7 @@ async function parseMultipart(
   };
 }
 
-function sniffContentType(key: string, stored?: string): string {
+export function sniffContentType(key: string, stored?: string): string {
   const s = (stored || '').toLowerCase().trim();
   if (s && s !== 'application/octet-stream' && s !== 'binary/octet-stream') {
     return stored as string;
@@ -155,6 +200,8 @@ function sniffContentType(key: string, stored?: string): string {
   if (k.endsWith('.jpg') || k.endsWith('.jpeg')) return 'image/jpeg';
   if (k.endsWith('.png')) return 'image/png';
   if (k.endsWith('.webp')) return 'image/webp';
+  if (k.endsWith('.m4a')) return 'audio/mp4';
+  if (k.endsWith('.aac')) return 'audio/aac';
   if (k.startsWith('reel/')) return 'video/mp4';
   return stored || 'application/octet-stream';
 }
@@ -216,7 +263,7 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     }
     purpose = normalizePurpose(body.purpose);
     const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
-    parsed = parseMediaDataUrl(dataUrl);
+    parsed = parseMediaDataUrl(dataUrl, purpose === 'proof');
     if (!parsed) {
       return error(
         'VALIDATION_ERROR',
@@ -275,6 +322,10 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
     return error('VALIDATION_ERROR', 'Uploaded media is empty', 400);
   }
 
+  if (purpose === 'proof') {
+    return storeProofMedia(request, env, ctx.userId, parsed);
+  }
+
   const verified = verifyMedia(parsed);
   if (!verified) {
     return error('UNSUPPORTED_MEDIA', 'File is not a JPEG, PNG, WebP, MP4, MOV or WebM.', 415);
@@ -314,6 +365,46 @@ export async function uploadMedia(request: Request, env: Env): Promise<Response>
 }
 
 /**
+ * Private proof media: type from the bytes, small caps, stored under
+ * proof/{userId}/… with no public cache. Returns only the key (no public URL):
+ * the file is readable solely through GET /proofs/:id/media.
+ */
+async function storeProofMedia(
+  _request: Request,
+  env: Env,
+  userId: string,
+  media: ParsedMedia
+): Promise<Response> {
+  const found = detectProofMime(media.bytes, media.mime);
+  if (!found) {
+    return error('UNSUPPORTED_MEDIA', 'Proof must be a JPEG, PNG or WebP photo, or an M4A/AAC voice note.', 415);
+  }
+  const max = found.kind === 'audio' ? MAX_PROOF_AUDIO_BYTES : MAX_PROOF_IMAGE_BYTES;
+  if (media.bytes.byteLength > max) {
+    return error(
+      'PAYLOAD_TOO_LARGE',
+      found.kind === 'audio' ? 'Voice note is too large (max 2 MB / 60 s).' : 'Photo is too large (max 1.5 MB).',
+      413
+    );
+  }
+  const key = `${PROOF_KEY_PREFIX}${userId}/${Date.now()}-${crypto.randomUUID()}.${found.ext}`;
+  await env.R2!.put(key, media.bytes, {
+    httpMetadata: { contentType: found.mime, cacheControl: 'private, no-store' },
+  });
+  return json({
+    key,
+    size: media.bytes.byteLength,
+    contentType: found.mime,
+    mediaType: found.kind,
+  });
+}
+
+/** True for R2 keys that must never be served publicly. */
+export function isPrivateMediaKey(key: string): boolean {
+  return key.replace(/^\/+/, '').toLowerCase().startsWith(PROOF_KEY_PREFIX);
+}
+
+/**
  * GET /api/v1/media/:key
  * Supports HTTP Range so iOS AVPlayer can stream video without a black frame.
  */
@@ -325,6 +416,10 @@ export async function getMedia(request: Request, env: Env, key: string): Promise
   const safeKey = decodeURIComponent(key).replace(/^\/+/, '');
   if (!safeKey || safeKey.includes('..')) {
     return error('VALIDATION_ERROR', 'Invalid media key', 400);
+  }
+  // Proof media is private: only GET /proofs/:id/media (with permission checks) serves it.
+  if (isPrivateMediaKey(safeKey)) {
+    return error('NOT_FOUND', 'Media not found', 404);
   }
 
   const isHead = request.method === 'HEAD';

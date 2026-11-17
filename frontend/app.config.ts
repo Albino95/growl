@@ -11,7 +11,7 @@ const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
 const CAMERA_PERMISSION =
   'Grow! uses the camera so you can take photos and record videos for your posts, stories, reels, and profile picture.';
 const MICROPHONE_PERMISSION =
-  'Grow! uses the microphone to record sound when you film videos for reels and stories.';
+  'Grow! uses the microphone to record sound when you film reels and stories, and for short voice notes you choose to add as proof of your progress.';
 const PHOTOS_PERMISSION =
   'Grow! accesses your photo library so you can choose photos and videos to share in posts, stories, reels, and your profile.';
 const PHOTOS_ADD_PERMISSION = 'Grow! saves photos and videos you choose to export to your photo library.';
@@ -144,6 +144,8 @@ const defineConfig = (): ExpoConfig => ({
       },
     ],
     'expo-apple-authentication',
+    // Voice-note proof (recording). Same purpose string as the camera mic prompt.
+    ['expo-audio', { microphonePermission: MICROPHONE_PERMISSION, recordAudioAndroid: true }],
     [
       'expo-notifications',
       {

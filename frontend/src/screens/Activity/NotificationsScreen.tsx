@@ -23,6 +23,8 @@ import {
 } from '../../services/api/notifications';
 import { respondToEndorsementRequest } from '../../services/api/instructor';
 import { getFeedPost } from '../../services/api/feed';
+import { getProof, type Proof } from '../../services/api/proofs';
+import ProofViewer from '../../components/proof/ProofViewer';
 import { avatarSource, resolveAvatarUri, resolvePostMediaUri } from '../../utils/images';
 import { stageEmoji } from '../../components/garden/seedMeta';
 import { feedback } from '../../utils/interactionFeedback';
@@ -43,7 +45,7 @@ function roseInk(): string {
   return tw.color('rose-600') ?? '#E11D48';
 }
 
-function metaForType(type: string): {
+function metaForType(type: string, refType?: string | null): {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   tint: string;
@@ -51,7 +53,65 @@ function metaForType(type: string): {
   chipText: string;
   rail: string;
 } {
+  if (type === 'system' && (refType === 'weekly_checkin' || refType === 'weekly_coach')) {
+    return {
+      icon: 'calendar-outline',
+      label: refType === 'weekly_coach' ? 'Weekly' : 'Your week',
+      tint: theme.colors.brand,
+      chipBg: 'bg-emerald-50',
+      chipText: 'text-emerald-800',
+      rail: theme.colors.brand,
+    };
+  }
   switch (type) {
+    case 'proof_cheer':
+    case 'proof_seen':
+      return {
+        icon: type === 'proof_seen' ? 'checkmark-done' : 'hand-left-outline',
+        label: type === 'proof_seen' ? 'Seen' : 'Cheer',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
+    case 'coach_weekly_summary':
+    case 'coaching_weekly_recap':
+      return {
+        icon: 'stats-chart-outline',
+        label: type === 'coach_weekly_summary' ? 'Your week' : 'Recap',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
+    case 'cohort_invite':
+    case 'cohort_join':
+    case 'cohort_update':
+    case 'cohort_reply':
+    case 'cohort_homework':
+    case 'cohort_homework_done':
+      return {
+        icon:
+          type === 'cohort_homework' || type === 'cohort_homework_done'
+            ? 'checkbox-outline'
+            : type === 'cohort_reply'
+              ? 'return-down-forward'
+              : type === 'cohort_update'
+                ? 'megaphone-outline'
+                : 'people',
+        label:
+          type === 'cohort_homework' || type === 'cohort_homework_done'
+            ? 'Group homework'
+            : type === 'cohort_reply'
+              ? 'Group reply'
+              : type === 'cohort_update'
+                ? 'Group update'
+                : 'Group plan',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
     case 'friend_request':
     case 'friend_accepted':
       return {
@@ -192,6 +252,7 @@ export default function NotificationsScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
+  const [viewerProof, setViewerProof] = useState<Proof | null>(null);
 
   const unread = useMemo(() => items.filter((n) => n.unread).length, [items]);
   // Day sections + "ann and 3 others liked your post" rows. Recomputed when items change.
@@ -255,6 +316,31 @@ export default function NotificationsScreen() {
       setItems((prev) =>
         prev.map((n) => (ids.has(n.id) ? { ...n, unread: false, read_at: readAt } : n))
       );
+    }
+
+    // Proof cheers / "seen ✓" open the proof itself; if it's gone, the Today card.
+    if (item.ref_type === 'proof' && item.ref_id) {
+      try {
+        setViewerProof(await getProof(item.ref_id));
+      } catch {
+        navigateFromRoot(navigation, 'Individual', { screen: 'Feed' });
+      }
+      return;
+    }
+
+    if (item.ref_type === 'coach_queue' || item.ref_type === 'weekly_coach' || item.type === 'coach_weekly_summary') {
+      navigateFromRoot(navigation, 'CoachToday');
+      return;
+    }
+
+    if (item.ref_type === 'weekly_checkin') {
+      navigateFromRoot(navigation, 'WeeklyCheckin');
+      return;
+    }
+
+    if (item.ref_type === 'cohort' && item.ref_id) {
+      navigateFromRoot(navigation, 'CohortDetail', { cohortId: item.ref_id });
+      return;
     }
 
     if (item.type === 'instructor_claim') {
@@ -497,7 +583,7 @@ export default function NotificationsScreen() {
           renderItem={({ item: row, index }) => {
             const item = row.lead;
             const rowUnread = row.unread;
-            const meta = metaForType(item.type);
+            const meta = metaForType(item.type, item.ref_type);
             const avatar = item.actor
               ? resolveAvatarUri(item.actor.id, item.actor.username, item.actor.avatar)
               : '';
@@ -729,6 +815,13 @@ export default function NotificationsScreen() {
           }}
         />
       )}
+      <ProofViewer
+        visible={!!viewerProof}
+        proof={viewerProof}
+        onClose={() => setViewerProof(null)}
+        onDeleted={() => setViewerProof(null)}
+        onChanged={(p) => setViewerProof(p)}
+      />
     </SafeAreaView>
   );
 }

@@ -1297,6 +1297,213 @@ async function sectionWave4() {
   });
 }
 
+async function sectionWave5() {
+  area('Wave 5 (proofs / weekly / coach queue / group plans)');
+
+  // ---- Proofs -------------------------------------------------------------
+  let proofId = null;
+  let today = null;
+  await check('proofs: POST /proofs note for today (Idempotency-Key replay → same id)', async () => {
+    need('demo');
+    const t = expectOk(await api('GET', '/me/today', { as: 'demo' }));
+    today = t?.streak?.today || localToday();
+    const body = { kind: 'note', text: `${TAG} proof ${RUN_ID}`, context_type: 'checkin', context_id: today };
+    const headers = { 'Idempotency-Key': idemKey('proof-note') };
+    const r1 = await api('POST', '/proofs', { as: 'demo', body, headers });
+    if (r1.status === 404) skip('proofs not deployed');
+    const d1 = expectOk(r1, 201);
+    assert(d1.proof?.id, 'missing proof.id');
+    proofId = d1.proof.id;
+    const id = proofId;
+    const undo = onCleanup(`DELETE ${TAG} proof ${id}`, () => api('DELETE', `/proofs/${id}`, { as: 'demo' }));
+    ctx.wave5ProofUndo = undo;
+    const r2 = await api('POST', '/proofs', { as: 'demo', body, headers });
+    expectStatus(r2, 200, 201);
+    assert(r2.data?.proof?.id === id, `replay returned ${r2.data?.proof?.id}, expected ${id}`);
+  });
+  await check('proofs: GET /me/today includes the proof', async () => {
+    if (!proofId) skip('no proof');
+    const d = expectOk(await api('GET', '/me/today', { as: 'demo' }));
+    assert(isArr(d.proofs), 'missing proofs[]');
+    assert(d.proofs.some((p) => p.id === proofId), 'proof not in /me/today');
+  });
+  await check('proofs: GET /proofs lists it', async () => {
+    if (!proofId) skip('no proof');
+    const d = expectOk(await api('GET', '/proofs', { as: 'demo', query: { context_type: 'checkin', limit: 20 } }));
+    assert(isArr(d.proofs) && d.proofs.some((p) => p.id === proofId), 'proof not listed');
+  });
+  await check('proofs: private keys are never served by GET /media/:key → 404', async () => {
+    expectStatus(await api('GET', `/media/${encodeURIComponent('proof/x')}`, { as: 'demo' }), 404);
+  });
+  await check('proofs: another user cannot read it → 404', async () => {
+    if (!proofId) skip('no proof');
+    need('review');
+    expectStatus(await api('GET', `/proofs/${proofId}`, { as: 'review' }), 404);
+  });
+  await check('proofs: DELETE /proofs/:id', async () => {
+    if (!proofId) skip('no proof');
+    expectOk(await api('DELETE', `/proofs/${proofId}`, { as: 'demo' }));
+    ctx.wave5ProofUndo?.();
+    expectStatus(await api('GET', `/proofs/${proofId}`, { as: 'demo' }), 404);
+  });
+
+  // ---- Weekly -------------------------------------------------------------
+  await check('weekly: GET /weekly/current', async () => {
+    need('demo');
+    const r = await api('GET', '/weekly/current', { as: 'demo' });
+    if (r.status === 404) skip('weekly not deployed');
+    const d = expectOk(r);
+    assert(d.window && d.form, 'missing window/form');
+  });
+  await check('weekly: commitment GET → PUT → (DELETE) roundtrip restores state', async () => {
+    need('demo');
+    const r0 = await api('GET', '/weekly/commitment', { as: 'demo' });
+    if (r0.status === 404) skip('weekly not deployed');
+    const before = expectOk(r0).commitment;
+    if (before) {
+      // Existing goal: re-save the same target (upsert keeps rest passes) — no delete.
+      const d = expectOk(await api('PUT', '/weekly/commitment', { as: 'demo', body: { target_days: before.target_days } }));
+      assert(d.commitment?.target_days === before.target_days, 'target changed');
+      return 'kept existing goal';
+    }
+    const undo = onCleanup(`DELETE ${TAG} weekly commitment`, () => api('DELETE', '/weekly/commitment', { as: 'demo' }));
+    const d = expectOk(await api('PUT', '/weekly/commitment', { as: 'demo', body: { target_days: 4 } }));
+    assert(d.commitment?.target_days === 4, 'target not saved');
+    const g = expectOk(await api('GET', '/weekly/commitment', { as: 'demo' }));
+    assert(g.commitment?.target_days === 4, 'GET does not show the goal');
+    const del = expectOk(await api('DELETE', '/weekly/commitment', { as: 'demo' }));
+    assert(del.removed === true, 'not removed');
+    undo();
+  });
+
+  // ---- Coach queue --------------------------------------------------------
+  await check('coach: GET /instructor/x/queue', async () => {
+    need('instructor');
+    const r = await api('GET', '/instructor/x/queue', { as: 'instructor' });
+    if (r.status === 404) skip('coach queue not deployed');
+    const d = expectOk(r);
+    assert(d && typeof d === 'object', 'missing body');
+  });
+  await check('coach: GET /instructor/x/review', async () => {
+    need('instructor');
+    const r = await api('GET', '/instructor/x/review', { as: 'instructor' });
+    if (r.status === 404) skip('coach queue not deployed');
+    expectOk(r);
+  });
+  await check('coach: templates GET → PUT → restore original', async () => {
+    need('instructor');
+    const r = await api('GET', '/instructor/x/templates', { as: 'instructor' });
+    if (r.status === 404) skip('coach queue not deployed');
+    const original = expectOk(r).templates;
+    assert(isArr(original), 'missing templates[]');
+    const restore = onCleanup(`restore ${TAG} coach templates`, () =>
+      api('PUT', '/instructor/x/templates', { as: 'instructor', body: { templates: original } })
+    );
+    const probe = `${TAG} ${RUN_ID}`;
+    const next = [...original.slice(0, 19), probe];
+    const d = expectOk(await api('PUT', '/instructor/x/templates', { as: 'instructor', body: { templates: next } }));
+    assert(isArr(d.templates) && d.templates.includes(probe), 'template not saved');
+    const back = expectOk(await api('PUT', '/instructor/x/templates', { as: 'instructor', body: { templates: original } }));
+    assert(JSON.stringify(back.templates) === JSON.stringify(original), 'templates not restored');
+    restore();
+  });
+
+  // ---- Group plans (cohorts) ------------------------------------------------
+  const g = {};
+  await check('cohorts: coach creates a group (capacity 2)', async () => {
+    need('instructor', 'demo');
+    const r = await api('POST', '/cohorts', {
+      as: 'instructor',
+      body: { title: `${TAG} group ${RUN_ID}`, weeks: 1, start_date: localToday(), capacity: 2 },
+      headers: { 'Idempotency-Key': idemKey('cohort-create') },
+    });
+    if (r.status === 404) skip('cohorts not deployed');
+    const d = expectOk(r, 201);
+    assert(d.cohort?.id, 'missing cohort.id');
+    g.id = d.cohort.id;
+    const id = g.id;
+    g.undoArchive = onCleanup(`archive ${TAG} cohort ${id}`, () =>
+      api('PATCH', `/cohorts/${id}`, { as: 'instructor', body: { status: 'archived' } })
+    );
+  });
+  await check('cohorts: invite code', async () => {
+    if (!g.id) skip('no cohort');
+    const d = expectOk(await api('POST', `/cohorts/${g.id}/invite-code`, { as: 'instructor' }));
+    assert(d.invite_code, 'missing invite_code');
+    g.code = d.invite_code;
+  });
+  await check('cohorts: demo joins with the code', async () => {
+    if (!g.code) skip('no code');
+    const p = expectOk(await api('GET', '/cohorts/preview', { as: 'demo', query: { code: g.code } }));
+    assert(p.cohort?.id === g.id, 'preview mismatch');
+    const d = expectOk(await api('POST', '/cohorts/join', { as: 'demo', body: { code: g.code } }));
+    assert(d.cohort?.id === g.id, 'join mismatch');
+    const id = g.id;
+    g.undoLeave = onCleanup(`demo leaves ${TAG} cohort`, () => api('POST', `/cohorts/${id}/leave`, { as: 'demo' }));
+  });
+  await check('cohorts: coach posts an update; member sees it', async () => {
+    if (!g.undoLeave) skip('not joined');
+    expectOk(await api('POST', `/cohorts/${g.id}/posts`, { as: 'instructor', body: { body: `${TAG} hello group ${RUN_ID}` } }), 201);
+    const d = expectOk(await api('GET', `/cohorts/${g.id}/posts`, { as: 'demo', query: { limit: 5 } }));
+    assert(isArr(d.posts) && d.posts.some((x) => String(x.body || '').includes(RUN_ID)), 'post not visible to member');
+  });
+  await check('cohorts: coach assigns homework (fan-out to member)', async () => {
+    if (!g.undoLeave) skip('not joined');
+    const d = expectOk(
+      await api('POST', `/cohorts/${g.id}/homework`, { as: 'instructor', body: { title: `${TAG} 10 minutes`, proof_kind: 'note' } }),
+      201
+    );
+    assert(d.assignment?.id, 'missing assignment.id');
+    g.hwId = d.assignment.id;
+    assert(Number(d.assigned) >= 1, `assigned=${d.assigned}`);
+    const id = g.id;
+    const hw = g.hwId;
+    onCleanup(`delete ${TAG} group homework`, () => api('DELETE', `/cohorts/${id}/homework/${hw}`, { as: 'instructor' }));
+  });
+  await check('cohorts: demo completes it with a note proof', async () => {
+    if (!g.hwId) skip('no homework');
+    const mine = expectOk(await api('GET', `/cohorts/${g.id}/homework`, { as: 'demo' }));
+    const item = (mine.assignments || []).find((a) => a.id === g.hwId);
+    assert(item?.mine?.id, 'member record missing');
+    g.memberAsg = item.mine.id;
+    const pr = await api('POST', '/proofs', {
+      as: 'demo',
+      body: { kind: 'note', text: `${TAG} done ${RUN_ID}`, context_type: 'assignment', context_id: g.memberAsg },
+      headers: { 'Idempotency-Key': idemKey('cohort-proof') },
+    });
+    const pd = expectOk(pr, 201);
+    g.proofId = pd.proof.id;
+    assert(pd.proof.shared_with_coach === true, 'group homework proof not shared with coach');
+    const pid = g.proofId;
+    onCleanup(`DELETE ${TAG} group proof`, () => api('DELETE', `/proofs/${pid}`, { as: 'demo' }));
+    expectOk(
+      await api('POST', `/cohorts/${g.id}/homework/complete`, {
+        as: 'demo',
+        body: { member_assignment_id: g.memberAsg, status: 'done', proof_id: g.proofId, proof_kind: 'note' },
+      })
+    );
+  });
+  await check('cohorts: coach grid shows the completion + can open the proof', async () => {
+    if (!g.proofId) skip('no completion');
+    const d = expectOk(await api('GET', `/cohorts/${g.id}/homework`, { as: 'instructor' }));
+    assert(d.role === 'coach' && isArr(d.cells), 'not a coach grid');
+    const cell = d.cells.find((c) => c.id === g.memberAsg);
+    assert(cell && cell.status === 'done', `cell status=${cell?.status}`);
+    assert(cell.proof, 'cell has no proof');
+    expectOk(await api('GET', `/proofs/${g.proofId}`, { as: 'instructor' }));
+  });
+  await check('cohorts: demo leaves; coach archives the group', async () => {
+    if (!g.id) skip('no cohort');
+    if (g.undoLeave) {
+      expectOk(await api('POST', `/cohorts/${g.id}/leave`, { as: 'demo' }));
+      g.undoLeave();
+    }
+    const d = expectOk(await api('PATCH', `/cohorts/${g.id}`, { as: 'instructor', body: { status: 'archived' } }));
+    assert(d.cohort?.status === 'archived', `status=${d.cohort?.status}`);
+    g.undoArchive?.();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main
 
@@ -1313,6 +1520,7 @@ const SECTIONS = [
   ['instructor', sectionInstructor],
   ['business', sectionBusiness],
   ['wave4', sectionWave4],
+  ['wave5', sectionWave5],
 ];
 
 async function signInQuietly() {

@@ -15,6 +15,7 @@ import {
   REVIEW_MIN_WEEKS,
 } from '../utils/coachingAccess';
 import { findOrCreateConversation } from './messages';
+import { apiBaseFor, loadAssignmentProofs, parseProofKind } from './wave3/coachq';
 
 type InquiryRow = {
   id: string;
@@ -843,7 +844,7 @@ export async function listContracts(request: Request, env: Env): Promise<Respons
   }
 }
 
-async function loadAssignments(env: Env, contractId: string) {
+async function loadAssignments(env: Env, contractId: string, apiBase: string, coachView: boolean) {
   const rows = await env.DB.prepare(
     `SELECT
         a.*,
@@ -888,9 +889,14 @@ async function loadAssignments(env: Env, contractId: string) {
       last_activity_at: string | null;
       coach_feedback?: string | null;
       coach_feedback_at?: string | null;
+      proof_kind?: string | null;
     }>();
 
-  return (rows.results || []).map((row) => ({
+  const list = rows.results || [];
+  // Proofs attached to each homework (empty until the proofs table exists).
+  const proofs = await loadAssignmentProofs(env, list.map((r) => r.id), apiBase, coachView);
+
+  return list.map((row) => ({
     id: row.id,
     contract_id: row.contract_id,
     seed_id: row.seed_id,
@@ -913,6 +919,8 @@ async function loadAssignments(env: Env, contractId: string) {
     last_activity_at: row.last_activity_at,
     coach_feedback: row.coach_feedback ?? null,
     coach_feedback_at: row.coach_feedback_at ?? null,
+    proof_kind: row.proof_kind ?? null,
+    proofs: proofs.get(row.id) || [],
   }));
 }
 
@@ -947,7 +955,12 @@ export async function getContract(
       return error('FORBIDDEN', 'Not a party to this plan', 403);
     }
 
-    const assignments = await loadAssignments(env, contractId);
+    const assignments = await loadAssignments(
+      env,
+      contractId,
+      apiBaseFor(request, `/api/${env.API_VERSION || 'v1'}`),
+      row.instructor_id === ctx.userId
+    );
     let review = null;
     try {
       review = await reviewStateForPair(env, ctx.userId!, row.instructor_id, row.client_id);
@@ -1084,11 +1097,18 @@ export async function assignHomework(
     subcategory_key?: string;
     due_at?: string;
     goal_detail?: string;
+    proof_kind?: string | null;
   } = {};
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return error('VALIDATION_ERROR', 'Invalid JSON', 400);
+  }
+
+  // Optional proof request: none | photo | timer | number | note | voice.
+  const proofKind = parseProofKind(body.proof_kind);
+  if (proofKind === 'invalid') {
+    return error('VALIDATION_ERROR', 'Proof must be none, photo, timer, number, note or voice', 400);
   }
 
   try {
@@ -1190,11 +1210,17 @@ export async function assignHomework(
     }
 
     writes.push(
-      env.DB.prepare(
-        `INSERT INTO coaching_assignments
-          (id, contract_id, seed_id, title, due_at, status, created_at)
-         VALUES (?, ?, ?, ?, ?, 'assigned', ?)`
-      ).bind(assignmentId, contractId, seedId, title || null, dueAt, now)
+      proofKind
+        ? env.DB.prepare(
+            `INSERT INTO coaching_assignments
+              (id, contract_id, seed_id, title, due_at, status, created_at, proof_kind)
+             VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?)`
+          ).bind(assignmentId, contractId, seedId, title || null, dueAt, now, proofKind)
+        : env.DB.prepare(
+            `INSERT INTO coaching_assignments
+              (id, contract_id, seed_id, title, due_at, status, created_at)
+             VALUES (?, ?, ?, ?, ?, 'assigned', ?)`
+          ).bind(assignmentId, contractId, seedId, title || null, dueAt, now)
     );
     await env.DB.batch(writes);
 
@@ -1210,7 +1236,12 @@ export async function assignHomework(
       refId: contractId,
     });
 
-    const assignments = await loadAssignments(env, contractId);
+    const assignments = await loadAssignments(
+      env,
+      contractId,
+      apiBaseFor(request, `/api/${env.API_VERSION || 'v1'}`),
+      true
+    );
     return json({ assignment: assignments.find((a) => a.id === assignmentId), assignments }, 201);
   } catch (err) {
     console.error('[assignHomework]', err);

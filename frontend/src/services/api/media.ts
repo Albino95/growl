@@ -175,7 +175,7 @@ type MultipartSpec = {
   uri: string;
   fileName: string;
   mimeType: string;
-  purpose: UploadPurpose;
+  purpose: UploadPurpose | PrivateUploadPurpose;
   headers: Record<string, string>;
 };
 
@@ -270,7 +270,8 @@ function xhrAttempt(
   });
 }
 
-async function readAccessToken(): Promise<string | null> {
+/** Bearer token for authenticated media reads (private proof files). */
+export async function readAccessToken(): Promise<string | null> {
   let token: string | null = getToken();
   if (!token) {
     try {
@@ -509,4 +510,86 @@ export function isVideoMedia(opts: {
     return false;
   }
   return false;
+}
+
+/** Private uploads: stored under `{purpose}/{userId}/…`, never publicly served. */
+export type PrivateUploadPurpose = 'proof';
+
+export type PrivateUploadResult = {
+  /** R2 key — pass it to the owning API (e.g. POST /proofs { media_key }). Not a URL. */
+  key: string;
+  size: number;
+  contentType: string;
+  mediaType: 'image' | 'audio';
+};
+
+/**
+ * Multipart upload of an already-prepared local file (compressed photo / m4a voice
+ * note) with progress, stall timeout and retries. Unlike `uploadMediaFile` it does
+ * not re-encode and returns only the private key (the server sends no public URL).
+ */
+export async function uploadPrivateMediaFile(
+  uri: string,
+  purpose: PrivateUploadPurpose,
+  opts: { mimeType: string; fileName: string } & UploadControl
+): Promise<PrivateUploadResult> {
+  const control: UploadControl = { onProgress: opts.onProgress, signal: opts.signal };
+  if (control.signal?.aborted) throw new UploadCancelledError();
+  const token = await readAccessToken();
+  const endpoint = `${getApiBaseUrl()}/media/upload`;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const spec: MultipartSpec = {
+    endpoint,
+    uri,
+    fileName: opts.fileName,
+    mimeType: opts.mimeType,
+    purpose,
+    headers,
+  };
+  const buildForm = async (): Promise<FormData> => {
+    const form = new FormData();
+    form.append('purpose', purpose);
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(uri)).blob();
+      const typed = new Blob([await blob.arrayBuffer()], { type: opts.mimeType });
+      form.append('file', typeof File !== 'undefined' ? new File([typed], opts.fileName, { type: opts.mimeType }) : typed, opts.fileName);
+    } else {
+      form.append('file', { uri, name: opts.fileName, type: opts.mimeType } as unknown as Blob);
+    }
+    return form;
+  };
+  let useTask = Platform.OS !== 'web' && uri.startsWith('file:');
+  let form: FormData | null = null;
+  const response = await sendWithRetry(
+    async (ctx) => {
+      if (useTask) {
+        const res = await expoTaskAttempt(spec, ctx);
+        if (res) return res;
+        useTask = false;
+      }
+      form = form ?? (await buildForm());
+      return xhrAttempt(endpoint, form, headers, ctx);
+    },
+    { timeoutMs: UPLOAD_ATTEMPT_TIMEOUT_MS, retries: UPLOAD_RETRIES, control }
+  );
+  let data: { success?: boolean; data?: Partial<PrivateUploadResult> } | null = null;
+  try {
+    data = JSON.parse(response.body);
+  } catch {
+    throw new Error(messageFromApiError(null, response.status));
+  }
+  const ok = response.status >= 200 && response.status < 300;
+  if (!ok || !data?.success || !data.data?.key) {
+    const err = new Error(messageFromApiError(data, response.status)) as Error & { code?: string; status?: number };
+    err.code = (data as { error?: { code?: string } } | null)?.error?.code;
+    err.status = response.status;
+    throw err;
+  }
+  return {
+    key: data.data.key,
+    size: Number(data.data.size) || 0,
+    contentType: data.data.contentType || opts.mimeType,
+    mediaType: data.data.mediaType === 'audio' ? 'audio' : 'image',
+  };
 }
