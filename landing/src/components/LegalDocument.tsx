@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { LegalPageId } from '@/lib/legal';
 import { LEGAL_PAGES } from '@/lib/legal';
+import { getSiteUrl, OG_IMAGE } from '@/lib/seo';
 import SiteNav from '@/components/SiteNav';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -10,6 +11,14 @@ export function legalMetadata(id: LegalPageId): Metadata {
     title: page.title,
     description: page.description,
     alternates: { canonical: `/${id}` },
+    openGraph: {
+      type: 'website',
+      url: `${getSiteUrl()}/${id}`,
+      title: `${page.title} | Grow!`,
+      description: page.description,
+      images: [OG_IMAGE],
+    },
+    twitter: { card: 'summary_large_image', title: `${page.title} | Grow!`, description: page.description, images: [OG_IMAGE.url] },
   };
 }
 

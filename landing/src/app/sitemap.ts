@@ -5,11 +5,11 @@ import { getSiteUrl } from '@/lib/seo';
 export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = getSiteUrl();
   const lastModified = new Date();
-  const paths = ['', '/privacy', '/terms', '/support', '/community', '/delete-account'];
+  const paths = ['', '/coaches', '/privacy', '/terms', '/support', '/community', '/delete-account'];
   return paths.map((path) => ({
     url: `${siteUrl}${path || '/'}`,
     lastModified,
     changeFrequency: path === '' ? 'weekly' : 'monthly',
-    priority: path === '' ? 1 : 0.6,
+    priority: path === '' ? 1 : path === '/coaches' ? 0.8 : 0.5,
   }));
 }

@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 import { COMPANY_NAME, SITE_MOTTO, SITE_NAME } from '@/lib/seo';
 
-const HEADLINE = 'Let’s grow.';
+const HEADLINE = 'Let’s Grow.';
 const SUBLINE = SITE_MOTTO;
 const BYLINE = `${SITE_NAME} by ${COMPANY_NAME}`;
 const DOMAIN = 'letsgrow.lu';

@@ -175,6 +175,47 @@ function Tuesday() {
           <p className="mt-4 text-sm text-moss">Optional. Leave it blank and still check in.</p>
         </li>
       </ol>
+
+      <div className="mt-14 grid gap-12 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+        <div>
+          <h3 className="font-display text-[1.375rem] font-bold tracking-[-0.01em] text-bark">And in the evening</h3>
+          <div className="mt-4 rounded-card border border-line bg-card p-6" aria-hidden="true">
+            <p className="text-[1.0625rem] font-semibold text-bark">Did it happen?</p>
+            <div className="mt-3 flex gap-2">
+              <span className="rounded-full bg-leaf px-4 py-1.5 text-[13px] font-semibold text-white">Yes</span>
+              <span className="rounded-full bg-subtle px-4 py-1.5 text-[13px] font-semibold text-bark/80">Partly</span>
+              <span className="rounded-full bg-subtle px-4 py-1.5 text-[13px] font-semibold text-bark/80">No</span>
+            </div>
+            <p className="mt-5 text-sm font-semibold text-bark">Add proof?</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {['Photo', 'Timer', 'Number', 'Note', 'Voice'].map((k) => (
+                <span key={k} className="rounded-full border border-line px-3 py-1 text-[13px] text-bark/80">
+                  {k}
+                </span>
+              ))}
+              <span className="px-2 py-1 text-[13px] font-semibold text-moss">Skip</span>
+            </div>
+          </div>
+          <p className="mt-4 text-[1.0625rem] text-moss">
+            One tap answers it. Partly counts. If you want a record, add a photo, a focus timer, a
+            number, a short note or a voice note. Proof is never required and stays private unless you
+            share it.
+          </p>
+        </div>
+
+        <dl className="max-w-md self-end border-t border-line">
+          {[
+            ['A widget for your Home Screen', 'Check in from your Home Screen with one tap on a mood and see how many friends already have. A smaller version fits your Lock Screen.'],
+            ['One gentle reminder', 'A single daily nudge, sent from your phone. It skips days you already checked in, and pauses itself if you ignore it three times.'],
+            ['Light or dark', 'Grow! follows your phone’s appearance, or you pick one in Settings.'],
+          ].map(([t, d]) => (
+            <div key={t} className="border-b border-line py-4">
+              <dt className="font-semibold text-bark">{t}</dt>
+              <dd className="mt-1 text-[0.9375rem] text-moss">{d}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </DaySection>
   );
 }
@@ -217,6 +258,20 @@ function Wednesday() {
           </figcaption>
         </figure>
         <SleepingSprout className="mx-auto h-48 w-auto text-[#A7F3D0] md:h-64" />
+      </div>
+      <div className="mt-14 max-w-2xl border-t border-soil/20 pt-6">
+        <h3 className="font-display text-[1.375rem] font-bold tracking-[-0.01em] text-soil">Life happens</h3>
+        <p className="mt-2 text-[1.0625rem] text-soil/85">
+          Sick, travelling, or just need a break? Switch on a life mode and your streak pauses without
+          spending a rest day. Reminders stay quiet until you’re back.
+        </p>
+        <ul className="mt-4 flex flex-wrap gap-2" aria-label="Life modes">
+          {['Sick', 'Travelling', 'Break'].map((m) => (
+            <li key={m} className="rounded-full border border-soil/30 px-4 py-1.5 text-sm font-semibold text-soil">
+              {m}
+            </li>
+          ))}
+        </ul>
       </div>
     </DaySection>
   );
@@ -261,7 +316,7 @@ function Thursday() {
           </p>
         </article>
       </div>
-      <Caption>Example entry. You decide, one entry at a time.</Caption>
+      <Caption>Example entry. You decide, one entry at a time. Proof works the same way: private until you share it.</Caption>
     </DaySection>
   );
 }
@@ -280,7 +335,7 @@ function Friday() {
     <DaySection
       d={day('friday')}
       title="Grow with friends."
-      lede="Start a 30-day path challenge with a few friends. The leaderboard only shows people you know, so it feels like a team, not a ranking."
+      lede="Start a 30-day path challenge with a few friends; the leaderboard only shows people you know. Or pair up as Path Buddies and keep a shared streak going with up to 5 friends."
     >
       <div className="grid gap-10 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-end">
         <div>
@@ -320,7 +375,13 @@ function Friday() {
           <h3 className="font-display text-[1.375rem] font-bold tracking-[-0.01em] text-bark">Want a guide?</h3>
           <p className="mt-2 text-[1.0625rem] text-moss">
             Coaches on Grow! are endorsed by the community: people growing on the same path vouch for
-            them. Find one for your path when you want more than a nudge.
+            them. Find one for your path when you want more than a nudge. There is no payment through
+            Grow!: you agree any fee directly with your coach.
+          </p>
+          <p className="mt-4 text-[1.0625rem]">
+            <a href="/coaches" className="font-semibold text-leaf underline decoration-leaf/30 underline-offset-4 hover:decoration-leaf">
+              How coaching works on Grow!
+            </a>
           </p>
         </div>
       </div>
@@ -332,8 +393,8 @@ function Friday() {
 
 const BADGES = [
   { emoji: '☀️', name: 'Checked In', what: 'Your first check-in', bg: 'bg-[#FEF3C7]' },
-  { emoji: '🌿', name: 'Taking Root', what: 'A 3-day streak', bg: 'bg-[#ECFDF5]' },
-  { emoji: '💛', name: 'Seen', what: 'Your first cheer from a friend', bg: 'bg-[#FFF1F0]' },
+  { emoji: '🌱', name: 'Taking Root', what: 'A 3-day streak', bg: 'bg-[#ECFDF5]' },
+  { emoji: '💚', name: 'Seen', what: 'Your first cheer from a friend', bg: 'bg-[#FFF1F0]' },
 ];
 
 const LEVELS = ['Seed', 'Sprout', 'Sapling', 'Bloom', 'Tree', 'Grove'];
@@ -377,6 +438,15 @@ function Saturday() {
           ))}
         </ol>
         <Caption>Example: a few weeks in, at Sprout.</Caption>
+      </div>
+
+      <div className="mt-14 max-w-2xl border-t border-line pt-6">
+        <h3 className="font-display text-[1.375rem] font-bold tracking-[-0.01em] text-bark">Your patterns</h3>
+        <p className="mt-2 text-[1.0625rem] text-moss">
+          After 7 check-ins, Grow! starts noticing things: how your mood tends to shift by path or
+          weekday, and how often an intention turns into done. Each one is worded as a hunch, not a
+          verdict, and you can hide any of them.
+        </p>
       </div>
     </DaySection>
   );
@@ -445,11 +515,27 @@ function Sunday() {
     >
       <div className="flex flex-col items-start gap-8 sm:flex-row sm:items-end">
         <RecapCard />
-        <div className="max-w-xs pb-2">
+        <div className="max-w-sm pb-2">
           <p className="text-[1.0625rem] text-moss">
             Nothing to edit, nothing to perform. Just the week you actually had.
           </p>
           <Caption>Example recap.</Caption>
+          <dl className="mt-8 border-t border-line">
+            <div className="border-b border-line py-4">
+              <dt className="font-semibold text-bark">Your week in 2 minutes</dt>
+              <dd className="mt-1 text-[0.9375rem] text-moss">
+                From Saturday noon, a few short questions on how the week went. If you have a coach,
+                they can choose the questions.
+              </dd>
+            </div>
+            <div className="border-b border-line py-4">
+              <dt className="font-semibold text-bark">A gentle weekly goal</dt>
+              <dd className="mt-1 text-[0.9375rem] text-moss">
+                If you like, aim for 3 to 7 days next week, with 2 rest passes. Missing it never touches
+                your streak.
+              </dd>
+            </div>
+          </dl>
         </div>
       </div>
     </DaySection>

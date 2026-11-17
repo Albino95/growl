@@ -4,6 +4,30 @@ import { SUPPORT_EMAIL } from '@/lib/content';
 
 const WRAP = 'mx-auto max-w-6xl px-5 sm:px-8 lg:pl-36 lg:pr-10';
 
+/** Each line must stay true to /privacy and the app (docs/PROOF_AND_COACHING_PLAN.md). */
+const PROMISES: ReadonlyArray<readonly [string, string]> = [
+  [
+    'Your journal is yours.',
+    'Entries are private by default. You can share a single entry with your circle, one at a time.',
+  ],
+  [
+    'Proof stays between you and the people you pick.',
+    'Photos, timers, numbers, notes and voice notes are private by default. Your coach sees proof for their homework; anything else only if you share it. Proof files are never public links, and photo location data is removed.',
+  ],
+  [
+    'Your coach sees only what you share.',
+    'Daily check-in sharing with a coach is off until you turn it on, and you can turn it off again anytime.',
+  ],
+  [
+    'No third-party ads. No selling your data.',
+    'We don’t sell personal information or use your content to build advertising profiles.',
+  ],
+  [
+    'Leave whenever you like.',
+    'Export your data and delete your account in the app or online. Your proof files are deleted with it.',
+  ],
+];
+
 export function PrivacyPromise() {
   return (
     <section aria-labelledby="privacy-title" className="border-t border-line">
@@ -11,11 +35,15 @@ export function PrivacyPromise() {
         <h2 id="privacy-title" className="display text-[1.75rem] text-bark sm:text-[2.5rem]">
           What we won’t do with your week.
         </h2>
-        <ul className="mt-8 max-w-2xl divide-y divide-line border-y border-line font-display text-[1.375rem] font-semibold leading-snug tracking-[-0.01em] text-bark sm:text-[1.75rem]">
-          <li className="py-4">No third-party ads.</li>
-          <li className="py-4">We don’t sell your data.</li>
-          <li className="py-4">Your journal is private unless you share an entry.</li>
-          <li className="py-4">You can delete your account anytime.</li>
+        <ul className="mt-8 max-w-3xl divide-y divide-line border-y border-line">
+          {PROMISES.map(([line, detail]) => (
+            <li key={line} className="py-5">
+              <p className="font-display text-[1.375rem] font-semibold leading-snug tracking-[-0.01em] text-bark sm:text-[1.75rem]">
+                {line}
+              </p>
+              <p className="measure mt-1.5 text-[1.0625rem] text-moss">{detail}</p>
+            </li>
+          ))}
         </ul>
         <p className="measure mt-6 text-[1.0625rem] text-moss">
           The details are in our{' '}
@@ -67,8 +95,8 @@ export function MadeIn() {
           Made in Luxembourg
         </h2>
         <p className="measure mt-2 text-[1.0625rem] text-moss">
-          Grow! is built by a small team in Luxembourg. If something is confusing, broken or missing,
-          tell us at{' '}
+          Grow! is made by Let’s Grow Group, a small team in Luxembourg. If something is confusing,
+          broken or missing, tell us at{' '}
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
             className="font-semibold text-leaf underline decoration-leaf/30 underline-offset-4 hover:decoration-leaf"
@@ -87,7 +115,7 @@ export function FinalCta() {
     <section id="get-grow" aria-labelledby="final-title" className="border-t border-line">
       <div className="mx-auto flex max-w-3xl flex-col items-center px-5 py-24 text-center sm:py-32">
         <h2 id="final-title" className="display text-[clamp(2.75rem,6vw,5rem)] text-bark">
-          <span className="block">Let’s grow.</span>
+          <span className="block">Let’s Grow.</span>
           <span className="block">Day 1 is today.</span>
         </h2>
         <p className="mt-4 text-[1.125rem] text-moss">

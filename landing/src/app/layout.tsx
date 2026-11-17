@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Bricolage_Grotesque, Figtree } from 'next/font/google';
 import './globals.css';
 import {
@@ -25,7 +25,7 @@ const body = Figtree({
   display: 'swap',
 });
 
-const TITLE = 'Grow! — Let’s grow';
+const TITLE = 'Grow! – Let’s Grow. A calm daily check-in for iPhone';
 
 const siteUrl = getSiteUrl();
 
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
     default: TITLE,
-    template: `%s · ${SITE_NAME}`,
+    template: `%s | ${SITE_NAME}`,
   },
   description: siteDescription,
   applicationName: SITE_NAME,
@@ -46,6 +46,9 @@ export const metadata: Metadata = {
     'streak with rest days',
     'private journal',
     'growth with friends',
+    'coaching app',
+    'accountability coach',
+    'Luxembourg',
   ],
   authors: [{ name: COMPANY_NAME }],
   creator: COMPANY_NAME,
@@ -81,7 +84,16 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
   },
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#F3EEE4',
+  colorScheme: 'light',
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

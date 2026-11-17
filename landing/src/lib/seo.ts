@@ -2,16 +2,24 @@ export const SITE_NAME = 'Grow!';
 /** Legal entity / publisher behind the app. */
 export const COMPANY_NAME = "Let's Grow Group";
 /** Brand line and motto. */
-export const SITE_TAGLINE = 'Let’s grow.';
+export const SITE_TAGLINE = 'Let’s Grow.';
 export const SITE_MOTTO = 'Making your life better, a little each day.';
 export const SITE_DESCRIPTION =
-  'Making your life better, a little each day. Grow! is a calm daily check-in: up to 3 growth paths, ten seconds a day, rest days, and friends who cheer you on. Free, no ads.';
+  'Making your life better, a little each day. Grow! is a calm daily check-in for up to 3 growth paths: ten seconds a day, rest days that keep your streak, a private journal and friends who cheer you on. Free on iPhone, no ads.';
 /** Alias of SITE_DESCRIPTION (camelCase name used in newer code). */
 export const siteDescription = SITE_DESCRIPTION;
 
 /** Live App Store listing (iPhone). Android is waitlist-only for now. */
 export const APP_STORE_ID = '6809046287';
 export const APP_STORE_URL = `https://apps.apple.com/app/id${APP_STORE_ID}`;
+
+/** Default share image (app/opengraph-image.tsx). Pages that set their own openGraph must list it again. */
+export const OG_IMAGE = {
+  url: '/opengraph-image',
+  width: 1200,
+  height: 630,
+  alt: 'Let’s Grow. Making your life better, a little each day. Grow! by Let’s Grow Group.',
+};
 
 /** Square PNG in /public used as the Organization logo in JSON-LD. */
 export const LOGO_PATH = '/app-icon.png';
@@ -68,9 +76,19 @@ export const faqItems: FaqItem[] = [
       'Not the endless-feed kind. Grow! is a daily check-in for up to 3 things you want to get better at. You share progress with friends you choose, and there is no infinite scroll to get lost in.',
   },
   {
+    question: 'How long does it take each day?',
+    answer:
+      'About ten seconds: pick your mood, choose a path, and set one small intention if you like. In the evening, one tap answers "Did it happen?"',
+  },
+  {
     question: 'Will it make me feel bad when I miss a day?',
     answer:
-      'No. You earn a rest day for every 7 active days (up to 2 saved), and rest days keep your streak going. After a break the app says "Welcome back. Your longest streak is safe."',
+      'No. You earn a rest day for every 7 active days (up to 2 saved), and rest days keep your streak going. If you are sick, travelling or need a break, switch on a life mode and your streak pauses without using rest days. After a gap the app says "Welcome back. Your longest streak is safe."',
+  },
+  {
+    question: 'Do I have to prove what I did?',
+    answer:
+      'Never. A check-in is one tap. If you want, you can add proof: a photo, a focus timer, a number, a short note or a voice note. Proof is private by default and earns a small bonus, nothing more.',
   },
   {
     question: 'Is my journal private?',
@@ -78,28 +96,29 @@ export const faqItems: FaqItem[] = [
       'Yes. Journal entries are private by default. You can share a single entry with your circle only if you choose to.',
   },
   {
+    question: 'Who can see my proof and check-ins?',
+    answer:
+      'You, always. Your coach sees proof you attach to their homework, and your daily check-ins only if you turn check-in sharing on. Friends see a proof only when you share it with them. Proof files are never public links.',
+  },
+  {
     question: 'What does it cost?',
-    answer: 'Grow! is free, with no third-party ads.',
+    answer:
+      'Grow! is free, with no third-party ads. If you work with a coach, there is no payment through Grow!: you agree any fee directly with your coach.',
   },
   {
     question: 'Is there an Android app?',
     answer:
-      'Not yet — Grow! is iPhone first. Leave your email on this page and we will send you one email when the Android app is ready.',
+      'Not yet. Grow! is iPhone first. Leave your email on this page and we will send you one email when the Android app is ready.',
   },
   {
     question: 'Who is behind Grow!?',
     answer:
-      'A small team in Luxembourg. You can reach us any time at support@letsgrow.lu.',
-  },
-  {
-    question: 'How long does it take each day?',
-    answer:
-      'About ten seconds: pick your mood, choose a path, and set one small intention for the day.',
+      "Let's Grow Group, a small team in Luxembourg. You can reach us any time at support@letsgrow.lu.",
   },
   {
     question: 'Can I delete my account?',
     answer:
-      'Yes, any time — in the app or at letsgrow.lu/delete-account.',
+      'Yes, any time: in the app under Profile, Settings, Delete Account, or at letsgrow.lu/delete-account.',
   },
 ];
 
@@ -108,6 +127,8 @@ export function organizationJsonLd(siteUrl: string) {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: COMPANY_NAME,
+    email: 'support@letsgrow.lu',
+    address: { '@type': 'PostalAddress', addressCountry: 'LU' },
     brand: { '@type': 'Brand', name: SITE_NAME, slogan: SITE_MOTTO },
     url: siteUrl,
     logo: `${siteUrl}${LOGO_PATH}`,
@@ -133,8 +154,12 @@ export function softwareApplicationJsonLd(siteUrl: string) {
     '@type': 'SoftwareApplication',
     name: SITE_NAME,
     applicationCategory: 'LifestyleApplication',
+    applicationSubCategory: 'Personal growth',
     operatingSystem: 'iOS',
-    publisher: { '@type': 'Organization', name: COMPANY_NAME },
+    inLanguage: 'en',
+    slogan: SITE_MOTTO,
+    publisher: { '@type': 'Organization', name: COMPANY_NAME, url: siteUrl },
+    sameAs: [storeUrl],
     description: SITE_DESCRIPTION,
     url: siteUrl,
     image: `${siteUrl}${LOGO_PATH}`,
