@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import tw, { theme } from '../../lib/tw';
 import PressableScale from '../ui/PressableScale';
-import { getCoachQueue } from '../../services/api/coachq';
+import { getCoachQueue, getReviewItems } from '../../services/api/coachq';
+import { todayEntrySummary } from './queueFormat';
 import { navigateFromRoot } from '../../app/navigation/rootNavigation';
 
 /**
@@ -13,15 +14,25 @@ import { navigateFromRoot } from '../../app/navigation/rootNavigation';
  */
 export default function CoachTodayEntry() {
   const navigation = useNavigation();
-  const [counts, setCounts] = useState<{ red: number; amber: number; active: number } | null>(null);
+  const [counts, setCounts] = useState<{ red: number; amber: number; active: number; review: number } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      getCoachQueue()
-        .then((q) => {
+      // The queue has no review count: ask the review list for its total alongside.
+      Promise.all([getCoachQueue(), getReviewItems().catch(() => null)])
+        .then(([q, review]) => {
           if (!alive) return;
-          setCounts(q ? { red: q.counts.red, amber: q.counts.amber, active: q.active_clients ?? q.clients.length } : null);
+          setCounts(
+            q
+              ? {
+                  red: q.counts.red,
+                  amber: q.counts.amber,
+                  active: q.active_clients ?? q.clients.length,
+                  review: review?.total ?? review?.items.length ?? 0,
+                }
+              : null
+          );
         })
         .catch(() => {
           /* entry is optional; keep the last known counts */
@@ -34,11 +45,7 @@ export default function CoachTodayEntry() {
 
   if (!counts || counts.active === 0) return null;
 
-  const subtitle = counts.red
-    ? `${counts.red} need${counts.red === 1 ? 's' : ''} you today`
-    : counts.amber
-      ? `${counts.amber} to check this week`
-      : 'Everyone’s on track';
+  const { subtitle, badge, badgeTone } = todayEntrySummary(counts);
 
   return (
     <PressableScale
@@ -57,9 +64,15 @@ export default function CoachTodayEntry() {
           {subtitle} · {counts.active} active
         </Text>
       </View>
-      {counts.red ? (
-        <View style={tw`min-w-6 h-6 px-1.5 rounded-full bg-rose-600 items-center justify-center mr-2`}>
-          <Text style={tw`text-caption font-bold text-white`}>{counts.red > 99 ? '99+' : counts.red}</Text>
+      {badge ? (
+        <View
+          style={tw`min-w-6 h-6 px-1.5 rounded-full ${
+            badgeTone === 'red' ? 'bg-rose-600' : 'bg-emerald-600'
+          } items-center justify-center mr-2`}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Text style={tw`text-caption font-bold text-white`}>{badge > 99 ? '99+' : badge}</Text>
         </View>
       ) : null}
       <Ionicons name="chevron-forward" size={16} color={theme.colors.iconMuted} />

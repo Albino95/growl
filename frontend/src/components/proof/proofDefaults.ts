@@ -193,3 +193,49 @@ export function voiceLongEnough(ms: number): boolean {
 export function proofSkipActive(skippedDay: string | null | undefined, today: string): boolean {
   return !!skippedDay && skippedDay === today;
 }
+
+/** Group homework assignment ids are prefixed `cohort_asg_`. */
+export function isCohortAssignmentId(id: string | null | undefined): boolean {
+  return typeof id === 'string' && id.startsWith('cohort_asg_');
+}
+
+/** Subtitle under "Share with my coach" when sharing is on. */
+export function coachShareCaption(cohort: boolean): string {
+  return cohort
+    ? 'Only your group’s coach sees it.'
+    : 'Only your coach sees it, while your plan is active.';
+}
+
+type SummarizableProof = Parameters<typeof proofSummary>[0];
+
+/** Placeholder notes older builds saved when homework was finished via a proof. */
+const AUTO_PROOF_NOTES = new Set(['done with proof']);
+
+/**
+ * The client's real homework note, or null when there isn't one. Older builds
+ * saved the proof summary ("25 reps", "“Ran in the rain”") as the note when
+ * homework was finished via a proof — don't show that back as "Your note".
+ */
+export function realHomeworkNote(
+  note: string | null | undefined,
+  proofs: SummarizableProof[] | null | undefined
+): string | null {
+  const t = (note ?? '').trim();
+  if (!t) return null;
+  const lower = t.toLowerCase();
+  if (AUTO_PROOF_NOTES.has(lower)) return null;
+  for (const p of proofs ?? []) {
+    const summary = proofSummary(p).trim().toLowerCase();
+    if (summary && (lower === summary || lower === summary.slice(0, 500))) return null;
+    // A note proof's own text (with or without the quotes) isn't a separate note.
+    const text = (p.text ?? '').trim().toLowerCase();
+    if (text && lower === text) return null;
+  }
+  return t;
+}
+
+/** Note to send when homework is completed via a proof: the typed note only, never the summary. */
+export function homeworkNoteForProof(typed: string | null | undefined): string | undefined {
+  const t = (typed ?? '').trim().slice(0, 500);
+  return t || undefined;
+}

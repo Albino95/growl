@@ -1,4 +1,6 @@
 import type { CoachQueue, QueueClient, QueueSegment, QueueWeek } from '../../services/api/coachq';
+import type { Proof } from '../../services/api/proofs';
+import { KIND_META, formatClock } from '../proof/proofDefaults';
 
 export const SEGMENTS: Array<{ key: QueueSegment; label: string; color: string }> = [
   { key: 'red', label: 'Act today', color: 'rose' },
@@ -72,4 +74,49 @@ export function progressLabel(index: number, total: number): string {
 
 export function displayName(p: { username: string; display_name?: string | null }): string {
   return (p.display_name && p.display_name.trim()) || p.username;
+}
+
+/**
+ * Compact chip for a non-photo proof on a queue card: "🔢 25 reps", "⏱ 12 min",
+ * "✏️ note", "🎙 0:24". Photos render as thumbnails instead.
+ */
+export function proofChipLabel(
+  p: Pick<Proof, 'kind'> & Partial<Pick<Proof, 'number' | 'unit' | 'minutes' | 'duration_s'>>
+): string {
+  const emoji = KIND_META[p.kind]?.emoji ?? '✓';
+  switch (p.kind) {
+    case 'number': {
+      if (p.number == null) return `${emoji} number`;
+      const n = Number.isInteger(p.number) ? String(p.number) : String(Math.round(p.number * 100) / 100);
+      return `${emoji} ${n}${p.unit ? ` ${p.unit}` : ''}`;
+    }
+    case 'timer':
+      return p.minutes ? `${emoji} ${p.minutes} min` : `${emoji} timer`;
+    case 'voice':
+      return p.duration_s ? `${emoji} ${formatClock(p.duration_s * 1000)}` : `${emoji} voice`;
+    case 'photo':
+      return `${emoji} photo`;
+    default:
+      return `${emoji} note`;
+  }
+}
+
+/** Instructor Hub "Today" entry: subtitle and whether to show a badge. */
+export function todayEntrySummary(c: { red: number; amber: number; review: number }): {
+  subtitle: string;
+  badge: number;
+  badgeTone: 'red' | 'review' | null;
+} {
+  const status = c.red
+    ? `${c.red} need${c.red === 1 ? 's' : ''} you today`
+    : c.amber
+      ? `${c.amber} to check this week`
+      : 'everyone’s on track';
+  const parts = c.review > 0 ? [`${c.review} to review`, status] : [status];
+  const subtitle = parts.join(' · ');
+  return {
+    subtitle: subtitle.charAt(0).toUpperCase() + subtitle.slice(1),
+    badge: c.red > 0 ? c.red : c.review > 0 ? c.review : 0,
+    badgeTone: c.red > 0 ? 'red' : c.review > 0 ? 'review' : null,
+  };
 }

@@ -250,7 +250,7 @@ export default function CohortDetailScreen() {
       </View>
       <View style={tw`flex-1`}>
         {tab === 'updates' ? <CohortUpdatesTab cohort={cohort} /> : null}
-        {tab === 'homework' ? <CohortHomeworkTab cohort={cohort} /> : null}
+        {tab === 'homework' ? <CohortHomeworkTab cohort={cohort} onChanged={() => void load()} /> : null}
         {tab === 'members' ? (
           <CohortMembersTab detail={detail} reload={load} onInvite={() => setInviting(true)} onLeave={() => void leave()} />
         ) : null}

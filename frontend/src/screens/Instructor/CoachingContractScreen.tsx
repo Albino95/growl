@@ -160,10 +160,13 @@ export default function CoachingContractScreen() {
 
   const onComplete = async () => {
     if (busy || !contract) return;
+    const peer = isCoach
+      ? contract.client?.username || 'your client'
+      : contract.instructor?.username || 'your coach';
     const ok = await confirmAsync(
-      'Mark plan complete?',
-      'This ends the plan for both of you. You can’t undo it.',
-      { confirmLabel: 'Mark complete', cancelLabel: 'Not yet' }
+      `End your plan with ${peer}?`,
+      `You can still message them. This ends the plan for both of you and can’t be undone.`,
+      { confirmLabel: 'End plan', cancelLabel: 'Keep plan', destructive: true }
     );
     if (!ok) return;
     setBusy(true);
@@ -251,26 +254,16 @@ export default function CoachingContractScreen() {
             </Text>
           </View>
 
-          <View style={tw`flex-row gap-2 mt-3`}>
-            {isCoach && contract.status === 'active' ? (
+          {isCoach && contract.status === 'active' ? (
+            <View style={tw`flex-row gap-2 mt-3`}>
               <PressableScale
                 onPress={() => setAssignOpen(true)}
                 style={tw`flex-1 py-3 rounded-card bg-emerald-600 items-center`}
               >
                 <Text style={tw`text-white font-bold`}>Assign homework</Text>
               </PressableScale>
-            ) : null}
-            {contract.status === 'active' ? (
-              <PressableScale
-                onPress={() => void onComplete()}
-                disabled={busy}
-                accessibilityState={{ disabled: busy }}
-                style={tw`flex-1 py-3 rounded-card bg-raised border border-line items-center ${busy ? 'opacity-60' : ''}`}
-              >
-                <Text style={tw`text-ink font-bold`}>Mark complete</Text>
-              </PressableScale>
-            ) : null}
-          </View>
+            </View>
+          ) : null}
 
           <CheckinSharingCard
             contractId={contract.id}
@@ -379,6 +372,22 @@ export default function CoachingContractScreen() {
               </PressableScale>
             ))
           )}
+
+          {contract.status === 'active' ? (
+            // Ending a plan is rare and final: a quiet text action at the very
+            // bottom (behind a confirm) so nobody ends it by accident.
+            <PressableScale
+              onPress={() => void onComplete()}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="End this plan"
+              accessibilityState={{ disabled: busy }}
+              hitSlop={8}
+              style={tw`self-center mt-8 py-2 px-4 ${busy ? 'opacity-60' : ''}`}
+            >
+              <Text style={tw`text-footnote font-semibold text-ink-3`}>End this plan</Text>
+            </PressableScale>
+          ) : null}
         </ScrollView>
       ) : (
         <View style={tw`flex-1 items-center justify-center px-8`}>

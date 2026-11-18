@@ -49,6 +49,8 @@ import {
   timerRunning,
   unitsForPath,
   voiceSeconds,
+  coachShareCaption,
+  isCohortAssignmentId,
   type FocusTimerState,
 } from './proofDefaults';
 
@@ -167,6 +169,7 @@ export default function ProofSheet({
   const numberRef = useRef<TextInput>(null);
 
   const isAssignment = context.type === 'assignment';
+  const isCohortHomework = isAssignment && isCohortAssignmentId(context.id);
 
   // Fresh sheet session on every open.
   useEffect(() => {
@@ -425,7 +428,7 @@ export default function ProofSheet({
               </View>
             ) : null}
 
-            <View style={tw`mt-4`}>
+            <View style={tw`mt-4 w-full min-w-0`}>
               {kind === 'photo' ? (
                 photo ? (
                   <View style={tw`rounded-card overflow-hidden border border-line`}>
@@ -524,7 +527,7 @@ export default function ProofSheet({
                     {coachHidden
                       ? 'Your coach sees check-in proofs once check-in sharing is on in your plan.'
                       : shareCoach
-                        ? 'Only your coach sees it, while your plan is active.'
+                        ? coachShareCaption(isCohortHomework)
                         : 'Private — only you see it.'}
                   </Text>
                 </View>

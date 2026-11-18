@@ -9,7 +9,7 @@ import { getSeed } from '../../services/api/seeds';
 import { resolvePostMediaUri } from '../../utils/images';
 import { formatHomeworkDate, isOverdue } from './homeworkDates';
 import ProofMedia from '../proof/ProofMedia';
-import { KIND_META, proofSummary } from '../proof/proofDefaults';
+import { KIND_META, proofSummary, realHomeworkNote } from '../proof/proofDefaults';
 import type { AssignmentWithProof } from '../../services/api/coachq';
 
 type Props = {
@@ -34,6 +34,8 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, o
   const asked = (item as AssignmentWithProof).proof_kind ?? null;
   const proofs = (item as AssignmentWithProof).proofs ?? [];
   const mediaProof = proofs.find((p) => !!p.media_url);
+  // Only a note the client actually wrote — not a repeat of the proof value.
+  const lastNote = realHomeworkNote(extra?.lastNote, proofs);
 
   useEffect(() => {
     let alive = true;
@@ -141,12 +143,12 @@ export default function HomeworkCard({ item, isCoach, canMarkDone, onMarkDone, o
         />
       ) : null}
 
-      {extra?.lastNote ? (
+      {lastNote ? (
         <View style={tw`mt-2 px-3 py-2 rounded-control bg-page`}>
           <Text style={tw`text-caption font-bold tracking-widest text-ink-3 uppercase`}>
             {isCoach ? 'Client note' : 'Your note'}
           </Text>
-          <Text style={tw`text-sm text-ink-2 mt-0.5 leading-5`}>{extra.lastNote}</Text>
+          <Text style={tw`text-sm text-ink-2 mt-0.5 leading-5`}>{lastNote}</Text>
         </View>
       ) : null}
 

@@ -6,7 +6,7 @@ import PressableScale from '../ui/PressableScale';
 import GrowAvatar from '../ui/GrowAvatar';
 import ProofMedia from '../proof/ProofMedia';
 import type { QueueClient } from '../../services/api/coachq';
-import { contactLabel, displayName, weekStats } from './queueFormat';
+import { contactLabel, displayName, proofChipLabel, weekStats } from './queueFormat';
 
 type Props = {
   item: QueueClient;
@@ -32,6 +32,9 @@ export default function QueueClientCard({ item, busy, onOpen, onMessage, onTempl
   const live = item.reasons.filter((r) => !r.snoozed);
   const handled = !!item.handled_until;
   const proofs = (item.recent_proofs || []).slice(0, 3);
+  // Photos keep a thumbnail; number / timer / note / voice get a compact chip.
+  const photoProofs = proofs.filter((p) => p.kind === 'photo' && !!p.media_url);
+  const chipProofs = proofs.filter((p) => !photoProofs.includes(p));
 
   return (
     <View style={tw`mb-3 rounded-card bg-card border border-line/80 overflow-hidden`}>
@@ -89,17 +92,31 @@ export default function QueueClientCard({ item, busy, onOpen, onMessage, onTempl
 
       {stats.length || proofs.length ? (
         <View style={tw`flex-row items-center px-3.5 pb-2`}>
-          <View style={tw`flex-1 flex-row flex-wrap`}>
+          <View style={tw`flex-1 flex-row flex-wrap items-center`}>
             {stats.map((st) => (
               <View key={st.key} style={tw`flex-row items-center mr-3 mt-1`}>
                 <Ionicons name={st.icon as keyof typeof Ionicons.glyphMap} size={12} color={theme.colors.ink3} />
                 <Text style={tw`text-caption text-ink-2 ml-1`}>{st.label}</Text>
               </View>
             ))}
+            {chipProofs.map((p) => {
+              const label = proofChipLabel(p);
+              return (
+                <View
+                  key={p.id}
+                  accessibilityLabel={`Recent proof: ${label}`}
+                  style={tw`mr-1.5 mt-1 px-2 py-0.5 rounded-chip bg-raised border border-line`}
+                >
+                  <Text style={tw`text-caption font-semibold text-ink-2`} numberOfLines={1}>
+                    {label}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
-          {proofs.length ? (
-            <View style={tw`flex-row ml-2`} accessibilityLabel={`${proofs.length} recent proofs`}>
-              {proofs.map((p) => (
+          {photoProofs.length ? (
+            <View style={tw`flex-row ml-2`} accessibilityLabel={`${photoProofs.length} recent photo proofs`}>
+              {photoProofs.map((p) => (
                 <View key={p.id} style={tw`w-9 h-9 rounded-control overflow-hidden ml-1 bg-raised`}>
                   <ProofMedia proof={p} style={tw`w-full h-full`} />
                 </View>

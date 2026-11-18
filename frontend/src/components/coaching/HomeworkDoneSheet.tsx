@@ -23,7 +23,7 @@ import { feedback, hushNativeAudio } from '../../utils/interactionFeedback';
 import { alertMessage } from '../../utils/confirmDialog';
 import { scrollInputIntoView } from '../../utils/scrollInputIntoView';
 import ProofSheet from '../proof/ProofSheet';
-import { KIND_META, proofSummary } from '../proof/proofDefaults';
+import { KIND_META, homeworkNoteForProof } from '../proof/proofDefaults';
 import type { Proof } from '../../services/api/proofs';
 import type { AssignmentWithProof } from '../../services/api/coachq';
 
@@ -80,14 +80,18 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
     switchTimer.current = setTimeout(() => setMode(next), 350);
   };
 
-  /** Proof saved under the assignment → complete the homework with its summary as the note. */
-  const completeWithProof = async (proof: Proof) => {
+  /**
+   * Proof saved under the assignment → complete the homework. The note is the
+   * one the client typed in this sheet (kept across the proof sheet), never the
+   * proof summary — the proof itself already shows next to the homework.
+   */
+  const completeWithProof = async (_proof: Proof) => {
     savingRef.current = true;
     setBusy(true);
     try {
       await waterSeed(assignment.seed_id, {
         action: 'check_in',
-        note: proofSummary(proof).slice(0, 500) || 'Done with proof',
+        note: homeworkNoteForProof(note),
         assignment_id: assignment.id,
       });
       feedback.success();
@@ -255,7 +259,9 @@ export default function HomeworkDoneSheet({ visible, assignment, onClose, onDone
                       Your coach asked for a {KIND_META[asked].label.toLowerCase()}
                     </Text>
                     <Text style={tw`text-footnote text-emerald-800/80`}>
-                      Tap to add it — or just leave a note.
+                      {note.trim()
+                        ? 'Tap to add it — your note is sent with it.'
+                        : 'Tap to add it — or just leave a note.'}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={tw.color('emerald-700')} />

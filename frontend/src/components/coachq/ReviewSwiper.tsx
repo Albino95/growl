@@ -9,7 +9,7 @@ import GrowAvatar from '../ui/GrowAvatar';
 import FadeInUp from '../ui/FadeInUp';
 import EmptyState from '../ui/EmptyState';
 import ProofMedia from '../proof/ProofMedia';
-import { proofSummary } from '../proof/proofDefaults';
+import { proofSummary, realHomeworkNote } from '../proof/proofDefaults';
 import { markProofSeen } from '../../services/api/proofs';
 import { sendHomeworkFeedback } from '../../services/api/coaching';
 import { getReviewItems, sendQuickDm, type ReviewItem } from '../../services/api/coachq';
@@ -229,6 +229,7 @@ function ReviewCard({ item }: { item: ReviewItem }) {
   const hw = item.homework;
   const mediaProof = item.proofs.find((p) => !!p.media_url);
   const otherProofs = item.proofs.filter((p) => p !== mediaProof);
+  const clientNote = realHomeworkNote(hw?.note, item.proofs);
   return (
     <View style={tw`rounded-card bg-card border border-line/80 overflow-hidden`}>
       <View style={tw`flex-row items-center px-4 pt-4`}>
@@ -272,10 +273,10 @@ function ReviewCard({ item }: { item: ReviewItem }) {
             </View>
           ) : null;
         })}
-        {hw?.note ? (
+        {clientNote ? (
           <View style={tw`mt-1 px-3 py-2 rounded-control bg-page`}>
             <Text style={tw`text-caption font-bold tracking-widest text-ink-3 uppercase`}>Client note</Text>
-            <Text style={tw`text-body text-ink-2 mt-0.5 leading-5`}>{hw.note}</Text>
+            <Text style={tw`text-body text-ink-2 mt-0.5 leading-5`}>{clientNote}</Text>
           </View>
         ) : null}
       </View>

@@ -33,7 +33,11 @@ import { haptic } from '../../theme/haptics';
 import CohortAssignSheet from './CohortAssignSheet';
 import { formatDay, homeworkStatusLabel, personName } from './cohortCopy';
 
-type Props = { cohort: Cohort };
+type Props = {
+  cohort: Cohort;
+  /** Called after the member's own homework changes, so the group header can refresh its counts. */
+  onChanged?: () => void;
+};
 
 const GRID_COLUMNS = 6;
 const CELL = 40;
@@ -341,7 +345,19 @@ function CoachView({ cohort, data, reload }: { cohort: Cohort; data: CoachHomewo
 // ---------------------------------------------------------------------------
 // Member
 
-function MemberView({ cohort, data, setData }: { cohort: Cohort; data: MemberHomework; setData: (d: MemberHomework) => void }) {
+function MemberView({
+  cohort,
+  data,
+  setData,
+  reload,
+  onChanged,
+}: {
+  cohort: Cohort;
+  data: MemberHomework;
+  setData: (d: MemberHomework) => void;
+  reload: () => Promise<void>;
+  onChanged?: () => void;
+}) {
   const [proofFor, setProofFor] = useState<MemberHomework['assignments'][number] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -362,6 +378,10 @@ function MemberView({ cohort, data, setData }: { cohort: Cohort; data: MemberHom
       setData({ ...data, assignments: data.assignments.map((x) => (x.id === a.id ? { ...x, mine } : x)) });
       if (status === 'done') toast.success(proof ? 'Done — with proof' : 'Done');
       if (status === 'partly') toast.success('Partly counts');
+      // Group totals ("% of the group finished", header "You: x of y · Group: z%")
+      // are computed server-side: refetch both after any change.
+      void reload();
+      onChanged?.();
     } catch (e) {
       void alertMessage('Couldn’t save that', e instanceof ApiError ? e.message : undefined);
     } finally {
@@ -497,7 +517,7 @@ function MemberView({ cohort, data, setData }: { cohort: Cohort; data: MemberHom
 }
 
 /** Group homework: coach grid (members × assignments) or the member's own list. */
-export default function CohortHomeworkTab({ cohort }: Props) {
+export default function CohortHomeworkTab({ cohort, onChanged }: Props) {
   const [data, setData] = useState<CoachHomework | MemberHomework | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -523,7 +543,7 @@ export default function CohortHomeworkTab({ cohort }: Props) {
       ) : data.role === 'coach' ? (
         <CoachView cohort={cohort} data={data} reload={load} />
       ) : (
-        <MemberView cohort={cohort} data={data} setData={setData} />
+        <MemberView cohort={cohort} data={data} setData={setData} reload={load} onChanged={onChanged} />
       )}
     </ScrollView>
   );

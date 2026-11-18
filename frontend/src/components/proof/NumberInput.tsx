@@ -20,8 +20,11 @@ const NumberInput = forwardRef<TextInput, Props>(function NumberInput(
   ref
 ) {
   return (
-    <View>
-      <View style={tw`flex-row items-center`}>
+    // self-stretch + min-w-0 keep the big field inside the sheet's padding:
+    // a text input's intrinsic width (esp. on web at 32px type) would
+    // otherwise push the row past the right edge.
+    <View style={tw`self-stretch w-full min-w-0`}>
+      <View style={tw`flex-row items-center w-full min-w-0`}>
         <TextInput
           ref={ref}
           value={value}
@@ -35,10 +38,14 @@ const NumberInput = forwardRef<TextInput, Props>(function NumberInput(
           accessibilityLabel={`Amount${unit ? ` in ${unit}` : ''}`}
           style={[
             tw`flex-1 px-4 py-3 rounded-control bg-card border border-line text-[32px] font-bold text-ink`,
-            { fontVariant: ['tabular-nums'] },
+            { fontVariant: ['tabular-nums'], minWidth: 0, width: 0, flexShrink: 1 },
           ]}
         />
-        {unit ? <Text style={tw`text-title font-semibold text-ink-2 ml-3`}>{unit}</Text> : null}
+        {unit ? (
+          <Text style={tw`text-title font-semibold text-ink-2 ml-3 shrink-0`} numberOfLines={1}>
+            {unit}
+          </Text>
+        ) : null}
       </View>
       {units.length > 1 ? (
         <ScrollView
