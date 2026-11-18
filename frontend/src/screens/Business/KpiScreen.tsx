@@ -22,6 +22,7 @@ import { formatCurrency } from '../../utils/money';
 import PeriodToggle from '../../components/business/PeriodToggle';
 import KpiCard from '../../components/business/KpiCard';
 import SectionLabel from '../../components/ui/SectionLabel';
+import InsightsPanel from '../../components/bizinsights/InsightsPanel';
 import type { OrderFunnel } from '../../services/api/business';
 
 const FUNNEL_STEPS: Array<{ key: keyof OrderFunnel; label: string; color: string }> = [
@@ -52,6 +53,7 @@ export default function KpiScreen() {
   const growStatus = useAppSelector((s) => s.business.growStatus);
   const [refreshing, setRefreshing] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  const [insightsKey, setInsightsKey] = useState(0);
 
   useEffect(() => {
     if (partnershipPerformance.length === 0) {
@@ -61,6 +63,7 @@ export default function KpiScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setInsightsKey((k) => k + 1);
     try {
       await Promise.all([refresh({ force: true }), dispatch(fetchBusinessGrow()).unwrap()]);
     } catch {
@@ -93,6 +96,13 @@ export default function KpiScreen() {
   const unitsSold = kpis?.units_sold ?? 0;
 
   const showBasketTip = aov > 0 && aov < 25;
+  // Browse-only shop: with no orders, visits/views/saves are the useful numbers — lead with them.
+  const noOrders = (kpis?.total_orders ?? 0) === 0 && (kpis?.deltas?.previous_orders ?? 0) === 0;
+  const insights = (
+    <View style={tw`mb-6`}>
+      <InsightsPanel variant="full" refreshKey={insightsKey} />
+    </View>
+  );
 
   const sortedPartners = useMemo(
     () => [...partnershipPerformance].sort((a, b) => b.attributed_revenue - a.attributed_revenue),
@@ -161,6 +171,8 @@ export default function KpiScreen() {
           </View>
         ) : null}
 
+        {noOrders ? insights : null}
+
         <SectionLabel>Revenue</SectionLabel>
         <View style={tw`flex-row flex-wrap gap-3 mb-5`}>
           <KpiCard label="Net revenue" value={formatCurrency(Number(net))} icon="cash-outline" />
@@ -170,6 +182,8 @@ export default function KpiScreen() {
           <KpiCard label="AOV" value={formatCurrency(Number(aov))} icon="cart-outline" />
           <KpiCard label="Units sold" value={String(unitsSold)} icon="cube-outline" />
         </View>
+
+        {noOrders ? null : insights}
 
         <SectionLabel>Order rhythm</SectionLabel>
         <View style={tw`bg-card rounded-card p-4 mb-5 border border-line`}>

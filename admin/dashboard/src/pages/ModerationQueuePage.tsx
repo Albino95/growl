@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { adminRequest } from '../services/api/adminClient';
+import { adminRequest, listQuery, type Paged } from '../services/api/adminClient';
+import { SearchBar, Pager } from '../components/admin/ListControls';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Field, Select } from '../components/ui/Input';
@@ -10,6 +11,7 @@ import { Badge, priorityBadge, statusBadge } from '../components/ui/Badge';
 import { DataTable, DataTableHead, DataTableHeaderCell, DataTableBody, DataTableRow, DataTableCell } from '../components/ui/DataTable';
 import { EmptyState } from '../components/ui/DataTable';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import { reportKindLabel } from '../lib/reportKind';
 
 type Report = {
   id: string;
@@ -19,7 +21,10 @@ type Report = {
   workflow_status: string;
   priority: string;
   created_at: string;
+  details?: unknown;
 };
+
+const PAGE_SIZE = 50;
 
 export function ModerationQueuePage() {
   const [reports, setReports] = useState<Report[]>([]);
@@ -28,18 +33,28 @@ export function ModerationQueuePage() {
   const [slaBreached, setSlaBreached] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<Paged>({ total: 0, limit: PAGE_SIZE, offset: 0, has_more: false });
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (status) params.set('status', status);
-    if (priority) params.set('priority', priority);
-    if (slaBreached) params.set('sla_breached', 'true');
-    adminRequest<{ reports: Report[] }>(`/admin/moderation/reports?${params}`)
-      .then((res) => setReports(res.reports || []))
+    const query = listQuery({
+      status,
+      priority,
+      sla_breached: slaBreached ? 'true' : undefined,
+      q,
+      limit: PAGE_SIZE,
+      offset,
+    });
+    adminRequest<{ reports: Report[] } & Paged>(`/admin/moderation/reports${query}`)
+      .then((res) => {
+        setReports(res.reports || []);
+        setPage(res);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [status, priority, slaBreached]);
+  }, [status, priority, slaBreached, q, offset]);
 
   return (
     <div>
@@ -49,7 +64,7 @@ export function ModerationQueuePage() {
       <Card className="mb-6" padding="md">
         <div className="flex flex-wrap items-end gap-4">
           <Field label="Status">
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="min-w-[160px]">
+            <Select value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0); }} className="min-w-[160px]">
               <option value="">All</option>
               <option value="pending">Pending</option>
               <option value="investigating">Investigating</option>
@@ -58,7 +73,7 @@ export function ModerationQueuePage() {
             </Select>
           </Field>
           <Field label="Priority">
-            <Select value={priority} onChange={(e) => setPriority(e.target.value)} className="min-w-[140px]">
+            <Select value={priority} onChange={(e) => { setPriority(e.target.value); setOffset(0); }} className="min-w-[140px]">
               <option value="">All</option>
               <option value="critical">Critical</option>
               <option value="high">High</option>
@@ -66,7 +81,18 @@ export function ModerationQueuePage() {
               <option value="low">Low</option>
             </Select>
           </Field>
-          <Switch checked={slaBreached} onChange={setSlaBreached} label="SLA breached only" />
+          <Switch checked={slaBreached} onChange={(v) => { setSlaBreached(v); setOffset(0); }} label="SLA breached only" />
+        </div>
+        <div className="mt-4">
+          <SearchBar
+            value={q}
+            label="Search reports"
+            placeholder="Report ID, target ID or reason"
+            onSearch={(v) => {
+              setQ(v);
+              setOffset(0);
+            }}
+          />
         </div>
       </Card>
 
@@ -95,6 +121,11 @@ export function ModerationQueuePage() {
                   </DataTableCell>
                   <DataTableCell className="font-mono text-xs text-stone-600">
                     {r.target_type}:{r.target_id.slice(0, 8)}…
+                    {reportKindLabel(r.details) ? (
+                      <span className="ml-2 font-sans">
+                        <Badge variant="info">{reportKindLabel(r.details)}</Badge>
+                      </span>
+                    ) : null}
                   </DataTableCell>
                   <DataTableCell>{r.reason}</DataTableCell>
                   <DataTableCell><Badge variant={statusBadge(r.workflow_status)}>{r.workflow_status}</Badge></DataTableCell>
@@ -106,6 +137,7 @@ export function ModerationQueuePage() {
           </DataTable>
         )}
       </Card>
+      {!loading && <Pager offset={page.offset} limit={page.limit} total={page.total} count={reports.length} onChange={setOffset} />}
     </div>
   );
 }

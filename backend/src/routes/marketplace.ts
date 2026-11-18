@@ -1030,6 +1030,25 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
           409
         );
       }
+      // A seller may only cancel an order made up entirely of their own items;
+      // orders also containing another seller's items need support (no per-item status).
+      if (status === 'cancelled') {
+        const foreign = await env.DB.prepare(
+          `SELECT COUNT(*) AS n
+           FROM order_items oi
+           LEFT JOIN products p ON oi.product_id = p.id
+           WHERE oi.order_id = ? AND (p.user_id IS NULL OR p.user_id != ?)`
+        )
+          .bind(orderId, ctx.userId)
+          .first<{ n: number }>();
+        if (Number(foreign?.n ?? 0) > 0) {
+          return error(
+            'MIXED_ORDER',
+            'This order includes items from another shop, so it cannot be cancelled here. Please contact support.',
+            409
+          );
+        }
+      }
       if (transitionRequiresPayment(status) && order.payment_status !== 'paid') {
         return error(
           'PAYMENT_REQUIRED',
@@ -1058,9 +1077,10 @@ export async function updateOrderStatus(request: Request, env: Env, orderId: str
              WHERE oi.order_id = ? AND oi.product_id = products.id
            ), 0), updated_at = datetime('now')
            WHERE id IN (SELECT product_id FROM order_items WHERE order_id = ?)
+             AND user_id = ?
              AND COALESCE(hidden_reason, '') != ?`
         )
-          .bind(orderId, orderId, SELLER_ARCHIVED_REASON)
+          .bind(orderId, orderId, ctx.userId, SELLER_ARCHIVED_REASON)
           .run();
       }
     }

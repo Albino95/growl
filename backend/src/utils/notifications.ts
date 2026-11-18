@@ -35,6 +35,10 @@ export type NotificationType =
   | 'cohort_reply'
   | 'cohort_homework'
   | 'cohort_homework_done'
+  | 'product_question'
+  | 'product_answer'
+  | 'product_review'
+  | 'review_reply'
   | 'system';
 
 function parseUsername(metadata: string | null | undefined): string {

@@ -196,7 +196,7 @@ export const createProductSchema = z.object({
 
 /**
  * Product edit: like create but every field optional, and an explicit '' / null
- * image_url means "remove the image" (create treats '' as absent). Local picker
+ * image_url means "remove the image" (create treats '' as absent); likewise images: []. Local picker
  * URIs are still stripped to undefined (= leave unchanged).
  */
 export const updateProductSchema = createProductSchema.partial().extend({
@@ -210,6 +210,18 @@ export const updateProductSchema = createProductSchema.partial().extend({
       return undefined;
     },
     z.string().url().nullable().optional()
+  ),
+  // Explicit [] (or null) clears the gallery; omitted = unchanged. An array whose entries
+  // were all local picker URIs is treated as "unchanged" so a pending upload never wipes it.
+  images: z.preprocess(
+    (val) => {
+      if (val === null) return [];
+      if (!Array.isArray(val)) return undefined;
+      if (val.length === 0) return [];
+      const filtered = val.map((x) => String(x).trim()).filter((s) => /^https?:\/\//i.test(s));
+      return filtered.length ? filtered : undefined;
+    },
+    z.array(z.string().url()).optional()
   ),
 });
 

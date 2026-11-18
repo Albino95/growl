@@ -2,6 +2,10 @@ import { Env } from '../types';
 import { error } from './response';
 import { verifyAdminToken, hashToken } from './adminJwt';
 import { generateId } from './id';
+import { adminMfaRequired } from './adminMfaCrypto';
+
+/** Audit actor for events with no signed-in admin (unknown-email logins, cron purges). */
+export const SYSTEM_ADMIN_ID = 'admin_system';
 
 export type AdminRole =
   | 'super_admin'
@@ -16,6 +20,9 @@ export type AdminContext = {
   email: string;
   role: AdminRole;
   permissions: string[];
+  mfaEnabled: boolean;
+  /** True when this session may only enroll MFA (restricted token or MFA required but missing). */
+  mfaEnrollRequired: boolean;
 };
 
 const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
@@ -106,7 +113,7 @@ async function resolveAdminContext(request: Request, env: Env): Promise<AdminCon
 
   const tokenHash = await hashToken(token);
   const session = await env.DB.prepare(
-    `SELECT s.id, s.revoked_at, s.expires_at, a.id as admin_id, a.email, a.role, a.status
+    `SELECT s.id, s.revoked_at, s.expires_at, a.id as admin_id, a.email, a.role, a.status, a.mfa_enabled
      FROM admin_sessions s
      JOIN admin_users a ON a.id = s.admin_id
      WHERE s.token_hash = ? AND s.admin_id = ?`
@@ -120,6 +127,7 @@ async function resolveAdminContext(request: Request, env: Env): Promise<AdminCon
       email: string;
       role: AdminRole;
       status: string;
+      mfa_enabled: number;
     }>();
 
   if (!session || session.revoked_at) {
@@ -133,12 +141,27 @@ async function resolveAdminContext(request: Request, env: Env): Promise<AdminCon
   }
 
   const role = session.role;
+  const mfaEnabled = !!session.mfa_enabled;
   return {
     adminId: session.admin_id,
     email: session.email,
     role,
     permissions: permissionsForRole(role),
+    mfaEnabled,
+    mfaEnrollRequired: verified.scope === 'mfa_enroll' || (adminMfaRequired(env) && !mfaEnabled),
   };
+}
+
+function mfaEnrollError(): Response {
+  return error('MFA_ENROLL_REQUIRED', 'Set up two-factor authentication to continue', 403);
+}
+
+/**
+ * Accepts restricted (MFA-enrollment) sessions too. Only /admin/auth/me and
+ * /admin/auth/mfa/* may use this; every other admin route goes through requireAdmin.
+ */
+export async function requireAdminSession(request: Request, env: Env): Promise<AdminContext | Response> {
+  return resolveAdminContext(request, env);
 }
 
 export async function requireAdmin(
@@ -148,6 +171,7 @@ export async function requireAdmin(
 ): Promise<AdminContext | Response> {
   const ctx = await resolveAdminContext(request, env);
   if (ctx instanceof Response) return ctx;
+  if (ctx.mfaEnrollRequired) return mfaEnrollError();
   if (permission && !hasPermission(ctx.permissions, permission)) {
     return error('FORBIDDEN', 'Insufficient permissions', 403);
   }
@@ -162,6 +186,7 @@ export async function requireRoles(
 ): Promise<AdminContext | Response> {
   const ctx = await resolveAdminContext(request, env);
   if (ctx instanceof Response) return ctx;
+  if (ctx.mfaEnrollRequired) return mfaEnrollError();
   if (!roles.includes(ctx.role) && ctx.role !== 'super_admin') {
     return error('FORBIDDEN', 'Role not authorized for this action', 403);
   }
@@ -175,10 +200,11 @@ export async function createAdminSession(
   env: Env,
   adminId: string,
   token: string,
-  request: Request
+  request: Request,
+  ttlSeconds = 8 * 60 * 60
 ): Promise<void> {
   const tokenHash = await hashToken(token);
-  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
   await env.DB.prepare(
     `INSERT INTO admin_sessions (id, admin_id, token_hash, ip_address, user_agent, expires_at, created_at)
      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`

@@ -4,6 +4,7 @@ import { requireAdmin, requireRoles, writeAdminAudit, requestIp, type AdminRole 
 import { validateRequest, userEnforcementSchema, userRoleUpdateSchema } from '../../utils/validation';
 import { assertNotProtectedUser } from '../../utils/contentModeration';
 import { revokeAllUserRefreshTokens } from '../../utils/sessions';
+import { parsePaging, likePattern } from '../../utils/adminLists';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   try {
@@ -13,41 +14,73 @@ function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   }
 }
 
+/** Profile fields an admin may see. Everything else in users.metadata stays server-side. */
+const SAFE_METADATA_FIELDS = [
+  'username',
+  'display_name',
+  'name',
+  'avatar',
+  'avatar_url',
+  'bio',
+  'categories',
+  'teaching_headline',
+  'deleted',
+  'deletedAt',
+] as const;
+
+export function safeUserMetadata(raw: string | null | undefined): Record<string, unknown> {
+  const meta = parseJson<Record<string, unknown>>(raw, {});
+  const out: Record<string, unknown> = {};
+  if (!meta || typeof meta !== 'object') return out;
+  for (const key of SAFE_METADATA_FIELDS) {
+    if (meta[key] !== undefined) out[key] = meta[key];
+  }
+  return out;
+}
+
+/** Explicit columns only: never password_hash, token hashes, reset codes or invite codes. */
+const USER_LIST_COLUMNS = `u.id, u.email, u.points, u.is_instructor, u.is_business, u.metadata, u.created_at,
+      s.status as account_status, s.strike_count, s.suspended_until`;
+
+const USER_DETAIL_COLUMNS = `u.id, u.email, u.points, u.is_instructor, u.is_business, u.metadata,
+       u.created_at, u.updated_at, u.email_verified, u.timezone, u.dm_policy, u.life_mode,
+       s.status as account_status, s.strike_count, s.suspended_until, s.ban_reason`;
+
 export async function listUsers(request: Request, env: Env): Promise<Response> {
   const ctx = await requireAdmin(request, env, 'users.read');
   if (ctx instanceof Response) return ctx;
   const url = new URL(request.url);
-  const q = (url.searchParams.get('q') || '').trim();
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 200);
-  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const q = (url.searchParams.get('q') || '').trim().slice(0, 200);
+  const { limit, offset } = parsePaging(url);
   try {
-    const whereClause = 'WHERE 1=1';
     const filterBindings: unknown[] = [];
     let filterSql = '';
     if (q) {
-      filterSql = ` AND (u.email LIKE ? OR u.metadata LIKE ? OR u.id = ?)`;
-      const like = `%${q}%`;
+      // Search email, username and id only; never free-text over private metadata.
+      filterSql = ` AND (u.email LIKE ? ESCAPE '\\' OR (CASE WHEN json_valid(u.metadata) THEN json_extract(u.metadata, '$.username') END) LIKE ? ESCAPE '\\' OR u.id = ?)`;
+      const like = likePattern(q);
       filterBindings.push(like, like, q);
     }
 
     const countRow = await env.DB.prepare(
-      `SELECT COUNT(*) as total FROM users u ${whereClause}${filterSql}`
+      `SELECT COUNT(*) as total FROM users u WHERE 1=1${filterSql}`
     )
       .bind(...filterBindings)
       .first<{ total: number }>();
 
-    let query = `SELECT u.id, u.email, u.points, u.is_instructor, u.is_business, u.metadata, u.created_at,
-      s.status as account_status, s.strike_count, s.suspended_until
-      FROM users u
-      LEFT JOIN user_account_states s ON s.user_id = u.id
-      ${whereClause}${filterSql}`;
-    const bindings = [...filterBindings, limit, offset];
-    query += ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
-    const rows = await env.DB.prepare(query).bind(...bindings).all();
+    const rows = await env.DB.prepare(
+      `SELECT ${USER_LIST_COLUMNS}
+       FROM users u
+       LEFT JOIN user_account_states s ON s.user_id = u.id
+       WHERE 1=1${filterSql}
+       ORDER BY u.created_at DESC LIMIT ? OFFSET ?`
+    )
+      .bind(...filterBindings, limit, offset)
+      .all();
     return json({
       users: (rows.results || []).map((u: any) => ({
         ...u,
-        metadata: parseJson(u.metadata, {}),
+        metadata: safeUserMetadata(u.metadata),
       })),
       total: countRow?.total ?? 0,
       limit,
@@ -64,31 +97,50 @@ export async function getUser(request: Request, env: Env, userId: string): Promi
   if (ctx instanceof Response) return ctx;
   try {
     const user = await env.DB.prepare(
-      `SELECT u.*, s.status as account_status, s.strike_count, s.suspended_until, s.ban_reason
+      `SELECT ${USER_DETAIL_COLUMNS}
        FROM users u LEFT JOIN user_account_states s ON s.user_id = u.id WHERE u.id = ?`
     )
       .bind(userId)
       .first<any>();
     if (!user) return error('NOT_FOUND', 'User not found', 404);
 
-    const profile = await env.DB.prepare(`SELECT * FROM business_profiles WHERE user_id = ?`)
+    const profile = await env.DB.prepare(
+      `SELECT user_id, display_name, contact_email, contact_phone, field_of_operation, vat_number,
+              country_code, verification_status, created_at, updated_at
+       FROM business_profiles WHERE user_id = ?`
+    )
       .bind(userId)
       .first<any>();
 
+    // Reports against this user omit who filed them; reports this user filed are listed as theirs.
     const reports = await env.DB.prepare(
-      `SELECT * FROM reports WHERE target_id = ? OR reporter_id = ? ORDER BY created_at DESC LIMIT 20`
+      `SELECT id, target_id, target_type, reason, status, workflow_status, priority, created_at,
+              CASE WHEN reporter_id = ? THEN 'filed_by_user' ELSE 'against_user' END AS relation
+       FROM reports WHERE target_id = ? OR reporter_id = ? ORDER BY created_at DESC LIMIT 20`
     )
-      .bind(userId, userId)
+      .bind(userId, userId, userId)
       .all();
 
     const audits = await env.DB.prepare(
-      `SELECT * FROM admin_audit_logs WHERE target_id = ? ORDER BY created_at DESC LIMIT 20`
+      `SELECT l.id, l.action, l.target_type, l.target_id, l.reason_code, l.reason_text, l.created_at,
+              a.email AS admin_email
+       FROM admin_audit_logs l LEFT JOIN admin_users a ON a.id = l.admin_id
+       WHERE l.target_id = ? ORDER BY l.created_at DESC LIMIT 20`
     )
       .bind(userId)
       .all();
 
+    // Viewing a member's profile is a PII read: record who looked and when.
+    await writeAdminAudit(env, {
+      adminId: ctx.adminId,
+      action: 'user.view',
+      targetType: 'user',
+      targetId: userId,
+      ipAddress: requestIp(request),
+    });
+
     return json({
-      user: { ...user, metadata: parseJson(user.metadata, {}), business_profile: profile || null },
+      user: { ...user, metadata: safeUserMetadata(user.metadata), business_profile: profile || null },
       reports: reports.results || [],
       audit_history: audits.results || [],
     });

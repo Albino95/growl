@@ -66,7 +66,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Resolves once signed in + navigator ready; null when signed out / onboarding / timed out. */
-async function waitForSignedInApp(): Promise<{ userId: string | null } | null> {
+export async function waitForSignedInApp(): Promise<{ userId: string | null } | null> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const auth = store.getState().auth;

@@ -26,6 +26,7 @@ import {
 import {
   kpiDelta,
   notificationTarget,
+  businessNotificationIcon,
   type OnboardingAction,
   type OnboardingStatus,
 } from '../../services/api/businessHelpers';
@@ -39,11 +40,13 @@ import BusinessScreen from '../../components/business/BusinessScreen';
 import KpiCard from '../../components/business/KpiCard';
 import PeriodToggle from '../../components/business/PeriodToggle';
 import ActionInbox, { type ActionInboxItem } from '../../components/business/ActionInbox';
+import { getMyVerification } from '../../services/api/storefront';
 import OrderStatusPill from '../../components/business/OrderStatusPill';
 import SkeletonCard from '../../components/ui/SkeletonCard';
 import { parseShippingAddress } from '../../utils/safeJson';
 import { featureFlags } from '../../constants/featureFlags';
 import { serverDate } from '../../utils/serverDate';
+import InsightsPanel from '../../components/bizinsights/InsightsPanel';
 
 function formatTimeAgo(dateString: string) {
   const date = serverDate(dateString);
@@ -147,9 +150,11 @@ export default function BizDashboard() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  const pull = useRefresh(() =>
-    Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap(), loadSetup()])
-  );
+  const [insightsKey, setInsightsKey] = useState(0);
+  const pull = useRefresh(() => {
+    setInsightsKey((k) => k + 1);
+    return Promise.all([refresh({ force: true }), dispatch(fetchNotifications()).unwrap(), loadSetup()]);
+  });
 
   const handleNotificationPress = useCallback(
     (id: string, refType?: string | null, refId?: string | null, type?: string | null) => {
@@ -161,6 +166,16 @@ export default function BizDashboard() {
       } else if (target?.kind === 'catalog') {
         dispatch(setCatalogFilter(target.filter));
         navigation.navigate('Catalog');
+      } else if (target?.kind === 'questions_reviews') {
+        stackNav.navigate('BusinessQuestionsReviews');
+      } else if (target?.kind === 'verification') {
+        // Open the verification sheet only when it needs another look; otherwise the editor.
+        void getMyVerification()
+          .then((v) => v?.status === 'rejected')
+          .catch(() => false)
+          .then((openVerification) =>
+            stackNav.navigate('BusinessStorefront', openVerification ? { openVerification: true } : undefined)
+          );
       }
     },
     [dispatch, stackNav, navigation]
@@ -177,7 +192,7 @@ export default function BizDashboard() {
           id: `notif-${n.id}`,
           title: n.title,
           subtitle: n.body || undefined,
-          icon: n.ref_type === 'product' ? 'cube-outline' : 'notifications-outline',
+          icon: businessNotificationIcon(n.ref_type, n.type) as ActionInboxItem['icon'],
           tone: n.type === 'out_of_stock' || n.type === 'low_stock' ? 'red' : 'blue',
           onPress: () => handleNotificationPress(n.id, n.ref_type, n.ref_id, n.type),
         });
@@ -240,6 +255,12 @@ export default function BizDashboard() {
     (kpis.deltas?.previous_orders ?? 0) === 0 &&
     (kpis.pending_orders ?? 0) === 0;
   const showSetup = !!setup && !setup.complete && !setupHidden;
+  // Checkout is browse-only for now: until orders arrive, visits and saves lead the page.
+  const insightsBlock = (
+    <View style={tw`px-gutter-wide mb-6`}>
+      <InsightsPanel variant="compact" onOpenFull={openAnalytics} refreshKey={insightsKey} />
+    </View>
+  );
 
   const notificationBadge =
     unreadCount > 0 ? (
@@ -342,6 +363,8 @@ export default function BizDashboard() {
           {loading ? <SkeletonCard variant="product" /> : <ActionInbox items={inboxItems} />}
         </View>
 
+        {!loading && noSalesYet ? insightsBlock : null}
+
         <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Key metrics" action="Full analytics" onAction={openAnalytics} />
           {loading ? (
@@ -396,6 +419,8 @@ export default function BizDashboard() {
             </Text>
           ) : null}
         </View>
+
+        {loading || noSalesYet ? null : insightsBlock}
 
         <View style={tw`px-gutter-wide mb-6`}>
           <SectionHeading title="Payouts" />

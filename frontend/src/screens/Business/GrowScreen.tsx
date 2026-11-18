@@ -44,6 +44,7 @@ import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import BusinessScreen from '../../components/business/BusinessScreen';
 import type { BusinessTabsParamList } from '../../app/navigation/tabs/BusinessTabs';
 import { serverDate } from '../../utils/serverDate';
+import PartnerLinksSection from '../../components/bizinsights/PartnerLinksSection';
 
 type MainSegment = 'partners' | 'community';
 type PartnerTab = 'partners' | 'discover';
@@ -216,8 +217,10 @@ export default function GrowScreen() {
     }
   }, [mainSegment, communityTab, dispatch]);
 
+  const [linksKey, setLinksKey] = useState(0);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setLinksKey((k) => k + 1);
     try {
       await dispatch(fetchBusinessGrow()).unwrap();
       if (mainSegment === 'community' && communityTab === 'posts') {
@@ -574,6 +577,7 @@ export default function GrowScreen() {
             ) : (
               partnerships.map(renderPartnerCard)
             )}
+            <PartnerLinksSection partnerships={partnerships} refreshKey={linksKey} />
           </>
         ) : (
           <>

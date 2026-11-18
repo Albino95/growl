@@ -65,6 +65,7 @@ import PressableScale from '../../components/ui/PressableScale';
 import BadgeRow from '../../components/badges/BadgeRow';
 import LevelPill from '../../components/badges/LevelPill';
 import BuddyInviteButton from '../../components/buddies/BuddyInviteButton';
+import StorefrontProfileLink from '../../components/storefront/StorefrontProfileLink';
 import { getUserBadges, type GrowthLevel } from '../../services/api/growth';
 import { serverDate } from '../../utils/serverDate';
 
@@ -951,6 +952,8 @@ export default function PublicProfileScreen() {
             {profileUser.bio ? (
               <Text style={tw`text-sm text-ink-3 mb-3 leading-5`}>{profileUser.bio}</Text>
             ) : null}
+
+            <StorefrontProfileLink userId={userId} />
 
             <View style={tw`flex-row bg-raised border border-line/70 rounded-card overflow-hidden mb-3.5`}>
               <View style={tw`flex-1 items-center py-2.5`}>

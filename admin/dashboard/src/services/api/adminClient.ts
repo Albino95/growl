@@ -40,6 +40,9 @@ export class AdminApiError extends Error {
   }
 }
 
+/** Fired when the API answers 403 MFA_ENROLL_REQUIRED (AdminAuthProvider listens). */
+export const MFA_REQUIRED_EVENT = 'admin:mfa-enroll-required';
+
 function getToken(): string | null {
   return localStorage.getItem('admin_token');
 }
@@ -58,8 +61,17 @@ export async function adminRequest<T>(path: string, options: RequestInit = {}): 
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
-  const data = (await res.json()) as ApiResponse<T>;
+  let data: ApiResponse<T>;
+  try {
+    data = (await res.json()) as ApiResponse<T>;
+  } catch {
+    throw new AdminApiError('BAD_RESPONSE', `Request failed (${res.status})`, res.status);
+  }
   if (!res.ok || !data.success) {
+    if (data.error?.code === 'MFA_ENROLL_REQUIRED' && typeof window !== 'undefined') {
+      // The server only accepts this session for MFA setup: send the admin there.
+      window.dispatchEvent(new CustomEvent(MFA_REQUIRED_EVENT));
+    }
     throw new AdminApiError(
       data.error?.code || 'REQUEST_FAILED',
       data.error?.message || `Request failed (${res.status})`,
@@ -98,10 +110,51 @@ export async function adminLogin(
   return data.data as AdminLoginResponse;
 }
 
+export type AdminMeResponse = {
+  admin: { id: string; email: string; role: string; mfa_enabled?: boolean };
+  permissions: string[];
+  mfa_enabled: boolean;
+  mfa_required: boolean;
+  must_enroll_mfa: boolean;
+};
+
 export function adminMe() {
-  return adminRequest<{ admin: { id: string; email: string; role: string }; permissions: string[] }>(
-    '/admin/auth/me'
-  );
+  return adminRequest<AdminMeResponse>('/admin/auth/me');
+}
+
+/** Paged list envelope returned by the admin list endpoints. */
+export type Paged = { total: number; limit: number; offset: number; has_more: boolean };
+
+export function listQuery(params: Record<string, string | number | undefined | null>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') sp.set(k, String(v));
+  }
+  const q = sp.toString();
+  return q ? `?${q}` : '';
+}
+
+/** Random key so a retried refund is applied once. */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Save JSON as a file. The link must be in the DOM for Firefox; revoke after the click lands. */
+export function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 export function adminLogout() {
@@ -151,8 +204,29 @@ export type CreateBusinessAccountResponse = {
   temporaryPassword: string;
 };
 
-export function listBusinessAccounts() {
-  return adminRequest<{ accounts: BusinessAccount[]; fields: string[] }>('/admin/business/accounts');
+export function listBusinessAccounts(params: { q?: string; status?: string; limit?: number; offset?: number } = {}) {
+  return adminRequest<{ accounts: BusinessAccount[]; fields: string[] } & Paged>(
+    `/admin/business/accounts${listQuery(params)}`
+  );
+}
+
+export type RefundResult = {
+  ok: boolean;
+  refund_amount: number;
+  total_refunded: number;
+  remaining: number;
+  payment_status: string;
+  status: string;
+  restocked: boolean;
+  replayed?: boolean;
+};
+
+export function refundOrder(orderId: string, body: { amount?: number; reasonText: string }, idempotencyKey: string) {
+  return adminRequest<RefundResult>(`/admin/business/orders/${orderId}/refund`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(body),
+  });
 }
 
 export function createBusinessAccount(payload: {

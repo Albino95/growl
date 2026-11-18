@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Download } from 'lucide-react';
-import { adminRequest, exportUserData, updateUserRoles } from '../services/api/adminClient';
+import { adminRequest, downloadJson, exportUserData, updateUserRoles } from '../services/api/adminClient';
+import { useAdminAuth } from '../auth/AdminAuthProvider';
+import { useAdminToast, errorMessage } from '../components/admin/Toast';
 import { ENFORCEMENT_REASON_CODES } from '../constants/reasonCodes';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -33,6 +35,13 @@ export function UserDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [rolesBusy, setRolesBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const { can, admin } = useAdminAuth();
+  const toast = useAdminToast();
+  const canEnforce = can('users.enforce');
+  const canRestore = can('users.restore');
+  const canExport = can('privacy.read');
+  const canEditRoles = admin?.role === 'super_admin';
 
   async function load() {
     if (!userId) return;
@@ -40,6 +49,11 @@ export function UserDetailPage() {
     setData(res);
     setIsInstructor(!!res.user.is_instructor);
   }
+
+  // Support admins can only restore: start the form on an action they may take.
+  useEffect(() => {
+    if (!canEnforce && canRestore) setAction('restore');
+  }, [canEnforce, canRestore]);
 
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load user'));
@@ -87,18 +101,16 @@ export function UserDetailPage() {
   }
 
   async function handleExport() {
-    if (!userId) return;
+    if (!userId || exporting) return;
+    setExporting(true);
     try {
       const payload = await exportUserData(userId);
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `user-export-${userId}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJson(`user-export-${userId}.json`, payload);
+      toast.success('Export downloaded (recorded in the audit log)');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed');
+      toast.error(errorMessage(err, 'Export failed'));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -107,23 +119,28 @@ export function UserDetailPage() {
   const businessProfile = user.business_profile as Record<string, unknown> | null | undefined;
   const tabs: { id: Tab; label: string }[] = [
     { id: 'account', label: 'Account' },
-    { id: 'enforcement', label: 'Enforcement' },
+    ...(canEnforce || canRestore ? [{ id: 'enforcement' as Tab, label: 'Enforcement' }] : []),
     { id: 'history', label: 'History' },
   ];
+  const actions = (['warn', 'suspend', 'ban', 'restore'] as const).filter((a) =>
+    a === 'restore' ? canRestore : canEnforce
+  );
 
   return (
     <div>
       <Link to="/users" className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">
-        <ArrowLeft className="h-4 w-4" /> Back to users
+        <ArrowLeft className="h-4 w-4" aria-hidden /> Back to users
       </Link>
       <PageHeader title={String(user.email)} subtitle={String(user.id)} />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
-      <div className="mb-6 flex gap-1 rounded-xl bg-stone-100 p-1">
+      <div className="mb-6 flex gap-1 rounded-xl bg-stone-100 p-1" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
               tab === t.id ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'
@@ -143,12 +160,20 @@ export function UserDetailPage() {
               <div><dt className="text-stone-500">Strikes</dt><dd className="text-lg font-semibold">{String(user.strike_count ?? 0)}</dd></div>
               <div><dt className="text-stone-500">Suspended until</dt><dd>{user.suspended_until ? String(user.suspended_until) : '—'}</dd></div>
             </dl>
-            <Button variant="outline" className="mt-4" onClick={() => void handleExport()}><Download className="h-4 w-4" /> Export data</Button>
+            {canExport && (
+              <Button variant="outline" className="mt-4" loading={exporting} onClick={() => void handleExport()}>
+                <Download className="h-4 w-4" aria-hidden /> Export data
+              </Button>
+            )}
           </Card>
           <Card padding="lg">
             <h3 className="mb-4 font-semibold">Roles</h3>
             <div className="space-y-4">
-              <Switch checked={isInstructor} onChange={setIsInstructor} label="Instructor" />
+              {canEditRoles ? (
+                <Switch checked={isInstructor} onChange={setIsInstructor} label="Instructor" />
+              ) : (
+                <p className="text-sm text-stone-600">Instructor: {isInstructor ? 'yes' : 'no'}</p>
+              )}
             </div>
             {!!user.is_business && (
               <div className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm">
@@ -166,20 +191,23 @@ export function UserDetailPage() {
                 </Link>
               </div>
             )}
-            <Button className="mt-6" loading={rolesBusy} onClick={() => void saveRoles()}>Save roles</Button>
+            {canEditRoles && (
+              <Button className="mt-6" loading={rolesBusy} onClick={() => void saveRoles()}>Save roles</Button>
+            )}
           </Card>
         </div>
       )}
 
-      {tab === 'enforcement' && (
+      {tab === 'enforcement' && actions.length > 0 && (
         <Card padding="lg" className="max-w-xl">
           <form onSubmit={onEnforce}>
             <Field label="Action">
               <Select value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
-                <option value="warn">Warn</option>
-                <option value="suspend">Suspend</option>
-                <option value="ban">Ban</option>
-                <option value="restore">Restore</option>
+                {actions.map((a) => (
+                  <option key={a} value={a}>
+                    {a.charAt(0).toUpperCase() + a.slice(1)}
+                  </option>
+                ))}
               </Select>
             </Field>
             <Field label="Reason code">

@@ -10,6 +10,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Field, Input } from '../components/ui/Input';
 import { AlertBanner, InfoBanner } from '../components/ui/AlertBanner';
+import { INTER_STACK } from '../components/Layout';
 
 type Mode = 'staff' | 'seller';
 
@@ -73,7 +74,10 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-surface-page px-4">
+    <div
+      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-surface-page px-4"
+      style={{ fontFamily: INTER_STACK }}
+    >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-600/15 via-transparent to-transparent" />
       <div className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-energy/10 blur-3xl" />
       <motion.div
@@ -97,7 +101,7 @@ export function LoginPage() {
         </div>
 
         <Card padding="lg" className="border-surface-border shadow-card-hover">
-          <div className="mb-5 flex rounded-xl bg-surface-page p-1">
+          <div className="mb-5 flex rounded-xl bg-surface-page p-1" role="group" aria-label="Sign in as">
             <button
               type="button"
               onClick={() => {
@@ -106,6 +110,7 @@ export function LoginPage() {
                 setForgotOpen(false);
                 setMfaRequired(false);
               }}
+              aria-pressed={mode === 'staff'}
               className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
                 mode === 'staff' ? 'bg-surface text-stone-900 shadow-sm ring-1 ring-surface-border' : 'text-stone-500'
               }`}
@@ -119,6 +124,7 @@ export function LoginPage() {
                 setError('');
                 setMfaRequired(false);
               }}
+              aria-pressed={mode === 'seller'}
               className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
                 mode === 'seller' ? 'bg-surface text-stone-900 shadow-sm ring-1 ring-surface-border' : 'text-stone-500'
               }`}
@@ -158,7 +164,7 @@ export function LoginPage() {
             <form onSubmit={onSubmit}>
               <Field label="Email">
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden />
                   <Input
                     type="email"
                     className="pl-10"
@@ -170,7 +176,7 @@ export function LoginPage() {
               </Field>
               <Field label="Password">
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden />
                   <Input
                     type="password"
                     className="pl-10"
@@ -189,11 +195,13 @@ export function LoginPage() {
                   >
                     <Field label={mfaRequired ? 'Authenticator code' : 'TOTP (if MFA enabled)'}>
                       <div className="relative">
-                        <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                        <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden />
                         <Input
                           className="pl-10 tracking-widest"
                           value={totp}
-                          onChange={(e) => setTotp(e.target.value)}
+                          onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
                           placeholder="123456"
                           maxLength={6}
                           autoFocus={mfaRequired}

@@ -33,12 +33,15 @@ import { rankMarketplaceProducts, type RankedProduct } from '../../utils/ranking
 import CATEGORIES from '../../data/categories';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import { feedback, toggleFeedback } from '../../utils/interactionFeedback';
+import SaveHeart from '../../components/bizinsights/SaveHeart';
+import { useSavedProducts } from '../../components/bizinsights/useSavedProducts';
 
 export default function MarketplaceScreen() {
   const navigation = useNavigation();
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const { products, selectedCategory, isLoading, error } = useAppSelector((state) => state.marketplace);
+  const savesAvailable = useSavedProducts((s) => s.available);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
@@ -235,6 +238,22 @@ export default function MarketplaceScreen() {
               >
                 <Ionicons name="options-outline" size={17} color={theme.colors.brand} />
               </PressableScale>
+              {savesAvailable ? (
+                <PressableScale
+                  hitSlop={4}
+                  onPress={() => {
+                    feedback.open();
+                    const rootNavigation = navigation.getParent() || navigation;
+                    rootNavigation.navigate('SavedProducts' as never);
+                  }}
+                  feedback={false}
+                  style={tw`w-9 h-9 rounded-full bg-raised border border-line/80 items-center justify-center`}
+                  accessibilityRole="button"
+                  accessibilityLabel="Saved products"
+                >
+                  <Ionicons name="heart-outline" size={17} color={theme.colors.brand} />
+                </PressableScale>
+              ) : null}
               <PressableScale
                 hitSlop={4}
                 onPress={() => {
@@ -356,7 +375,7 @@ export default function MarketplaceScreen() {
                             const rootNavigation = navigation.getParent() || navigation;
                             (rootNavigation as { navigate: (a: string, b: object) => void }).navigate(
                               'ProductDetail',
-                              { productId: item.id, preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username } }
+                              { productId: item.id, source: 'shop', preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username } }
                             );
                           }}
                         >
@@ -376,6 +395,7 @@ export default function MarketplaceScreen() {
                               <Ionicons name="image-outline" size={iconSize.lg} color={theme.colors.iconMuted} />
                             </View>
                           )}
+                          <SaveHeart productId={item.id} ownerId={item.user_id} style={tw`absolute top-2 right-2`} />
                           <View style={tw`p-2.5`}>
                             <Text style={tw`text-sm font-semibold text-ink`} numberOfLines={2}>
                               {item.name}
@@ -419,6 +439,7 @@ export default function MarketplaceScreen() {
                   const rootNavigation = navigation.getParent() || navigation;
                   (rootNavigation as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
                     productId: item.id,
+                    source: debouncedSearch ? 'search' : 'shop',
                     preview: { title: item.name, imageUrl: productImage, price: item.price, sellerName: item.business?.username },
                   });
                 }}
@@ -446,6 +467,7 @@ export default function MarketplaceScreen() {
                       <Ionicons name="image-outline" size={24} color={theme.colors.iconMuted} />
                     </View>
                   )}
+                  <SaveHeart productId={item.id} ownerId={item.user_id} size={15} style={tw`absolute top-1.5 left-[66px] w-7 h-7`} />
                   <View style={tw`flex-1`}>
                     <Text style={tw`text-base font-semibold text-ink mb-1`} numberOfLines={2}>
                       {item.name}

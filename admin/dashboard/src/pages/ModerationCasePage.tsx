@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { adminRequest } from '../services/api/adminClient';
+import { reportExcerpt, reportKindLabel } from '../lib/reportKind';
 import { MODERATION_REASON_CODES } from '../constants/reasonCodes';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -11,6 +12,8 @@ import { AlertBanner, SuccessBanner } from '../components/ui/AlertBanner';
 import { Badge, priorityBadge, statusBadge } from '../components/ui/Badge';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { PageLoader } from '../components/ui/Skeleton';
+import { useAdminAuth } from '../auth/AdminAuthProvider';
+import { useAdminToast, errorMessage } from '../components/admin/Toast';
 
 type CaseDetail = {
   report: Record<string, unknown>;
@@ -22,9 +25,14 @@ function JsonPanel({ title, data, defaultOpen = false }: { title: string; data: 
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Card padding="md">
-      <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between text-left focus-ring rounded"
+        onClick={() => setOpen(!open)}
+      >
         <h3 className="font-semibold text-stone-800">{title}</h3>
-        {open ? <ChevronUp className="h-4 w-4 text-stone-400" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
+        {open ? <ChevronUp className="h-4 w-4 text-stone-400" aria-hidden /> : <ChevronDown className="h-4 w-4 text-stone-400" aria-hidden />}
       </button>
       {open && (
         <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-stone-50 p-3 text-xs text-stone-600">{JSON.stringify(data, null, 2)}</pre>
@@ -46,6 +54,10 @@ export function ModerationCasePage() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const { can } = useAdminAuth();
+  const toast = useAdminToast();
+  const canWrite = can('moderation.write');
 
   useEffect(() => {
     if (!reportId) return;
@@ -55,13 +67,21 @@ export function ModerationCasePage() {
   }, [reportId]);
 
   async function assignInvestigating() {
-    if (!reportId) return;
-    await adminRequest(`/admin/moderation/reports/${reportId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ workflow_status: 'investigating' }),
-    });
-    const refreshed = await adminRequest<CaseDetail>(`/admin/moderation/reports/${reportId}`);
-    setData(refreshed);
+    if (!reportId || assigning) return;
+    setAssigning(true);
+    try {
+      await adminRequest(`/admin/moderation/reports/${reportId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ workflow_status: 'investigating' }),
+      });
+      const refreshed = await adminRequest<CaseDetail>(`/admin/moderation/reports/${reportId}`);
+      setData(refreshed);
+      toast.success('Marked as investigating');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not update the case'));
+    } finally {
+      setAssigning(false);
+    }
   }
 
   async function applyDecision() {
@@ -118,7 +138,7 @@ export function ModerationCasePage() {
   return (
     <div>
       <Link to="/moderation" className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">
-        <ArrowLeft className="h-4 w-4" /> Back to queue
+        <ArrowLeft className="h-4 w-4" aria-hidden /> Back to queue
       </Link>
       <PageHeader title={`Case ${String(report.id).slice(0, 16)}…`} subtitle="Review evidence and apply enforcement" />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
@@ -129,6 +149,12 @@ export function ModerationCasePage() {
           <h3 className="mb-4 font-semibold text-stone-800">Report details</h3>
           <dl className="space-y-3 text-sm">
             <div><dt className="text-stone-500">Target</dt><dd className="font-mono text-stone-800">{String(report.target_type)} / {String(report.target_id)}</dd></div>
+            {reportKindLabel(report.details) ? (
+              <div><dt className="text-stone-500">Reported item</dt><dd>{reportKindLabel(report.details)} by the user above</dd></div>
+            ) : null}
+            {reportExcerpt(report.details) ? (
+              <div><dt className="text-stone-500">Excerpt</dt><dd className="whitespace-pre-wrap rounded-lg bg-stone-50 p-2 text-stone-800">{reportExcerpt(report.details)}</dd></div>
+            ) : null}
             <div><dt className="text-stone-500">Reason</dt><dd>{String(report.reason)}</dd></div>
             <div className="flex gap-2">
               <Badge variant={statusBadge(String(report.workflow_status))}>{String(report.workflow_status)}</Badge>
@@ -136,9 +162,14 @@ export function ModerationCasePage() {
             </div>
           </dl>
           <JsonPanel title="Evidence" data={report.details} defaultOpen />
-          <Button variant="outline" className="mt-4" onClick={() => void assignInvestigating()}>Mark investigating</Button>
+          {canWrite && report.workflow_status === 'pending' && (
+            <Button variant="outline" className="mt-4" loading={assigning} onClick={() => void assignInvestigating()}>
+              Mark investigating
+            </Button>
+          )}
         </Card>
 
+        {canWrite ? (
         <Card padding="lg" className="lg:sticky lg:top-8 lg:self-start">
           <h3 className="mb-4 font-semibold text-stone-800">Decision panel</h3>
           <form onSubmit={onSubmit}>
@@ -177,6 +208,11 @@ export function ModerationCasePage() {
             <Button type="submit" loading={submitting} className="w-full">Apply decision</Button>
           </form>
         </Card>
+        ) : (
+          <Card padding="lg" className="lg:self-start">
+            <p className="text-sm text-stone-500">You can view this case. Decisions need moderation write access.</p>
+          </Card>
+        )}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">

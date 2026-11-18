@@ -571,7 +571,7 @@ export default function ExploreScreen() {
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate(
                   'ProductDetail',
-                  { productId: product.id, preview: { title: product.name, imageUrl: product.image_url, price: product.price } }
+                  { productId: product.id, source: 'explore', preview: { title: product.name, imageUrl: product.image_url, price: product.price } }
                 );
               }}
             >
@@ -722,6 +722,7 @@ export default function ExploreScreen() {
                 const root = navigation.getParent?.() || navigation;
                 (root as { navigate: (a: string, b: object) => void }).navigate('ProductDetail', {
                   productId: product.id,
+                  source: 'explore',
                   preview: { title: product.name, imageUrl: product.image_url, price: product.price },
                 });
               }}

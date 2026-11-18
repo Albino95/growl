@@ -210,6 +210,26 @@ function metaForType(type: string, refType?: string | null): {
         chipText: 'text-emerald-800',
         rail: theme.colors.brand,
       };
+    case 'product_question':
+    case 'product_answer':
+      return {
+        icon: 'chatbubble-ellipses',
+        label: type === 'product_answer' ? 'Answer' : 'Question',
+        tint: theme.colors.brand,
+        chipBg: 'bg-emerald-50',
+        chipText: 'text-emerald-800',
+        rail: theme.colors.brand,
+      };
+    case 'product_review':
+    case 'review_reply':
+      return {
+        icon: 'star',
+        label: type === 'review_reply' ? 'Shop reply' : 'Review',
+        tint: theme.colors.energy,
+        chipBg: 'bg-energy-50',
+        chipText: 'text-rose-600',
+        rail: theme.colors.energy,
+      };
     case 'app_review':
     case 'app_review_reply':
       return {
@@ -350,6 +370,12 @@ export default function NotificationsScreen() {
 
     if (item.type === 'buddy_invite' || item.type === 'buddy_accept') {
       navigateFromRoot(navigation, 'Buddies');
+      return;
+    }
+
+    // Shop answers / review replies (and Q&A / review alerts) open the product.
+    if (item.ref_type === 'product' && item.ref_id) {
+      navigateFromRoot(navigation, 'ProductDetail', { productId: item.ref_id });
       return;
     }
 

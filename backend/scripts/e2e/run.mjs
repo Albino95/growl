@@ -1504,6 +1504,194 @@ async function sectionWave5() {
   });
 }
 
+/**
+ * Wave 6 — storefront / insights / engage (backend/src/routes/wave3/{storefront,bizinsights,bizengage}.ts)
+ * plus the seller CSV import dry run. Everything written is restored or hidden again;
+ * admin endpoints are not exercised (they need MFA).
+ */
+async function sectionWave6() {
+  area('Wave 6 (storefront / insights / engage)');
+  need('business', 'demo');
+  const bizId = uid('business');
+
+  // Storefront
+  await check('storefront: GET /business/storefront', async () => {
+    const d = expectOk(await api('GET', '/business/storefront', { as: 'business' }));
+    assert(d.storefront && typeof d.storefront === 'object', 'missing storefront');
+    ctx.w6Storefront = d.storefront;
+  });
+  await check('storefront: PUT tagline round trip (restored)', async () => {
+    const original = ctx.w6Storefront;
+    if (!original) skip('no storefront');
+    const before = original.tagline ?? null;
+    const restore = () => api('PUT', '/business/storefront', { as: 'business', body: { tagline: before } });
+    const done = onCleanup('restore storefront tagline', restore);
+    const probe = `${TAG} ${RUN_ID}`.slice(0, 80);
+    const d = expectOk(await api('PUT', '/business/storefront', { as: 'business', body: { tagline: probe } }));
+    assert(d.storefront?.tagline === probe, `tagline=${d.storefront?.tagline}`);
+    const back = expectOk(await restore());
+    assert((back.storefront?.tagline ?? null) === before, 'tagline not restored');
+    done();
+  });
+  await check('storefront: public GET /storefronts/:id as demo', async () => {
+    const d = expectOk(await api('GET', `/storefronts/${bizId}`, { as: 'demo' }));
+    assert(d.business?.id === bizId, 'business mismatch');
+    assert(isArr(d.featured_products), 'missing featured_products[]');
+    assert(d.viewer && d.viewer.is_owner === false, 'viewer.is_owner should be false');
+    assert(typeof d.viewer.can_message === 'boolean', 'missing viewer.can_message');
+  });
+  await check('storefront: public products list', async () => {
+    const d = expectOk(await api('GET', `/storefronts/${bizId}/products`, { as: 'demo', query: { limit: 5 } }));
+    const list = isArr(d) ? d : d.products || [];
+    ctx.w6ProductId = list[0]?.id;
+    return list.length ? `${list.length} product(s)` : 'no active products';
+  });
+  await check('storefront: GET /business/verification', async () => {
+    const d = expectOk(await api('GET', '/business/verification', { as: 'business' }));
+    assert(['none', 'pending', 'verified', 'rejected'].includes(d.status), `status=${d.status}`);
+  });
+
+  // Insights
+  await check('insights: GET /business/insights?period=7d', async () => {
+    const d = expectOk(await api('GET', '/business/insights', { as: 'business', query: { period: '7d' } }));
+    assert(d.totals && typeof d.totals.product_views === 'number', 'missing totals');
+    assert(isArr(d.daily), 'missing daily[]');
+  });
+  await check('insights: POST /events product_view as demo', async () => {
+    const productId = ctx.w6ProductId;
+    if (!productId) skip('no business product');
+    const d = expectOk(
+      await api('POST', '/events', {
+        as: 'demo',
+        body: { events: [{ type: 'product_view', product_id: productId, business_id: bizId, source: 'other' }] },
+      })
+    );
+    assert(typeof d.accepted === 'number', 'missing accepted');
+  });
+  await check('insights: save + unsave a product (restored)', async () => {
+    const productId = ctx.w6ProductId;
+    if (!productId) skip('no business product');
+    const saved = expectOk(await api('GET', '/me/saved-products', { as: 'demo' }));
+    const wasSaved = (saved.products || []).some((p) => p.id === productId);
+    if (wasSaved) {
+      const d = expectOk(await api('DELETE', `/products/${productId}/save`, { as: 'demo' }));
+      assert(d.saved === false, 'unsave failed');
+      const done = onCleanup('re-save product', () =>
+        api('POST', `/products/${productId}/save`, { as: 'demo', headers: { 'Idempotency-Key': idemKey('resave') } })
+      );
+      const r = expectOk(
+        await api('POST', `/products/${productId}/save`, { as: 'demo', headers: { 'Idempotency-Key': idemKey('save') } })
+      );
+      assert(r.saved === true, 'save failed');
+      done();
+    } else {
+      const done = onCleanup('unsave product', () => api('DELETE', `/products/${productId}/save`, { as: 'demo' }));
+      const r = expectOk(
+        await api('POST', `/products/${productId}/save`, { as: 'demo', headers: { 'Idempotency-Key': idemKey('save') } })
+      );
+      assert(r.saved === true && typeof r.saves === 'number', 'save failed');
+      const list = expectOk(await api('GET', '/me/saved-products', { as: 'demo' }));
+      assert((list.products || []).some((p) => p.id === productId), 'not in saved list');
+      const d = expectOk(await api('DELETE', `/products/${productId}/save`, { as: 'demo' }));
+      assert(d.saved === false, 'unsave failed');
+      done();
+    }
+  });
+  await check('insights: GET /me/saved-products', async () => {
+    const d = expectOk(await api('GET', '/me/saved-products', { as: 'demo' }));
+    assert(isArr(d.products), 'missing products[]');
+  });
+  await check('insights: GET /business/partner-links', async () => {
+    const d = expectOk(await api('GET', '/business/partner-links', { as: 'business' }));
+    assert(isArr(d.links), 'missing links[]');
+  });
+
+  // Engage: Q&A
+  let questionId;
+  await check('engage: demo asks a question', async () => {
+    const productId = ctx.w6ProductId;
+    if (!productId) skip('no business product');
+    const d = expectOk(
+      await api('POST', `/products/${productId}/questions`, {
+        as: 'demo',
+        headers: { 'Idempotency-Key': idemKey('question') },
+        body: { body: `${TAG} Does this come in other sizes? ${RUN_ID}` },
+      }),
+      201
+    );
+    questionId = d.question?.id;
+    assert(questionId, 'no question id');
+    onCleanup(`hide question ${questionId}`, () => api('DELETE', `/business/questions/${questionId}`, { as: 'business' }));
+  });
+  await check('engage: business answers', async () => {
+    if (!questionId) skip('no question');
+    const d = expectOk(
+      await api('POST', `/business/questions/${questionId}/answer`, {
+        as: 'business',
+        body: { body: `${TAG} Yes — S to XL.` },
+      })
+    );
+    assert(d.question?.answer?.body, 'answer missing');
+  });
+  await check('engage: GET questions shows the answer', async () => {
+    if (!questionId) skip('no question');
+    const d = expectOk(await api('GET', `/products/${ctx.w6ProductId}/questions`, { as: 'demo' }));
+    const q = (d.questions || []).find((x) => x.id === questionId);
+    assert(q?.answer?.body, 'answered question not listed');
+  });
+  await check('engage: business hides the question', async () => {
+    if (!questionId) skip('no question');
+    expectOk(await api('DELETE', `/business/questions/${questionId}`, { as: 'business' }));
+    const d = expectOk(await api('GET', `/products/${ctx.w6ProductId}/questions`, { as: 'demo' }));
+    assert(!(d.questions || []).some((x) => x.id === questionId), 'hidden question still listed');
+    for (const cl of cleanups) if (cl.label === `hide question ${questionId}`) cl.done = true;
+  });
+  await check('engage: reviews need a purchase (viewer.can_review false)', async () => {
+    const productId = ctx.w6ProductId;
+    if (!productId) skip('no business product');
+    const d = expectOk(await api('GET', `/products/${productId}/reviews`, { as: 'demo' }));
+    assert(isArr(d.reviews), 'missing reviews[]');
+    assert(d.viewer && d.viewer.can_review === false, `can_review=${d.viewer?.can_review}`);
+  });
+
+  // Engage: inbox settings + summary
+  await check('engage: inbox-settings round trip (restored)', async () => {
+    const d = expectOk(await api('GET', '/business/inbox-settings', { as: 'business' }));
+    assert(isArr(d.saved_replies) && d.away, 'missing saved_replies / away');
+    const original = d.saved_replies.map((r) => ({ id: r.id, title: r.title, body: r.body }));
+    if (original.length >= 20) skip('saved replies full');
+    const restore = () => api('PUT', '/business/inbox-settings', { as: 'business', body: { saved_replies: original } });
+    const done = onCleanup('restore saved replies', restore);
+    const probe = { title: `${TAG} ${RUN_ID}`.slice(0, 40), body: `${TAG} Thanks for your message!` };
+    const put = expectOk(
+      await api('PUT', '/business/inbox-settings', { as: 'business', body: { saved_replies: [...original, probe] } })
+    );
+    assert(put.saved_replies.some((r) => r.title === probe.title), 'saved reply not stored');
+    const back = expectOk(await restore());
+    assert(back.saved_replies.length === original.length, 'saved replies not restored');
+    done();
+  });
+  await check('engage: GET /business/engage/summary', async () => {
+    const d = expectOk(await api('GET', '/business/engage/summary', { as: 'business' }));
+    assert(typeof d.unanswered_questions === 'number', 'missing unanswered_questions');
+  });
+
+  // Seller import (dry run only — nothing is written)
+  await check('bizx: CSV import dry run with one valid row', async () => {
+    const d = expectOk(
+      await api('POST', '/business/products/import', {
+        as: 'business',
+        body: {
+          dry_run: true,
+          rows: [{ name: `${TAG} Import probe ${RUN_ID}`, category: 'fitness', price: '9,90', stock: '3' }],
+        },
+      })
+    );
+    assert(d.dry_run === true, 'not a dry run');
+    assert(!(d.errors || []).length, `errors: ${JSON.stringify(d.errors).slice(0, 160)}`);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main
 
@@ -1521,6 +1709,7 @@ const SECTIONS = [
   ['business', sectionBusiness],
   ['wave4', sectionWave4],
   ['wave5', sectionWave5],
+  ['wave6', sectionWave6],
 ];
 
 async function signInQuietly() {

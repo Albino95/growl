@@ -16,18 +16,24 @@ import PressableScale from '../../components/ui/PressableScale';
 import Skeleton from '../../components/ui/Skeleton';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { getProduct, getProducts, getPaymentConfig, Product } from '../../services/api/marketplace';
-import { resolveProductImageUri, resolveAvatarUri, avatarSource } from '../../utils/images';
+import { resolveProductImageUri, resolveAvatarUri } from '../../utils/images';
+import SoldByLink from '../../components/storefront/SoldByLink';
 import { verticalScrollProps, horizontalScrollProps } from '../../constants/scroll';
 import { rankMarketplaceProducts } from '../../utils/ranking';
 import { useAuth } from '../../store/hooks';
 import SectionLabel from '../../components/ui/SectionLabel';
 import { alertMessage } from '../../utils/confirmDialog';
+import { QuestionsSection, ReviewsSection } from '../../components/productqa';
+import SaveHeart from '../../components/bizinsights/SaveHeart';
+import { logEvent, type InsightSource } from '../../services/events';
 
 const { width } = Dimensions.get('window');
 
 type ProductDetailRouteParams = {
   ProductDetail: {
     productId: string;
+    /** Where the tap came from (insights). */
+    source?: InsightSource;
     preview?: {
       title?: string;
       imageUrl?: string | null;
@@ -43,7 +49,7 @@ type ProductDetailRouteProp = RouteProp<ProductDetailRouteParams, 'ProductDetail
 export default function ProductDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<ProductDetailRouteProp>();
-  const { productId, preview } = route.params;
+  const { productId, preview, source } = route.params;
   const { user } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -68,6 +74,8 @@ export default function ProductDetailScreen() {
       const response = await getProduct(productId);
       if (response.success && response.data) {
         setProduct(response.data);
+        // One view per open; the server dedupes repeat opens within 30 min.
+        logEvent({ type: 'product_view', product_id: productId, source: source ?? 'other' });
         // Show the product now; related items fill in when the catalog lands.
         setLoading(false);
         try {
@@ -224,7 +232,9 @@ export default function ProductDetailScreen() {
             <Ionicons name="arrow-back" size={24} color={theme.colors.ink} />
           </PressableScale>
           <Text style={tw`text-lg font-semibold text-ink`}>Product</Text>
-          <View style={tw`w-6`} />
+          <View style={tw`w-6 items-center`}>
+            <SaveHeart productId={product.id} ownerId={product.user_id} variant="plain" size={22} />
+          </View>
         </View>
 
         <View style={tw`bg-raised`}>
@@ -291,21 +301,12 @@ export default function ProductDetailScreen() {
         <View style={tw`mx-4 mt-4 mb-4 px-4 py-5 bg-card border border-line/80 rounded-card`}>
           {/* Business Info */}
           {product.business && (
-            <View style={tw`flex-row items-center mb-4`}>
-              <GrowImage
-                source={avatarSource(
-                  resolveAvatarUri(
-                    product.business.id,
-                    product.business.username,
-                    product.business.avatar
-                  )
-                )}
-                style={tw`w-8 h-8 rounded-full mr-2 bg-raised`}
-              />
-              <Text style={tw`text-sm text-ink-2`}>
-                Sold by {product.business.username || 'Business'}
-              </Text>
-            </View>
+            <SoldByLink
+              businessId={product.business.id}
+              name={product.business.username || 'Business'}
+              avatarUri={resolveAvatarUri(product.business.id, product.business.username, product.business.avatar)}
+              style={tw`mb-4`}
+            />
           )}
 
           {/* Product Name */}
@@ -333,6 +334,20 @@ export default function ProductDetailScreen() {
               <Text style={tw`text-ink-2 leading-6`}>{product.description}</Text>
             </View>
           )}
+
+          {/* Product Q&A + verified-purchase reviews (wave 6 engage) */}
+          <QuestionsSection
+            productId={product.id}
+            productName={product.name}
+            ownerId={product.business?.id ?? product.user_id}
+            viewerId={user?.id}
+          />
+          <ReviewsSection
+            productId={product.id}
+            productName={product.name}
+            ownerId={product.business?.id ?? product.user_id}
+            viewerId={user?.id}
+          />
 
           {/* Category Tags */}
           <View style={tw`flex-row flex-wrap mb-6`}>

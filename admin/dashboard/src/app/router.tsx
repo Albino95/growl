@@ -23,6 +23,13 @@ import { SellerProductsPage } from '../pages/seller/SellerProductsPage';
 import { SellerOrdersPage } from '../pages/seller/SellerOrdersPage';
 import { SellerReportsPage } from '../pages/seller/SellerReportsPage';
 import { SellerSettingsPage } from '../pages/seller/SellerSettingsPage';
+import { SellerCustomersPage } from '../pages/seller/SellerCustomersPage';
+import { SellerStorefrontPage } from '../pages/seller/SellerStorefrontPage';
+import { SellerStorefrontViewPage } from '../pages/seller/SellerStorefrontViewPage';
+import { SellerVerificationPage } from '../pages/seller/SellerVerificationPage';
+import { SellerInsightsPage } from '../pages/seller/SellerInsightsPage';
+import { SellerEngagementPage } from '../pages/seller/SellerEngagementPage';
+import { SellerNotFoundPage } from '../pages/seller/SellerNotFoundPage';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { loading, admin, mustEnrollMfa } = useAdminAuth();
@@ -65,6 +72,13 @@ export const router = createBrowserRouter([
       { path: 'orders', element: <SellerOrdersPage /> },
       { path: 'reports', element: <SellerReportsPage /> },
       { path: 'settings', element: <SellerSettingsPage /> },
+      { path: 'customers', element: <SellerCustomersPage /> },
+      { path: 'storefront', element: <SellerStorefrontPage /> },
+      { path: 'storefront/view', element: <SellerStorefrontViewPage /> },
+      { path: 'verification', element: <SellerVerificationPage /> },
+      { path: 'insights', element: <SellerInsightsPage /> },
+      { path: 'engagement', element: <SellerEngagementPage /> },
+      { path: '*', element: <SellerNotFoundPage /> },
     ],
   },
   {
@@ -134,7 +148,7 @@ export const router = createBrowserRouter([
       {
         path: 'business/accounts',
         element: (
-          <RequirePerm permission="business.write">
+          <RequirePerm permission="business.read">
             <BusinessAccountsPage />
           </RequirePerm>
         ),

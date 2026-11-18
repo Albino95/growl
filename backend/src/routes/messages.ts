@@ -11,7 +11,8 @@ import {
   MESSAGE_REACTION_EMOJIS,
 } from '../utils/validation';
 import { coachingConversationIds, hasCoachingChannel } from '../utils/coachingAccess';
-import { dmPolicyAllows, DM_POLICY_REJECTED_MESSAGE } from '../utils/dmPolicy';
+import { dmPolicyAllows, getDmPolicy, DM_POLICY_REJECTED_MESSAGE } from '../utils/dmPolicy';
+import { maybeSendAwayReply } from './wave3/bizengage';
 
 /** Max messages per page (also bounds the reactions lookup). */
 export const MAX_MESSAGES_PAGE = 100;
@@ -20,12 +21,124 @@ export const MAX_MESSAGES_PAGE = 100;
  * Recipient's dm_policy ('everyone' | 'friends' | 'nobody') applied to starting a
  * conversation or sending a message. Active coaching channels are exempt (a paid /
  * in-progress coaching relationship must keep working).
+ *
+ * Business accounts: a customer writing to a business only hits 'nobody' (a shop's
+ * 'friends' setting would lock out every customer, so it reads as 'everyone'). A
+ * business replying to a customer who already wrote to them is not held to the
+ * customer's policy — they started the thread.
  */
-async function dmPolicyRejection(env: Env, senderId: string, recipientId: string): Promise<Response | null> {
-  const allowed = await dmPolicyAllows(env, recipientId, () => areFriends(env, senderId, recipientId));
-  if (allowed) return null;
-  if (await hasCoachingChannel(env, senderId, recipientId)) return null;
+export async function dmPolicyAllowsSender(
+  env: Env,
+  senderId: string,
+  recipientId: string,
+  senderIsBusiness?: boolean
+): Promise<boolean> {
+  const senderBiz = senderIsBusiness ?? (await isBusinessUser(env, senderId));
+  const recipientBiz = await isBusinessUser(env, recipientId);
+  if (recipientBiz && !senderBiz) {
+    if ((await getDmPolicy(env, recipientId)) !== 'nobody') return true;
+  } else if (senderBiz && !recipientBiz && (await peerHasWrittenTo(env, recipientId, senderId))) {
+    return true;
+  } else if (await dmPolicyAllows(env, recipientId, () => areFriends(env, senderId, recipientId))) {
+    return true;
+  }
+  return hasCoachingChannel(env, senderId, recipientId);
+}
+
+async function dmPolicyRejection(
+  env: Env,
+  senderId: string,
+  recipientId: string,
+  senderIsBusiness?: boolean
+): Promise<Response | null> {
+  if (await dmPolicyAllowsSender(env, senderId, recipientId, senderIsBusiness)) return null;
   return error('DM_NOT_ALLOWED', DM_POLICY_REJECTED_MESSAGE, 403);
+}
+
+export type MessagingReason = 'ok' | 'blocked' | 'not_accepting' | 'unavailable';
+
+/**
+ * Full "may sender open / write to this DM" check (channel + recipient policy), with a
+ * reason for UI copy. Used by the storefront viewer flag and the business order contact.
+ */
+export async function messagingAccess(
+  env: Env,
+  senderId: string,
+  recipientId: string,
+  sender?: { is_business?: boolean | number } | null
+): Promise<MessagingReason> {
+  if (!senderId || !recipientId || senderId === recipientId) return 'unavailable';
+  if (await isBlocked(env, senderId, recipientId)) return 'blocked';
+  const senderBiz = sender ? !!sender.is_business : await isBusinessUser(env, senderId);
+  if (!(await canMessagePeer(env, senderId, recipientId, { is_business: senderBiz }))) return 'unavailable';
+  if (!(await dmPolicyAllowsSender(env, senderId, recipientId, senderBiz))) return 'not_accepting';
+  return 'ok';
+}
+
+async function isBusinessUser(env: Env, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare('SELECT is_business FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ is_business: number | null }>();
+  return !!row?.is_business;
+}
+
+/** Has `authorId` sent at least one message in their conversation with `peerId`? */
+async function peerHasWrittenTo(env: Env, authorId: string, peerId: string): Promise<boolean> {
+  const [a, b] = orderedPair(authorId, peerId);
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM messages m JOIN conversations c ON c.id = m.conversation_id
+     WHERE c.user_a = ? AND c.user_b = ? AND m.sender_id = ? LIMIT 1`
+  )
+    .bind(a, b, authorId)
+    .first<{ ok: number }>();
+  return !!row;
+}
+
+/** Window in which a product question or save lets a business reach out first. */
+export const BUSINESS_OUTREACH_WINDOW_DAYS = 30;
+
+/**
+ * A business may write to a customer only when there is a reason to: an existing
+ * conversation, an order, or a product question / save within the last 30 days.
+ */
+async function businessCanReachCustomer(env: Env, businessId: string, customerId: string): Promise<boolean> {
+  const [a, b] = orderedPair(businessId, customerId);
+  const conversation = await env.DB.prepare(
+    'SELECT id FROM conversations WHERE user_a = ? AND user_b = ? LIMIT 1'
+  )
+    .bind(a, b)
+    .first<{ id: string }>();
+  if (conversation) return true;
+
+  const orderLink = await env.DB.prepare(
+    `SELECT o.id
+     FROM orders o
+     JOIN order_items oi ON oi.order_id = o.id
+     JOIN products p ON p.id = oi.product_id
+     WHERE o.user_id = ? AND p.user_id = ?
+     LIMIT 1`
+  )
+    .bind(customerId, businessId)
+    .first<{ id: string }>();
+  if (orderLink) return true;
+
+  const since = new Date(Date.now() - BUSINESS_OUTREACH_WINDOW_DAYS * 86400000).toISOString();
+  try {
+    const interest = await env.DB.prepare(
+      `SELECT 1 AS ok FROM product_questions
+        WHERE asker_id = ? AND business_id = ? AND created_at >= ?
+       UNION ALL
+       SELECT 1 AS ok FROM product_saves
+        WHERE user_id = ? AND business_id = ? AND created_at >= ?
+       LIMIT 1`
+    )
+      .bind(customerId, businessId, since, customerId, businessId, since)
+      .first<{ ok: number }>();
+    return !!interest;
+  } catch {
+    // Wave 6 tables missing on an older DB: no extra channels.
+    return false;
+  }
 }
 
 type ConversationRow = {
@@ -46,7 +159,19 @@ type MessageRow = {
   body: string;
   created_at: string;
   deleted_at?: string | null;
+  /** JSON flags (migration 0050), e.g. {"auto":true}; absent on older DBs. */
+  metadata?: string | null;
 };
+
+/** True for automatic messages (business away replies). */
+export function isAutoMessage(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  try {
+    return JSON.parse(raw)?.auto === true;
+  } catch {
+    return false;
+  }
+}
 
 /** Preview text for an unsent last message in the inbox. */
 export const UNSENT_PREVIEW = 'Message unsent';
@@ -99,6 +224,12 @@ function parseUserMeta(raw: string | undefined) {
   }
 }
 
+/**
+ * Is there a messaging channel between `userId` and `peerId`? Blocks (either way) win;
+ * then friends, coaching, and the shop rules: anyone may write to a business account,
+ * and a business may write to a customer it has a reason to (see businessCanReachCustomer).
+ * The recipient's dm_policy is checked separately (dmPolicyAllowsSender).
+ */
 export async function canMessagePeer(
   env: Env,
   userId: string,
@@ -109,20 +240,9 @@ export async function canMessagePeer(
   if (await isBlocked(env, userId, peerId)) return false;
   if (await areFriends(env, userId, peerId)) return true;
   if (await hasCoachingChannel(env, userId, peerId)) return true;
-  if (!user?.is_business) return false;
-
-  const orderLink = await env.DB.prepare(
-    `SELECT o.id
-     FROM orders o
-     JOIN order_items oi ON oi.order_id = o.id
-     JOIN products p ON p.id = oi.product_id
-     WHERE o.user_id = ? AND p.user_id = ?
-     LIMIT 1`
-  )
-    .bind(peerId, userId)
-    .first<{ id: string }>();
-
-  return !!orderLink;
+  const senderBiz = user ? !!user.is_business : await isBusinessUser(env, userId);
+  if (!senderBiz) return isBusinessUser(env, peerId);
+  return businessCanReachCustomer(env, userId, peerId);
 }
 
 /** D1 caps bound parameters per statement; keep IN (...) lists comfortably below it. */
@@ -182,20 +302,20 @@ async function loadMessagingAccess(
     /* coaching tables missing on a stale DB — same fallback as hasCoachingChannel */
   }
 
+  // Every caller passes peers it already shares a conversation with. For a business an
+  // existing conversation is itself the channel; for everyone else, business peers are open.
+  const remaining = peers.filter((id) => !allowed.has(id));
   if (user?.is_business) {
-    const remaining = peers.filter((id) => !allowed.has(id));
+    for (const id of remaining) allowed.add(id);
+  } else {
     for (const ids of chunk(remaining)) {
       const placeholders = ids.map(() => '?').join(',');
-      const buyers = await env.DB.prepare(
-        `SELECT DISTINCT o.user_id AS peer_id
-         FROM orders o
-         JOIN order_items oi ON oi.order_id = o.id
-         JOIN products p ON p.id = oi.product_id
-         WHERE p.user_id = ? AND o.user_id IN (${placeholders})`
+      const businesses = await env.DB.prepare(
+        `SELECT id FROM users WHERE is_business = 1 AND id IN (${placeholders})`
       )
-        .bind(userId, ...ids)
-        .all<{ peer_id: string }>();
-      for (const r of buyers.results || []) allowed.add(r.peer_id);
+        .bind(...ids)
+        .all<{ id: string }>();
+      for (const r of businesses.results || []) allowed.add(r.id);
     }
   }
 
@@ -409,7 +529,7 @@ export async function createConversation(request: Request, env: Env): Promise<Re
   if (!canMessage) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
-  const policyRejection = await dmPolicyRejection(env, ctx.userId, targetUserId);
+  const policyRejection = await dmPolicyRejection(env, ctx.userId, targetUserId, !!ctx.user?.is_business);
   if (policyRejection) return policyRejection;
 
   try {
@@ -522,6 +642,7 @@ export async function getMessages(
             created_at: m.created_at,
             is_own: m.sender_id === ctx.userId,
             reactions: reactionMap[m.id] || { counts: {}, mine: null },
+            ...(isAutoMessage(m.metadata) ? { auto: true as const } : {}),
           }
     );
 
@@ -568,7 +689,7 @@ export async function sendMessage(
   if (!(await canMessagePeer(env, ctx.userId, peerId, ctx.user))) {
     return error('FORBIDDEN', 'You can only message friends', 403);
   }
-  const policyRejection = await dmPolicyRejection(env, ctx.userId, peerId);
+  const policyRejection = await dmPolicyRejection(env, ctx.userId, peerId, !!ctx.user?.is_business);
   if (policyRejection) return policyRejection;
 
   const now = new Date().toISOString();
@@ -587,6 +708,9 @@ export async function sendMessage(
     )
       .bind(now, now, conversationId)
       .run();
+
+    // Business away message (once per conversation per 12 h; never throws).
+    await maybeSendAwayReply(env, conversationId, ctx.userId, peerId);
 
     const row = await env.DB.prepare('SELECT * FROM messages WHERE id = ?')
       .bind(id)

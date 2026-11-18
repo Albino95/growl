@@ -409,6 +409,11 @@ export async function signIn(request: Request, env: Env): Promise<Response> {
 
     const { email, password, passwordHash } = validation.data;
     const normalizedEmail = email.trim().toLowerCase();
+    // Per-account limit on top of the per-IP one (credential stuffing across many IPs).
+    const byAccount = await checkRateLimit(env, `signin:email:${normalizedEmail}`, 10, 900);
+    if (!byAccount.allowed) {
+      return error('RATE_LIMITED', 'Too many sign-in attempts for this account. Try again later.', 429);
+    }
 
     const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?')
       .bind(normalizedEmail)
@@ -769,7 +774,8 @@ export async function forgotPassword(request: Request, env: Env): Promise<Respon
 
   return json({
     ...generic,
-    ...((env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'qa') && {
+    // Local development only: QA is reachable from the internet, so never echo the code there.
+    ...(env.ENVIRONMENT === 'development' && {
       devResetCode: resetCode,
     }),
   });

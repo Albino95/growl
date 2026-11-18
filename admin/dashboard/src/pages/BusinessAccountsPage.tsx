@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Building2, Check, Copy } from 'lucide-react';
 import {
@@ -7,7 +7,13 @@ import {
   updateBusinessAccount,
   type BusinessAccount,
   type CreateBusinessAccountResponse,
+  type Paged,
 } from '../services/api/adminClient';
+import { useAdminAuth } from '../auth/AdminAuthProvider';
+import { useAdminToast, errorMessage } from '../components/admin/Toast';
+import { SearchBar, Pager } from '../components/admin/ListControls';
+import { VerificationQueue } from '../components/admin/VerificationQueue';
+import { ConfirmDialog } from '../components/ui/Dialog';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Field, Select, Textarea, Input } from '../components/ui/Input';
@@ -23,7 +29,7 @@ import {
   DataTableCell,
   EmptyState,
 } from '../components/ui/DataTable';
-import { PageLoader } from '../components/ui/Skeleton';
+import { TableSkeleton } from '../components/ui/Skeleton';
 
 const FIELD_LABELS: Record<string, string> = {
   fitness: 'Fitness',
@@ -34,7 +40,19 @@ const FIELD_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+const PAGE_SIZE = 25;
+
 export function BusinessAccountsPage() {
+  const { can } = useAdminAuth();
+  const toast = useAdminToast();
+  const canWrite = can('business.write');
+  const canViewUsers = can('users.read');
+  const [q, setQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<Paged>({ total: 0, limit: PAGE_SIZE, offset: 0, has_more: false });
+  const [pendingAction, setPendingAction] = useState<{ account: BusinessAccount; kind: 'deactivate' | 'reactivate' } | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
   const [accounts, setAccounts] = useState<BusinessAccount[]>([]);
   const [fields, setFields] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,22 +72,23 @@ export function BusinessAccountsPage() {
   const [addressLine, setAddressLine] = useState('');
   const [notes, setNotes] = useState('');
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listBusinessAccounts();
+      const res = await listBusinessAccounts({ q, status: statusFilter, limit: PAGE_SIZE, offset });
       setAccounts(res.accounts || []);
       setFields(res.fields || Object.keys(FIELD_LABELS));
+      setPage(res);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load business accounts');
+      setError(errorMessage(e, 'Failed to load business accounts'));
     } finally {
       setLoading(false);
     }
-  }
+  }, [q, statusFilter, offset]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   async function onRegister(e: FormEvent) {
     e.preventDefault();
@@ -108,23 +127,28 @@ export function BusinessAccountsPage() {
   }
 
   async function setVerification(userId: string, verificationStatus: 'verified' | 'rejected') {
-    setError('');
     try {
       await updateBusinessAccount(userId, { verificationStatus });
+      toast.success(verificationStatus === 'verified' ? 'Business verified' : 'Verification rejected');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Update failed');
+      toast.error(errorMessage(e, 'Update failed'));
     }
   }
 
-  async function deactivate(userId: string) {
-    if (!window.confirm('Deactivate this business account? The user will lose business app access.')) return;
-    setError('');
+  async function applyActivation() {
+    if (!pendingAction) return;
+    const { account, kind } = pendingAction;
+    setActionBusy(true);
     try {
-      await updateBusinessAccount(userId, { deactivate: true });
+      await updateBusinessAccount(account.id, { deactivate: kind === 'deactivate' });
+      toast.success(kind === 'deactivate' ? `${account.display_name} deactivated` : `${account.display_name} reactivated`);
+      setPendingAction(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Deactivate failed');
+      toast.error(errorMessage(e, kind === 'deactivate' ? 'Deactivate failed' : 'Reactivate failed'));
+    } finally {
+      setActionBusy(false);
     }
   }
 
@@ -136,20 +160,23 @@ export function BusinessAccountsPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (loading && accounts.length === 0) return <PageLoader />;
-
   return (
     <div>
       <PageHeader
         title="Business Accounts"
-        subtitle="Provision sellers for Grow!. They sign in via the Seller tab on this portal or the mobile app."
+        subtitle={
+          canWrite
+            ? 'Provision sellers for Grow!. They sign in via the Seller tab on this portal or the mobile app.'
+            : 'Sellers on Grow!'
+        }
       />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
+      {canWrite && <VerificationQueue onDecided={() => void load()} />}
 
       {created && (
         <Card className="mb-6 border-emerald-200 bg-emerald-50" padding="lg">
           <div className="flex items-start gap-3">
-            <Building2 className="mt-0.5 h-5 w-5 text-emerald-600" />
+            <Building2 className="mt-0.5 h-5 w-5 text-emerald-600" aria-hidden />
             <div className="flex-1">
               <h3 className="font-semibold text-emerald-900">Business account created</h3>
               <p className="mt-1 text-sm text-emerald-800">
@@ -161,7 +188,7 @@ export function BusinessAccountsPage() {
                 <div><dt className="inline font-medium text-emerald-900">User ID: </dt><dd className="inline font-mono text-xs">{created.userId}</dd></div>
               </dl>
               <Button className="mt-4" variant="outline" onClick={copyCredentials}>
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
                 {copied ? 'Copied' : 'Copy credentials'}
               </Button>
             </div>
@@ -169,7 +196,8 @@ export function BusinessAccountsPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={`grid gap-6 ${canWrite ? 'lg:grid-cols-2' : ''}`}>
+        {canWrite && (
         <Card padding="lg">
           <h3 className="mb-4 font-semibold text-stone-800">Register business</h3>
           <form onSubmit={onRegister} className="space-y-4">
@@ -211,11 +239,41 @@ export function BusinessAccountsPage() {
             <Button type="submit" loading={submitting} className="w-full">Create business account</Button>
           </form>
         </Card>
+        )}
 
         <Card padding="sm">
-          <h3 className="mb-4 px-2 pt-2 font-semibold text-stone-800">All business accounts</h3>
-          {accounts.length === 0 ? (
-            <EmptyState title="No business accounts yet" description="Register the first business using the form." />
+          <h3 className="mb-3 px-2 pt-2 font-semibold text-stone-800">All business accounts</h3>
+          <div className="mb-3 flex flex-col gap-2 px-2 sm:flex-row">
+            <SearchBar
+              value={q}
+              label="Search business accounts"
+              placeholder="Name, email or ID"
+              onSearch={(v) => {
+                setQ(v);
+                setOffset(0);
+              }}
+            />
+            <Select
+              aria-label="Account status"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setOffset(0);
+              }}
+              className="sm:w-40"
+            >
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="deactivated">Deactivated</option>
+            </Select>
+          </div>
+          {loading ? (
+            <div className="p-2"><TableSkeleton rows={5} cols={4} /></div>
+          ) : accounts.length === 0 ? (
+            <EmptyState
+              title={q || statusFilter ? 'No matching accounts' : 'No business accounts yet'}
+              description={canWrite && !q ? 'Register the first business using the form.' : undefined}
+            />
           ) : (
             <DataTable>
               <DataTableHead>
@@ -235,7 +293,10 @@ export function BusinessAccountsPage() {
                       </div>
                     </DataTableCell>
                     <DataTableCell>
-                      <Badge variant={statusBadge(a.verification_status)}>{a.verification_status}</Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge variant={statusBadge(a.verification_status)}>{a.verification_status}</Badge>
+                        {!a.is_business && <Badge variant="danger">deactivated</Badge>}
+                      </div>
                     </DataTableCell>
                     <DataTableCell className="text-stone-500 text-xs">
                       {new Date(a.profile_created_at || a.created_at).toLocaleDateString()}
@@ -243,16 +304,33 @@ export function BusinessAccountsPage() {
                     <DataTableCell>
                       <div className="flex flex-wrap gap-1">
                         <Link to={`/business/accounts/${a.id}`} className="text-xs font-medium text-brand-600 hover:text-brand-700">Overview</Link>
-                        <Link to={`/users/${a.id}`} className="text-xs font-medium text-brand-600 hover:text-brand-700">User</Link>
-                        {a.verification_status !== 'verified' && (
+                        {canViewUsers && (
+                          <Link to={`/users/${a.id}`} className="text-xs font-medium text-brand-600 hover:text-brand-700">User</Link>
+                        )}
+                        {canWrite && a.verification_status !== 'verified' && (
                           <Button variant="ghost" className="h-7 px-2 text-xs" onClick={() => void setVerification(a.id, 'verified')}>Verify</Button>
                         )}
-                        {a.verification_status !== 'rejected' && (
+                        {canWrite && a.verification_status !== 'rejected' && (
                           <Button variant="ghost" className="h-7 px-2 text-xs" onClick={() => void setVerification(a.id, 'rejected')}>Reject</Button>
                         )}
-                        {!!a.is_business && (
-                          <Button variant="ghost" className="h-7 px-2 text-xs text-red-600" onClick={() => void deactivate(a.id)}>Deactivate</Button>
-                        )}
+                        {canWrite &&
+                          (a.is_business ? (
+                            <Button
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-red-600"
+                              onClick={() => setPendingAction({ account: a, kind: 'deactivate' })}
+                            >
+                              Deactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setPendingAction({ account: a, kind: 'reactivate' })}
+                            >
+                              Reactivate
+                            </Button>
+                          ))}
                       </div>
                     </DataTableCell>
                   </DataTableRow>
@@ -260,8 +338,28 @@ export function BusinessAccountsPage() {
               </DataTableBody>
             </DataTable>
           )}
+          {!loading && (
+            <div className="px-2 pb-2">
+              <Pager offset={page.offset} limit={page.limit} total={page.total} count={accounts.length} onChange={setOffset} />
+            </div>
+          )}
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={!!pendingAction}
+        title={pendingAction?.kind === 'reactivate' ? 'Reactivate this business?' : 'Deactivate this business?'}
+        message={
+          pendingAction?.kind === 'reactivate'
+            ? `${pendingAction.account.display_name} gets seller access back.`
+            : `${pendingAction?.account.display_name || 'This business'} loses business app access. You can reactivate it later.`
+        }
+        confirmLabel={pendingAction?.kind === 'reactivate' ? 'Reactivate' : 'Deactivate'}
+        variant={pendingAction?.kind === 'reactivate' ? 'primary' : 'danger'}
+        loading={actionBusy}
+        onConfirm={() => void applyActivation()}
+        onCancel={() => setPendingAction(null)}
+      />
     </div>
   );
 }

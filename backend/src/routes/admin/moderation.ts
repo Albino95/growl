@@ -11,6 +11,7 @@ import {
   isContentRemoveAction,
 } from '../../utils/contentModeration';
 import { isProtectedReviewEmail } from '../../utils/reviewGuardrails';
+import { parsePaging, likePattern, searchQuery, paged } from '../../utils/adminLists';
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   try {
@@ -27,28 +28,39 @@ export async function listReports(request: Request, env: Env): Promise<Response>
   const status = url.searchParams.get('status') || '';
   const priority = url.searchParams.get('priority') || '';
   const slaBreached = url.searchParams.get('sla_breached') === 'true';
+  const q = searchQuery(url);
+  const { limit, offset } = parsePaging(url, 50, 200);
 
-  let query = `SELECT * FROM reports WHERE 1=1`;
+  let where = `WHERE 1=1`;
   const bindings: unknown[] = [];
   if (status) {
-    query += ` AND workflow_status = ?`;
+    where += ` AND workflow_status = ?`;
     bindings.push(status);
   }
   if (priority) {
-    query += ` AND priority = ?`;
+    where += ` AND priority = ?`;
     bindings.push(priority);
   }
   if (slaBreached) {
-    query += ` AND sla_due_at IS NOT NULL AND sla_due_at < datetime('now') AND workflow_status IN ('pending', 'investigating')`;
+    where += ` AND sla_due_at IS NOT NULL AND sla_due_at < datetime('now') AND workflow_status IN ('pending', 'investigating')`;
   }
-  query += ` ORDER BY created_at DESC LIMIT 200`;
-  const rows = await env.DB.prepare(query).bind(...bindings).all();
-  return json({
-    reports: (rows.results || []).map((r: any) => ({
-      ...r,
-      details: parseJson(r.details, {}),
-    })),
-  });
+  if (q) {
+    where += ` AND (id = ? OR target_id = ? OR reason LIKE ? ESCAPE '\\' OR target_type = ?)`;
+    bindings.push(q, q, likePattern(q), q);
+  }
+  const [countRow, rows] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM reports ${where}`)
+      .bind(...bindings)
+      .first<{ total: number }>(),
+    env.DB.prepare(`SELECT * FROM reports ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .bind(...bindings, limit, offset)
+      .all(),
+  ]);
+  const reports = (rows.results || []).map((r: any) => ({
+    ...r,
+    details: parseJson(r.details, {}),
+  }));
+  return json({ reports, ...paged(reports, countRow?.total ?? 0, limit, offset) });
 }
 
 export async function getReport(request: Request, env: Env, reportId: string): Promise<Response> {
@@ -268,13 +280,33 @@ export async function batchDecideReports(request: Request, env: Env): Promise<Re
 export async function listAppeals(request: Request, env: Env): Promise<Response> {
   const ctx = await requireAdmin(request, env, 'appeals.read');
   if (ctx instanceof Response) return ctx;
-  const rows = await env.DB.prepare(
-    `SELECT a.*, m.action, m.reason_code
-     FROM moderation_appeals a
+  const url = new URL(request.url);
+  const status = url.searchParams.get('status') || '';
+  const q = searchQuery(url);
+  const { limit, offset } = parsePaging(url, 50, 200);
+  let where = `WHERE 1=1`;
+  const bindings: unknown[] = [];
+  if (status) {
+    where += ` AND a.status = ?`;
+    bindings.push(status);
+  }
+  if (q) {
+    where += ` AND (a.id = ? OR a.user_id = ? OR a.appeal_text LIKE ? ESCAPE '\\')`;
+    bindings.push(q, q, likePattern(q));
+  }
+  const from = `FROM moderation_appeals a
      JOIN moderation_actions m ON m.id = a.moderation_action_id
-     ORDER BY a.created_at DESC LIMIT 200`
-  ).all();
-  return json({ appeals: rows.results || [] });
+     ${where}`;
+  const [countRow, rows] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS total ${from}`).bind(...bindings).first<{ total: number }>(),
+    env.DB.prepare(
+      `SELECT a.*, m.action, m.reason_code ${from} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`
+    )
+      .bind(...bindings, limit, offset)
+      .all(),
+  ]);
+  const appeals = rows.results || [];
+  return json({ appeals, ...paged(appeals, countRow?.total ?? 0, limit, offset) });
 }
 
 export async function decideAppeal(request: Request, env: Env, appealId: string): Promise<Response> {

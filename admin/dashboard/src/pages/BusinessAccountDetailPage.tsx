@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Package, DollarSign, ShoppingBag, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Package, Euro, ShoppingBag, AlertTriangle } from 'lucide-react';
 import { adminRequest } from '../services/api/adminClient';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -12,7 +12,7 @@ import { staggerContainer } from '../lib/motion';
 import { motion } from 'framer-motion';
 
 type OverviewResponse = {
-  user: { id: string; email: string; created_at: string };
+  user: { id: string; email: string; created_at: string; is_business?: number };
   profile: Record<string, unknown> | null;
   overview: {
     product_count: number;
@@ -51,14 +51,17 @@ export function BusinessAccountDetailPage() {
         to="/business/accounts"
         className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800"
       >
-        <ArrowLeft className="h-4 w-4" /> All accounts
+        <ArrowLeft className="h-4 w-4" aria-hidden /> All accounts
       </Link>
       <PageHeader
         title={displayName}
         subtitle={data?.user.email}
         action={
           o ? (
-            <Badge variant={statusBadge(o.verification_status)}>{o.verification_status}</Badge>
+            <div className="flex gap-2">
+              <Badge variant={statusBadge(o.verification_status)}>{o.verification_status}</Badge>
+              {data?.user.is_business === 0 && <Badge variant="danger">deactivated</Badge>}
+            </div>
           ) : null
         }
       />
@@ -74,8 +77,8 @@ export function BusinessAccountDetailPage() {
           >
             <KpiCard
               label="GMV (30d)"
-              value={`$${Number(o?.gmv_30d ?? 0).toFixed(0)}`}
-              icon={DollarSign}
+              value={new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(o?.gmv_30d ?? 0))}
+              icon={Euro}
               accent="bg-emerald-50 text-emerald-600"
             />
             <KpiCard label="Orders (30d)" value={o?.orders_30d ?? 0} icon={ShoppingBag} />

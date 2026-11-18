@@ -6,7 +6,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Field, Input, Select } from '../../components/ui/Input';
-import { AlertBanner } from '../../components/ui/AlertBanner';
+import { InlineNotice } from '../../components/seller/SellerUI';
 
 const LAST_EXPORT_KEY = 'seller_last_export_at';
 
@@ -52,9 +52,13 @@ export function SellerReportsPage() {
     <div>
       <PageHeader
         title="Reports"
-        subtitle="Download CSV exports for accounting and inventory. PDF / scheduled email reports are planned later."
+        subtitle="Download CSV files for your accounting and stock. Amounts are in euros."
       />
-      {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
+      {error && (
+        <div className="mb-4">
+          <InlineNotice tone="warn">{error}</InlineNotice>
+        </div>
+      )}
       {lastExport && (
         <p className="mb-4 text-xs text-stone-500">
           Last export: {new Date(lastExport).toLocaleString()}
@@ -83,7 +87,7 @@ export function SellerReportsPage() {
                 )
               }
             >
-              <Download className="h-4 w-4" /> Export orders
+              <Download className="h-4 w-4" aria-hidden /> Export orders
             </Button>
             <Button
               variant="outline"
@@ -92,7 +96,7 @@ export function SellerReportsPage() {
                 void run('products', () => sellerDownloadCsv('/business/export/products', 'products.csv'))
               }
             >
-              <Download className="h-4 w-4" /> Export products
+              <Download className="h-4 w-4" aria-hidden /> Export products
             </Button>
           </div>
         </Card>
@@ -135,7 +139,7 @@ export function SellerReportsPage() {
               );
             }}
           >
-            <Download className="h-4 w-4" /> Export sales CSV
+            <Download className="h-4 w-4" aria-hidden /> Export sales CSV
           </Button>
         </Card>
       </div>

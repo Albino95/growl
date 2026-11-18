@@ -13,8 +13,8 @@ export function AlertBanner({ message, onDismiss }: { message: string; onDismiss
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
         <span className="flex-1">{message}</span>
         {onDismiss && (
-          <button type="button" onClick={onDismiss} className="text-red-600 hover:text-red-800">
-            <X className="h-4 w-4" />
+          <button type="button" aria-label="Dismiss" onClick={onDismiss} className="text-red-600 hover:text-red-800">
+            <X className="h-4 w-4" aria-hidden />
           </button>
         )}
       </motion.div>
@@ -45,8 +45,8 @@ export function InfoBanner({ message, onDismiss }: { message: string; onDismiss?
       <Info className="mt-0.5 h-4 w-4 shrink-0" />
       <span className="flex-1">{message}</span>
       {onDismiss && (
-        <button type="button" onClick={onDismiss} className="text-brand-600 hover:text-brand-800">
-          <X className="h-4 w-4" />
+        <button type="button" aria-label="Dismiss" onClick={onDismiss} className="text-brand-600 hover:text-brand-800">
+          <X className="h-4 w-4" aria-hidden />
         </button>
       )}
     </motion.div>

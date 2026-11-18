@@ -1,6 +1,10 @@
+/** 'mfa_enroll' tokens can only reach /admin/auth/me and /admin/auth/mfa/*. */
+export type AdminTokenScope = 'full' | 'mfa_enroll';
+
 type AdminJwtPayload = {
   adminId: string;
   type: 'admin';
+  scope?: AdminTokenScope;
   iat: number;
   exp: number;
 };
@@ -55,12 +59,13 @@ function requireSecret(env: { JWT_SECRET?: string }): string {
 export async function signAdminToken(
   adminId: string,
   env: { JWT_SECRET?: string },
-  ttlSeconds = 28800
+  ttlSeconds = 28800,
+  scope: AdminTokenScope = 'full'
 ): Promise<string> {
   const secret = requireSecret(env);
   const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
-  const payload: AdminJwtPayload = { adminId, type: 'admin', iat: now, exp: now + ttlSeconds };
+  const payload: AdminJwtPayload = { adminId, type: 'admin', scope, iat: now, exp: now + ttlSeconds };
   const body = base64UrlEncode(JSON.stringify(payload));
   const signingInput = `${header}.${body}`;
   const signature = await hmacSign(signingInput, secret);
@@ -70,7 +75,7 @@ export async function signAdminToken(
 export async function verifyAdminToken(
   token: string,
   env: { JWT_SECRET?: string }
-): Promise<{ adminId: string } | null> {
+): Promise<{ adminId: string; scope: AdminTokenScope } | null> {
   let secret: string;
   try {
     secret = requireSecret(env);
@@ -87,7 +92,7 @@ export async function verifyAdminToken(
     const payload = JSON.parse(base64UrlDecode(body)) as AdminJwtPayload;
     if (payload.type !== 'admin' || !payload.adminId || !payload.exp) return null;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return { adminId: payload.adminId };
+    return { adminId: payload.adminId, scope: payload.scope === 'mfa_enroll' ? 'mfa_enroll' : 'full' };
   } catch {
     return null;
   }

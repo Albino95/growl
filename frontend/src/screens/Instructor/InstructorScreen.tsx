@@ -53,6 +53,7 @@ import { planProgress } from '../../components/coaching/planProgress';
 import { formatHomeworkDate } from '../../components/coaching/homeworkDates';
 import { onboardingSteps, pipelineGroups } from './instructorPipeline';
 import CoachTodayEntry from '../../components/coachq/CoachTodayEntry';
+import MyPartnerLinksCard from '../../components/bizinsights/MyPartnerLinksCard';
 
 type HubTab = 'overview' | 'students' | 'community' | 'partnerships';
 
@@ -1357,6 +1358,7 @@ export default function InstructorScreen({ navigation }: any) {
 
           {activeTab === 'partnerships' ? (
             <View style={tw`px-gutter-wide pt-2`}>
+              <MyPartnerLinksCard />
               {(hub?.pending_requests?.length ?? 0) > 0 ? (
                 <View style={tw`mb-6`}>
                   <Text

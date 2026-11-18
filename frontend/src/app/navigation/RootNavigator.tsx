@@ -74,6 +74,15 @@ export type RootStackParamList = {
     productId: string;
     /** Data already in hand at the tap site, rendered instantly while the product loads. */
     preview?: ProductPreview;
+    /** Where the tap came from (business insights): feed | search | explore | storefront | shop | … */
+    source?: 'feed' | 'search' | 'explore' | 'storefront' | 'shop' | 'instructor' | 'link' | 'other';
+  };
+  SavedProducts: undefined;
+  /** Buyer-facing business page (wave 6 storefront). */
+  Storefront: {
+    businessId: string;
+    preview?: { name?: string; logoUrl?: string | null };
+    source?: 'feed' | 'search' | 'explore' | 'storefront' | 'shop' | 'instructor' | 'link' | 'other';
   };
   Checkout: { items: Array<{ product_id: string; quantity: number }> };
   UserOrders: undefined;
@@ -214,6 +223,11 @@ export default function RootNavigator() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
+              name="SavedProducts"
+              getComponent={() => require('../../screens/Marketplace/SavedProductsScreen').default}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
               name="OrderConfirmation"
               getComponent={() => require('../../screens/Marketplace/OrderConfirmationScreen').default}
               options={{ headerShown: false }}
@@ -338,6 +352,11 @@ export default function RootNavigator() {
           options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
         />
         <Stack.Screen name="PublicProfile" getComponent={() => require('../../screens/Profile/PublicProfileScreen').default} />
+        <Stack.Screen
+          name="Storefront"
+          getComponent={() => require('../../screens/Marketplace/StorefrontScreen').default}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="AppReviews"
           getComponent={() => require('../../screens/Feedback/AppReviewsScreen').default}

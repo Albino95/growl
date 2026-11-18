@@ -11,6 +11,7 @@ import {
   orderFilterLabel,
   ORDER_FILTERS,
   notificationTarget,
+  businessNotificationIcon,
 } from './businessHelpers';
 
 describe('kpiDelta', () => {
@@ -116,5 +117,12 @@ describe('orders + notifications', () => {
     expect(notificationTarget('product', 'p1', 'low_stock')).toEqual({ kind: 'catalog', filter: 'low' });
     expect(notificationTarget('product', 'p1', 'out_of_stock')).toEqual({ kind: 'catalog', filter: 'out' });
     expect(notificationTarget(null, null)).toBeNull();
+  });
+  it('routes questions, reviews and verification', () => {
+    expect(notificationTarget('product_question', 'q1', 'product_question')).toEqual({ kind: 'questions_reviews' });
+    expect(notificationTarget('product_review', 'r1', 'product_review')).toEqual({ kind: 'questions_reviews' });
+    expect(notificationTarget('verification', 'b1', 'verification')).toEqual({ kind: 'verification' });
+    expect(businessNotificationIcon('product_review', 'product_review')).toBe('star-outline');
+    expect(businessNotificationIcon('product', 'low_stock')).toBe('cube-outline');
   });
 });

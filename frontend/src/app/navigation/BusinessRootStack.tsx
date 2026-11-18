@@ -8,6 +8,9 @@ import CustomersScreen from '../../screens/Business/CustomersScreen';
 import MessagesScreen from '../../screens/Messages/MessagesScreen';
 import PostScreen from '../../screens/Post/PostScreen';
 import KYCScreen from '../../screens/KYC/KYCScreen';
+import QuestionsReviewsScreen from '../../screens/Business/QuestionsReviewsScreen';
+import InboxSettingsScreen from '../../screens/Business/InboxSettingsScreen';
+import StorefrontEditorScreen from '../../screens/Business/StorefrontEditorScreen';
 import { theme, useColorSchemeName } from '../../lib/tw';
 
 export type BusinessStackParamList = {
@@ -19,6 +22,9 @@ export type BusinessStackParamList = {
   BusinessMessages: { conversationId?: string; targetUserId?: string } | undefined;
   BusinessCreatePost: undefined;
   BusinessKYC: undefined;
+  BusinessQuestionsReviews: undefined;
+  BusinessInboxSettings: undefined;
+  BusinessStorefront: { openVerification?: boolean } | undefined;
 };
 
 const Stack = createNativeStackNavigator<BusinessStackParamList>();
@@ -93,6 +99,21 @@ export default function BusinessRootStack() {
           headerBackTitle: 'Back',
           headerTintColor: tint,
         }}
+      />
+      <Stack.Screen
+        name="BusinessQuestionsReviews"
+        component={QuestionsReviewsScreen}
+        options={{ headerShown: true, title: 'Questions & reviews', headerBackTitle: 'Back', headerTintColor: tint }}
+      />
+      <Stack.Screen
+        name="BusinessInboxSettings"
+        component={InboxSettingsScreen}
+        options={{ headerShown: true, title: 'Inbox', headerBackTitle: 'Back', headerTintColor: tint }}
+      />
+      <Stack.Screen
+        name="BusinessStorefront"
+        component={StorefrontEditorScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

@@ -979,32 +979,52 @@ export async function reportContent(request: Request, env: Env): Promise<Respons
   }
   // Owner of the reported post / journal entry (journal ids live in journal_entries, not posts).
   let postOwner: { user_id: string } | null = null;
+  let journalExcerpt = '';
   if (targetType !== 'user') {
-    const table = targetType === 'journal' ? 'journal_entries' : 'posts';
-    const label = targetType === 'journal' ? 'Journal entry' : 'Post';
-    const row = await env.DB.prepare(`SELECT id, user_id FROM ${table} WHERE id = ?`).bind(targetId).first<{
-      id: string;
-      user_id: string;
-    }>();
+    const isJournal = targetType === 'journal';
+    const label = isJournal ? 'Journal entry' : 'Post';
+    const row = await env.DB.prepare(
+      isJournal
+        ? 'SELECT id, user_id, content AS body FROM journal_entries WHERE id = ?'
+        : 'SELECT id, user_id FROM posts WHERE id = ?'
+    )
+      .bind(targetId)
+      .first<{ id: string; user_id: string; body?: string | null }>();
     if (!row) {
       return error('NOT_FOUND', `${label} not found`, 404);
     }
     if (row.user_id === ctx.userId) {
-      return error('VALIDATION_ERROR', `Cannot report your own ${targetType === 'journal' ? 'entry' : 'post'}`, 400);
+      return error('VALIDATION_ERROR', `Cannot report your own ${isJournal ? 'entry' : 'post'}`, 400);
     }
     postOwner = { user_id: row.user_id };
+    if (isJournal) journalExcerpt = String(row.body || '').slice(0, 300);
   }
 
   try {
-    const details = JSON.stringify({
-      userId: postOwner?.user_id || (targetType === 'user' ? targetId : undefined),
-      source: 'consumer_report',
-    });
+    // reports.target_type only allows user/post/product (CHECK in 0001): a journal entry is
+    // filed against its author, with the entry itself described in details (like shop Q&A).
+    const isJournal = targetType === 'journal';
+    const details = JSON.stringify(
+      isJournal
+        ? {
+            userId: postOwner!.user_id,
+            source: 'consumer_report',
+            kind: 'journal',
+            item_id: targetId,
+            excerpt: journalExcerpt,
+          }
+        : {
+            userId: postOwner?.user_id || (targetType === 'user' ? targetId : undefined),
+            source: 'consumer_report',
+          }
+    );
+    const storedType = isJournal ? 'user' : targetType;
+    const storedId = isJournal ? postOwner!.user_id : targetId;
     await env.DB.prepare(
       `INSERT INTO reports (id, reporter_id, target_id, target_type, reason, status, workflow_status, priority, details, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 'pending', 'pending', 'normal', ?, datetime('now'), datetime('now'))`
     )
-      .bind(generateId('report'), ctx.userId, targetId, targetType, reason, details)
+      .bind(generateId('report'), ctx.userId, storedId, storedType, reason, details)
       .run();
     return json({ ok: true });
   } catch (err) {

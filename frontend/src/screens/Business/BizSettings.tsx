@@ -37,6 +37,7 @@ import { toast } from '../../state/useToastStore';
 import { downloadCsv } from '../../utils/csvDownload';
 import { verticalScrollProps } from '../../constants/scroll';
 import { featureFlags } from '../../constants/featureFlags';
+import EngageSettingsRows from '../../components/productqa/EngageSettingsRows';
 
 const EMERALD = '#059669';
 
@@ -307,6 +308,11 @@ export default function BizSettings() {
           </View>
         </View>
 
+        <EngageSettingsRows
+          onOpenQuestions={() => stackNav.navigate('BusinessQuestionsReviews')}
+          onOpenInbox={() => stackNav.navigate('BusinessInboxSettings')}
+        />
+
         <View style={tw`px-gutter-wide py-4 border-b border-line/70`}>
           <Text style={tw`text-caption font-semibold tracking-widest text-ink-3 uppercase mb-3`}>
             Payouts
@@ -357,6 +363,38 @@ export default function BizSettings() {
             Storefront
           </Text>
           <PressableScale
+            style={tw`flex-row items-center justify-between py-3 border-b border-line/60`}
+            onPress={() => stackNav.navigate('BusinessStorefront')}
+            accessibilityRole="button"
+          >
+            <View style={tw`flex-row items-center flex-1`}>
+              <Ionicons name="color-palette-outline" size={22} color={EMERALD} />
+              <View style={tw`ml-3 flex-1`}>
+                <Text style={tw`font-semibold text-ink`}>Storefront</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                  Cover, about, links, featured products, hours and policies
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.iconMuted} />
+          </PressableScale>
+          <PressableScale
+            style={tw`flex-row items-center justify-between py-3 border-b border-line/60`}
+            onPress={() => stackNav.navigate('BusinessStorefront', { openVerification: true })}
+            accessibilityRole="button"
+          >
+            <View style={tw`flex-row items-center flex-1`}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={EMERALD} />
+              <View style={tw`ml-3 flex-1`}>
+                <Text style={tw`font-semibold text-ink`}>Verification</Text>
+                <Text style={tw`text-xs text-ink-3 mt-0.5`}>
+                  Get a verified seal on your storefront and products
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.iconMuted} />
+          </PressableScale>
+          <PressableScale
             style={tw`flex-row items-center justify-between py-3`}
             onPress={openStorefrontPreview}
           >
@@ -365,7 +403,7 @@ export default function BizSettings() {
               <View style={tw`ml-3 flex-1`}>
                 <Text style={tw`font-semibold text-ink`}>See how customers see you</Text>
                 <Text style={tw`text-xs text-ink-3 mt-0.5`}>
-                  Your saved name, logo, shipping note and visible products
+                  Your saved storefront and visible products
                 </Text>
               </View>
             </View>

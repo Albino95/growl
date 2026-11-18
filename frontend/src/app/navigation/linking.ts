@@ -10,6 +10,9 @@
  * paths) is filtered out so App.tsx's manual checkout handler keeps owning it
  * and unknown URLs never reset the navigation state.
  *
+ * Partner links (growl://p/<code>, https://letsgrow.lu/p/<code>) are handed to
+ * services/partnerLinks the same way: resolve the code, then open the product / shop.
+ *
  * Widget links (growl://home, growl://checkin?mood=…) are also filtered out
  * here but handed to services/widgetLinks, which navigates + checks in itself
  * once auth has hydrated (cold start via getInitialURL, warm via subscribe).
@@ -22,6 +25,7 @@ import { Linking } from 'react-native';
 import type { LinkingOptions } from '@react-navigation/native';
 import type { RootStackParamList } from './RootNavigator';
 import { handleWidgetUrl } from '../../services/widgetLinks';
+import { handlePartnerUrl } from '../../services/partnerLinks';
 
 export const LINK_PREFIXES = ['growl://', 'https://letsgrow.lu', 'https://www.letsgrow.lu'];
 
@@ -42,7 +46,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
     initialConsumed = true;
     try {
       const url = await Linking.getInitialURL();
-      if (handleWidgetUrl(url)) return null;
+      if (handleWidgetUrl(url) || handlePartnerUrl(url)) return null;
       return isGrowthDeepLink(url) ? url : null;
     } catch {
       return null;
@@ -50,7 +54,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
   },
   subscribe(listener) {
     const sub = Linking.addEventListener('url', ({ url }) => {
-      if (handleWidgetUrl(url)) return;
+      if (handleWidgetUrl(url) || handlePartnerUrl(url)) return;
       if (isGrowthDeepLink(url)) listener(url);
     });
     return () => sub.remove();

@@ -66,8 +66,8 @@ export function UsersPage() {
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
       <div className="relative mb-6 max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-        <Input className="pl-10" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email, name, or user ID…" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden />
+        <Input aria-label="Search users" className="pl-10" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email, username, or user ID…" />
       </div>
 
       <Card padding="sm">

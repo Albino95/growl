@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react';
-import { adminRequest } from '../services/api/adminClient';
+import { useCallback, useEffect, useState } from 'react';
+import { adminRequest, listQuery, type Paged } from '../services/api/adminClient';
+import { useAdminAuth } from '../auth/AdminAuthProvider';
+import { useAdminToast, errorMessage } from '../components/admin/Toast';
+import { SearchBar, Pager } from '../components/admin/ListControls';
+import { Field, Select } from '../components/ui/Input';
+import { TableSkeleton } from '../components/ui/Skeleton';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -17,23 +22,48 @@ type Appeal = {
   created_at: string;
 };
 
+const PAGE_SIZE = 50;
+
 export function AppealsPage() {
+  const { can } = useAdminAuth();
+  const toast = useAdminToast();
+  const canDecide = can('appeals.write');
   const [appeals, setAppeals] = useState<Appeal[]>([]);
+  const [page, setPage] = useState<Paged>({ total: 0, limit: PAGE_SIZE, offset: 0, has_more: false });
+  const [status, setStatus] = useState('pending');
+  const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [prompt, setPrompt] = useState<{ id: string; status: 'upheld' | 'overturned' } | null>(null);
 
-  async function load() {
-    const res = await adminRequest<{ appeals: Appeal[] }>('/admin/moderation/appeals');
-    setAppeals(res.appeals || []);
-  }
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminRequest<{ appeals: Appeal[] } & Paged>(
+        `/admin/moderation/appeals${listQuery({ status, q, limit: PAGE_SIZE, offset })}`
+      );
+      setAppeals(res.appeals || []);
+      setPage(res);
+      setError('');
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to load appeals'));
+    } finally {
+      setLoading(false);
+    }
+  }, [status, q, offset]);
 
   useEffect(() => {
-    load().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, []);
+    void load();
+  }, [load]);
 
   async function decide(reasonText: string) {
-    if (!prompt || reasonText.length < 3) return;
+    if (!prompt) return;
+    if (reasonText.trim().length < 3) {
+      toast.error('Add a reason of at least 3 characters');
+      return;
+    }
     setBusyId(prompt.id);
     setError('');
     try {
@@ -41,9 +71,10 @@ export function AppealsPage() {
         method: 'POST',
         body: JSON.stringify({ status: prompt.status, reasonText }),
       });
+      toast.success(prompt.status === 'overturned' ? 'Appeal overturned' : 'Appeal upheld');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Decision failed');
+      toast.error(errorMessage(e, 'Decision failed'));
     } finally {
       setBusyId('');
       setPrompt(null);
@@ -55,9 +86,41 @@ export function AppealsPage() {
       <PageHeader title="Appeals" subtitle="Review and decide moderation appeals" />
       {error && <AlertBanner message={error} onDismiss={() => setError('')} />}
 
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="sm:w-48">
+          <Field label="Status">
+            <Select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setOffset(0);
+              }}
+            >
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="upheld">Upheld</option>
+              <option value="overturned">Overturned</option>
+            </Select>
+          </Field>
+        </div>
+        <div className="mb-4 flex-1">
+          <SearchBar
+            value={q}
+            label="Search appeals"
+            placeholder="User ID, appeal ID or text"
+            onSearch={(v) => {
+              setQ(v);
+              setOffset(0);
+            }}
+          />
+        </div>
+      </div>
+
       <Card padding="sm">
-        {appeals.length === 0 ? (
-          <EmptyState title="No appeals pending" description="Appeals will appear here when users submit them." />
+        {loading ? (
+          <div className="p-4"><TableSkeleton rows={6} cols={6} /></div>
+        ) : appeals.length === 0 ? (
+          <EmptyState title="No appeals here" description="Appeals will appear here when users submit them." />
         ) : (
           <DataTable>
             <DataTableHead>
@@ -77,10 +140,14 @@ export function AppealsPage() {
                   <DataTableCell><Badge variant={statusBadge(a.status)}>{a.status}</Badge></DataTableCell>
                   <DataTableCell className="text-stone-500">{new Date(a.created_at).toLocaleString()}</DataTableCell>
                   <DataTableCell>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" disabled={busyId === a.id || a.status !== 'pending'} onClick={() => setPrompt({ id: a.id, status: 'upheld' })}>Uphold</Button>
-                      <Button variant="primary" disabled={busyId === a.id || a.status !== 'pending'} onClick={() => setPrompt({ id: a.id, status: 'overturned' })}>Overturn</Button>
-                    </div>
+                    {canDecide && a.status === 'pending' ? (
+                      <div className="flex gap-2">
+                        <Button variant="ghost" disabled={busyId === a.id} onClick={() => setPrompt({ id: a.id, status: 'upheld' })}>Uphold</Button>
+                        <Button variant="primary" disabled={busyId === a.id} onClick={() => setPrompt({ id: a.id, status: 'overturned' })}>Overturn</Button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-stone-400">{a.status === 'pending' ? 'View only' : 'Decided'}</span>
+                    )}
                   </DataTableCell>
                 </DataTableRow>
               ))}
@@ -88,6 +155,9 @@ export function AppealsPage() {
           </DataTable>
         )}
       </Card>
+      {!loading && (
+        <Pager offset={page.offset} limit={page.limit} total={page.total} count={appeals.length} onChange={setOffset} />
+      )}
 
       <PromptDialog
         open={!!prompt}

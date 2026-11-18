@@ -18,7 +18,7 @@ Each check prints `✓` (pass), `✗` (fail) or `–` (skipped), with its time. 
 | `E2E_BASE` | `https://growl-backend-qa.wispy-leaf-4e8b.workers.dev/api/v1` |
 | `E2E_DELAY_MS` | `120` (pause before every request; requests run one at a time) |
 | `E2E_TIMEOUT_MS` | `20000` |
-| `E2E_ONLY` | all sections. Choose from `health,auth,profile,feed,journal,social,messages,growth,marketplace,instructor,business,wave4` |
+| `E2E_ONLY` | all sections. Choose from `health,auth,profile,feed,journal,social,messages,growth,marketplace,instructor,business,wave4,wave5,wave6` |
 | `E2E_VERBOSE=1` | prints response bodies for failing checks |
 | `E2E_{DEMO,INSTRUCTOR,BUSINESS,REVIEW}_EMAIL` / `_PASSWORD` | the seeded demo accounts (`seed-demo-core-accounts.sql`, `seed-app-review-account.sql`) |
 
@@ -38,6 +38,7 @@ Passwords, JWTs and refresh tokens are never printed.
 - **Instructor**: hub, eligibility, suggest-endorsers, offering, inquiries, contracts and contract detail, endorsement requests and status, instructors, reviews, students, coaching thread, review eligibility, and 403 for non-instructors.
 - **Business**: dashboard (week and month), products, orders, customers, notifications, promo codes, partnerships and discover, analytics (timeseries, funnel, top products, partnerships), campaigns, settings, CSV exports, and 403 for non-business users. Creates an `[e2e]` product (stock 0), updates it, lists it, checks another user can't edit it, then deletes it. There are no separate "kpis" or "inventory" endpoints: the dashboard covers the KPIs and `/business/products` covers inventory.
 - **Wave 4**: `sectionWave4()` holds marked `TODO(wave4-bizx|coachx|userx)` hooks. Add checks there as those modules (`src/routes/wave3/{bizx,coachx,userx}.ts`) gain routes.
+- **Wave 6**: `sectionWave6()` covers storefront, insights (events, saves, partner links), Q&A (ask → answer → hide), reviews gating, inbox settings and a CSV import dry run. Every write is restored; admin endpoints are skipped (MFA).
 
 ## Safety
 

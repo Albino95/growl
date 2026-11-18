@@ -1,0 +1,15 @@
+# Cloudflare Pages security headers for the admin console + seller portal.
+# API origins: QA and production Workers (and the api.letsgrow.lu custom domain).
+# Fonts are bundled (@fontsource) and the MFA QR is drawn locally (data: image), so
+# no third-party script/font/QR hosts are needed. No 'unsafe-eval'.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://growl-backend-production.wispy-leaf-4e8b.workers.dev https://growl-backend-qa.wispy-leaf-4e8b.workers.dev https://api.letsgrow.lu; frame-ancestors 'none'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; worker-src 'self' blob:
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000
+  Cross-Origin-Opener-Policy: same-origin
+
+/index.html
+  Cache-Control: no-cache

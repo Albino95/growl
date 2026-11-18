@@ -67,6 +67,7 @@ import {
 } from '../../components/ui/KeyboardDoneAccessory';
 import { TAB_SCREEN_BOTTOM_PADDING, verticalScrollProps } from '../../constants/scroll';
 import ChatWallpaperSheet from '../../components/messages/ChatWallpaperSheet';
+import SavedRepliesBar from '../../components/productqa/SavedRepliesBar';
 import {
   useChatWallpaperStore,
   wallTheme,
@@ -1098,6 +1099,14 @@ export default function MessagesScreen() {
                       dark={darkWall}
                       onPressChip={(emoji) => void toggleReact(item.id, emoji)}
                     />
+                    {item.auto && !unsent ? (
+                      <Text
+                        style={[tw`text-caption mt-0.5 px-1`, { color: wall.meta }]}
+                        accessibilityLabel="Automatic reply"
+                      >
+                        Auto-reply
+                      </Text>
+                    ) : null}
                   </View>
                 );
               }}
@@ -1130,6 +1139,16 @@ export default function MessagesScreen() {
               },
             ]}
           >
+            {user?.isBusiness ? (
+              <SavedRepliesBar
+                textColor={chromeMuted}
+                chipColor={chip}
+                onInsert={(t) => {
+                  setMessageText((prev) => (prev.trim() ? `${prev.trimEnd()} ${t}` : t));
+                  messageInputRef.current?.focus();
+                }}
+              />
+            ) : null}
             <View style={tw`flex-row items-end gap-2`}>
               <View
                 style={[

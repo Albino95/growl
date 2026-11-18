@@ -203,7 +203,12 @@ describe('friends routes', () => {
     expect(data.data.ok).toBe(true);
     expect(lookups).toEqual(['journal_entries']);
     expect(inserts).toHaveLength(1);
-    expect(inserts[0]).toContain('journal');
-    expect(JSON.parse(inserts[0][inserts[0].length - 1]).userId).toBe('author-1');
+    // reports.target_type only allows user/post/product: filed against the author, kind in details.
+    expect(inserts[0][2]).toBe('author-1');
+    expect(inserts[0][3]).toBe('user');
+    const details = JSON.parse(inserts[0][inserts[0].length - 1]);
+    expect(details.userId).toBe('author-1');
+    expect(details.kind).toBe('journal');
+    expect(details.item_id).toBe('j-1');
   });
 });

@@ -41,6 +41,8 @@ export interface ChatMessage {
   reactions?: MessageReactions;
   /** Unsent by its sender: the server sends no body; render "Message unsent". */
   deleted?: boolean;
+  /** Sent automatically (a business away message): shown with an "Auto-reply" caption. */
+  auto?: boolean;
 }
 
 /** Shown in place of an unsent message (thread + inbox preview). */

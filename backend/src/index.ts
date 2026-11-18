@@ -66,6 +66,7 @@ export default {
     );
     // Proof expiry, coach summaries, weekly check-in forms, cohorts (each module self-schedules).
     ctx.waitUntil(runWave3Cron(env).catch((err) => console.error('[cron] runWave3Cron', err)));
+    ctx.waitUntil(adminPrivacyRoutes.runPrivacyPurge(env).catch((err) => console.error('[cron] runPrivacyPurge', err)));
   },
 };
 

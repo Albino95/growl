@@ -229,15 +229,33 @@ export function orderFilterLabel(filter: string): string {
   return filter.charAt(0).toUpperCase() + filter.slice(1);
 }
 
+export type BusinessNotificationTarget =
+  | { kind: 'order'; id: string }
+  | { kind: 'catalog'; filter: 'low' | 'out' | 'all' }
+  | { kind: 'questions_reviews' }
+  | { kind: 'verification' };
+
 /** Business notification → where tapping it should go. */
 export function notificationTarget(
   refType: string | null | undefined,
   refId: string | null | undefined,
   type?: string | null
-): { kind: 'order'; id: string } | { kind: 'catalog'; filter: 'low' | 'out' | 'all' } | null {
+): BusinessNotificationTarget | null {
   if (refType === 'order' && refId) return { kind: 'order', id: refId };
+  if (refType === 'product_question' || refType === 'product_review') return { kind: 'questions_reviews' };
+  if (refType === 'verification' || type === 'verification') return { kind: 'verification' };
   if (refType === 'product') {
     return { kind: 'catalog', filter: type === 'out_of_stock' ? 'out' : type === 'low_stock' ? 'low' : 'all' };
   }
   return null;
+}
+
+/** Icon for a business notification row in the dashboard action inbox. */
+export function businessNotificationIcon(refType: string | null | undefined, type?: string | null): string {
+  if (refType === 'product_question' || type === 'product_question') return 'chatbubble-ellipses-outline';
+  if (refType === 'product_review' || type === 'product_review') return 'star-outline';
+  if (refType === 'verification' || type === 'verification') return 'shield-checkmark-outline';
+  if (refType === 'order') return 'receipt-outline';
+  if (refType === 'product') return 'cube-outline';
+  return 'notifications-outline';
 }

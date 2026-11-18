@@ -149,45 +149,156 @@ export async function deleteAccount(request: Request, env: Env): Promise<Respons
     .bind(requestId, ctx.userId, JSON.stringify({ selfService: true }))
     .run();
 
-  await env.DB.prepare(
-    `INSERT INTO user_account_states (user_id, status, updated_at)
-     VALUES (?, 'deleted_pending', datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET status = 'deleted_pending', updated_at = datetime('now')`
-  )
-    .bind(ctx.userId)
-    .run();
-
-  // Anonymize PII immediately; admin can finalize hard delete later.
-  const anonymizedEmail = `deleted+${ctx.userId}@growl.invalid`;
-  await env.DB.prepare(
-    `UPDATE users SET email = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?`
-  )
-    .bind(anonymizedEmail, JSON.stringify({ deleted: true, deletedAt: new Date().toISOString() }), ctx.userId)
-    .run();
-
-  // Growth data: free-text check-ins go now and the invite link stops working.
-  // Everything else is removed by ON DELETE CASCADE when the row is hard-deleted.
-  try {
-    await env.DB.prepare(`UPDATE users SET invite_code = NULL WHERE id = ?`).bind(ctx.userId).run();
-    await env.DB.prepare(`DELETE FROM daily_checkins WHERE user_id = ?`).bind(ctx.userId).run();
-  } catch (err) {
-    console.error('[deleteAccount] growth cleanup failed', err);
-  }
-
-  // Proof of progress: private files go now, then the rows (free text) with them.
-  try {
-    await deleteUserProofMedia(env, ctx.userId);
-    await env.DB.prepare(`DELETE FROM proof_cheers WHERE proof_id IN (SELECT id FROM proofs WHERE user_id = ?)`)
-      .bind(ctx.userId)
-      .run();
-    await env.DB.prepare(`DELETE FROM proofs WHERE user_id = ?`).bind(ctx.userId).run();
-  } catch (err) {
-    console.error('[deleteAccount] proof cleanup failed', err);
-  }
+  await scrubUserForDeletion(env, ctx.userId);
 
   return json({
     ok: true,
     message: 'Your account has been scheduled for deletion. You have been signed out.',
     requestId,
   });
+}
+
+/**
+ * Immediate part of account deletion (self-service and admin-approved): mark the account
+ * deleted_pending, anonymise PII, drop free-text check-ins and private proof media/rows.
+ * The hourly purge (routes/admin/privacy.ts runPrivacyPurge) hard-deletes after the grace period.
+ */
+export async function scrubUserForDeletion(env: Env, userId: string, adminId?: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO user_account_states (user_id, status, updated_by_admin_id, updated_at)
+     VALUES (?, 'deleted_pending', ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET status = 'deleted_pending', updated_at = datetime('now')`
+  )
+    .bind(userId, adminId || null)
+    .run();
+  // Grace-period clock (migration 0051). Kept separate so an older schema still deletes.
+  try {
+    await env.DB.prepare(
+      `UPDATE user_account_states SET deletion_requested_at = COALESCE(deletion_requested_at, datetime('now'))
+       WHERE user_id = ?`
+    )
+      .bind(userId)
+      .run();
+  } catch (err) {
+    console.error('[deleteAccount] deletion_requested_at', err);
+  }
+
+  // Anonymize PII immediately; the purge job finalizes the hard delete later.
+  const anonymizedEmail = `deleted+${userId}@growl.invalid`;
+  await env.DB.prepare(
+    `UPDATE users SET email = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(anonymizedEmail, JSON.stringify({ deleted: true, deletedAt: new Date().toISOString() }), userId)
+    .run();
+
+  // Growth data: free-text check-ins go now and the invite link stops working.
+  // Everything else is removed by ON DELETE CASCADE when the row is hard-deleted.
+  try {
+    await env.DB.prepare(`UPDATE users SET invite_code = NULL WHERE id = ?`).bind(userId).run();
+    await env.DB.prepare(`DELETE FROM daily_checkins WHERE user_id = ?`).bind(userId).run();
+  } catch (err) {
+    console.error('[deleteAccount] growth cleanup failed', err);
+  }
+
+  // Proof of progress: private files go now, then the rows (free text) with them.
+  try {
+    await deleteUserProofMedia(env, userId);
+    await env.DB.prepare(`DELETE FROM proof_cheers WHERE proof_id IN (SELECT id FROM proofs WHERE user_id = ?)`)
+      .bind(userId)
+      .run();
+    await env.DB.prepare(`DELETE FROM proofs WHERE user_id = ?`).bind(userId).run();
+  } catch (err) {
+    console.error('[deleteAccount] proof cleanup failed', err);
+  }
+}
+
+/** Public media folders written by routes/media.ts as `<purpose>/<userId>/…` (proof/ handled above). */
+const USER_MEDIA_PREFIXES = ['post', 'reel', 'story', 'avatar', 'product'];
+
+async function deleteR2Prefix(env: Env, prefix: string): Promise<number> {
+  if (!env.R2) return 0;
+  let cursor: string | undefined;
+  let deleted = 0;
+  for (let page = 0; page < 20; page++) {
+    const listed = await env.R2.list({ prefix, limit: 500, cursor });
+    const keys = (listed.objects || []).map((o) => o.key).filter((k) => k.startsWith(prefix));
+    if (keys.length) {
+      await env.R2.delete(keys);
+      deleted += keys.length;
+    }
+    if (!listed.truncated || !('cursor' in listed) || !listed.cursor) break;
+    cursor = listed.cursor;
+  }
+  return deleted;
+}
+
+/**
+ * Rows keyed by user id without a FOREIGN KEY to users (no cascade). Deleted explicitly,
+ * each best-effort so a table missing in one environment does not stop the purge.
+ */
+const NO_CASCADE_CLEANUP: string[] = [
+  `DELETE FROM search_posts WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?1)`,
+  `DELETE FROM search_users WHERE user_id = ?1`,
+  `DELETE FROM post_mentions WHERE mentioned_user_id = ?1 OR author_id = ?1`,
+  `DELETE FROM comment_mentions WHERE mentioned_user_id = ?1 OR author_id = ?1`,
+  `DELETE FROM growth_seed_events WHERE actor_user_id = ?1`,
+  `DELETE FROM growth_seed_members WHERE user_id = ?1`,
+  `DELETE FROM growth_seeds WHERE planted_by_user_id = ?1
+     AND NOT EXISTS (SELECT 1 FROM growth_seed_members m WHERE m.seed_id = growth_seeds.id)`,
+  `DELETE FROM growth_group_members WHERE user_id = ?1`,
+  `DELETE FROM growth_group_pulses WHERE user_id = ?1`,
+  `DELETE FROM growth_group_call_interest WHERE user_id = ?1`,
+  `DELETE FROM idempotency_keys WHERE user_id = ?1`,
+  `DELETE FROM coach_weekly_sent WHERE user_id = ?1`,
+  `DELETE FROM weekly_nudges WHERE user_id = ?1`,
+  `DELETE FROM partner_link_clicks WHERE user_id = ?1`,
+  `DELETE FROM partner_save_attributions WHERE user_id = ?1`,
+  `UPDATE biz_events SET viewer_id = NULL WHERE viewer_id = ?1`,
+  // orders.business_id references users without ON DELETE: detach so the delete can proceed.
+  `UPDATE orders SET business_id = NULL WHERE business_id = ?1`,
+];
+
+/**
+ * Final step of account deletion, run by the purge job after the grace period:
+ * removes media in R2 (incl. proof/), rows without cascade, then the users row
+ * (everything else cascades). If the delete is refused, the account is fully
+ * anonymised instead and marked 'deleted' so it is not picked up again.
+ */
+export async function hardDeleteUser(env: Env, userId: string): Promise<'deleted' | 'anonymised'> {
+  await scrubUserForDeletion(env, userId);
+  if (env.R2 && userId && !userId.includes('/')) {
+    for (const purpose of USER_MEDIA_PREFIXES) {
+      try {
+        await deleteR2Prefix(env, `${purpose}/${userId}/`);
+      } catch (err) {
+        console.error('[purge] media', purpose, err);
+      }
+    }
+  }
+  for (const sql of NO_CASCADE_CLEANUP) {
+    try {
+      await env.DB.prepare(sql).bind(userId).run();
+    } catch (err) {
+      console.error('[purge] cleanup', sql.slice(0, 40), err);
+    }
+  }
+  try {
+    await env.DB.prepare(`DELETE FROM users WHERE id = ?`).bind(userId).run();
+    return 'deleted';
+  } catch (err) {
+    console.error('[purge] hard delete refused, anonymising', err);
+    await env.DB.prepare(
+      `UPDATE users SET email = ?, password_hash = '', metadata = '{"deleted":true}', invite_code = NULL,
+         email_verification_token_hash = NULL, password_reset_token_hash = NULL, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+      .bind(`deleted+${userId}@growl.invalid`, userId)
+      .run();
+    await env.DB.prepare(
+      `UPDATE user_account_states SET status = 'deleted', updated_at = datetime('now') WHERE user_id = ?`
+    )
+      .bind(userId)
+      .run();
+    return 'anonymised';
+  }
 }
