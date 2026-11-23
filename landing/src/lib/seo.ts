@@ -103,7 +103,7 @@ export const faqItems: FaqItem[] = [
   {
     question: 'What does it cost?',
     answer:
-      'Grow! is free, with no third-party ads. If you work with a coach, there is no payment through Grow!: you agree any fee directly with your coach.',
+      'Grow! is free, with no third-party ads. Coaches set their own rates, and Grow! keeps a commission on coaching fees — you never pay Grow! anything extra.',
   },
   {
     question: 'Is there an Android app?',
