@@ -50,6 +50,13 @@
         "SENTRY_DSN": "https://f0330cc19cf0557d67d2dc8f867f5b6f@o4512404620902400.ingest.de.sentry.io/4512420409966672",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
+    },
+    "production-apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
