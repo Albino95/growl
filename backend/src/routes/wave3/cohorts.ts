@@ -1,6 +1,6 @@
 /**
  * Wave 5 — Group (cohort) plans: one coach guides 2–150 members together.
- * No payments: "No payment through Grow! yet — agree payment directly with your coach."
+ * No in-app payments: coach and members agree details directly (see COHORT_BILLING_NOTE).
  *
  *   POST   /cohorts                               coach creates { title, path?, description?, weeks, start_date, capacity }
  *   GET    /cohorts                               → { coaching, member, invites }
@@ -59,7 +59,7 @@ export const SEEN_BATCH_MAX = 300;
 export const INACTIVE_DAYS = 5;
 export const IN_CHUNK = 90;
 export const COHORT_DEEP_LINK = 'growl://cohort/';
-export const COHORT_BILLING_NOTE = 'No payment through Grow! yet — agree payment directly with your coach.';
+export const COHORT_BILLING_NOTE = 'You and your coach agree the details together, directly.';
 const PROOF_KINDS = ['note', 'timer', 'number', 'photo', 'voice'] as const;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = '[A-Za-z0-9_.:-]{1,128}';

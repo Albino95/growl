@@ -7,7 +7,7 @@ import { getSiteUrl, OG_IMAGE } from '@/lib/seo';
 
 const TITLE = 'For coaches';
 const DESCRIPTION =
-  'Coach many clients on Grow! without losing track: a daily attention queue, Monday summaries, homework that can ask for proof, and group plans for up to 150 people. You set your rates; Grow! keeps a commission.';
+  'Coach many clients on Grow! without losing track: a daily attention queue, Monday summaries, homework that can ask for proof, and group plans for up to 150 people.';
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -252,10 +252,10 @@ export default function CoachesPage() {
               </ul>
             </div>
             <div>
-              <h2 className="display text-[1.75rem] text-bark sm:text-[2.5rem]">You set your rates</h2>
+              <h2 className="display text-[1.75rem] text-bark sm:text-[2.5rem]">Your offer, your way</h2>
               <p className="measure mt-6 text-[1.125rem] text-moss">
-                You set your weekly offer in the app. Grow! keeps a commission based on your rates, so
-                you only share when you earn. There are no sign-up or monthly fees.
+                Set your weekly offer in the app — how often you meet, for how many weeks, and a trial — then
+                send a written plan. Your clients see exactly what’s included before they start.
               </p>
             </div>
           </div>

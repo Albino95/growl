@@ -141,7 +141,7 @@ describe('creating and listing', () => {
 
     const list = await call('coach', 'GET', '/cohorts');
     expect(list.data.coaching).toHaveLength(1);
-    expect(list.data.coaching[0].billing_note).toMatch(/No payment through Grow! yet/);
+    expect(list.data.coaching[0].billing_note).toMatch(/agree the details together/);
     expect(list.data.coaching[0].current_week).toBe(2);
   });
 

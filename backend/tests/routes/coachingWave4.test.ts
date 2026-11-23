@@ -127,7 +127,7 @@ describe('accepting a proposal', () => {
     const got = await call('client', 'GET', `/instructor/contracts/${id}`);
     expect(got.data.contract.share_checkins).toBe(false);
     const msg = db.prepare(`SELECT body FROM messages ORDER BY created_at DESC, rowid DESC LIMIT 1`).get() as any;
-    expect(msg.body).toContain('No payment through Grow! yet');
+    expect(msg.body).toContain('agree the details together');
     expect(msg.body).not.toMatch(/billing coming/i);
   });
 

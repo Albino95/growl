@@ -375,8 +375,8 @@ function Friday() {
           <h3 className="font-display text-[1.375rem] font-bold tracking-[-0.01em] text-bark">Want a guide?</h3>
           <p className="mt-2 text-[1.0625rem] text-moss">
             Coaches on Grow! are endorsed by the community: people growing on the same path vouch for
-            them. Find one for your path when you want more than a nudge. Each coach sets their own
-            rate; Grow! keeps a commission from it, never an extra fee for you.
+            them. Find one for your path when you want more than a nudge — a real person who helps you
+            improve faster and notices your progress.
           </p>
           <p className="mt-4 text-[1.0625rem]">
             <a href="/coaches" className="font-semibold text-leaf underline decoration-leaf/30 underline-offset-4 hover:decoration-leaf">

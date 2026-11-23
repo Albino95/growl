@@ -68,7 +68,7 @@ type ContractRow = {
 };
 
 /** Plain-language status line for plans — coaching has no in-app payment. */
-export const NO_PAYMENT_NOTE = 'No payment through Grow! yet — agree payment directly with your coach.';
+export const NO_PAYMENT_NOTE = 'You and your coach agree the details together, directly.';
 
 function parseMeta(raw: string | null | undefined): Record<string, unknown> {
   try {
@@ -774,7 +774,7 @@ async function respondProposal(
           : `${clientName} declined your proposal`,
       body:
         decision === 'accepted'
-          ? 'Plan active. Assign homework when you are ready. Agree payment directly — there is no payment through Grow!.'
+          ? 'Plan active. Assign homework when you are ready.'
           : 'You can send another proposal after you talk.',
       refType: decision === 'accepted' && contract ? 'coaching_contract' : 'conversation',
       refId: decision === 'accepted' && contract ? contract.id : proposal.conversation_id,
